@@ -99,9 +99,7 @@ class TestDrain:
         for i in range(3):
             await public.ingest("testq", f"doc number {i}", process="defer")
 
-        report = await public.process_pending(
-            "testq", embedding_model="e"
-        )
+        report = await public.process_pending("testq", embedding_model="e")
 
         assert report.documents_enriched == 3
         assert report.remaining == 0
@@ -128,9 +126,7 @@ class TestPauseAndResume:
         for i in range(5):
             await public.ingest("testq", f"doc {i}", process="defer")
 
-        first = await public.process_pending(
-            "testq", embedding_model="e", max_docs=2
-        )
+        first = await public.process_pending("testq", embedding_model="e", max_docs=2)
         assert first.documents_enriched == 2
         assert first.stopped_early is True
         assert first.remaining == 3
@@ -248,9 +244,7 @@ class TestSourceConversionStage:
             calls.append(source)
             return "# Converted\n\nreal content"
 
-        await public.process_pending(
-            "testq", embedding_model="e", convert_fn=convert
-        )
+        await public.process_pending("testq", embedding_model="e", convert_fn=convert)
         assert calls == ["/tmp/paper.pdf"]  # converted once
 
         # Retry: enrichment succeeds now. Conversion must NOT run again.

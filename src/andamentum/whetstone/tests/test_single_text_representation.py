@@ -26,9 +26,9 @@ ATOMS = DOCX_PACKAGE / "atoms.py"
 # atoms.py's job. Reading ONE run's <w:t> to splice it is mutation, which is
 # surgery.py's job — hence the file allowance rather than a blanket ban.
 _MULTI_TEXT_READS = (
-    './/w:t',
+    ".//w:t",
     'iter(qn("t"))',
-    'iter(TEXT_TAG)',
+    "iter(TEXT_TAG)",
 )
 _EXTRACTION_ALLOWED = {"atoms.py"}
 

@@ -61,9 +61,7 @@ class _FlippingRunner:
         raise AssertionError(f"unexpected agent {agent_name}")
 
 
-async def _seed_verdict(
-    state: EpistemicGraphState, repo: EpistemicRepository
-) -> None:
+async def _seed_verdict(state: EpistemicGraphState, repo: EpistemicRepository) -> None:
     """Run the real sole predecessor so ``state.verdict`` is present.
 
     CheckSynthesisDemand is only ever reached via CheckCompletion, which

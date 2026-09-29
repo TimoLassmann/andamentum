@@ -97,7 +97,9 @@ async def check_references(
     (or a test) supply the HTTP client.
     """
     span = find_reference_list(text, sections=sections)
-    has_notes = any(h.kind == "note" for h in hints or []) or bool(pandoc_notes(text)[0])
+    has_notes = any(h.kind == "note" for h in hints or []) or bool(
+        pandoc_notes(text)[0]
+    )
     if span is None and not has_notes:
         return ReferenceReport(found_list=False)
     if span is None:
@@ -189,7 +191,9 @@ def _full_notes(report: ReferenceReport) -> list[ReferenceEntry]:
     return out
 
 
-def _author_block_end(sections: Sequence[tuple[str, int, int]] | None, text: str) -> int:
+def _author_block_end(
+    sections: Sequence[tuple[str, int, int]] | None, text: str
+) -> int:
     """Where the title and author block ends, or 0 when there is none.
 
     With sections, the end of the first one (capped: a document with no

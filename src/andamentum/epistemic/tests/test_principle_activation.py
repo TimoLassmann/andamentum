@@ -292,11 +292,16 @@ def _run_canary(claim_id: int, out_dir: Path) -> dict:
     # runner needs — and the invocation does not silently depend on uv being
     # on the spawned PATH.
     cmd = [
-        sys.executable, str(RUNNER),
-        "--runs", str(RUNS),
-        "--model", MODEL,
-        "--claim-id", str(claim_id),
-        "--out-dir", str(out_dir),
+        sys.executable,
+        str(RUNNER),
+        "--runs",
+        str(RUNS),
+        "--model",
+        MODEL,
+        "--claim-id",
+        str(claim_id),
+        "--out-dir",
+        str(out_dir),
     ]
     proc = subprocess.run(
         cmd,

@@ -98,7 +98,9 @@ def test_only_a_citations_facet_criterion_sees_the_citation_line() -> None:
     from andamentum.whetstone.v3.review import _project
 
     src = "We recover 4x more [1]."
-    summary = CitationSummary(found_list=True, entries=1, style="numeric_brackets", citations=1)
+    summary = CitationSummary(
+        found_list=True, entries=1, style="numeric_brackets", citations=1
+    )
     model = build_document_model(src, [_section(src)], [], citations=summary)
     evidence = Criterion(name="Evidence", facets=["claims", "citations"])
     clarity = Criterion(name="Clarity", facets=["claims"])

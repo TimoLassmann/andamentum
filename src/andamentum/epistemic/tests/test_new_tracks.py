@@ -55,7 +55,6 @@ class TestClaimNewFields:
 
 
 class TestContrastiveEvaluationAgent:
-
     def test_adapter(self):
         raw = SimpleNamespace(
             better_claim="A", distinguishing_observation="test obs", confidence=0.8
@@ -73,7 +72,6 @@ class TestContrastiveEvaluationAgent:
 
 
 class TestCrossClaimConsistencyAgent:
-
     def test_adapter_no_conflict(self):
         raw = SimpleNamespace(conflicts=False, tension_point="")
         result = adapt_agent_output("epistemic_cross_claim_consistency", raw)

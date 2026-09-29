@@ -98,8 +98,13 @@ def citation_hints(path: str | Path, *, expected_text: str) -> list[Hint]:
     return hints
 
 
-_NOTE_REFERENCES = {qn("footnoteReference"): "footnotes", qn("endnoteReference"): "endnotes"}
-_SKIPPED_NOTE_TYPES = frozenset({"separator", "continuationSeparator", "continuationNotice"})
+_NOTE_REFERENCES = {
+    qn("footnoteReference"): "footnotes",
+    qn("endnoteReference"): "endnotes",
+}
+_SKIPPED_NOTE_TYPES = frozenset(
+    {"separator", "continuationSeparator", "continuationNotice"}
+)
 
 
 def _note_hints(path: str | Path, paragraphs: list[Any], *, length: int) -> list[Hint]:
@@ -142,7 +147,9 @@ def _note_marks(paragraphs: list[Any]) -> list[tuple[int, str, str]]:
         offset = position
         for element in paragraph.iter():
             if element.tag in _NOTE_REFERENCES:
-                marks.append((offset, _NOTE_REFERENCES[element.tag], element.get(qn("id")) or ""))
+                marks.append(
+                    (offset, _NOTE_REFERENCES[element.tag], element.get(qn("id")) or "")
+                )
             offset += per_element.get(id(element), 0)
         position += per_paragraph.get(id(paragraph), 0)
     return marks

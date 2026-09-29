@@ -49,9 +49,7 @@ _LABEL_FOR_DIRECTION = {
 }
 
 
-@pytest.mark.parametrize(
-    "p", [0.0, 0.30, 0.34, 0.50, 0.66, 0.70, 0.90, 1.0]
-)
+@pytest.mark.parametrize("p", [0.0, 0.30, 0.34, 0.50, 0.66, 0.70, 0.90, 1.0])
 def test_direction_and_label_never_disagree(p: float) -> None:
     """``display_label`` MAPS a direction; it never re-thresholds.
 
@@ -550,7 +548,9 @@ async def test_union_rule_headline_does_not_contradict_the_badges(
         repo,
         question_type="verificatory",
         decomposition=Decomposition(
-            sub_investigations=[SubInvestigation(id="A", seed_claim="a", rationale="r")],
+            sub_investigations=[
+                SubInvestigation(id="A", seed_claim="a", rationale="r")
+            ],
             combination_rule="UNION",
         ),
     )
@@ -584,9 +584,7 @@ async def test_a_decomposition_free_run_reports_no_orphans(tmp_path: Path) -> No
     every snapshot on the SciFact arm.
     """
     repo = await _repo(tmp_path, "verdict_no_orphans")
-    obj = Objective(
-        description="x", claim_to_verify="x", question_type="verificatory"
-    )
+    obj = Objective(description="x", claim_to_verify="x", question_type="verificatory")
     obj.objective_id = obj.entity_id
     await repo.save(obj)
     await repo.save(
@@ -622,7 +620,9 @@ async def test_no_verdict_count_is_scoped_to_the_combination(tmp_path: Path) -> 
         description="x",
         question_type="verificatory",
         decomposition=Decomposition(
-            sub_investigations=[SubInvestigation(id="A", seed_claim="a", rationale="r")],
+            sub_investigations=[
+                SubInvestigation(id="A", seed_claim="a", rationale="r")
+            ],
             combination_rule="AND",
         ),
     )

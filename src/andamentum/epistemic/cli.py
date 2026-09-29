@@ -501,7 +501,9 @@ async def _inspect(args: argparse.Namespace) -> None:
         )
         verdict = getattr(snapshot, "verdict", None) if snapshot else None
         if verdict is not None:
-            post = f"{verdict.posterior:.3f}" if verdict.posterior is not None else "n/a"
+            post = (
+                f"{verdict.posterior:.3f}" if verdict.posterior is not None else "n/a"
+            )
             print(
                 f"  verdict:       {verdict.direction} posterior={post} "
                 f"n_no_verdict={verdict.provenance.n_no_verdict}"

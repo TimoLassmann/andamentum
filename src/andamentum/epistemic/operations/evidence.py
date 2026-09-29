@@ -447,8 +447,7 @@ class ExtractEvidenceOperation(BaseOperation):
                 f"empty — nothing to re-examine: {agent_justification}"
             )
             _log.warning(
-                "[_score_evidence] TMS: invalidated %s — empty content at "
-                "quality %.3f",
+                "[_score_evidence] TMS: invalidated %s — empty content at quality %.3f",
                 evidence.entity_id,
                 evidence.quality_score,
             )

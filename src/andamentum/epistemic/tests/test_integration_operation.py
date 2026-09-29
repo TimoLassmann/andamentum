@@ -382,8 +382,7 @@ class TestIBEIntegrationPipeline:
         updated = await repo.get("claim", "cl-1")
         assert updated.integration_candidates == []
         assert not any(
-            "balanced" in c.description.lower()
-            for c in updated.integration_candidates
+            "balanced" in c.description.lower() for c in updated.integration_candidates
         )
 
     async def test_declined_claim_stays_verdict_less_through_full_pipeline(

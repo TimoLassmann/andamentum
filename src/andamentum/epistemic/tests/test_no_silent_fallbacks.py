@@ -426,7 +426,9 @@ async def test_promote_claim_propagates_objective_load_failure(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_combine_claim_verdicts_propagates_posterior_failure(tmp_path, monkeypatch):
+async def test_combine_claim_verdicts_propagates_posterior_failure(
+    tmp_path, monkeypatch
+):
     """When compute_posterior raises, the node that builds the run's
     verdict must propagate — a silent None verdict hides the headline
     result, and CheckCompletion would then raise a confusing

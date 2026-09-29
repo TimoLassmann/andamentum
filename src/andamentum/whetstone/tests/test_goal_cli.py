@@ -141,7 +141,9 @@ def test_goal_figure_without_goal_check_figures_is_refused(
             ]
         )
     assert exc.value.code == 1
-    assert "--goal-figure only applies to --goal-check figures" in capsys.readouterr().err
+    assert (
+        "--goal-figure only applies to --goal-check figures" in capsys.readouterr().err
+    )
 
 
 def test_goal_figure_model_without_goal_check_figures_is_refused(

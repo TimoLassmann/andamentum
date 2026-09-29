@@ -113,6 +113,7 @@ class Decomposition(BaseModel):
             "question's load-bearing structure."
         ),
     )
+
     @classmethod
     def from_dict(cls, data: dict[str, Any] | None) -> "Decomposition | None":
         """Round-trip helper: build from a dict (e.g. legacy metadata).

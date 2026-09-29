@@ -112,7 +112,13 @@ def in_context(text: str, start: int, end: int) -> str:
 
 async def ask_style(prompt: str, *, model: str) -> StyleAnswer:
     agent = build_pydantic_ai_agent(
-        AgentDefinition(name="references_style", prompt=_STYLE_PROMPT, output_model=StyleAnswer, retries=2, output_retries=3),
+        AgentDefinition(
+            name="references_style",
+            prompt=_STYLE_PROMPT,
+            output_model=StyleAnswer,
+            retries=2,
+            output_retries=3,
+        ),
         resolve_model(model),
     )
     result = await agent.run(prompt)

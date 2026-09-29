@@ -56,7 +56,11 @@ from dotenv import load_dotenv
 from andamentum.whetstone.schemas import ReviewResult
 from andamentum.whetstone.v3.criteria import MISSING_COMPARISON
 from andamentum.whetstone.v3.graph import run_review_v3
-from andamentum.whetstone.v3.reviewers import DEFAULT_PROFILE_NAME, PROFILES, ReviewerProfile
+from andamentum.whetstone.v3.reviewers import (
+    DEFAULT_PROFILE_NAME,
+    PROFILES,
+    ReviewerProfile,
+)
 
 load_dotenv()
 

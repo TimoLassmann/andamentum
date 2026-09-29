@@ -226,7 +226,8 @@ async def _uncertainty_is_terminal_only(unc: Any, repo: Any) -> bool:
         return False
     affected_claims = [await repo.get("claim", cid) for cid in unc.affected_claim_ids]
     return all(
-        isinstance(c, Claim) and (c.cycle_capped or c.abandoned) for c in affected_claims
+        isinstance(c, Claim) and (c.cycle_capped or c.abandoned)
+        for c in affected_claims
     )
 
 
@@ -1567,7 +1568,10 @@ class PromoteToSupported(Node):
         from ..operations.stage_management import PromoteClaimOperation
         from ..operations.belief_maintenance import SetRoutingDefaultsOperation
         from ..entities.claim import ClaimStage
-        from ..gates import claim_evidence_fingerprint, refused_only_for_min_supporting_sources
+        from ..gates import (
+            claim_evidence_fingerprint,
+            refused_only_for_min_supporting_sources,
+        )
 
         state = ctx.state
         deps = ctx.deps
@@ -1610,9 +1614,7 @@ class PromoteToSupported(Node):
                     # re-derive the same contraction (S3). On an
                     # unchanged fingerprint, skip the promotion attempt
                     # entirely — the claim stays terminal for this run.
-                    current_fp = await claim_evidence_fingerprint(
-                        claim, deps.repo
-                    )
+                    current_fp = await claim_evidence_fingerprint(claim, deps.repo)
                     if current_fp == claim.contraction_fingerprint:
                         logger.info(
                             "Claim %s: evidence unchanged since contraction; "
@@ -1644,9 +1646,7 @@ class PromoteToSupported(Node):
                 )
                 if result.success:
                     if was_contracted:
-                        promoted_claim = await deps.repo.get(
-                            "claim", claim.entity_id
-                        )
+                        promoted_claim = await deps.repo.get("claim", claim.entity_id)
                         promoted_claim.reset_for_reinquiry()
                         await deps.repo.save(promoted_claim)
                         state.verification_done.discard(claim.entity_id)
@@ -2689,9 +2689,7 @@ class CombineClaimVerdicts(Node):
     ``build_verdict`` directly as a function, not via ``_run_op``.
     """
 
-    reads = frozenset(
-        {"objective_id", "retrieval_failed", "judgment_doubt_escalated"}
-    )
+    reads = frozenset({"objective_id", "retrieval_failed", "judgment_doubt_escalated"})
     writes = frozenset({"verdict"})
     operations = frozenset()
     post_invariants = ()

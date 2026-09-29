@@ -132,14 +132,14 @@ class Uncertainty(EpistemicEntity):
     # the field, both of which default to None upstream in
     # ResolveUncertaintyOutput; the entity's own default matches so a
     # bare `Uncertainty()` round-trips unchanged).
-    resolution_bearing: Optional[Literal["supports_claim", "refutes_claim", "neutral"]] = (
-        Field(
-            default=None,
-            description=(
-                "Direction the resolution bears on the affected claim's truth: "
-                "supports_claim, refutes_claim, or neutral. None = not assessed."
-            ),
-        )
+    resolution_bearing: Optional[
+        Literal["supports_claim", "refutes_claim", "neutral"]
+    ] = Field(
+        default=None,
+        description=(
+            "Direction the resolution bears on the affected claim's truth: "
+            "supports_claim, refutes_claim, or neutral. None = not assessed."
+        ),
     )
 
     # Denormalized for pattern matching (set on save)

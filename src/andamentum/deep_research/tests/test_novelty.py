@@ -188,9 +188,7 @@ class TestCheckNovelty:
     @pytest.mark.asyncio
     async def test_confidence_clamped(self):
         """Confidence values outside [0, 1] get clamped."""
-        output = _report(
-            evidence_summary="s", key_findings=["f"], sources=["u"]
-        )
+        output = _report(evidence_summary="s", key_findings=["f"], sources=["u"])
 
         async def research_fn(**kwargs):
             return output
@@ -206,9 +204,7 @@ class TestCheckNovelty:
     @pytest.mark.asyncio
     async def test_invalid_relevance_defaults_to_tangential(self):
         """Invalid relevance value in similar_works defaults to TANGENTIAL."""
-        output = _report(
-            evidence_summary="s", key_findings=["f"], sources=["u"]
-        )
+        output = _report(evidence_summary="s", key_findings=["f"], sources=["u"])
 
         async def research_fn(**kwargs):
             return output

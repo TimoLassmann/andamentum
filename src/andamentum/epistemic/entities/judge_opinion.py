@@ -87,8 +87,7 @@ class JudgeOpinion(BaseModel):
     )
     distribution: list[float] = Field(
         description=(
-            "Normalized belief vector over OPINION_LABELS = "
-            "[meets, partial, fails]."
+            "Normalized belief vector over OPINION_LABELS = [meets, partial, fails]."
         )
     )
     overall: Literal["meets", "partial", "fails"] = Field(

@@ -118,7 +118,9 @@ def test_judgment_over_text_is_promoted_to_head() -> None:
     assert len(spec.agents) == 1
 
 
-def test_checkpoint_head_loop_counter_not_counted_as_a_data_write(tmp_path: Path) -> None:
+def test_checkpoint_head_loop_counter_not_counted_as_a_data_write(
+    tmp_path: Path,
+) -> None:
     # A research loop: search -> synthesize -> checkpoint(judge sufficiency). The checkpoint
     # is a HEAD producing ONE judgment field; compile adds its loop counter to writes. The
     # counter is a control-plane write (incremented in the loop guard, never bound to the
@@ -134,17 +136,29 @@ def test_checkpoint_head_loop_counter_not_counted_as_a_data_write(tmp_path: Path
         ),
         nodes=[
             NodeDraft(
-                id="n1", area="core", job="Search the web for evidence.",
-                kind=NodeKind.SPINE, consumes=["input"], produces=["search_results"],
+                id="n1",
+                area="core",
+                job="Search the web for evidence.",
+                kind=NodeKind.SPINE,
+                consumes=["input"],
+                produces=["search_results"],
                 network=True,
             ),
             NodeDraft(
-                id="n2", area="core", job="Synthesize the evidence into an answer.",
-                kind=NodeKind.HEAD, consumes=["search_results"], produces=["answer"],
+                id="n2",
+                area="core",
+                job="Synthesize the evidence into an answer.",
+                kind=NodeKind.HEAD,
+                consumes=["search_results"],
+                produces=["answer"],
             ),
             NodeDraft(
-                id="n3", area="core", job="Judge whether the evidence is sufficient.",
-                kind=NodeKind.HEAD, consumes=["answer"], produces=["sufficiency"],
+                id="n3",
+                area="core",
+                job="Judge whether the evidence is sufficient.",
+                kind=NodeKind.HEAD,
+                consumes=["answer"],
+                produces=["sufficiency"],
                 control=NodeControl.CHECKPOINT,
             ),
         ],

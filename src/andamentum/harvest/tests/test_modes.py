@@ -22,7 +22,9 @@ from andamentum.harvest.fetch import Fetched
 # ---------- helpers --------------------------------------------------------
 
 
-def _make_fetched(*, fmt: str, data: bytes = b"", url: str = "https://x.com") -> Fetched:
+def _make_fetched(
+    *, fmt: str, data: bytes = b"", url: str = "https://x.com"
+) -> Fetched:
     return Fetched(data=data, format=fmt, source_url=url)  # type: ignore[arg-type]
 
 
@@ -94,7 +96,9 @@ async def test_html_not_article_carries_mode(patched_resolve, spy_docling):
 
 
 async def test_html_race_carries_mode(patched_resolve, spy_docling):
-    patched_resolve(_make_fetched(fmt="html", data=b"<html><body><p>x</p></body></html>"))
+    patched_resolve(
+        _make_fetched(fmt="html", data=b"<html><body><p>x</p></body></html>")
+    )
     await extract("https://x.com/?", mode="accurate")
     assert spy_docling == [{"fmt": "html", "mode": "accurate"}]
 
@@ -286,7 +290,9 @@ def test_ollama_unavailable_is_an_extraction_error():
 # ---------- error typing ---------------------------------------------------
 
 
-async def test_extraction_error_survives_the_mode_parameter(patched_resolve, monkeypatch):
+async def test_extraction_error_survives_the_mode_parameter(
+    patched_resolve, monkeypatch
+):
     """The typed-failure contract is unchanged by the new parameter."""
 
     async def boom(data, *, source_url, fmt="html", mode="fast", **_kwargs):

@@ -194,7 +194,9 @@ def test_a_hyperlink_outside_the_change_survives() -> None:
 def test_an_edit_across_a_paragraph_break_merges_the_paragraphs() -> None:
     _, paragraphs = _doc("The first thought ends here", "and the second begins.")
     tm = TextMap(document_atoms(paragraphs))
-    apply_edits(tm, [_edit(tm, "ends here\nand the second begins", "ends here and continues")])
+    apply_edits(
+        tm, [_edit(tm, "ends here\nand the second begins", "ends here and continues")]
+    )
 
     # The first paragraph's mark is marked deleted: Word merges on accept.
     ppr = paragraphs[0].find(qn("pPr"))
@@ -228,7 +230,11 @@ def test_overlapping_edits_are_refused_not_composed() -> None:
     report = apply_edits(
         tm,
         [
-            _edit(tm, "the results show a significant effect", "the results suggest an effect"),
+            _edit(
+                tm,
+                "the results show a significant effect",
+                "the results suggest an effect",
+            ),
             _edit(tm, "a significant effect here", "a large effect here"),
         ],
     )
@@ -263,7 +269,9 @@ def test_a_second_round_edits_what_the_first_round_inserted() -> None:
     _, paragraphs = _doc("The evidence layer earns its place.")
 
     first = TextMap(document_atoms(paragraphs))
-    apply_edits(first, [_edit(first, "earns its place", "earns its keep", "Reviewer A")])
+    apply_edits(
+        first, [_edit(first, "earns its place", "earns its keep", "Reviewer A")]
+    )
 
     second = TextMap(document_atoms(_live(paragraphs)))
     assert second.text == "The evidence layer earns its keep."

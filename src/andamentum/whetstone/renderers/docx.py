@@ -186,9 +186,13 @@ def render_docx(
     # section of its own would mean a keyword through two builder signatures
     # (see the reviewer block below for the same trade).
     if result.reference_summary:
-        review_summary += f"\n\n**{REFERENCE_CHECK_HEADING}**\n\n{result.reference_summary}"
+        review_summary += (
+            f"\n\n**{REFERENCE_CHECK_HEADING}**\n\n{result.reference_summary}"
+        )
     if result.next_steps:
-        review_summary += f"\n\n**{NEXT_STEP_HEADING}**\n\n" + "\n\n".join(result.next_steps)
+        review_summary += f"\n\n**{NEXT_STEP_HEADING}**\n\n" + "\n\n".join(
+            result.next_steps
+        )
     if result.panel_synthesis is not None:
         # Panel mode: the synthesis is the authoritative summary. ``result.summary``
         # is intentionally empty (see panel_synthesise.py); render the synthesis
@@ -440,7 +444,6 @@ def _collect_declined(result: ReviewResult) -> str:
     return "\n".join(lines)
 
 
-
 def _collect_novelty_claims(result: ReviewResult) -> str:
     """What the draft stakes as new, as markdown for the prepended report.
 
@@ -474,6 +477,7 @@ def _collect_novelty_claims(result: ReviewResult) -> str:
     ]
     return "\n".join(lines)
 
+
 def _collect_novelty_findings(result: ReviewResult) -> str:
     """Concatenate novelty-category findings into a markdown block.
 
@@ -497,7 +501,9 @@ def _collect_novelty_findings(result: ReviewResult) -> str:
     ]
     for f in novelty:
         confidence = confidence_label(f)
-        lines.append(f"- **{f.title}** ({f.severity}{', ' + confidence if confidence else ''})")
+        lines.append(
+            f"- **{f.title}** ({f.severity}{', ' + confidence if confidence else ''})"
+        )
         if f.rationale:
             # Indent rationale under its bullet
             for ln in f.rationale.splitlines():

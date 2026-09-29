@@ -88,9 +88,7 @@ def append_cache(task: str, model: str, item_id: str, result: dict) -> None:
     CACHE.parent.mkdir(parents=True, exist_ok=True)
     with CACHE.open("a", encoding="utf-8") as fh:
         fh.write(
-            json.dumps(
-                {"task": task, "model": model, "id": item_id, "result": result}
-            )
+            json.dumps({"task": task, "model": model, "id": item_id, "result": result})
             + "\n"
         )
 
@@ -237,8 +235,7 @@ async def main() -> None:
         )
     print("\nCOMPARE — expected_preference vs argmax winner")
     print(
-        f"{'model':<22}{'argmax acc':>12}{'tie-rate':>10}"
-        f"{'E-pref acc':>12}{'delta':>8}"
+        f"{'model':<22}{'argmax acc':>12}{'tie-rate':>10}{'E-pref acc':>12}{'delta':>8}"
     )
     for c in summary["compare"]:
         delta = c["expected_pref_accuracy"] - c["argmax_accuracy"]

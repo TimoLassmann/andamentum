@@ -245,4 +245,3 @@ async def extract_document_metadata(
         default_factory=DocumentMetadataFields,
         label="Document",
     )
-

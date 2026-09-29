@@ -80,7 +80,9 @@ def _year_of(rest: str, *, title: str) -> int | None:
     only a page after its title ("…,” 1755."), which must not be read as the
     year 1755: when nothing but a number follows the title, there is no year.
     """
-    in_parentheses = re.search(r"\([^()]*?(?<!\d)(1[5-9]\d\d|20\d\d)(?!\d)[^()]*\)", rest)
+    in_parentheses = re.search(
+        r"\([^()]*?(?<!\d)(1[5-9]\d\d|20\d\d)(?!\d)[^()]*\)", rest
+    )
     if in_parentheses:
         return int(in_parentheses.group(1))
     after = rest.split(title, 1)[-1]
@@ -90,7 +92,9 @@ def _year_of(rest: str, *, title: str) -> int | None:
     return int(found.group(1)) if found else None
 
 
-_PARTICLES = frozenset({"van", "von", "de", "der", "den", "del", "da", "di", "le", "la", "du", "dos", "el"})
+_PARTICLES = frozenset(
+    {"van", "von", "de", "der", "den", "del", "da", "di", "le", "la", "du", "dos", "el"}
+)
 
 
 def _title_of(rest: str) -> str:
@@ -100,6 +104,10 @@ def _title_of(rest: str) -> str:
     # An unquoted title (a book, set in italics the text has lost): up to the
     # next comma or parenthesis.
     candidate = re.split(r"[,(]", rest.strip(), maxsplit=1)[0].strip(" .")
-    if len(candidate.split()) >= 1 and candidate[:1].isupper() and not candidate[:1].isdigit():
+    if (
+        len(candidate.split()) >= 1
+        and candidate[:1].isupper()
+        and not candidate[:1].isdigit()
+    ):
         return candidate
     return ""

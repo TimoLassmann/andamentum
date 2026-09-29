@@ -65,7 +65,9 @@ def configuration_markdown(header: ReviewerHeader) -> str:
     weight of a heading and a bulleted list at the top of the page, which is
     what it had. Same information, one italic line, at the end.
     """
-    parts = [f"{line.label}: {line.value} ({line.source})" for line in header.configuration]
+    parts = [
+        f"{line.label}: {line.value} ({line.source})" for line in header.configuration
+    ]
     version = header.version or "unknown"
     return (
         f"*{header.identity} · "
@@ -93,6 +95,3 @@ def header_atoms(header: ReviewerHeader) -> list[dict[str, Any]]:
 def configuration_atoms(header: ReviewerHeader) -> list[dict[str, Any]]:
     """The configuration as one quiet line, for the foot of the HTML report."""
     return [{"kind": "aside", "content": configuration_markdown(header)}]
-
-
-

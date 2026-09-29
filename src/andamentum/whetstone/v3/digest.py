@@ -15,6 +15,7 @@ from .model import CitationSummary, Claim, DocumentModel, Section, SectionGist
 if TYPE_CHECKING:
     from andamentum.references import Hint
 
+
 async def read_citations(
     source: str, sections: list[Section], *, hints: "list[Hint] | None" = None
 ) -> CitationSummary:

@@ -231,7 +231,10 @@ class TestAdaptConceptualAnalysis:
 class TestAdaptResolveUncertainty:
     def test_resolved(self):
         raw = ns(
-            resolution="Fixed", can_resolve=True, bearing="supports_claim", remaining_concerns=[]
+            resolution="Fixed",
+            can_resolve=True,
+            bearing="supports_claim",
+            remaining_concerns=[],
         )
         result = adapt_resolve_uncertainty(raw)
         assert isinstance(result, ResolveUncertaintyResult)

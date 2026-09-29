@@ -353,18 +353,30 @@ async def test_the_selector_respects_the_smaller_of_the_two_bounds(repo) -> None
     claim = await _seed(repo, [{} for _ in range(10)])
     evidence = [await repo.get("evidence", eid) for eid in claim.evidence_ids]
 
-    assert len(select_confirmation_candidates(
-        evidence, per_pass_limit=3, remaining_budget=1
-    )) == 1
-    assert len(select_confirmation_candidates(
-        evidence, per_pass_limit=1, remaining_budget=3
-    )) == 1
-    assert select_confirmation_candidates(
-        evidence, per_pass_limit=3, remaining_budget=0
-    ) == []
-    assert select_confirmation_candidates(
-        evidence, per_pass_limit=3, remaining_budget=-1
-    ) == []
+    assert (
+        len(
+            select_confirmation_candidates(
+                evidence, per_pass_limit=3, remaining_budget=1
+            )
+        )
+        == 1
+    )
+    assert (
+        len(
+            select_confirmation_candidates(
+                evidence, per_pass_limit=1, remaining_budget=3
+            )
+        )
+        == 1
+    )
+    assert (
+        select_confirmation_candidates(evidence, per_pass_limit=3, remaining_budget=0)
+        == []
+    )
+    assert (
+        select_confirmation_candidates(evidence, per_pass_limit=3, remaining_budget=-1)
+        == []
+    )
 
 
 # ── It never changes a verdict ───────────────────────────────────────

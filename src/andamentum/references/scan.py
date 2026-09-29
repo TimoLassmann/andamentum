@@ -26,7 +26,9 @@ _PARENTHESES = re.compile(rf"\(({_NUMBER_LIST})\)")
 # "disease12", "disease.12", "disease,3-5". Only lowercase words of three or
 # more letters, so gene and cell names (CD34, IL6), chemistry (H2O) and units
 # (m2) are not even candidates.
-_GLUED = re.compile(rf"(?:(?<=[a-z]{{3}})|(?<=[.,;:)\]]))({_NUMBER_LIST})(?=[\s.,;:)]|$)")
+_GLUED = re.compile(
+    rf"(?:(?<=[a-z]{{3}})|(?<=[.,;:)\]]))({_NUMBER_LIST})(?=[\s.,;:)]|$)"
+)
 _MAX_RANGE = 50
 # No reference list runs to a thousand entries; a four-digit number in
 # brackets or parentheses is a year, "(2019)", not citation 2019.
@@ -108,7 +110,12 @@ def pandoc_notes(text: str) -> tuple[list[Hint], list[tuple[int, int]]]:
     if not definitions:
         return [], []
     hints = [
-        Hint(kind="note", start=m.start(), end=m.start(), payload=definitions[m.group(1)].group(2))
+        Hint(
+            kind="note",
+            start=m.start(),
+            end=m.start(),
+            payload=definitions[m.group(1)].group(2),
+        )
         for m in _PANDOC_NOTE_MARK.finditer(text)
         if m.group(1) in definitions
     ]
@@ -131,7 +138,17 @@ def scan(
     hints += markdown_notes
     covered += definitions
 
-    def add(source, span_start, span_end, *, numbers=(), works=(), keys=(), note_text="", note_form=None) -> None:
+    def add(
+        source,
+        span_start,
+        span_end,
+        *,
+        numbers=(),
+        works=(),
+        keys=(),
+        note_text="",
+        note_form=None,
+    ) -> None:
         found.append(
             Candidate(
                 id=0,
@@ -152,7 +169,14 @@ def scan(
             continue
         form, works = read_note(hint.payload)
         anchor_start, anchor_end = note_anchor(text, hint.start)
-        add("note", anchor_start, anchor_end, works=works, note_text=hint.payload, note_form=form)
+        add(
+            "note",
+            anchor_start,
+            anchor_end,
+            works=works,
+            note_text=hint.payload,
+            note_form=form,
+        )
 
     for hint in hints:
         if not (start <= hint.start < end):
@@ -163,7 +187,9 @@ def scan(
                 "field",
                 hint.start,
                 hint.end,
-                numbers=_expand(re.sub(r"[^\d,;–—-]", "", snippet)) if re.fullmatch(r"[\s\[\]()\d,;–—-]+", snippet) else (),
+                numbers=_expand(re.sub(r"[^\d,;–—-]", "", snippet))
+                if re.fullmatch(r"[\s\[\]()\d,;–—-]+", snippet)
+                else (),
                 works=_works_in(snippet),
             )
             covered.append((hint.start, hint.end))
@@ -270,7 +296,9 @@ def _works_in(group: str) -> list[CitedWork]:
             continue
         for year in _YEAR_ITEM.finditer(m.group(2)):
             works.append(
-                CitedWork(surname=surname, year=int(year.group(1)), suffix=year.group(2))
+                CitedWork(
+                    surname=surname, year=int(year.group(1)), suffix=year.group(2)
+                )
             )
     return works
 

@@ -113,19 +113,32 @@ def flat(rendered) -> str:
     return "".join(flat(part) for part in rendered)
 
 
-def render(style_path: Path, items: list[dict]) -> tuple[list[str], dict[str, str], str]:
-    from citeproc import Citation, CitationItem, CitationStylesBibliography, CitationStylesStyle, formatter
+def render(
+    style_path: Path, items: list[dict]
+) -> tuple[list[str], dict[str, str], str]:
+    from citeproc import (
+        Citation,
+        CitationItem,
+        CitationStylesBibliography,
+        CitationStylesStyle,
+        formatter,
+    )
     from citeproc.source.json import CiteProcJSON
 
     style = CitationStylesStyle(str(style_path), validate=False)
-    bibliography = CitationStylesBibliography(style, CiteProcJSON(items), formatter.plain)
+    bibliography = CitationStylesBibliography(
+        style, CiteProcJSON(items), formatter.plain
+    )
     cited = [i for i in range(len(items)) if i != UNCITED]
     citations = [Citation([CitationItem(f"r{i}")]) for i in cited]
     for citation in citations:
         bibliography.register(citation)
     # Register the uncited work too, so it is in the list.
     bibliography.register(Citation([CitationItem(f"r{UNCITED}")]))
-    shown = {f"r{i}": flat(bibliography.cite(c, lambda _: None)).strip() for i, c in zip(cited, citations)}
+    shown = {
+        f"r{i}": flat(bibliography.cite(c, lambda _: None)).strip()
+        for i, c in zip(cited, citations)
+    }
     entries = [flat(entry).strip() for entry in bibliography.bibliography()]
     ids = [str(key) for key in bibliography.keys]
     fmt = "numeric"
@@ -134,12 +147,23 @@ def render(style_path: Path, items: list[dict]) -> tuple[list[str], dict[str, st
         fmt = "author_year"
     elif 'citation-format="author"' in text:
         fmt = "author_only"
-    superscript = 'vertical-align="sup"' in text.split("<citation", 1)[-1].split("</citation>", 1)[0]
-    return ids, shown | {"__entries__": json.dumps(entries)}, fmt + ("_superscript" if superscript else "")
+    superscript = (
+        'vertical-align="sup"'
+        in text.split("<citation", 1)[-1].split("</citation>", 1)[0]
+    )
+    return (
+        ids,
+        shown | {"__entries__": json.dumps(entries)},
+        fmt + ("_superscript" if superscript else ""),
+    )
 
 
-FOOTNOTE_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml"
-FOOTNOTE_REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes"
+FOOTNOTE_CONTENT_TYPE = (
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml"
+)
+FOOTNOTE_REL = (
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes"
+)
 W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 
 
@@ -156,7 +180,10 @@ def _add_footnotes(path: Path, notes: list[str]) -> None:
 
     data = path.read_bytes()
     out = BytesIO()
-    with zipfile.ZipFile(BytesIO(data)) as src, zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as dst:
+    with (
+        zipfile.ZipFile(BytesIO(data)) as src,
+        zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as dst,
+    ):
         for item in src.infolist():
             body = src.read(item.filename)
             if item.filename == "word/document.xml":
@@ -193,7 +220,9 @@ def _add_footnotes(path: Path, notes: list[str]) -> None:
     path.write_bytes(out.getvalue())
 
 
-def _build_notes(bibliography: bool, *, cache: Path, items: list[dict], out: Path) -> dict | None:
+def _build_notes(
+    bibliography: bool, *, cache: Path, items: list[dict], out: Path
+) -> dict | None:
     """A Chicago notes-and-bibliography document with real Word footnotes.
 
     Notes, in order: full r0, full r1, short r0, Ibid. (fine), full r2 + r3
@@ -203,13 +232,22 @@ def _build_notes(bibliography: bool, *, cache: Path, items: list[dict], out: Pat
     r5, full r6, r7, r8. With a bibliography it also lists r9, never cited
     (planted).
     """
-    from citeproc import Citation, CitationItem, CitationStylesBibliography, CitationStylesStyle, formatter
+    from citeproc import (
+        Citation,
+        CitationItem,
+        CitationStylesBibliography,
+        CitationStylesStyle,
+        formatter,
+    )
     from citeproc.source.json import CiteProcJSON
     from docx import Document
 
     name = "chicago-notes-bibliography"
     style_path = cache / f"{name}.csl"
-    fetch(f"https://raw.githubusercontent.com/citation-style-language/styles/master/{name}.csl", style_path)
+    fetch(
+        f"https://raw.githubusercontent.com/citation-style-language/styles/master/{name}.csl",
+        style_path,
+    )
     style = CitationStylesStyle(str(style_path), validate=False)
     bib = CitationStylesBibliography(style, CiteProcJSON(items), formatter.plain)
 
@@ -217,7 +255,9 @@ def _build_notes(bibliography: bool, *, cache: Path, items: list[dict], out: Pat
         citation = Citation([CitationItem(f"r{i}")])
         bib.register(citation)
         text = flat(bib.cite(citation, lambda _: None)).strip()
-        return re.sub(r";\s*originally published as\s*\[\],?", ",", text).rstrip(".") + "."
+        return (
+            re.sub(r";\s*originally published as\s*\[\],?", ",", text).rstrip(".") + "."
+        )
 
     def family(i: int) -> str:
         return items[i]["author"][0]["family"]
@@ -288,7 +328,9 @@ def _build_notes(bibliography: bool, *, cache: Path, items: list[dict], out: Pat
             if key == "r4":
                 continue
             if key == "r9":
-                planted.append({"kind": "listed_not_cited", "start": offset(), "end": offset() + 8})
+                planted.append(
+                    {"kind": "listed_not_cited", "start": offset(), "end": offset() + 8}
+                )
             doc.add_paragraph(entries[key])
             paragraphs.append(entries[key])
     variant = "chicago-notes" + ("" if bibliography else ".nobib")
@@ -319,7 +361,14 @@ def build(out: Path) -> None:
     manifest = []
     for name in STYLES:
         for flat_text in (False, True):
-            case = _build_one(name, flat_text, cache=cache, items=items, out=out, document_cls=Document)
+            case = _build_one(
+                name,
+                flat_text,
+                cache=cache,
+                items=items,
+                out=out,
+                document_cls=Document,
+            )
             if case is not None:
                 manifest.append(case)
     for with_bibliography in (True, False):
@@ -368,7 +417,14 @@ def _build_one(name, flat_text, *, cache, items, out, document_cls):
             return sum(len(p) + 1 for p in paragraphs)
 
         para([("A test of citation reading", False)], heading=True)
-        para([("Ada Lovelace", False), ("1", True), (", Alan Turing", False), ("2", True)])
+        para(
+            [
+                ("Ada Lovelace", False),
+                ("1", True),
+                (", Alan Turing", False),
+                ("2", True),
+            ]
+        )
         para([("Introduction", False)], heading=True)
         for position, index in enumerate(i for i in range(len(items)) if i != UNCITED):
             key = f"r{index}"
@@ -386,10 +442,26 @@ def _build_one(name, flat_text, *, cache, items, out, document_cls):
                 para([(f"{sentence} {cite}.", False)])
             truth_citations.append((start, start + len(cite)))
             if index == MISSING:
-                planted.append({"kind": "cited_not_listed", "start": start, "end": start + len(cite)})
+                planted.append(
+                    {
+                        "kind": "cited_not_listed",
+                        "start": start,
+                        "end": start + len(cite),
+                    }
+                )
             if wrong_year:
-                planted.append({"kind": "year_mismatch", "start": start, "end": start + len(cite)})
-        para([("We grew 10", False), ("5", True), (" cells on 3 m", False), ("2", True), (" plates (n = 12), as in Fig. 2.", False)])
+                planted.append(
+                    {"kind": "year_mismatch", "start": start, "end": start + len(cite)}
+                )
+        para(
+            [
+                ("We grew 10", False),
+                ("5", True),
+                (" cells on 3 m", False),
+                ("2", True),
+                (" plates (n = 12), as in Fig. 2.", False),
+            ]
+        )
         # Harder: gene, exon and day labels that look like glued citations in
         # a text that lost its formatting, and a repeated citation, which the
         # citation-order rule cannot settle.
@@ -411,31 +483,37 @@ def _build_one(name, flat_text, *, cache, items, out, document_cls):
             if numbered_list and not re.match(r"\[?\d{1,3}[\].)]?", entry):
                 entry = f"{number}. {entry}"
             if key == f"r{UNCITED}":
-                planted.append({"kind": "listed_not_cited", "start": offset(), "end": offset() + 8})
+                planted.append(
+                    {"kind": "listed_not_cited", "start": offset(), "end": offset() + 8}
+                )
             para([(entry, False)])
 
         path = out / f"{name}{'.flat' if flat_text else ''}.docx"
         doc.save(str(path))
-        case = (
-            {
-                "style": name + (".flat" if flat_text else ""),
-                "file": path.name,
-                "format": fmt,
-                "superscript": superscript,
-                "expected_style": (
-                    "author_year" if fmt == "author_year"
-                    else "numeric_superscript" if superscript
-                    else "numeric_brackets" if "[" in shown["r0"]
-                    else "numeric_parentheses" if "(" in shown["r0"]
-                    else "unsupported"
-                ) if fmt != "author_only" else "unsupported",
-                "text": "\n".join(paragraphs),
-                "citations": truth_citations,
-                "planted": planted,
-                "sample_citation": shown["r0"],
-                "sample_entry": list_entries[0][1][:120],
-            }
-        )
+        case = {
+            "style": name + (".flat" if flat_text else ""),
+            "file": path.name,
+            "format": fmt,
+            "superscript": superscript,
+            "expected_style": (
+                "author_year"
+                if fmt == "author_year"
+                else "numeric_superscript"
+                if superscript
+                else "numeric_brackets"
+                if "[" in shown["r0"]
+                else "numeric_parentheses"
+                if "(" in shown["r0"]
+                else "unsupported"
+            )
+            if fmt != "author_only"
+            else "unsupported",
+            "text": "\n".join(paragraphs),
+            "citations": truth_citations,
+            "planted": planted,
+            "sample_citation": shown["r0"],
+            "sample_entry": list_entries[0][1][:120],
+        }
         print(f"built {case['style']}: {case['expected_style']}  e.g. {shown['r0']!r}")
         return case
 

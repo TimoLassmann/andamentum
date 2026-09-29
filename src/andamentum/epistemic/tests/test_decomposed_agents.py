@@ -9,7 +9,6 @@ from ..adapters import adapt_agent_output
 
 
 class TestGenerateCounterqueryAgent:
-
     def test_adapter(self):
         raw = SimpleNamespace(
             query="  failed replication test  ", framing="  replication_failures  "
@@ -20,7 +19,6 @@ class TestGenerateCounterqueryAgent:
 
 
 class TestCheckPairwiseIndependenceAgent:
-
     def test_adapter_independent(self):
         raw = SimpleNamespace(independent=True, rationale="Different methods")
         result = adapt_agent_output("epistemic_check_pairwise_independence", raw)
@@ -38,7 +36,6 @@ class TestCheckPairwiseIndependenceAgent:
 
 
 class TestIdentifyTestableAspectAgent:
-
     def test_pydantic_model_rejects_out_of_vocab_observation_type(self):
         # observation_type is a Literal — pydantic rejects case/whitespace
         # drift at model-construction time. The old adapter-level
@@ -67,7 +64,6 @@ class TestIdentifyTestableAspectAgent:
 
 
 class TestSpecifyPredictionAgent:
-
     def test_adapter(self):
         raw = SimpleNamespace(
             expected_observation="test",
@@ -92,7 +88,6 @@ class TestSpecifyPredictionAgent:
 
 
 class TestDefineFalsificationAgent:
-
     def test_adapter(self):
         raw = SimpleNamespace(falsification_criterion="No change observed")
         result = adapt_agent_output("epistemic_define_falsification", raw)
@@ -146,7 +141,6 @@ class TestEmbeddingsClustering:
 
 
 class TestExtractAssertionAgent:
-
     def test_adapter(self):
         raw = SimpleNamespace(assertion="  Coffee reduces diabetes risk  ")
         result = adapt_agent_output("epistemic_extract_assertion", raw)
@@ -154,7 +148,6 @@ class TestExtractAssertionAgent:
 
 
 class TestDraftClaimAgent:
-
     def test_pydantic_model_rejects_out_of_vocab_direction(self):
         # `direction` is now a Literal on DraftClaimOutput, so pydantic
         # rejects case/whitespace drift at model-construction time. The

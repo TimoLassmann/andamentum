@@ -54,7 +54,9 @@ def test_a_converter_list_item_and_a_wrapped_entry_are_one_entry() -> None:
 
 def test_markers_expand_ranges_and_skip_implausible_ones() -> None:
     text = "a [2–4, 8] b [1-400] c [9]"
-    assert [m.numbers for m in scan(text, start=0, end=len(text)) if m.source == "brackets"] == [
+    assert [
+        m.numbers for m in scan(text, start=0, end=len(text)) if m.source == "brackets"
+    ] == [
         [2, 3, 4, 8],
         [9],
     ]
@@ -78,9 +80,8 @@ async def test_every_number_problem_is_found_and_located() -> None:
 
 
 async def test_a_citation_out_of_first_citation_order_is_reported_once() -> None:
-    text = (
-        "a [1] b [2] c [4] d [3] e [5]\n\nReferences\n"
-        + "".join(f"{n}. Author{n} ({2000 + n}) Title number {n}. J\n" for n in range(1, 6))
+    text = "a [1] b [2] c [4] d [3] e [5]\n\nReferences\n" + "".join(
+        f"{n}. Author{n} ({2000 + n}) Title number {n}. J\n" for n in range(1, 6)
     )
     report = await check_references(text, lookup=False)
     order = [p for p in report.problems if p.kind == "out_of_order"]
@@ -89,9 +90,8 @@ async def test_a_citation_out_of_first_citation_order_is_reported_once() -> None
 
 
 async def test_an_alphabetical_list_is_not_checked_for_order() -> None:
-    text = (
-        "a [4] b [2] c [5] d [1] e [3]\n\nReferences\n"
-        + "".join(f"{n}. Author{n} ({2000 + n}) Title number {n}. J\n" for n in range(1, 6))
+    text = "a [4] b [2] c [5] d [1] e [3]\n\nReferences\n" + "".join(
+        f"{n}. Author{n} ({2000 + n}) Title number {n}. J\n" for n in range(1, 6)
     )
     report = await check_references(text, lookup=False)
     assert not [p for p in report.problems if p.kind == "out_of_order"]
@@ -106,7 +106,13 @@ async def test_no_list_means_nothing_is_checked_and_it_says_so() -> None:
 # ── the lookup ──────────────────────────────────────────────────────────────
 
 
-def _item(title: str, year: int, family: str, kind: str = "journal-article", doi: str = "10.1/x"):
+def _item(
+    title: str,
+    year: int,
+    family: str,
+    kind: str = "journal-article",
+    doi: str = "10.1/x",
+):
     return {
         "title": [title],
         "issued": {"date-parts": [[year]]},
@@ -130,7 +136,9 @@ def _crossref(route):
 
 
 def _query(request: httpx.Request) -> str:
-    return parse_qs(urlparse(str(request.url)).query).get("query.bibliographic", [""])[0]
+    return parse_qs(urlparse(str(request.url)).query).get("query.bibliographic", [""])[
+        0
+    ]
 
 
 async def _lookup(text: str, route):
@@ -162,7 +170,13 @@ async def test_an_unrelated_nearest_work_is_not_a_match() -> None:
         ONE,
         lambda r: (
             200,
-            {"message": {"items": [_item("This jellyfish makes glowing proteins", 2020, "Doe")]}},
+            {
+                "message": {
+                    "items": [
+                        _item("This jellyfish makes glowing proteins", 2020, "Doe")
+                    ]
+                }
+            },
         ),
     )
     assert [p.kind for p in report.problems] == ["not_found"]
@@ -182,7 +196,10 @@ async def test_a_later_repost_does_not_contradict_the_year() -> None:
     title = "The national economic burden of rare disease in the United States in 2019"
     report, _ = await _lookup(
         ONE,
-        lambda r: (200, {"message": {"items": [_item(title, 2025, "Yang", kind="posted-content")]}}),
+        lambda r: (
+            200,
+            {"message": {"items": [_item(title, 2025, "Yang", kind="posted-content")]}},
+        ),
     )
     assert [r.status for r in report.lookups] == ["found"]
     assert report.problems == []
@@ -212,15 +229,22 @@ DOI_ENTRY = "Body [1].\n\nReferences\n1. Lee K (2021) A study of variants. Hum M
 async def test_a_doi_that_does_not_resolve_is_major() -> None:
     report, seen = await _lookup(DOI_ENTRY, lambda r: (404, {}))
     assert "/works/10.1002/humu.24380" in str(seen[0].url)
-    assert [(p.kind, p.severity) for p in report.problems] == [("doi_not_found", "major")]
+    assert [(p.kind, p.severity) for p in report.problems] == [
+        ("doi_not_found", "major")
+    ]
 
 
 async def test_a_doi_for_a_different_work_is_major() -> None:
     report, _ = await _lookup(
         DOI_ENTRY,
-        lambda r: (200, {"message": _item("Something else entirely here", 2019, "Nobody")}),
+        lambda r: (
+            200,
+            {"message": _item("Something else entirely here", 2019, "Nobody")},
+        ),
     )
-    assert [(p.kind, p.severity) for p in report.problems] == [("details_differ", "major")]
+    assert [(p.kind, p.severity) for p in report.problems] == [
+        ("details_differ", "major")
+    ]
 
 
 async def test_a_service_failure_is_unchecked_not_wrong(monkeypatch) -> None:
@@ -244,7 +268,9 @@ def test_the_module_is_a_leaf() -> None:
 
     root = pathlib.Path(__file__).parents[1]
     for path in root.glob("*.py"):
-        imports = re.findall(r"^\s*(?:from|import)\s+andamentum\.(\w+)", path.read_text(), re.M)
+        imports = re.findall(
+            r"^\s*(?:from|import)\s+andamentum\.(\w+)", path.read_text(), re.M
+        )
         assert not [m for m in imports if m not in ("references", "core")], path.name
 
 
@@ -282,7 +308,9 @@ async def test_a_consortium_author_is_not_compared() -> None:
     assert report.problems == []
 
 
-async def test_a_same_titled_work_by_other_authors_in_another_year_is_not_the_entry() -> None:
+async def test_a_same_titled_work_by_other_authors_in_another_year_is_not_the_entry() -> (
+    None
+):
     """Generic titles repeat. A record with the entry's title but another
     year AND another first author is a namesake, and must not be reported as
     the entry's details being wrong."""
@@ -322,11 +350,15 @@ def test_a_merged_numbered_list_is_split_at_the_next_number_even_across_a_gap() 
         "2.Gudmundsson, S. et al. Variant interpretation. Human Mutation vol. 43, no. 8. Wiley (2021). "
         "4.LeCun, Y. Deep learning. Nature vol. 521 436 (2015).\n"
     )
-    assert [(e.number, e.year) for e in _entries(text)] == [(1, 2018), (2, 2021), (4, 2015)]
+    assert [(e.number, e.year) for e in _entries(text)] == [
+        (1, 2018),
+        (2, 2021),
+        (4, 2015),
+    ]
 
 
 def test_numbers_inside_an_entry_do_not_split_it() -> None:
-    """"no. 9." or "no. 4." sit before an entry's year: nothing before them is
+    """ "no. 9." or "no. 4." sit before an entry's year: nothing before them is
     a whole entry yet."""
     text = (
         "References\n"
@@ -428,14 +460,28 @@ References
 
 def test_a_keyed_list_keeps_each_key_and_drops_it_from_the_text() -> None:
     entries = _entries(PANDOC)
-    assert [e.key for e in entries] == ["wakap2020", "zurynski2017", "yang2022", "nisar2021", "yang2022"]
+    assert [e.key for e in entries] == [
+        "wakap2020",
+        "zurynski2017",
+        "yang2022",
+        "nisar2021",
+        "yang2022",
+    ]
     assert entries[0].text.startswith("Nguengang Wakap S")
     assert entries[0].number is None
 
 
 def test_a_pandoc_group_is_one_candidate_with_every_key() -> None:
-    candidates = [c for c in scan(PANDOC, start=0, end=PANDOC.index("References")) if c.source == "key"]
-    assert [c.keys for c in candidates] == [["wakap2020"], ["zurynski2017", "yang2022"], ["missing2021"]]
+    candidates = [
+        c
+        for c in scan(PANDOC, start=0, end=PANDOC.index("References"))
+        if c.source == "key"
+    ]
+    assert [c.keys for c in candidates] == [
+        ["wakap2020"],
+        ["zurynski2017", "yang2022"],
+        ["missing2021"],
+    ]
     # An e-mail address is not a citation.
     assert not any("b.org" in k for c in candidates for k in c.keys)
 

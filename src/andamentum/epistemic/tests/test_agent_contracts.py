@@ -72,9 +72,7 @@ AGENT_CONTRACTS: list[AgentContract] = [
     AgentContract(
         "epistemic_specify_prediction",
         SpecifyPredictionOutput,
-        frozenset(
-            {"expected_observation", "conditions", "timeframe", "measurability"}
-        ),
+        frozenset({"expected_observation", "conditions", "timeframe", "measurability"}),
     ),
     AgentContract(
         "epistemic_define_falsification",

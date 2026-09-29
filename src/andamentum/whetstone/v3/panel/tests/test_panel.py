@@ -139,9 +139,7 @@ def _patch_panel_workers(build) -> ExitStack:
     stack = ExitStack()
     for mod in _WORKER_MODULES:
         base = f"andamentum.whetstone.v3.panel.{mod}"
-        stack.enter_context(
-            patch(f"{base}.build_pydantic_ai_agent", side_effect=build)
-        )
+        stack.enter_context(patch(f"{base}.build_pydantic_ai_agent", side_effect=build))
         stack.enter_context(patch(f"{base}.resolve_model", return_value="stub"))
     return stack
 

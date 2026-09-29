@@ -30,7 +30,9 @@ ProblemKind = Literal[
 
 # The problems only the online lookup finds. Every other kind comes from the
 # text alone: exact, repeatable, and something an edit to the draft can fix.
-LOOKUP_KINDS: frozenset[str] = frozenset({"not_found", "doi_not_found", "details_differ"})
+LOOKUP_KINDS: frozenset[str] = frozenset(
+    {"not_found", "doi_not_found", "details_differ"}
+)
 
 # How a document cites. One value per document; see ``decide.decide_style``.
 Style = Literal[

@@ -191,9 +191,7 @@ def test_an_edit_changes_only_what_it_was_asked_to_change(
     span = before_map.find(target)
     assert span is not None, f"{shape.__name__}: {target!r} did not resolve"
 
-    expected = (
-        before_map.text[: span.start] + replacement + before_map.text[span.end :]
-    )
+    expected = before_map.text[: span.start] + replacement + before_map.text[span.end :]
 
     apply_edits(before_map, [Edit(span=span, new_text=replacement, author="AI")])
 

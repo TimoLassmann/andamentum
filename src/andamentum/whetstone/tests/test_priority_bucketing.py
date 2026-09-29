@@ -100,7 +100,9 @@ def test_markdown_shows_severity_only_when_it_differs_from_the_group():
     """Priority is derived from severity, so a severity tag on every entry
     repeated its group heading. When a caller sets priority on its own the
     two axes differ, and then both are shown."""
-    same = render_markdown(ReviewResult(deterministic_findings=[_f("major", title="A")]))
+    same = render_markdown(
+        ReviewResult(deterministic_findings=[_f("major", title="A")])
+    )
     assert "major severity" not in same
     overridden = _f("major", title="B").model_copy(update={"priority": "consider"})
     differs = render_markdown(ReviewResult(deterministic_findings=[overridden]))

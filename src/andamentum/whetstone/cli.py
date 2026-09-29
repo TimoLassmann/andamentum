@@ -503,7 +503,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "separate model call scores --goal as one criterion — never the "
         "same pass that wrote the edit. 'structure': the active review "
         "criteria (see --reviewer / --criteria) raise no major or moderate "
-        "finding; for \"the flow is correct\", pair with --reviewer reader. "
+        'finding; for "the flow is correct", pair with --reviewer reader. '
         "'citations': the reference checker (the same one as the "
         "'references' subcommand, any citation style, no Crossref lookup) "
         "finds no problem — every citation points to an entry and every "
@@ -529,7 +529,7 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="LABEL=PATH",
         help="A figure to check under --goal-check figures, e.g. "
         "'Figure 1=fig1.png'. LABEL is matched against \"Figure N\" / "
-        "\"Fig. N\" mentions in the text, not required to be the literal "
+        '"Fig. N" mentions in the text, not required to be the literal '
         "caption. Repeat for more than one figure. Required, at least "
         "once, with --goal-check figures; refused otherwise. Does not "
         "discover embedded images on its own — name each figure you want "
@@ -1133,7 +1133,9 @@ def _resolve_guidelines(value: str) -> str:
     return value
 
 
-async def _check_references(args: argparse.Namespace, console: Console, document: Any) -> Any:
+async def _check_references(
+    args: argparse.Namespace, console: Console, document: Any
+) -> Any:
     """The reference check of the default review, as a ``ReviewResult``.
 
     The loop's model settles only what the text leaves open; the lookup sends
@@ -1200,7 +1202,12 @@ def _next_steps(args: argparse.Namespace, result: Any) -> list[str]:
     if not review_open and not citations_open:
         return []
 
-    parts = ["andamentum-whetstone", shlex.quote(args.input), "--model", shlex.quote(args.model)]
+    parts = [
+        "andamentum-whetstone",
+        shlex.quote(args.input),
+        "--model",
+        shlex.quote(args.model),
+    ]
     names = getattr(args, "reviewers", None) or [args.reviewer]
     if len(names) == 1 and names[0] != _default_reviewer_name():
         parts += ["--reviewer", names[0]]
@@ -1269,7 +1276,9 @@ async def _edit_after_the_reviewers(
 
     criteria = editor_criteria or list(EDITOR_PROFILE.editor_criteria or ())
     disagreements = (
-        [d.about for d in reconciliation.disagreements] if reconciliation is not None else []
+        [d.about for d in reconciliation.disagreements]
+        if reconciliation is not None
+        else []
     )
     edits, declined = await edit_findings(
         document.sections,
@@ -1606,7 +1615,9 @@ async def _review_and_write(
                         reviewer=profile,
                         patch_author=args.patch_author,
                         extra_findings=(
-                            references.findings if references is not None and single else None
+                            references.findings
+                            if references is not None and single
+                            else None
                         ),
                     )
                     reviews.append((profile.identity, result))
@@ -1836,7 +1847,9 @@ def _print_summary(console: Console, result, written: list[Path]) -> None:
     # findings, and the count here must match the report.
     from .references_check import REFERENCE_CHECKER
 
-    from_references = sum(1 for f in result.findings if f.perspective == REFERENCE_CHECKER)
+    from_references = sum(
+        1 for f in result.findings if f.perspective == REFERENCE_CHECKER
+    )
     table.add_row(
         "findings:",
         str(len(result.findings))

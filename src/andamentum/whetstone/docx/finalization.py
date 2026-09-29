@@ -163,7 +163,7 @@ def finalize_annotated_document(
                     novelty_claims,
                     configuration,
                     other_edits,
-                )
+                ),
             )
 
         if output_path:
@@ -184,5 +184,3 @@ def finalize_annotated_document(
         raise FinalizationError(f"File operation failed: {str(e)}") from e
     except Exception as e:
         raise FinalizationError(f"Document finalization failed: {str(e)}") from e
-
-

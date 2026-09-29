@@ -217,10 +217,7 @@ async def confirm_direction(
     )
     row = result.per_criterion[0]
     return JudgeOpinion(
-        subject=(
-            f"Does this source {stance} the claim "
-            f"'{claim_statement[:120]}'?"
-        ),
+        subject=(f"Does this source {stance} the claim '{claim_statement[:120]}'?"),
         reference=stance,
         distribution=normalize_three(row.meets, row.partial, row.fails),
         overall=result.overall,

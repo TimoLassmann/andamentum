@@ -202,7 +202,7 @@ EXPECTED_CHECKSUMS: dict[str, str] = {
     # any_judged and supporting < gate.min_supporting_sources and not
     # adversarial_survived — is byte-identical; only the message-string
     # construction moved into a helper.
-    "Gate validate_promotion logic": "35028a6320c84335",
+    "Gate validate_promotion logic": "fe01c0270106e7bc",
     "Gate validate_current_stage (TMS) logic": "0fac458779974ec0",
     # Updated 2026-08-31 (Principle Fidelity Plan §4.5, the Popper fix):
     # a new capable_of() method (the optional CapabilityQueryable

@@ -138,7 +138,9 @@ async def test_run_editor_anchors_proposals_to_section_text() -> None:
         ),
         patch("andamentum.whetstone.v3.editor.resolve_model", return_value="stub"),
     ):
-        edits, _declined = await run_editor(SECTIONS, criteria=["grammar"], agent_model="stub")
+        edits, _declined = await run_editor(
+            SECTIONS, criteria=["grammar"], agent_model="stub"
+        )
     assert len(edits) == 1
     e = edits[0]
     assert e.section_id == "s1"
@@ -238,7 +240,9 @@ async def test_run_editor_isolates_per_section_failures() -> None:
         ),
         patch("andamentum.whetstone.v3.editor.resolve_model", return_value="stub"),
     ):
-        edits, _declined = await run_editor(SECTIONS, criteria=["concision"], agent_model="stub")
+        edits, _declined = await run_editor(
+            SECTIONS, criteria=["concision"], agent_model="stub"
+        )
     # First section crashed → no edits from it. Second section produced 1.
     assert len(edits) == 1
     assert edits[0].section_id == "s2"
@@ -404,8 +408,12 @@ async def _run(outputs, findings, sections=None):
 async def test_the_findings_for_a_section_reach_its_prompt() -> None:
     """The whole point: the editor is told what the review found."""
     section = SECTIONS[0]
-    finding = _finding(section.id, section.start, section.start + 5,
-                       issue="the sample size is never stated")
+    finding = _finding(
+        section.id,
+        section.start,
+        section.start + 5,
+        issue="the sample size is never stated",
+    )
     _edits, _declined, fake = await _run(
         [EditorOutput(edits=[])], [finding], sections=[section]
     )
@@ -441,8 +449,12 @@ async def test_declining_a_finding_records_the_reason() -> None:
     """`can_fix=false` is the right answer for a structural finding, and the
     reason has to survive to the author."""
     section = SECTIONS[0]
-    finding = _finding(section.id, section.start, section.start + 5,
-                       issue="the evaluation is missing entirely")
+    finding = _finding(
+        section.id,
+        section.start,
+        section.start + 5,
+        issue="the evaluation is missing entirely",
+    )
     edits, declined, _fake = await _run(
         [
             EditorOutput(
@@ -481,8 +493,9 @@ async def test_a_finding_the_editor_ignored_is_still_reported() -> None:
 async def test_an_edit_answering_a_finding_says_which_one() -> None:
     section = SECTIONS[0]
     target = section.text.split()[0]
-    finding = _finding(section.id, section.start, section.start + 5,
-                       issue="this phrasing overclaims")
+    finding = _finding(
+        section.id, section.start, section.start + 5, issue="this phrasing overclaims"
+    )
     edits, declined, _fake = await _run(
         [
             EditorOutput(
@@ -576,10 +589,22 @@ async def test_one_finding_may_need_two_changes() -> None:
         [
             EditorOutput(
                 edits=[
-                    EditProposal(addresses=1, can_fix=True, title="a", rationale="a",
-                                 original_text=words[0], new_text="A"),
-                    EditProposal(addresses=1, can_fix=True, title="b", rationale="b",
-                                 original_text=words[1], new_text="B"),
+                    EditProposal(
+                        addresses=1,
+                        can_fix=True,
+                        title="a",
+                        rationale="a",
+                        original_text=words[0],
+                        new_text="A",
+                    ),
+                    EditProposal(
+                        addresses=1,
+                        can_fix=True,
+                        title="b",
+                        rationale="b",
+                        original_text=words[1],
+                        new_text="B",
+                    ),
                 ]
             )
         ],
@@ -636,8 +661,12 @@ async def test_validator_locks_a_good_entry_and_asks_only_about_the_bad_one():
     The editor inherits both the pattern and the reason.
     """
     validate = make_edit_validator(SECTION_TEXT, 0)
-    good = _prop(original_text="The results are clear.", new_text="The results are unambiguous.")
-    bad = _prop(title="paraphrased", original_text="the results were clear", new_text="x")
+    good = _prop(
+        original_text="The results are clear.", new_text="The results are unambiguous."
+    )
+    bad = _prop(
+        title="paraphrased", original_text="the results were clear", new_text="x"
+    )
 
     with pytest.raises(ModelRetry) as exc:
         await validate(_ctx(0), EditorOutput(edits=[good, bad]))
@@ -645,7 +674,7 @@ async def test_validator_locks_a_good_entry_and_asks_only_about_the_bad_one():
     message = str(exc.value)
     assert "LOCKED (1 entry" in message
     assert "DO NOT re-emit" in message
-    assert "the results were clear" in message      # names the text to fix
+    assert "the results were clear" in message  # names the text to fix
     assert "The results are clear." not in message  # never mentions the good one
 
     # The model drops the good entry on its retry. It survives anyway.
@@ -691,7 +720,9 @@ async def test_validator_gives_up_and_keeps_what_anchored():
 async def test_validator_keeps_both_rewrites_for_one_finding():
     """Locked by (finding, quote), so a finding needing two changes keeps both."""
     validate = make_edit_validator(SECTION_TEXT, 1)
-    first = _prop(addresses=1, original_text="The evidence layer earns its place.", new_text="A.")
+    first = _prop(
+        addresses=1, original_text="The evidence layer earns its place.", new_text="A."
+    )
     second = _prop(addresses=1, original_text="The results are clear.", new_text="B.")
 
     out = await validate(_ctx(0), EditorOutput(edits=[first, second]))

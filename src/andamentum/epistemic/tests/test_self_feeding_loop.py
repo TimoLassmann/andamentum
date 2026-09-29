@@ -170,7 +170,10 @@ class TestSelfFeedingLoopFixed:
         node = await node.run(ctx)  # type: ignore[arg-type]
         assert isinstance(node, Scrutinize)
         assert claim.entity_id in state.claims_needing_rescrutiny
-        assert state.scrutiny_resolve_cycles.get(claim.entity_id, 0) < SCRUTINY_RESOLVE_CYCLE_CAP
+        assert (
+            state.scrutiny_resolve_cycles.get(claim.entity_id, 0)
+            < SCRUTINY_RESOLVE_CYCLE_CAP
+        )
 
         reloaded = await repo.get("uncertainty", first_uncertainty_id)
         assert reloaded.resolution is not None
@@ -273,9 +276,7 @@ class TestPromoteToSupportedRoutesInsufficientSourcesToInvestigate:
         assert reloaded.stage == ClaimStage.HYPOTHESIS
         assert reloaded.scrutiny_verdict == "pass"
 
-    async def test_at_cap_does_not_route_to_investigate(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_at_cap_does_not_route_to_investigate(self, tmp_path: Path) -> None:
         claim, repo = await _setup_min_supporting_sources_refusal(tmp_path)
         state = EpistemicGraphState(objective_id=claim.objective_id)
         state.investigation_counts[claim.entity_id] = PEIRCE_CYCLE_CAP

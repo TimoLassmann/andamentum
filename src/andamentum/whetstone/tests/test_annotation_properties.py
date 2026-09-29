@@ -45,8 +45,11 @@ from andamentum.whetstone.docx.low_level import DocxEditor
 
 CASES = 60
 
-WORDS = ("cohort effect sample method result analysis provenance claim evidence "
-         "workflow container version audit transparency benchmark").split()
+WORDS = (
+    "cohort effect sample method result analysis provenance claim evidence "
+    "workflow container version audit transparency benchmark"
+).split()
+
 
 def random_document(rng, path: Path) -> None:
     doc = Document()
@@ -54,40 +57,47 @@ def random_document(rng, path: Path) -> None:
         para = doc.add_paragraph()
         for _ in range(rng.randint(1, 4)):
             kind = rng.random()
-            if kind < 0.12:                                  # a break inside a run
+            if kind < 0.12:  # a break inside a run
                 run = etree.SubElement(para._p, qn("r"))
-                etree.SubElement(run, qn("t")).text = " ".join(
-                    rng.choices(WORDS, k=rng.randint(1, 3))) + " "
+                etree.SubElement(run, qn("t")).text = (
+                    " ".join(rng.choices(WORDS, k=rng.randint(1, 3))) + " "
+                )
                 etree.SubElement(run, qn("br"))
                 etree.SubElement(run, qn("t")).text = " " + " ".join(
-                    rng.choices(WORDS, k=rng.randint(1, 3)))
-            elif kind < 0.20:                                # a tab in its own run
+                    rng.choices(WORDS, k=rng.randint(1, 3))
+                )
+            elif kind < 0.20:  # a tab in its own run
                 run = etree.SubElement(para._p, qn("r"))
                 etree.SubElement(run, qn("tab"))
-            elif kind < 0.28:                                # Word's page-break marker
+            elif kind < 0.28:  # Word's page-break marker
                 run = etree.SubElement(para._p, qn("r"))
-                etree.SubElement(run, qn("t")).text = " ".join(
-                    rng.choices(WORDS, k=2)) + " "
+                etree.SubElement(run, qn("t")).text = (
+                    " ".join(rng.choices(WORDS, k=2)) + " "
+                )
                 etree.SubElement(run, qn("lastRenderedPageBreak"))
                 etree.SubElement(run, qn("t")).text = " " + " ".join(
-                    rng.choices(WORDS, k=2))
-            elif kind < 0.36:                                # a hyperlink
+                    rng.choices(WORDS, k=2)
+                )
+            elif kind < 0.36:  # a hyperlink
                 link = etree.SubElement(para._p, qn("hyperlink"))
                 run = etree.SubElement(link, qn("r"))
-                etree.SubElement(run, qn("t")).text = " " + " ".join(
-                    rng.choices(WORDS, k=2)) + " "
-            elif kind < 0.44:                                # someone else's change
+                etree.SubElement(run, qn("t")).text = (
+                    " " + " ".join(rng.choices(WORDS, k=2)) + " "
+                )
+            elif kind < 0.44:  # someone else's change
                 ins = etree.SubElement(para._p, qn("ins"))
                 ins.set(qn("id"), str(rng.randint(900, 999)))
                 ins.set(qn("author"), "Dr Human")
                 ins.set(qn("date"), "2026-01-01T00:00:00")
                 run = etree.SubElement(ins, qn("r"))
-                etree.SubElement(run, qn("t")).text = " " + " ".join(
-                    rng.choices(WORDS, k=2)) + " "
+                etree.SubElement(run, qn("t")).text = (
+                    " " + " ".join(rng.choices(WORDS, k=2)) + " "
+                )
             else:
                 bold = rng.random() < 0.3
-                run = para.add_run(" " + " ".join(
-                    rng.choices(WORDS, k=rng.randint(2, 6))) + " ")
+                run = para.add_run(
+                    " " + " ".join(rng.choices(WORDS, k=rng.randint(2, 6))) + " "
+                )
                 run.bold = bold
     doc.save(str(path))
 
@@ -104,9 +114,14 @@ def random_events(rng, text: str):
     for _ in range(rng.randint(0, 3)):
         i = rng.randrange(len(spans))
         start, end = spans[i]
-        rewrites.append(Rewrite(start=start, end=end,
-                                new_text=rng.choice(["", "revised", "a much longer replacement"]),
-                                author="AI"))
+        rewrites.append(
+            Rewrite(
+                start=start,
+                end=end,
+                new_text=rng.choice(["", "revised", "a much longer replacement"]),
+                author="AI",
+            )
+        )
     for _ in range(rng.randint(0, 3)):
         i = rng.randrange(len(spans))
         j = min(i + rng.randint(0, 5), len(spans) - 1)
@@ -137,6 +152,7 @@ def comment_ranges(path: Path) -> list[str]:
         root = etree.fromstring(z.read("word/document.xml"))
 
     W = qn("t")[1:].split("}")[0]
+
     def tag(name):
         return f"{{{W}}}{name}"
 
@@ -161,8 +177,11 @@ def comment_ranges(path: Path) -> list[str]:
         elif name == tag("commentRangeEnd"):
             open_ids.discard(node.get(tag("id")))
         elif open_ids:
-            if any(a.tag == tag("del") for a in node.iterancestors()
-                   if isinstance(a.tag, str)):
+            if any(
+                a.tag == tag("del")
+                for a in node.iterancestors()
+                if isinstance(a.tag, str)
+            ):
                 continue
             if name == tag("t"):
                 for cid in open_ids:
@@ -177,7 +196,6 @@ def count(path: Path, tag: str) -> int:
     with zipfile.ZipFile(path) as z:
         xml = z.read("word/document.xml").decode()
     return len(re.findall(rf"<w:{tag}[ /}}>]", xml))
-
 
 
 def _flat(text: str) -> str:

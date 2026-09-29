@@ -105,9 +105,7 @@ def _verdict(
     return verdict
 
 
-def _claim(
-    claim_id: str = "c1", *, verdict_doubt: float | None = None
-) -> ClaimSummary:
+def _claim(claim_id: str = "c1", *, verdict_doubt: float | None = None) -> ClaimSummary:
     return ClaimSummary(
         claim_id=claim_id,
         statement=f"Statement for {claim_id}",

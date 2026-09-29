@@ -11,9 +11,18 @@ from andamentum.references.notes import read_note
 
 def test_the_forms_of_a_note() -> None:
     cases = {
-        "Sophie Gudmundsson et al., “Variant Interpretation,” Human Mutation 43, no. 8 (2021): 1012–30.": ("full", [("Gudmundsson", 2021)]),
-        "Gudmundsson et al., “Variant Interpretation,” 1015.": ("short", [("Gudmundsson", None)]),
-        "Michael Pollan, The Omnivore’s Dilemma (New York: Penguin, 2006), 99–100.": ("full", [("Pollan", 2006)]),
+        "Sophie Gudmundsson et al., “Variant Interpretation,” Human Mutation 43, no. 8 (2021): 1012–30.": (
+            "full",
+            [("Gudmundsson", 2021)],
+        ),
+        "Gudmundsson et al., “Variant Interpretation,” 1015.": (
+            "short",
+            [("Gudmundsson", None)],
+        ),
+        "Michael Pollan, The Omnivore’s Dilemma (New York: Penguin, 2006), 99–100.": (
+            "full",
+            [("Pollan", 2006)],
+        ),
         "Pollan, Omnivore’s Dilemma, 3.": ("short", [("Pollan", None)]),
         "Ibid., 22.": ("ibid", []),
         "This point is discussed further below.": ("comment", []),
@@ -21,12 +30,16 @@ def test_the_forms_of_a_note() -> None:
     }
     for text, (form, works) in cases.items():
         got_form, got_works = read_note(text)
-        assert (got_form, [(w.surname, w.year) for w in got_works]) == (form, works), text
+        assert (got_form, [(w.surname, w.year) for w in got_works]) == (form, works), (
+            text
+        )
 
 
 def test_a_page_after_a_short_title_is_not_a_year() -> None:
-    """"…,” 1755." is page 1755 of a short form, not the year 1755."""
-    form, works = read_note("Li and Durbin, “Fast and Accurate Short Read Alignment,” 1755.")
+    """ "…,” 1755." is page 1755 of a short form, not the year 1755."""
+    form, works = read_note(
+        "Li and Durbin, “Fast and Accurate Short Read Alignment,” 1755."
+    )
     assert form == "short" and works[0].year is None
 
 
@@ -69,7 +82,15 @@ async def _read(text: str, hints: list[Hint], **kw):
 
 
 async def test_a_clean_notes_document_has_no_problems() -> None:
-    text, hints = _document([FULL_G, "Ibid., 1015.", FULL_P, "Gudmundsson, “Variant Interpretation,” 1020.", FULL_Z])
+    text, hints = _document(
+        [
+            FULL_G,
+            "Ibid., 1015.",
+            FULL_P,
+            "Gudmundsson, “Variant Interpretation,” 1020.",
+            FULL_Z,
+        ]
+    )
     report = await _read(text, hints)
     assert report.style is not None and report.style.style == "notes"
     assert report.problems == []
@@ -89,24 +110,36 @@ async def test_each_notes_problem_is_found_on_its_note() -> None:
     by_kind = {p.kind: p for p in report.problems}
     assert set(by_kind) == {"ibid_unclear", "cited_not_listed", "listed_not_cited"}
     assert text[by_kind["ibid_unclear"].start : by_kind["ibid_unclear"].end] == "3."
-    assert text[by_kind["cited_not_listed"].start : by_kind["cited_not_listed"].end] == "4."
+    assert (
+        text[by_kind["cited_not_listed"].start : by_kind["cited_not_listed"].end]
+        == "4."
+    )
     assert text[by_kind["listed_not_cited"].start :].startswith("Zurynski")
 
 
 async def test_ibid_after_a_comment_is_unclear() -> None:
-    text, hints = _document([FULL_G, FULL_P, "This point is discussed further below.", "Ibid.", FULL_Z])
+    text, hints = _document(
+        [FULL_G, FULL_P, "This point is discussed further below.", "Ibid.", FULL_Z]
+    )
     report = await _read(text, hints)
     assert [p.kind for p in report.problems] == ["ibid_unclear"]
 
 
 async def test_without_a_bibliography_a_short_form_needs_an_earlier_full_one() -> None:
     text, hints = _document(
-        ["Pollan, Omnivore’s Dilemma, 3.", FULL_P, FULL_G, "Gudmundsson, “Variant Interpretation,” 1020."],
+        [
+            "Pollan, Omnivore’s Dilemma, 3.",
+            FULL_P,
+            FULL_G,
+            "Gudmundsson, “Variant Interpretation,” 1020.",
+        ],
         bibliography=False,
     )
     report = await _read(text, hints)
     assert report.found_list is False
-    assert [(p.kind, text[p.start : p.end]) for p in report.problems] == [("short_before_full", "1.")]
+    assert [(p.kind, text[p.start : p.end]) for p in report.problems] == [
+        ("short_before_full", "1.")
+    ]
 
 
 async def test_without_a_bibliography_the_full_notes_are_what_is_looked_up() -> None:
@@ -126,7 +159,9 @@ async def test_without_a_bibliography_the_full_notes_are_what_is_looked_up() -> 
     assert all("Sentence" not in url for url in sent)  # never the draft's text
 
 
-async def test_a_note_the_rules_cannot_read_goes_to_the_model_as_note_text(monkeypatch) -> None:
+async def test_a_note_the_rules_cannot_read_goes_to_the_model_as_note_text(
+    monkeypatch,
+) -> None:
     seen: list[str] = []
 
     async def fake(items: str, *, style: str, model: str, list_line: str = ""):
@@ -134,7 +169,9 @@ async def test_a_note_the_rules_cannot_read_goes_to_the_model_as_note_text(monke
         return llm_mod.CitationIds(citation_ids=[])
 
     monkeypatch.setattr(llm_mod, "ask_citations", fake)
-    text, hints = _document([FULL_G, FULL_P, FULL_Z, "Interview with the author, March 2019."])
+    text, hints = _document(
+        [FULL_G, FULL_P, FULL_Z, "Interview with the author, March 2019."]
+    )
     report = await _read(text, hints, model="stub:model")
     assert len(seen) == 1 and "a note reading: ⟦Interview with the author" in seen[0]
     assert report.problems == []

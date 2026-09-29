@@ -54,7 +54,10 @@ def test_oscillation_detected_confined_to_the_allow_listed_files() -> None:
     offenders = []
     for path in _package_sources():
         rel = str(path.relative_to(_SRC))
-        if "oscillation_detected" in path.read_text() and rel not in _ALLOWED_OSCILLATION_FILES:
+        if (
+            "oscillation_detected" in path.read_text()
+            and rel not in _ALLOWED_OSCILLATION_FILES
+        ):
             offenders.append(rel)
     assert not offenders, (
         f"oscillation_detected appears outside the allow-listed files: {offenders}. "
@@ -85,9 +88,7 @@ def test_no_certified_verdict_gate_sets_uncertified() -> None:
     ``terminal_state="uncertified"`` — not ``oscillation_detected`` and
     not left to whatever the counting path would have produced."""
     raw = Path(confidence.__file__).read_text()
-    match = re.search(
-        r'reason_prefix = "No certified verdict: "', raw
-    )
+    match = re.search(r'reason_prefix = "No certified verdict: "', raw)
     assert match, (
         "confidence.py's no-certified-verdict reason string is gone or "
         "reworded — this test needs updating alongside that change, not "

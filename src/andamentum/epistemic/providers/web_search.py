@@ -68,7 +68,7 @@ class WebSearchProvider:
         "the strongest signal is a tight set of the claim's distinctive terms, "
         "not a full sentence. Supported styles that all work:\n"
         "- Plain keywords: electric vehicle adoption Europe 2024\n"
-        "- Quoted phrases for exact matches: \"four-day work week\" productivity\n"
+        '- Quoted phrases for exact matches: "four-day work week" productivity\n'
         "- Entity + attribute: James Webb telescope CO2 exoplanet\n"
         "- Topic + qualifier: remote work productivity meta-analysis\n"
         "- Comparison terms: nuclear vs solar cost per kilowatt-hour\n"
@@ -81,23 +81,30 @@ class WebSearchProvider:
     # specialist provider covers it). Includes both in-domain and out-of-domain
     # examples (required by the dispatch-quality fixtures + contract tests).
     query_examples: list[tuple[str, str | None]] = [
-        ("Adoption of electric vehicles has risen sharply in Europe.",
-         "electric vehicle adoption Europe statistics"),
-        ("The four-day work week improves employee productivity.",
-         "\"four-day work week\" productivity outcomes"),
-        ("The James Webb Space Telescope detected CO2 in an exoplanet atmosphere.",
-         "James Webb telescope CO2 exoplanet atmosphere"),
-        ("Remote work reduces overall team productivity.",
-         "remote work productivity studies evidence"),
-        ("Global renewable energy capacity overtook coal in 2024.",
-         "renewable energy capacity overtakes coal 2024"),
+        (
+            "Adoption of electric vehicles has risen sharply in Europe.",
+            "electric vehicle adoption Europe statistics",
+        ),
+        (
+            "The four-day work week improves employee productivity.",
+            '"four-day work week" productivity outcomes',
+        ),
+        (
+            "The James Webb Space Telescope detected CO2 in an exoplanet atmosphere.",
+            "James Webb telescope CO2 exoplanet atmosphere",
+        ),
+        (
+            "Remote work reduces overall team productivity.",
+            "remote work productivity studies evidence",
+        ),
+        (
+            "Global renewable energy capacity overtook coal in 2024.",
+            "renewable energy capacity overtakes coal 2024",
+        ),
         # Out-of-domain — specialist biomedical providers cover these → abstain.
-        ("Interleukin-6 drives synovial inflammation in rheumatoid arthritis.",
-         None),
-        ("Imatinib inhibits BCR-ABL with low-nanomolar IC50.",
-         None),
-        ("The KEYNOTE-189 trial improved overall survival in NSCLC.",
-         None),
+        ("Interleukin-6 drives synovial inflammation in rheumatoid arthritis.", None),
+        ("Imatinib inhibits BCR-ABL with low-nanomolar IC50.", None),
+        ("The KEYNOTE-189 trial improved overall survival in NSCLC.", None),
     ]
 
     output_kind = "assertion_evidence"
@@ -174,7 +181,9 @@ class WebSearchProvider:
                         page = await backend.fetch_page(result.url)  # type: ignore[attr-defined]
                         return result, page
                     except Exception as e:  # noqa: BLE001
-                        logger.debug("web_search fetch failed for %s: %s", result.url, e)  # type: ignore[attr-defined]
+                        logger.debug(
+                            "web_search fetch failed for %s: %s", result.url, e
+                        )  # type: ignore[attr-defined]
                         return result, None
 
                 fetched = await asyncio.gather(*(_fetch(r) for r in to_fetch))

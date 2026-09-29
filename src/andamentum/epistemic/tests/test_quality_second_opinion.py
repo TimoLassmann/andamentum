@@ -60,7 +60,9 @@ def _op(repo, *, overrides, judge_model: str | None = "test:judge"):
     )
 
 
-def _evidence(content: str = "A randomised trial of 4200 adults reported ...") -> Evidence:
+def _evidence(
+    content: str = "A randomised trial of 4200 adults reported ...",
+) -> Evidence:
     return Evidence(
         objective_id="obj-1",
         source_type="web_search",
@@ -105,8 +107,7 @@ async def test_low_quality_evidence_survives_when_the_judge_disagrees(
 
     assert ev.invalidated is False
     assert ev.quality_score is not None and ev.quality_score < 0.10, (
-        "the low score must SURVIVE — the evidence is attenuated, not "
-        "rehabilitated"
+        "the low score must SURVIVE — the evidence is attenuated, not rehabilitated"
     )
     assert ev.quality_distribution is not None
 

@@ -88,9 +88,7 @@ def test_report_generator_does_not_parse_the_verdict_out_of_prose() -> None:
     raw = Path(report_generator.__file__).read_text()
     # Comment lines are excluded so the rationale can name the thing it
     # forbids; the scan is about executable references.
-    source = "\n".join(
-        ln for ln in raw.splitlines() if not ln.lstrip().startswith("#")
-    )
+    source = "\n".join(ln for ln in raw.splitlines() if not ln.lstrip().startswith("#"))
     assert "compute_posterior" not in source, (
         "report_generator re-computes the posterior offline. It must "
         "READ the persisted snapshot verdict; recomputing cannot thread "
@@ -171,4 +169,6 @@ def test_snapshot_carries_a_typed_verdict_not_an_untyped_blob() -> None:
 
     assert "combined_verdict" not in Snapshot.model_fields
     field = Snapshot.model_fields["verdict"]
-    assert EpistemicVerdict in getattr(field.annotation, "__args__", (field.annotation,))
+    assert EpistemicVerdict in getattr(
+        field.annotation, "__args__", (field.annotation,)
+    )

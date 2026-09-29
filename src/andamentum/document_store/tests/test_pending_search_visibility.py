@@ -50,7 +50,8 @@ async def _add(store, title: str, content: str, status: str) -> str:
     single row and quietly hollow out every assertion below.
     """
     doc_id = await store.register_document(
-        title=title, content=f"{content} Distinguishing marker: {title}.",
+        title=title,
+        content=f"{content} Distinguishing marker: {title}.",
         metadata={"title": title},
     )
     await q.set_ingest_status(str(store.db_path), doc_id, status)  # type: ignore[arg-type]
@@ -68,9 +69,7 @@ async def _populate(store, *, n_complete: int = 30) -> dict[str, str]:
     ids["pending_enrich"] = await _add(
         store, "Deferred mitochondrial draft", BODY, q.PENDING_ENRICH
     )
-    ids["failed"] = await _add(
-        store, "Broken mitochondrial import", BODY, q.FAILED
-    )
+    ids["failed"] = await _add(store, "Broken mitochondrial import", BODY, q.FAILED)
     ids["pending_source"] = await q.register_pending_source(
         str(store.db_path), "https://example.org/mitochondrial-review-2026.pdf"
     )
@@ -221,15 +220,19 @@ class TestEmptyQueueIsUntouched:
         """The whole point of appending rather than re-weighting: a database
         with an empty queue behaves exactly as it did before."""
         for i in range(30):
-            await _add(store, f"Real paper {i} on mitochondrial biology", BODY, q.COMPLETE)
+            await _add(
+                store, f"Real paper {i} on mitochondrial biology", BODY, q.COMPLETE
+            )
 
         results = await search_unified(
             db_path=str(store.db_path), query="mitochondrial", limit=10
         )
 
         assert len(results) == 10
-        assert all(r.tier not in {q.PENDING_ENRICH, q.PENDING_SOURCE, q.FAILED}
-                   for r in results)
+        assert all(
+            r.tier not in {q.PENDING_ENRICH, q.PENDING_SOURCE, q.FAILED}
+            for r in results
+        )
 
 
 class TestWarningText:
@@ -244,7 +247,9 @@ class TestWarningText:
 
     def test_existing_warning_is_preserved_not_replaced(self):
         """search() already uses this field for the empty-filter notice."""
-        combined = public._result_warning(q.PENDING_ENRICH, "Filter produced no results.")
+        combined = public._result_warning(
+            q.PENDING_ENRICH, "Filter produced no results."
+        )
 
         assert combined.startswith("Filter produced no results.")
         assert "process_pending" in combined

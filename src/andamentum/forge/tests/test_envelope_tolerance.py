@@ -82,9 +82,7 @@ def test_properties_alone_without_corroboration_is_not_unwrapped() -> None:
 
 
 def test_every_forge_agent_output_model_is_envelope_tolerant() -> None:
-    defs = [
-        v for v in vars(forge_agents).values() if isinstance(v, AgentDefinition)
-    ]
+    defs = [v for v in vars(forge_agents).values() if isinstance(v, AgentDefinition)]
     assert defs, "expected forge to declare its heads as AgentDefinition constants"
     for d in defs:
         assert d.output_model is not None

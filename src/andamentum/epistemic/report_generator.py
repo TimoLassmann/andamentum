@@ -138,8 +138,7 @@ def _scrutiny_reliability_note(source: object) -> str | None:
     dissent_count = getattr(source, "judgment_dissent_count", 0) or 0
     if dissent_count:
         parts.append(
-            f"an independent judge disagreed with {dissent_count} evidence "
-            f"direction(s)"
+            f"an independent judge disagreed with {dissent_count} evidence direction(s)"
         )
     opinion = getattr(source, "scrutiny_opinion", None)
     if opinion is not None and opinion.dissents:
@@ -1014,9 +1013,7 @@ class ReportGenerator:
                     source_claim,
                     objective.question_type,
                     confidence_scores.posterior,
-                    reliability=verdict_claim_by_id.get(
-                        claim_summaries[0].claim_id
-                    ),
+                    reliability=verdict_claim_by_id.get(claim_summaries[0].claim_id),
                 )
 
         # Reproducibility metadata — stable across re-renders of the
@@ -1201,9 +1198,7 @@ class ReportGenerator:
             # narrative from entity state alone (no verdict object
             # threaded through), matching the rest of this narrative.
             n_contracted_claims = sum(
-                1
-                for c in all_claims
-                if not c.abandoned and c.contraction_count > 0
+                1 for c in all_claims if not c.abandoned and c.contraction_count > 0
             )
             parts.append(
                 f"\n{n_contracted_claims} claim"

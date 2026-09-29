@@ -34,7 +34,9 @@ from andamentum.forge.schemas import INPUT_TOKENS, DataKind, FindingKind, NodeDr
 from andamentum.forge.spec import NodeControl
 
 
-def _node(node_id: str, produces: str, *, kind=DataKind.SIGNAL, control=NodeControl.NONE):
+def _node(
+    node_id: str, produces: str, *, kind=DataKind.SIGNAL, control=NodeControl.NONE
+):
     d = NodeDraft(id=node_id, area="core", job=f"job {node_id}")
     d.produces = [produces]
     d.produces_kind = kind
@@ -47,14 +49,16 @@ def test_forward_window_excludes_downstream_and_self_signals() -> None:
     never a later signal node and never its own signal output. This makes an accidental cycle
     (the failure the unconstrained closed set introduced) impossible by construction."""
     boards = [
-        _node("n1", "urgency"),                                  # signal
-        _node("n2", "team"),                                     # signal
-        _node("n3", "again", control=NodeControl.CHECKPOINT),    # later checkpoint
-        _node("n4", "ticket_record", kind=DataKind.ENTITY),      # entity
+        _node("n1", "urgency"),  # signal
+        _node("n2", "team"),  # signal
+        _node("n3", "again", control=NodeControl.CHECKPOINT),  # later checkpoint
+        _node("n4", "ticket_record", kind=DataKind.ENTITY),  # entity
     ]
     # n1 (first, signal): sees only the input + the later checkpoint — no earlier, no self.
     vis1 = {d.id for d in visible_producers(boards, 0)}
-    assert vis1 == {"n3"}  # later checkpoint visible; n2 (later signal) and n1-self excluded
+    assert vis1 == {
+        "n3"
+    }  # later checkpoint visible; n2 (later signal) and n1-self excluded
     # n2: sees earlier n1 + later checkpoint n3; NOT itself, NOT later entity n4.
     vis2 = {d.id for d in visible_producers(boards, 1)}
     assert vis2 == {"n1", "n3"}
@@ -162,6 +166,7 @@ def test_forward_window_selection_cannot_form_an_unintended_cycle() -> None:
     report = diagnose(boards, assemble(boards))
     assert FindingKind.UNINTENDED_CYCLE not in {f.kind for f in report.findings}
 
+
 _NAME_FLAWS = {
     FindingKind.DUPLICATE_PRODUCER,
     FindingKind.NEAR_MISS,
@@ -181,7 +186,9 @@ def _build_board(
     chosen input ordinals over the closed option list. Returns the wired ``NodeDraft`` board.
     """
     ids = [f"n{i + 1}" for i in range(len(declared_produces))]
-    unique = dedupe_names(declared_produces, [f"{nid}_out" for nid in ids], INPUT_TOKENS)
+    unique = dedupe_names(
+        declared_produces, [f"{nid}_out" for nid in ids], INPUT_TOKENS
+    )
     option_names = build_option_names(unique)
     nodes: list[NodeDraft] = []
     for i, nid in enumerate(ids):
@@ -215,7 +222,9 @@ def test_dedupe_never_shadows_an_input_token() -> None:
 
 
 def test_blank_produce_falls_back_to_a_unique_node_name() -> None:
-    unique = dedupe_names(["", "  ", "answer"], ["n1_out", "n2_out", "n3_out"], INPUT_TOKENS)
+    unique = dedupe_names(
+        ["", "  ", "answer"], ["n1_out", "n2_out", "n3_out"], INPUT_TOKENS
+    )
     assert len(set(unique)) == 3
     assert "" not in unique
 
@@ -270,7 +279,9 @@ def test_repair_reselect_leaves_produced_names_identical() -> None:
     after = _build_board(declared, [[0], [1], [2]])  # n3 now reads n2's output
     after_produces = [n.produces[0] for n in after]
 
-    assert before_produces == after_produces  # the produced set is unchanged — no thrash
+    assert (
+        before_produces == after_produces
+    )  # the produced set is unchanged — no thrash
     assert before[2].consumes != after[2].consumes  # only the wiring moved
 
 

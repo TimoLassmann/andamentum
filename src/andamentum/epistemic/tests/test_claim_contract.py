@@ -134,9 +134,7 @@ class TestContractPreservesVerdict:
 
     def test_two_contractions_increment_count_and_update_fingerprint(self):
         claim = _certified_claim()
-        claim.contract(
-            ClaimStage.HYPOTHESIS, justification="first", fingerprint="fp-1"
-        )
+        claim.contract(ClaimStage.HYPOTHESIS, justification="first", fingerprint="fp-1")
         claim.contract(
             ClaimStage.HYPOTHESIS, justification="second", fingerprint="fp-2"
         )
@@ -177,9 +175,7 @@ class TestResetForReinquiryIsTheOnlyResetPath:
 
     def test_reset_for_reinquiry_does_not_touch_scrutiny_stage_or_history(self):
         claim = _certified_claim()
-        claim.contract(
-            ClaimStage.HYPOTHESIS, justification="x", fingerprint="fp-1"
-        )
+        claim.contract(ClaimStage.HYPOTHESIS, justification="x", fingerprint="fp-1")
         history_len_before = len(claim.promotion_history)
         stage_before = claim.stage
 
@@ -233,9 +229,7 @@ class TestContractionCannotTripDegeneracyBrake:
 
     def test_contract_does_not_call_record_modification(self):
         claim = _certified_claim()
-        claim.contract(
-            ClaimStage.HYPOTHESIS, justification="x", fingerprint="fp-1"
-        )
+        claim.contract(ClaimStage.HYPOTHESIS, justification="x", fingerprint="fp-1")
         assert claim.modification_count == 0
         assert claim.modification_timestamps == []
 

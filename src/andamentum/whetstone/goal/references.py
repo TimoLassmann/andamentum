@@ -102,4 +102,6 @@ async def check_reference_goal(
         # loop always passes its model. Until they are read, "every entry is
         # cited" cannot be confirmed.
         parts.append(f"{unjudged} possible citation(s) could not be judged")
-    return ReferenceGoalReport(satisfied=False, reason=". ".join(parts) + ".", findings=findings)
+    return ReferenceGoalReport(
+        satisfied=False, reason=". ".join(parts) + ".", findings=findings
+    )

@@ -207,9 +207,7 @@ async def test_an_unmeasured_item_reports_none_and_never_zero(
     verdict = await build_verdict(repo, objective_id=obj.objective_id)
     cv = next(c for c in verdict.claims if c.claim_id == measured.entity_id)
     ref = next(
-        r
-        for r in cv.refuting_evidence
-        if r.evidence_id == distributionless.entity_id
+        r for r in cv.refuting_evidence if r.evidence_id == distributionless.entity_id
     )
 
     assert ref.judgment_distribution is None

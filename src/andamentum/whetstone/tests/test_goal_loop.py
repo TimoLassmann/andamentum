@@ -40,7 +40,9 @@ def _source_docx(path: Path) -> Path:
     return path
 
 
-def _stub_agents(*, rounds: list[dict], editor_prompts: list[str] | None = None) -> ExitStack:
+def _stub_agents(
+    *, rounds: list[dict], editor_prompts: list[str] | None = None
+) -> ExitStack:
     """One entry in *rounds* per review round: ``findings`` (a list of
     ``(severity, issue)`` pairs, possibly empty) and ``edit`` (an
     ``(original, replacement)`` pair, or ``None`` for "the editor proposes
@@ -114,7 +116,9 @@ def _stub_agents(*, rounds: list[dict], editor_prompts: list[str] | None = None)
                     _RawFinding(issue=issue, quote=SECOND_SENTENCE, severity=severity)
                     for severity, issue in spec["findings"]
                 ]
-                return types.SimpleNamespace(output=_CriterionFindings(findings=findings))
+                return types.SimpleNamespace(
+                    output=_CriterionFindings(findings=findings)
+                )
 
         return _Agent()
 
@@ -144,7 +148,10 @@ async def test_goal_met_on_two_consecutive_satisfied_rounds(tmp_path: Path) -> N
     and does NOT apply round 3's own edit."""
     document = await _open(tmp_path)
     rounds = [
-        {"findings": [("major", "too vague")], "edit": ("earns its place", "earns its keep")},
+        {
+            "findings": [("major", "too vague")],
+            "edit": ("earns its place", "earns its keep"),
+        },
         {"findings": [], "edit": ("earns its keep", "earns its salt")},
         {"findings": [], "edit": ("earns its salt", "earns its worth")},
     ]
@@ -296,8 +303,9 @@ async def test_judged_check_calls_the_judge_separately_every_round(
             expected_score=1.0 if overall == "meets" else 0.0,
         )
 
-    with _stub_agents(rounds=rounds), patch(
-        "andamentum.llm_judge.judge_score", new=_fake_judge_score
+    with (
+        _stub_agents(rounds=rounds),
+        patch("andamentum.llm_judge.judge_score", new=_fake_judge_score),
     ):
         result = await run_goal_loop(
             document,
@@ -319,9 +327,13 @@ CITING_SENTENCE = "Costs are high [2]."
 def _citing_docx(path: Path) -> Path:
     document = Document()
     document.add_heading("Methods", level=1)
-    document.add_paragraph(f"Rare diseases are common [1]. {CITING_SENTENCE} Care is slow [3].")
+    document.add_paragraph(
+        f"Rare diseases are common [1]. {CITING_SENTENCE} Care is slow [3]."
+    )
     document.add_heading("References", level=1)
-    document.add_paragraph("1. Smith J (2020) A study of rare disease costs. J Test 1:1")
+    document.add_paragraph(
+        "1. Smith J (2020) A study of rare disease costs. J Test 1:1"
+    )
     document.add_paragraph("3. Lee K (2021) Delays in rare disease care. J Test 2:2")
     document.save(str(path))
     return path
@@ -342,10 +354,14 @@ async def test_reference_problems_reach_the_editor_and_the_goal_holds_once_fixed
     fix = {"findings": [], "edit": (CITING_SENTENCE, "Costs are high [3].")}
     quiet = {"findings": [], "edit": None}
     prompts: list[str] = []
-    with _stub_agents(rounds=[fix, fix, quiet, quiet, quiet, quiet], editor_prompts=prompts):
+    with _stub_agents(
+        rounds=[fix, fix, quiet, quiet, quiet, quiet], editor_prompts=prompts
+    ):
         result = await run_goal_loop(
             document,
-            GoalSpec(text="every reference is consistent", check="citations", max_rounds=4),
+            GoalSpec(
+                text="every reference is consistent", check="citations", max_rounds=4
+            ),
             model="stub",
             document_type="academic",
         )
@@ -356,7 +372,9 @@ async def test_reference_problems_reach_the_editor_and_the_goal_holds_once_fixed
     assert first.verdict.satisfied is False
     assert "Citation 2 is not in the list" in first.verdict.reason
     # The problem is a finding of the round, located at the citation itself.
-    [problem] = [f for f in first.review.findings if f.category == "references:cited_not_listed"]
+    [problem] = [
+        f for f in first.review.findings if f.category == "references:cited_not_listed"
+    ]
     assert problem.quotes[0].text == "[2]"
     assert any("no entry numbered 2" in p for p in prompts[:2])
     assert "Costs are high [3]." in result.final_document.text
@@ -370,7 +388,9 @@ async def test_a_document_whose_citation_style_cannot_be_told_is_unresolvable(
     checker cannot decide the style — and says so before any round runs."""
     document = Document()
     document.add_heading("Methods", level=1)
-    document.add_paragraph("Rare diseases are common, as Smith showed in A Study of Costs.")
+    document.add_paragraph(
+        "Rare diseases are common, as Smith showed in A Study of Costs."
+    )
     document.add_heading("Works Cited", level=1)
     document.add_paragraph("Smith, John. A Study of Costs. Test Press.")
     path = tmp_path / "mla.docx"

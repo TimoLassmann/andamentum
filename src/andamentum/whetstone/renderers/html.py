@@ -177,7 +177,9 @@ def render_html(
         atoms.extend(_novelty_claim_atoms(result.novelty_claims))
 
     if result.reference_summary:
-        atoms.append({"kind": "heading", "content": REFERENCE_CHECK_HEADING, "level": 2})
+        atoms.append(
+            {"kind": "heading", "content": REFERENCE_CHECK_HEADING, "level": 2}
+        )
         atoms.append({"kind": "prose", "content": result.reference_summary})
 
     if result.next_steps:
@@ -287,7 +289,11 @@ def _novelty_claim_atoms(claims: list[NoveltyClaim]) -> list[dict[str, Any]]:
             "content": f"Claims you are staking as novel ({len(claims)})",
             "level": 2,
         },
-        {"kind": "callout", "tone": "note", "content": "These are checked against nothing. This is what the draft asserts, not what the literature says."},
+        {
+            "kind": "callout",
+            "tone": "note",
+            "content": "These are checked against nothing. This is what the draft asserts, not what the literature says.",
+        },
     ]
     entries = []
     for claim in claims:
@@ -296,8 +302,14 @@ def _novelty_claim_atoms(claims: list[NoveltyClaim]) -> list[dict[str, Any]]:
             body += f"\n\n_Why it matters:_ {claim.why_load_bearing}"
         entries.append({"label": "!", "body": body})
     out.append({"kind": "items", "entries": entries})
-    out.append({"kind": "prose", "content": "To check them automatically, re-run with --check-novelty. That sends these sentences to a search engine."})
+    out.append(
+        {
+            "kind": "prose",
+            "content": "To check them automatically, re-run with --check-novelty. That sends these sentences to a search engine.",
+        }
+    )
     return out
+
 
 def _declined_atoms(declined: list[DeclinedFinding]) -> list[dict[str, Any]]:
     """Findings the editor handed back, with its reason.
@@ -385,7 +397,9 @@ def _findings_atoms(
                 if f.quotes
                 else (f.sections_involved[0] if f.sections_involved else "")
             )
-            title = section_titles.get(section_id, section_id or "The document as a whole")
+            title = section_titles.get(
+                section_id, section_id or "The document as a whole"
+            )
             out.append({"kind": "prose", "content": f"#### {title}"})
 
             # Verbatim passage (serif italic with left rule via

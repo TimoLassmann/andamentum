@@ -89,9 +89,7 @@ class TestNoOpCascadeFastPath:
         # No InvalidateEvidenceOperation calls should appear in
         # operations_log — the fast-path bypassed _run_op.
         invalidate_ops = [
-            op
-            for op in state.operations_log
-            if op.operation == "invalidate_evidence"
+            op for op in state.operations_log if op.operation == "invalidate_evidence"
         ]
         assert invalidate_ops == [], (
             f"Expected 0 invalidate_evidence ops, got {len(invalidate_ops)}"
@@ -134,9 +132,7 @@ class TestNoOpCascadeFastPath:
 
         # The op DID run (real cascade work needed).
         invalidate_ops = [
-            op
-            for op in state.operations_log
-            if op.operation == "invalidate_evidence"
+            op for op in state.operations_log if op.operation == "invalidate_evidence"
         ]
         assert len(invalidate_ops) == 1
         # And the claim's evidence_ids was properly cleaned.
@@ -187,9 +183,7 @@ class TestNoOpCascadeFastPath:
         await _run_tms_sweep(deps, state)
 
         invalidate_ops = [
-            op
-            for op in state.operations_log
-            if op.operation == "invalidate_evidence"
+            op for op in state.operations_log if op.operation == "invalidate_evidence"
         ]
         # Only 1 op (for the referenced evidence). Pre-fix: 4 ops.
         assert len(invalidate_ops) == 1

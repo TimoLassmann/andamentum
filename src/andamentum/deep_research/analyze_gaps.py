@@ -23,8 +23,7 @@ async def analyze_gaps(
     agent = build_agent("gap_analyzer", model, overrides)
 
     evidence = [
-        f"{s.title} (relevance {s.relevance_score:.2f}): {s.summary}"
-        for s in summaries
+        f"{s.title} (relevance {s.relevance_score:.2f}): {s.summary}" for s in summaries
     ]
     sources = [s.url for s in summaries]
 

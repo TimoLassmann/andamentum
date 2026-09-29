@@ -63,12 +63,16 @@ def _supported(candidate: Candidate, entries: list[ReferenceEntry]) -> bool:
         listed_keys = {e.key for e in entries if e.key}
         return any(k in listed_keys for k in candidate.keys)
     if candidate.works:
-        return any(resolve_work(w, entries).status != "missing" for w in candidate.works)
+        return any(
+            resolve_work(w, entries).status != "missing" for w in candidate.works
+        )
     listed = numbered(entries)
     return bool(candidate.numbers) and all(n in listed for n in candidate.numbers)
 
 
-def support(candidates: list[Candidate], entries: list[ReferenceEntry]) -> dict[Style, int]:
+def support(
+    candidates: list[Candidate], entries: list[ReferenceEntry]
+) -> dict[Style, int]:
     counts: dict[Style, int] = {}
     for c in candidates:
         style = _FAMILY.get(c.source)
@@ -115,7 +119,9 @@ async def decide_style(
         # author-year. Anything else (a numbered list cited by author and
         # year exists, but rarely) is left to the model.
         # A key names its entry outright, whatever the list's shape.
-        agrees = best in ("notes", "pandoc_keys") or (best == "author_year") != list_numbered
+        agrees = (
+            best in ("notes", "pandoc_keys") or (best == "author_year") != list_numbered
+        )
         # A short document may have one or two citations. When every
         # candidate it has is of the same kind, there is nothing to weigh.
         alone = all(_FAMILY.get(c.source) == best for c in usable)
@@ -171,7 +177,9 @@ async def decide_style(
             reason=answer.reason or "The model could not decide the style.",
             support=counts,
         )
-    return StyleDecision(style=answer.style, decided_by="model", reason=answer.reason, support=counts)
+    return StyleDecision(
+        style=answer.style, decided_by="model", reason=answer.reason, support=counts
+    )
 
 
 def _describe(style: str) -> str:
@@ -214,7 +222,16 @@ def _style_prompt(
     for e in entries[: llm.ENTRIES_SHOWN]:
         prefix = f"{e.number}. " if e.number is not None else ""
         lines.append(f"  {prefix}{e.text[: llm.ENTRY_CHARS]}")
-    for source in ("brackets", "superscript", "glued", "parentheses", "parenthetical", "narrative", "note", "key"):
+    for source in (
+        "brackets",
+        "superscript",
+        "glued",
+        "parentheses",
+        "parenthetical",
+        "narrative",
+        "note",
+        "key",
+    ):
         of_kind = [c for c in candidates if c.source == source]
         if not of_kind:
             continue
@@ -245,7 +262,10 @@ def _rule(
     if source == "note":
         form = candidate.note_form
         if form in _CITING_FORMS:
-            return True, f"rule: a note that cites ({'Ibid.' if form == 'ibid' else f'{form} form'})"
+            return (
+                True,
+                f"rule: a note that cites ({'Ibid.' if form == 'ibid' else f'{form} form'})",
+            )
         if form == "comment":
             return False, "rule: a note of commentary"
         return None, "a note the rules cannot read"
@@ -282,7 +302,9 @@ def _rule(
     # superscript or glued
     if _UNIT_BEFORE.search(before):
         return False, "rule: an exponent or unit"
-    if candidate.start < author_block_end and re.search(r"[A-Z][a-zA-Z'’\-]*\s?$|,\s?$", before):
+    if candidate.start < author_block_end and re.search(
+        r"[A-Z][a-zA-Z'’\-]*\s?$|,\s?$", before
+    ):
         return False, "rule: an affiliation mark in the author block"
     if not all(n in listed for n in candidate.numbers):
         # Inside the list's own range, after a word: a citation of an entry
@@ -293,7 +315,9 @@ def _rule(
         if in_range and after_word:
             return True, "rule: a number in the list's range, after a word"
         return None, "a number the list does not carry"
-    if source == "superscript" and re.search(r"(?:[a-z]{2}|[.,;:)\]’”\"'])\s?$", before):
+    if source == "superscript" and re.search(
+        r"(?:[a-z]{2}|[.,;:)\]’”\"'])\s?$", before
+    ):
         return True, "rule: a raised number after a word or punctuation"
     return None, "the rules cannot tell"
 
@@ -335,13 +359,23 @@ async def judge_candidates(
     listed = numbered(entries)
     for c in candidates:
         if c.source != "field" and _FAMILY.get(c.source) != style:
-            judged.append(Judged(candidate=c, is_citation=False, reason=f"rule: not the document's style ({_describe(style)})"))
+            judged.append(
+                Judged(
+                    candidate=c,
+                    is_citation=False,
+                    reason=f"rule: not the document's style ({_describe(style)})",
+                )
+            )
             continue
         verdict, reason = _rule(c, text, entries, author_block_end=author_block_end)
         if verdict is None and c.numbers and c.source in ("glued", "superscript"):
             before = text[max(0, c.start - 25) : c.start]
             after_word = re.search(r"(?:[a-z]{2}|[.,;:)\]’”\"'])\s?$", before)
-            if after_word and min(c.numbers) == highest + 1 and all(n in listed for n in c.numbers):
+            if (
+                after_word
+                and min(c.numbers) == highest + 1
+                and all(n in listed for n in c.numbers)
+            ):
                 verdict, reason = True, "rule: the next number in citation order"
             # A repeated citation ("earlier work2.") is NOT settled by a rule:
             # punctuation cannot tell it from a label closing a clause
@@ -356,7 +390,11 @@ async def judge_candidates(
 
     if open_ and model is None:
         judged += [
-            Judged(candidate=c, is_citation=False, reason=f"not judged: {why}; pass a model to decide")
+            Judged(
+                candidate=c,
+                is_citation=False,
+                reason=f"not judged: {why}; pass a model to decide",
+            )
             for c, why in open_
         ]
     elif open_ and model is not None:
@@ -368,11 +406,18 @@ async def judge_candidates(
                     items, style=style, model=model, list_line=_list_line(entries)
                 )
                 yes = set(answer.citation_ids)
-                judged += [Judged(candidate=c, is_citation=c.id in yes, reason="model") for c, _ in batch]
+                judged += [
+                    Judged(candidate=c, is_citation=c.id in yes, reason="model")
+                    for c, _ in batch
+                ]
             except Exception as exc:
                 logger.warning("[references] candidate model call failed: %s", exc)
                 judged += [
-                    Judged(candidate=c, is_citation=False, reason=f"not judged: the model call failed ({type(exc).__name__})")
+                    Judged(
+                        candidate=c,
+                        is_citation=False,
+                        reason=f"not judged: the model call failed ({type(exc).__name__})",
+                    )
                     for c, _ in batch
                 ]
     judged.sort(key=lambda j: j.candidate.start)

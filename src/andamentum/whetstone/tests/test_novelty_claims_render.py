@@ -42,7 +42,9 @@ def test_html_lists_the_claims_and_says_nothing_checked_them() -> None:
 
 
 def test_the_docx_block_warns_before_it_lists() -> None:
-    block = _collect_novelty_claims(ReviewResult(summary="s", novelty_claims=_claims(1)))
+    block = _collect_novelty_claims(
+        ReviewResult(summary="s", novelty_claims=_claims(1))
+    )
     assert block.startswith("*These are checked against nothing")
     # Asterisks, not underscores: the markdown-to-Word renderer leaves
     # _italic_ as literal characters. Same trap as the declined-findings block.

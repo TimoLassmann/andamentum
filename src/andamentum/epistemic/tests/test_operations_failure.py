@@ -430,7 +430,11 @@ class TestScrutinyOperationFailure:
         repo = await _make_repo(tmp_path)
         obj = await _save_objective(repo)
         ev = await _save_evidence(
-            repo, obj.entity_id, extracted=True, content="Some finding", quality_score=0.8
+            repo,
+            obj.entity_id,
+            extracted=True,
+            content="Some finding",
+            quality_score=0.8,
         )
         ev.support_judgment = "supports"
         ev.judgment_distribution = [0.9, 0.05, 0.05]

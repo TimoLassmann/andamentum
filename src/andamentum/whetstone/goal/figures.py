@@ -142,7 +142,9 @@ async def check_figure_text_match(
                 extra_context=context,
             )
         except Exception as exc:
-            checks.append(FigureCheckResult(label=figure.label, matched=None, error=str(exc)))
+            checks.append(
+                FigureCheckResult(label=figure.label, matched=None, error=str(exc))
+            )
             continue
         checks.append(FigureCheckResult(label=figure.label, matched=matched))
     return FigureTextGoalReport(checks=checks)

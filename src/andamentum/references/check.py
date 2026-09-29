@@ -70,7 +70,11 @@ def _notes(
                     "is the first note"
                     if previous_works is None and note is notes[0]
                     else "follows a note that cites "
-                    + ("no source" if not previous_works else f"{len(previous_works)} sources")
+                    + (
+                        "no source"
+                        if not previous_works
+                        else f"{len(previous_works)} sources"
+                    )
                 )
                 problems.append(
                     Problem(
@@ -98,11 +102,17 @@ def _notes(
                 # No bibliography: the first citation of a work must be full.
                 if form == "full":
                     full_seen.append(work)
-                elif not any(
-                    normalise(f.surname) == normalise(work.surname)
-                    and fuzz.partial_ratio(normalise(work.title), normalise(f.title)) >= 85
-                    for f in full_seen
-                ) and key not in reported:
+                elif (
+                    not any(
+                        normalise(f.surname) == normalise(work.surname)
+                        and fuzz.partial_ratio(
+                            normalise(work.title), normalise(f.title)
+                        )
+                        >= 85
+                        for f in full_seen
+                    )
+                    and key not in reported
+                ):
                     reported.add(key)
                     problems.append(
                         Problem(
@@ -121,7 +131,11 @@ def _notes(
                     )
                 continue
             resolution = resolve_note_work(work, entries)
-            cited.update(id(e) for e in resolution.entries if resolution.status in ("match", "year_mismatch"))
+            cited.update(
+                id(e)
+                for e in resolution.entries
+                if resolution.status in ("match", "year_mismatch")
+            )
             if resolution.status == "match" or key in reported:
                 continue
             reported.add(key)
@@ -135,7 +149,11 @@ def _notes(
                         issue=(
                             f"This note cites {label}, but the bibliography has "
                             f"no entry for it"
-                            + (" (it has other works by this author)" if resolution.entries else "")
+                            + (
+                                " (it has other works by this author)"
+                                if resolution.entries
+                                else ""
+                            )
                             + "."
                         ),
                         fix="Add the work to the bibliography, or correct the note.",
@@ -476,7 +494,11 @@ def _duplicate_works(entries: list[ReferenceEntry]) -> list[Problem]:
         keys.append(f"text:{re.sub(r'[^a-z0-9]+', ' ', entry.text.lower()).strip()}")
         earlier = next((first_by_key[k] for k in keys if k in first_by_key), None)
         if earlier is not None:
-            which = f"entry {earlier.number}" if earlier.number is not None else "an earlier entry"
+            which = (
+                f"entry {earlier.number}"
+                if earlier.number is not None
+                else "an earlier entry"
+            )
             problems.append(
                 Problem(
                     kind="duplicate_entry",

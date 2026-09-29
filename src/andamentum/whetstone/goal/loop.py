@@ -96,7 +96,10 @@ def _loop_allowed(count: int, cap: int) -> bool:
 
 
 def _unresolvable_reason(
-    spec: GoalSpec, document: ReviewedDocument, *, references: ReferenceGoalReport | None
+    spec: GoalSpec,
+    document: ReviewedDocument,
+    *,
+    references: ReferenceGoalReport | None,
 ) -> str | None:
     """Checked once, before spending a round. ``None`` means resolvable."""
     if references is not None and references.unresolvable is not None:
@@ -152,8 +155,12 @@ async def _compute_verdict(
             model=judge_model,
         )
         satisfied = score.overall == "meets" and not score.needs_review
-        reason = score.per_criterion[0].reasoning if score.per_criterion else score.overall
-        return GoalVerdict(satisfied=satisfied, reason=reason, progress_score=score.expected_score)
+        reason = (
+            score.per_criterion[0].reasoning if score.per_criterion else score.overall
+        )
+        return GoalVerdict(
+            satisfied=satisfied, reason=reason, progress_score=score.expected_score
+        )
 
     if spec.check == "figures":
         # GoalSpec's own validator guarantees figure_model is set whenever
@@ -181,7 +188,9 @@ async def _compute_verdict(
     )
 
 
-def _with_author_question(review: ReviewResult, *, goal_text: str, reason: str) -> ReviewResult:
+def _with_author_question(
+    review: ReviewResult, *, goal_text: str, reason: str
+) -> ReviewResult:
     """A non-``goal_met`` stop gets one ``AuthorQuestion`` naming what the
     loop could not settle — the same schema whetstone already carries for
     "only the author can answer this", given its first real producer here."""
@@ -190,7 +199,9 @@ def _with_author_question(review: ReviewResult, *, goal_text: str, reason: str) 
         sections_involved=[],
         why=reason,
     )
-    return review.model_copy(update={"author_questions": [*review.author_questions, question]})
+    return review.model_copy(
+        update={"author_questions": [*review.author_questions, question]}
+    )
 
 
 async def run_goal_loop(
@@ -293,7 +304,9 @@ async def _run_goal_loop(
     # problems are findings the round's editor answers. The first round's
     # reading doubles as the resolvability check, so it is not made twice.
     references = (
-        await check_reference_goal(document, model=model) if goal.check == "citations" else None
+        await check_reference_goal(document, model=model)
+        if goal.check == "citations"
+        else None
     )
     unresolvable = _unresolvable_reason(goal, document, references=references)
     if unresolvable is not None:
@@ -372,7 +385,9 @@ async def _run_goal_loop(
         else:
             consecutive_met = 0
             if not result.edits:
-                reason = "The editor found nothing left to change, and the goal was not met."
+                reason = (
+                    "The editor found nothing left to change, and the goal was not met."
+                )
                 return GoalRunResult(
                     goal=goal,
                     rounds=rounds,
@@ -404,7 +419,9 @@ async def _run_goal_loop(
                 stopped_reason="no_progress",
                 reason=reason,
                 final_document=new_document,
-                final_review=_with_author_question(result, goal_text=goal.text, reason=reason),
+                final_review=_with_author_question(
+                    result, goal_text=goal.text, reason=reason
+                ),
             )
         if len(recent_texts) >= 2 and new_document.text == recent_texts[-2]:
             reason = "The draft is alternating between two states across rounds."
@@ -415,7 +432,9 @@ async def _run_goal_loop(
                 stopped_reason="no_progress",
                 reason=reason,
                 final_document=new_document,
-                final_review=_with_author_question(result, goal_text=goal.text, reason=reason),
+                final_review=_with_author_question(
+                    result, goal_text=goal.text, reason=reason
+                ),
             )
 
         recent_texts.append(new_document.text)
@@ -430,5 +449,7 @@ async def _run_goal_loop(
         stopped_reason="cap_reached",
         reason=reason,
         final_document=document,
-        final_review=_with_author_question(last_review, goal_text=goal.text, reason=reason),
+        final_review=_with_author_question(
+            last_review, goal_text=goal.text, reason=reason
+        ),
     )

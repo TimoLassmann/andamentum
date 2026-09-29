@@ -24,7 +24,9 @@ class TestNegationExplanationPromptStaysCoherent:
 
     def test_version_is_bumped_and_travels_in_the_prompt(self) -> None:
         assert PROPOSE_ONE_CANDIDATE_PROMPT_VERSION >= 2
-        assert f"[v{PROPOSE_ONE_CANDIDATE_PROMPT_VERSION}]" in PROPOSE_ONE_CANDIDATE_PROMPT
+        assert (
+            f"[v{PROPOSE_ONE_CANDIDATE_PROMPT_VERSION}]" in PROPOSE_ONE_CANDIDATE_PROMPT
+        )
 
     def test_prompt_still_asks_for_the_negation_explanation(self) -> None:
         lowered = PROPOSE_ONE_CANDIDATE_PROMPT.lower()
@@ -41,6 +43,7 @@ class TestNegationExplanationPromptStaysCoherent:
         finding a rival from being handed one (plan §4, second risk)."""
         lowered = PROPOSE_ONE_CANDIDATE_PROMPT.lower()
         assert "prompts for that question, not a menu" in lowered
-        assert "judge which,\nif any, fits this evidence" in lowered or "if any, fits this evidence" in lowered
-
-
+        assert (
+            "judge which,\nif any, fits this evidence" in lowered
+            or "if any, fits this evidence" in lowered
+        )

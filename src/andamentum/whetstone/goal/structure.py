@@ -28,7 +28,9 @@ class StructureGoalReport(BaseModel):
 def structure_goal_met(result: ReviewResult) -> StructureGoalReport:
     """Zero major/moderate findings, under whatever criteria produced them."""
     blocking: list[Finding] = [
-        finding for finding in result.findings if finding.severity in _BLOCKING_SEVERITIES
+        finding
+        for finding in result.findings
+        if finding.severity in _BLOCKING_SEVERITIES
     ]
     return StructureGoalReport(
         blocking_count=len(blocking),

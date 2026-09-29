@@ -12,6 +12,7 @@ from andamentum.whetstone.renderers.html import render_html
 from andamentum.whetstone.renderers.markdown import render_markdown
 from andamentum.whetstone.schemas import DeclinedFinding, ReviewResult
 
+
 def _declined(n: int = 1) -> list[DeclinedFinding]:
     return [
         DeclinedFinding(
@@ -28,7 +29,7 @@ def test_markdown_reports_what_the_editor_handed_back() -> None:
     out = render_markdown(ReviewResult(summary="s", declined_findings=_declined(2)))
     assert "Left to the author (2)" in out
     assert "issue 1 that a rewrite cannot answer" in out
-    assert "needs a restructure, reason 1" in out   # the REASON, not just the issue
+    assert "needs a restructure, reason 1" in out  # the REASON, not just the issue
     assert "Left to you:" in out
 
 

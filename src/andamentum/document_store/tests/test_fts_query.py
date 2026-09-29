@@ -6,6 +6,7 @@ near-miss identifiers. `prepare_fts_query` phrase-quotes punctuated tokens so
 the existing `porter unicode61` index discriminates them, while leaving prose
 and deliberate FTS5 power-queries untouched.
 """
+
 from __future__ import annotations
 
 import sqlite3
@@ -28,7 +29,9 @@ class TestPrepareFtsQuery:
             == 'pathogenic variant "c.1234G>A" in BRCA1'
         )
 
-    @pytest.mark.parametrize("q", ['"neural networks"', "python AND numpy", "transform*"])
+    @pytest.mark.parametrize(
+        "q", ['"neural networks"', "python AND numpy", "transform*"]
+    )
     def test_power_queries_untouched(self, q):
         assert prepare_fts_query(q) == q
 
@@ -36,16 +39,17 @@ class TestPrepareFtsQuery:
     def test_various_punctuated_tokens_quoted(self, q):
         assert prepare_fts_query(q) == f'"{q}"'
 
-    @pytest.mark.parametrize(
-        "word", ["and", "or", "not", "near"]
-    )
+    @pytest.mark.parametrize("word", ["and", "or", "not", "near"])
     def test_lowercase_boolean_word_is_prose_not_an_operator(self, word):
         """Regression: prose containing a lowercase 'and' was treated as a
         deliberate power-query and returned UNESCAPED, so a hyphenated token in
         the same query reached FTS5 raw. FTS5 only honours UPPERCASE operators.
         """
         q = f"pre-training a model {word} guessing hidden words"
-        assert prepare_fts_query(q) == f'"pre-training" a model {word} guessing hidden words'
+        assert (
+            prepare_fts_query(q)
+            == f'"pre-training" a model {word} guessing hidden words'
+        )
 
     def test_uppercase_boolean_still_passes_through(self):
         assert prepare_fts_query("pre-training AND bert") == "pre-training AND bert"
@@ -71,17 +75,29 @@ class TestAgainstRealFts5Index:
         conn.executemany(
             "INSERT INTO t(rowid, body) VALUES (?,?)",
             [
-                (1, "A recurrent c.1234G>A substitution confirmed by Sanger sequencing."),
-                (2, "A recurrent c.1234G>T substitution confirmed by Sanger sequencing."),
-                (3, "A recurrent c.1234G>C substitution confirmed by Sanger sequencing."),
+                (
+                    1,
+                    "A recurrent c.1234G>A substitution confirmed by Sanger sequencing.",
+                ),
+                (
+                    2,
+                    "A recurrent c.1234G>T substitution confirmed by Sanger sequencing.",
+                ),
+                (
+                    3,
+                    "A recurrent c.1234G>C substitution confirmed by Sanger sequencing.",
+                ),
             ],
         )
         return conn
 
     def _match(self, conn, q):
-        return [r[0] for r in conn.execute(
-            "SELECT rowid FROM t WHERE t MATCH ? ORDER BY rank", (q,)
-        ).fetchall()]
+        return [
+            r[0]
+            for r in conn.execute(
+                "SELECT rowid FROM t WHERE t MATCH ? ORDER BY rank", (q,)
+            ).fetchall()
+        ]
 
     def test_raw_identifier_crashes(self, fts):
         # Documents the bug: the un-prepared query is not valid FTS5.

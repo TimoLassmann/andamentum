@@ -39,6 +39,7 @@ def _counting_posterior(dist: list[float] | None, verdict: str) -> float:
     s, c = _evidence_counting_vote(ev)
     return 1.0 / (1.0 + math.exp(-(s - c)))
 
+
 SCIFACT_DIR = (
     Path(__file__).resolve().parents[1]
     / "experiments/dirichlet_confidence/data/scifact"
@@ -146,7 +147,9 @@ async def main() -> None:
 
     print("\n" + "=" * 60)
     print(f"Tier 0 (real judge agent, live {MODEL}, n={len(rows)})")
-    print(f"  verdict accuracy      : {correct.mean():.3f}  ({correct.sum()}/{len(rows)})")
+    print(
+        f"  verdict accuracy      : {correct.mean():.3f}  ({correct.sum()}/{len(rows)})"
+    )
     print(f"  degeneracy (one-hot)  : {one_hot.mean():.0%}")
     print(f"  mean entropy          : {entropy.mean():.3f}")
     auroc = roc_auc(entropy, ~correct)

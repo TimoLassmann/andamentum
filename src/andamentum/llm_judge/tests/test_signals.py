@@ -500,7 +500,10 @@ def test_expectation_compare_weights_a_tie_b():
 
 def test_expectation_stays_in_unit_interval_for_any_distribution():
     for dist in ([0.34, 0.33, 0.33], [0.9, 0.05, 0.05], [0.1, 0.1, 0.8]):
-        for W in (signals.SCORE_EXPECTATION_WEIGHTS, signals.COMPARE_EXPECTATION_WEIGHTS):
+        for W in (
+            signals.SCORE_EXPECTATION_WEIGHTS,
+            signals.COMPARE_EXPECTATION_WEIGHTS,
+        ):
             v = signals.expectation(dist, W)
             assert 0.0 <= v <= 1.0
 

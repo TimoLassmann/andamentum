@@ -26,7 +26,11 @@ def _sample_outcome(score: CaseScore) -> str:
         return f"works ({first.holes_filled}/{first.holes_total} holes)"
     if first.kind == "incomplete":
         holes = f"{first.holes_filled}/{first.holes_total} holes"
-        miss = f", unfilled: {','.join(first.remaining_holes)}" if first.remaining_holes else ""
+        miss = (
+            f", unfilled: {','.join(first.remaining_holes)}"
+            if first.remaining_holes
+            else ""
+        )
         return f"incomplete ({holes}, tests {first.tests_passed}✓/{first.tests_failed}✗{miss})"
     if first.kind == "build_failed":
         return f"build_failed: {first.error[:60]}"

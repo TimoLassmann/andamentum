@@ -148,7 +148,11 @@ class DeduplicateConcernsOperation(BaseOperation):
             # Must change uncertainty_type (not just is_blocking) because
             # model_post_init recomputes is_blocking from type on every load.
             child_depth = s.get("depth", 0)
-            if created and child_depth >= PEIRCE_CYCLE_CAP and new_uncertainty.is_blocking:
+            if (
+                created
+                and child_depth >= PEIRCE_CYCLE_CAP
+                and new_uncertainty.is_blocking
+            ):
                 new_uncertainty.uncertainty_type = UncertaintyType.EVIDENCE_GAP
                 new_uncertainty.is_blocking = False
                 await self.repo.save(new_uncertainty)

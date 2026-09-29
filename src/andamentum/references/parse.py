@@ -99,7 +99,13 @@ def split_entries(text: str, *, start: int, end: int) -> list[ReferenceEntry]:
         for (cut, number, head), following in zip(cuts, cuts[1:] + [(len(body), 0, 0)]):
             segment = body[cut + head : following[0]]
             lead = len(segment) - len(segment.lstrip())
-            raw.append({"number": number, "start": start + cut + head + lead, "end": start + following[0]})
+            raw.append(
+                {
+                    "number": number,
+                    "start": start + cut + head + lead,
+                    "end": start + following[0],
+                }
+            )
         return [e for e in (_entry(text, r) for r in raw) if e.text]
     return _unnumbered(text, start=start, end=end)
 
@@ -197,8 +203,12 @@ def _unnumbered(text: str, *, start: int, end: int) -> list[ReferenceEntry]:
             # author list broken across lines ("Turro, E., …↵Syrris, P., …,
             # 2020. Whole-genome…") continues it even though the line opens
             # with a name.
-            unfinished = raw and not _looks_like_entry(text[raw[-1]["start"] : raw[-1]["end"]])
-            if raw and (not opens or _names_only(piece) or (piece_index == 0 and unfinished)):
+            unfinished = raw and not _looks_like_entry(
+                text[raw[-1]["start"] : raw[-1]["end"]]
+            )
+            if raw and (
+                not opens or _names_only(piece) or (piece_index == 0 and unfinished)
+            ):
                 raw[-1]["end"] = piece_end  # continues the entry above
             elif opens or _looks_like_entry(piece):
                 raw.append({"number": None, "start": piece_start, "end": piece_end})
@@ -225,7 +235,9 @@ def _rejoin_displaced(text: str, raw: list[dict]) -> list[dict]:
     kept_keys = [keys[0]]
     for index in range(1, len(raw)):
         following = keys[index + 1] if index + 1 < len(raw) else None
-        displaced = keys[index] < kept_keys[-1] and (following is None or kept_keys[-1] <= following)
+        displaced = keys[index] < kept_keys[-1] and (
+            following is None or kept_keys[-1] <= following
+        )
         if displaced:
             kept[-1] = {**kept[-1], "end": raw[index]["end"]}
             continue

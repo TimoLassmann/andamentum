@@ -317,7 +317,9 @@ async def run_epistemic_graph(
 
     evidence_gatherer = (
         get_default_gatherer(
-            model=model, providers=providers, embedding_model=embedding_model,
+            model=model,
+            providers=providers,
+            embedding_model=embedding_model,
             use_web_search=use_web_search,
         )
         if model
@@ -418,9 +420,7 @@ async def run_epistemic_graph(
                     break
             result = run.output
         if output_dir is not None:
-            await _emit_artifacts(
-                output_dir, visits, repo, objective_id, state.verdict
-            )
+            await _emit_artifacts(output_dir, visits, repo, objective_id, state.verdict)
         if stop_after is not None:
             await _check_stage_invariant(stop_after, state, repo)
 

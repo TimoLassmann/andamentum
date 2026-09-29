@@ -153,7 +153,11 @@ async def _peek_one(model_name: str, claim: str, evidence: str) -> dict[str, Any
 
 
 async def cmd_peek(args: argparse.Namespace) -> None:
-    model_name = args.model[0].split(":", 1)[1] if args.model[0].startswith("ollama:") else args.model[0]
+    model_name = (
+        args.model[0].split(":", 1)[1]
+        if args.model[0].startswith("ollama:")
+        else args.model[0]
+    )
     data = json.loads(_EXAMPLES.read_text())["score"][: args.limit]
     print(f"Test 0 — logprob peek on {model_name} ({len(data)} claims)\n")
     results = []
@@ -162,26 +166,38 @@ async def cmd_peek(args: argparse.Namespace) -> None:
         results.append(r)
         if not r["available"]:
             print(f"  logprobs NOT returned. keys={r.get('raw_response_keys')}")
-            print("  -> the logit route is unavailable on this call path; "
-                  "argmax/verbalized only.")
+            print(
+                "  -> the logit route is unavailable on this call path; "
+                "argmax/verbalized only."
+            )
             break
-        print(f"  id={ex['id'][:16]:16} tok={r['token']!r} "
-              f"top_p={r['top_prob']:.3f} entropy={r['entropy_nats']:.3f} "
-              f">1%: {r['n_tokens_over_1pct']}  {r['top5']}")
+        print(
+            f"  id={ex['id'][:16]:16} tok={r['token']!r} "
+            f"top_p={r['top_prob']:.3f} entropy={r['entropy_nats']:.3f} "
+            f">1%: {r['n_tokens_over_1pct']}  {r['top5']}"
+        )
     avail = [r for r in results if r.get("available")]
     if avail:
         mean_top = sum(r["top_prob"] for r in avail) / len(avail)
         mean_h = sum(r["entropy_nats"] for r in avail) / len(avail)
-        print(f"\n  mean top-token prob: {mean_top:.3f}   mean entropy: {mean_h:.3f} nats")
-        print("  VERDICT:", "one-hot — logits buy nothing here"
-              if mean_top > 0.9 else "mass is spread — logit route worth pursuing")
+        print(
+            f"\n  mean top-token prob: {mean_top:.3f}   mean entropy: {mean_h:.3f} nats"
+        )
+        print(
+            "  VERDICT:",
+            "one-hot — logits buy nothing here"
+            if mean_top > 0.9
+            else "mass is spread — logit route worth pursuing",
+        )
     _dump("peek", model_name, results)
 
 
 # ── elicitation with cache (VERBALIZED route) ─────────────────────────────
 
 
-async def _score_dist(model: str, ex: dict, *, temperature: float, draw: int) -> list[float]:
+async def _score_dist(
+    model: str, ex: dict, *, temperature: float, draw: int
+) -> list[float]:
     key = f"score|{model}|{ex['id']}|-|{temperature}|{draw}"
     if key in _CACHE_MEM:
         return _CACHE_MEM[key]
@@ -195,19 +211,31 @@ async def _score_dist(model: str, ex: dict, *, temperature: float, draw: int) ->
     return dist
 
 
-async def _compare_avg(model: str, ex: dict, *, temperature: float, draw: int) -> list[float]:
+async def _compare_avg(
+    model: str, ex: dict, *, temperature: float, draw: int
+) -> list[float]:
     """Order-averaged canonical [pa, ptie, pb] — mirrors panel._judge_compare_once."""
     key = f"compare|{model}|{ex['id']}|avg|{temperature}|{draw}"
     if key in _CACHE_MEM:
         return _CACHE_MEM[key]
     ctx = ex["question"]
     ab = await elicit.elicit_pairwise(
-        ex["response_a"], ex["response_b"], ctx, [FACTUAL_ACCURACY],
-        model=model, order="AB", temperature=temperature,
+        ex["response_a"],
+        ex["response_b"],
+        ctx,
+        [FACTUAL_ACCURACY],
+        model=model,
+        order="AB",
+        temperature=temperature,
     )
     ba = await elicit.elicit_pairwise(
-        ex["response_a"], ex["response_b"], ctx, [FACTUAL_ACCURACY],
-        model=model, order="BA", temperature=temperature,
+        ex["response_a"],
+        ex["response_b"],
+        ctx,
+        [FACTUAL_ACCURACY],
+        model=model,
+        order="BA",
+        temperature=temperature,
     )
     canon_ab = signals.canonicalize(signals.normalize_three(*ab.to_row()), "AB")
     canon_ba = signals.canonicalize(signals.normalize_three(*ba.to_row()), "BA")
@@ -233,56 +261,76 @@ async def cmd_test1(args: argparse.Namespace) -> None:
     score = data["score"][: args.limit]
 
     for model in args.model:
-        print(f"\n{'='*70}\n{model}\n{'='*70}")
+        print(f"\n{'=' * 70}\n{model}\n{'=' * 70}")
 
         # -- compare: gold is 'a' or 'b' (never tie) --
         argmax_correct = argmax_tie = exp_correct = 0
         margins = []
         for ex in compare:
             avg = await _compare_avg(model, ex, temperature=0.0, draw=0)
-            verdict = signals.compare_verdict(avg)          # module's argmax reduction
-            expected = avg[0] + 0.5 * avg[1]                # E[preference for a] in [0,1]
+            verdict = signals.compare_verdict(avg)  # module's argmax reduction
+            expected = avg[0] + 0.5 * avg[1]  # E[preference for a] in [0,1]
             gold = ex["gold"].lower()
             if verdict == "tie":
                 argmax_tie += 1
             elif verdict == gold:
                 argmax_correct += 1
-            exp_pred = "a" if expected > 0.5 else "b"       # forced decision, no abstain
+            exp_pred = "a" if expected > 0.5 else "b"  # forced decision, no abstain
             if exp_pred == gold:
                 exp_correct += 1
             margins.append(expected if gold == "a" else 1 - expected)
         n = len(compare)
         decided = n - argmax_tie
         print(f"\ncompare (n={n}, gold has no ties):")
-        print(f"  argmax   : acc {argmax_correct/n:.0%} (tie=wrong) | "
-              f"tie-rate {argmax_tie/n:.0%} | acc-on-decided "
-              f"{(argmax_correct/decided) if decided else float('nan'):.0%}")
-        print(f"  expected : acc {exp_correct/n:.0%} (E>0.5, never abstains) | "
-              f"mean margin-toward-gold {sum(margins)/n:.3f}")
+        print(
+            f"  argmax   : acc {argmax_correct / n:.0%} (tie=wrong) | "
+            f"tie-rate {argmax_tie / n:.0%} | acc-on-decided "
+            f"{(argmax_correct / decided) if decided else float('nan'):.0%}"
+        )
+        print(
+            f"  expected : acc {exp_correct / n:.0%} (E>0.5, never abstains) | "
+            f"mean margin-toward-gold {sum(margins) / n:.3f}"
+        )
 
         # -- score: SUPPORT/CONTRADICT/NOINFO; measure separation, not just argmax --
         s_correct = 0
         quality = {"SUPPORT": [], "CONTRADICT": [], "NOINFO": []}
         for ex in score:
             dist = await _score_dist(model, ex, temperature=0.0, draw=0)
-            verdict = signals.argmax_label(dist, signals.SCORE_LABELS, signals.SCORE_TIEBREAK)
+            verdict = signals.argmax_label(
+                dist, signals.SCORE_LABELS, signals.SCORE_TIEBREAK
+            )
             if verdict == ex["expected_verdict"]:
                 s_correct += 1
-            q = dist[0] * 1.0 + dist[1] * 0.5             # continuous quality in [0,1]
+            q = dist[0] * 1.0 + dist[1] * 0.5  # continuous quality in [0,1]
             quality[ex["gold_label"]].append(q)
         ns = len(score)
         auroc = _auroc(quality["SUPPORT"], quality["CONTRADICT"])
         print(f"\nscore (n={ns}):")
-        print(f"  argmax   : acc vs expected_verdict {s_correct/ns:.0%}")
-        print(f"  expected : AUROC(quality; SUPPORT vs CONTRADICT) "
-              f"{auroc:.3f}" if auroc is not None else "  expected : AUROC n/a")
+        print(f"  argmax   : acc vs expected_verdict {s_correct / ns:.0%}")
+        print(
+            f"  expected : AUROC(quality; SUPPORT vs CONTRADICT) {auroc:.3f}"
+            if auroc is not None
+            else "  expected : AUROC n/a"
+        )
 
-        _dump("test1", model, {
-            "compare": {"n": n, "argmax_acc": argmax_correct / n,
-                        "argmax_tie_rate": argmax_tie / n,
-                        "expected_acc": exp_correct / n},
-            "score": {"n": ns, "argmax_acc": s_correct / ns, "auroc_support_vs_contradict": auroc},
-        })
+        _dump(
+            "test1",
+            model,
+            {
+                "compare": {
+                    "n": n,
+                    "argmax_acc": argmax_correct / n,
+                    "argmax_tie_rate": argmax_tie / n,
+                    "expected_acc": exp_correct / n,
+                },
+                "score": {
+                    "n": ns,
+                    "argmax_acc": s_correct / ns,
+                    "auroc_support_vs_contradict": auroc,
+                },
+            },
+        )
 
 
 # ── Test 2: LOGIT-EXPECTATION (the paper's actual method, OpenAI raw) ─────
@@ -367,7 +415,9 @@ async def _logit_dist_over_digits(
     return {k: v / total for k, v in out.items()} if total > 0 else {}
 
 
-async def _logit_score(model: str, ex: dict, g: int, *, reason: bool = False) -> float | None:
+async def _logit_score(
+    model: str, ex: dict, g: int, *, reason: bool = False
+) -> float | None:
     """Expected support score in [0,1] from the logit distribution (0..g).
 
     ``reason=True`` lets the judge reason BEFORE emitting the score token — the
@@ -390,7 +440,9 @@ async def _logit_score(model: str, ex: dict, g: int, *, reason: bool = False) ->
             "First reason in one or two short sentences. Then, on a new line, "
             "give your final answer in exactly this form:\nSCORE: <integer>"
         )
-        dist = await _logit_dist_over_digits(model, prompt, g, marker="SCORE", budget=300)
+        dist = await _logit_dist_over_digits(
+            model, prompt, g, marker="SCORE", budget=300
+        )
     else:
         prompt = head + "Reply with ONLY the single integer:"
         dist = await _logit_dist_over_digits(model, prompt, g)
@@ -400,9 +452,15 @@ async def _logit_score(model: str, ex: dict, g: int, *, reason: bool = False) ->
     return val
 
 
-async def _logit_compare_one(model: str, ex: dict, order: str, *, reason: bool) -> float | None:
+async def _logit_compare_one(
+    model: str, ex: dict, order: str, *, reason: bool
+) -> float | None:
     """p(Response 1 is better) from the logit of the '1' vs '2' token."""
-    r1, r2 = (ex["response_a"], ex["response_b"]) if order == "AB" else (ex["response_b"], ex["response_a"])
+    r1, r2 = (
+        (ex["response_a"], ex["response_b"])
+        if order == "AB"
+        else (ex["response_b"], ex["response_a"])
+    )
     head = (
         f"QUESTION: {ex['question']}\n\n--- RESPONSE 1 ---\n{r1}\n\n"
         f"--- RESPONSE 2 ---\n{r2}\n\nWhich response better answers the question?\n"
@@ -412,7 +470,9 @@ async def _logit_compare_one(model: str, ex: dict, order: str, *, reason: bool) 
             "First reason in one or two short sentences. Then, on a new line, "
             "give your final answer in exactly this form:\nANSWER: <1 or 2>"
         )
-        dist = await _logit_dist_over_digits(model, prompt, 2, marker="ANSWER", budget=300)
+        dist = await _logit_dist_over_digits(
+            model, prompt, 2, marker="ANSWER", budget=300
+        )
     else:
         prompt = head + "Reply with ONLY the single digit 1 or 2:"
         dist = await _logit_dist_over_digits(model, prompt, 2)
@@ -429,7 +489,9 @@ async def _logit_compare(model: str, ex: dict, *, reason: bool = False) -> float
     if key in _CACHE_MEM:
         return _CACHE_MEM[key]
     ab = await _logit_compare_one(model, ex, "AB", reason=reason)  # p(a better)
-    ba = await _logit_compare_one(model, ex, "BA", reason=reason)  # p(b better) -> 1-that
+    ba = await _logit_compare_one(
+        model, ex, "BA", reason=reason
+    )  # p(b better) -> 1-that
     vals = [v for v in (ab, (1 - ba) if ba is not None else None) if v is not None]
     val = sum(vals) / len(vals) if vals else None
     _CACHE_MEM[key] = val
@@ -446,7 +508,7 @@ async def cmd_logit(args: argparse.Namespace) -> None:
 
     for model in args.model:
         mode = "REASON-THEN-SCORE" if reason else "SCORE-ONLY (no reasoning)"
-        print(f"\n{'='*70}\n{model}  —  LOGIT-EXPECTATION [{mode}]\n{'='*70}")
+        print(f"\n{'=' * 70}\n{model}  —  LOGIT-EXPECTATION [{mode}]\n{'=' * 70}")
 
         # compare: continuous logit preference, order-averaged
         correct = abstain = 0
@@ -457,8 +519,10 @@ async def cmd_logit(args: argparse.Namespace) -> None:
                 continue
             correct += ("a" if pa > 0.5 else "b") == ex["gold"].lower()
         n = len(compare)
-        print(f"\ncompare (n={n}): logit-expectation acc "
-              f"{correct/n:.0%}  (abstain {abstain})")
+        print(
+            f"\ncompare (n={n}): logit-expectation acc "
+            f"{correct / n:.0%}  (abstain {abstain})"
+        )
 
         # score: AUROC per granularity — does finer granularity separate better?
         print(f"\nscore (n={len(score)}): AUROC(logit-score; SUPPORT vs CONTRADICT)")
@@ -473,8 +537,10 @@ async def cmd_logit(args: argparse.Namespace) -> None:
                 q[ex["gold_label"]].append(v)
             auroc = _auroc(q["SUPPORT"], q["CONTRADICT"])
             snr = _snr(q["SUPPORT"], q["CONTRADICT"])
-            print(f"  G={g:2d} (0..{g}): AUROC {auroc if auroc is None else round(auroc,3)}"
-                  f"   SNR {snr if snr is None else round(snr,2)}   (missing {miss})")
+            print(
+                f"  G={g:2d} (0..{g}): AUROC {auroc if auroc is None else round(auroc, 3)}"
+                f"   SNR {snr if snr is None else round(snr, 2)}   (missing {miss})"
+            )
 
         _dump("logit", model, {"note": "logit-expectation; see stdout"})
 
@@ -510,8 +576,10 @@ async def cmd_test3(args: argparse.Namespace) -> None:
                 spreads.append(max(draws) - min(draws))
                 pred = "a" if mean_e > 0.5 else "b"
                 correct += pred == ex["gold"].lower()
-            print(f"  K={k:2d}: acc {correct/len(data):.0%}  "
-                  f"mean draw-spread {sum(spreads)/len(spreads):.3f}")
+            print(
+                f"  K={k:2d}: acc {correct / len(data):.0%}  "
+                f"mean draw-spread {sum(spreads) / len(spreads):.3f}"
+            )
 
 
 # ── dataset expansion (for a powered run; not called in the cheap slice) ──
@@ -540,17 +608,31 @@ def cmd_dataset(args: argparse.Namespace) -> None:
     jb = judgebench.load_judgebench()
     jb_bal = _balanced(jb, lambda e: e.gold, n)  # balance gold a/b
     compare = [
-        {"id": str(e.pair_id), "question": e.question,
-         "response_a": e.response_a, "response_b": e.response_b,
-         "gold": "a" if e.gold == 0 else "b", "source": "judgebench"}
+        {
+            "id": str(e.pair_id),
+            "question": e.question,
+            "response_a": e.response_a,
+            "response_b": e.response_b,
+            "gold": "a" if e.gold == 0 else "b",
+            "source": "judgebench",
+        }
         for e in jb_bal[: 2 * n]
     ]
-    sf = scifact.load_scifact(str(_REPO / "experiments/dirichlet_confidence/data/scifact"))
+    sf = scifact.load_scifact(
+        str(_REPO / "experiments/dirichlet_confidence/data/scifact")
+    )
     _EXP = {"SUPPORT": "meets", "CONTRADICT": "fails", "NOINFO": "partial"}
-    sf_bal = _balanced(sf, lambda e: e.label_name, n)  # balance SUPPORT/CONTRADICT/NOINFO
+    sf_bal = _balanced(
+        sf, lambda e: e.label_name, n
+    )  # balance SUPPORT/CONTRADICT/NOINFO
     score = [
-        {"id": str(e.claim_id), "claim": e.claim, "evidence": e.evidence,
-         "gold_label": e.label_name, "expected_verdict": _EXP[e.label_name]}
+        {
+            "id": str(e.claim_id),
+            "claim": e.claim,
+            "evidence": e.evidence,
+            "gold_label": e.label_name,
+            "expected_verdict": _EXP[e.label_name],
+        }
         for e in sf_bal[: 3 * n]
     ]
     out = _HERE / "data_powered.json"
@@ -560,7 +642,9 @@ def cmd_dataset(args: argparse.Namespace) -> None:
 
 def _dump(test: str, model: str, payload: Any) -> None:
     safe = model.replace(":", "_").replace("/", "_")
-    (_HERE / "results" / f"{test}_{safe}.json").write_text(json.dumps(payload, indent=2))
+    (_HERE / "results" / f"{test}_{safe}.json").write_text(
+        json.dumps(payload, indent=2)
+    )
 
 
 def main() -> None:
@@ -575,17 +659,29 @@ def main() -> None:
         if name in ("test1", "logit"):
             sp.add_argument("--data", default=None)
         if name == "logit":
-            sp.add_argument("--reason", action="store_true",
-                            help="let the judge reason BEFORE the score token "
-                                 "(fair comparison vs the verbalized route)")
-            sp.add_argument("--g", type=int, default=None,
-                            help="single granularity instead of the 2/5/9 sweep")
+            sp.add_argument(
+                "--reason",
+                action="store_true",
+                help="let the judge reason BEFORE the score token "
+                "(fair comparison vs the verbalized route)",
+            )
+            sp.add_argument(
+                "--g",
+                type=int,
+                default=None,
+                help="single granularity instead of the 2/5/9 sweep",
+            )
         if name == "test3":
             sp.add_argument("--k", type=int, default=8)
         if name == "dataset":
             sp.add_argument("--n", type=int, default=150)
     args = p.parse_args()
-    fn = {"peek": cmd_peek, "test1": cmd_test1, "logit": cmd_logit, "test3": cmd_test3}.get(args.cmd)
+    fn = {
+        "peek": cmd_peek,
+        "test1": cmd_test1,
+        "logit": cmd_logit,
+        "test3": cmd_test3,
+    }.get(args.cmd)
     if args.cmd == "dataset":
         cmd_dataset(args)
     else:

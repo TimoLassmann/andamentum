@@ -224,9 +224,7 @@ def _diff_operations(old: str, new: str) -> list[tuple[str, int, int, str]]:
     return operations
 
 
-def _anchor_for_insertion(
-    atoms: Sequence[Atom], index: int
-) -> tuple[Any, int] | None:
+def _anchor_for_insertion(atoms: Sequence[Atom], index: int) -> tuple[Any, int] | None:
     """Where to put text inserted at atom *index*: ``(<w:t> element, offset)``.
 
     Prefers to append after the preceding character so the insertion inherits
@@ -516,9 +514,7 @@ def translate_offset(offset: int, applied: Sequence[Edit], *, clamp: str) -> int
     return offset + shift
 
 
-def translate_span(
-    span: AtomSpan, applied: Sequence[Edit]
-) -> AtomSpan:
+def translate_span(span: AtomSpan, applied: Sequence[Edit]) -> AtomSpan:
     """*span* in the coordinates the document has after *applied* has run."""
     return AtomSpan(
         translate_offset(span.start, applied, clamp="start"),
@@ -560,9 +556,7 @@ def split_at_boundaries(atoms: Sequence[Atom], spans: Iterable[AtomSpan]) -> Non
             split_run_at(atom.element, atom.offset)
 
 
-def run_bounds(
-    atoms: Sequence[Atom], span: AtomSpan
-) -> tuple[Any, Any] | None:
+def run_bounds(atoms: Sequence[Atom], span: AtomSpan) -> tuple[Any, Any] | None:
     """The first and last run *span* covers, or None if it covers none.
 
     Call after :func:`split_at_boundaries`, which guarantees the span occupies
@@ -659,8 +653,7 @@ def apply_edits(
             (
                 other
                 for other in accepted
-                if other.span.start < edit.span.end
-                and edit.span.start < other.span.end
+                if other.span.start < edit.span.end and edit.span.start < other.span.end
             ),
             None,
         )

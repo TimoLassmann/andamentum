@@ -40,8 +40,13 @@ async def test_author_year_problems_are_found() -> None:
     report = await _read(AUTHOR_YEAR)
     by_kind = {p.kind: p for p in report.problems}
     # Smith 2019 has no entry; Turro is 2020 in the list; Zurynski is never cited.
-    assert AUTHOR_YEAR[by_kind["cited_not_listed"].start : by_kind["cited_not_listed"].end].startswith("(Yang")
-    assert "2019" in by_kind["year_mismatch"].issue and "2020" in by_kind["year_mismatch"].issue
+    assert AUTHOR_YEAR[
+        by_kind["cited_not_listed"].start : by_kind["cited_not_listed"].end
+    ].startswith("(Yang")
+    assert (
+        "2019" in by_kind["year_mismatch"].issue
+        and "2020" in by_kind["year_mismatch"].issue
+    )
     assert AUTHOR_YEAR[by_kind["listed_not_cited"].start :].startswith("Zurynski")
     # The Turro entry is cited, with the wrong year: reported once, not also as never cited.
     assert sum(1 for p in report.problems if p.kind == "listed_not_cited") == 1
@@ -130,7 +135,11 @@ async def test_without_formatting_the_citation_order_reads_glued_digits() -> Non
     assert report.style is not None and report.style.style == "numeric_superscript"
     assert [c.numbers for c in report.citations] == [[1], [2], [3]]
     assert all(
-        j.reason in ("rule: the next number in citation order", "rule: a raised number after a word or punctuation")
+        j.reason
+        in (
+            "rule: the next number in citation order",
+            "rule: a raised number after a word or punctuation",
+        )
         or not j.is_citation
         for j in report.judged
     )
@@ -140,7 +149,9 @@ async def test_without_formatting_the_citation_order_reads_glued_digits() -> Non
 
 
 async def test_what_the_rules_leave_open_is_unjudged_without_a_model() -> None:
-    text = SUPERSCRIPT.replace("We grew 105 cells on 3 m2 plates.", "Reads were counted at day3.")
+    text = SUPERSCRIPT.replace(
+        "We grew 105 cells on 3 m2 plates.", "Reads were counted at day3."
+    )
     report = await _read(text)
     unjudged = [j for j in report.judged if j.reason.startswith("not judged")]
     assert [text[j.candidate.start - 3 : j.candidate.end] for j in unjudged] == ["day3"]
@@ -148,7 +159,9 @@ async def test_what_the_rules_leave_open_is_unjudged_without_a_model() -> None:
     assert not [p for p in report.problems if p.kind == "listed_not_cited"]
 
 
-async def test_the_model_sees_only_the_open_cases_in_short_excerpts(monkeypatch) -> None:
+async def test_the_model_sees_only_the_open_cases_in_short_excerpts(
+    monkeypatch,
+) -> None:
     seen: list[str] = []
 
     async def fake(items: str, *, style: str, model: str, list_line: str = ""):
@@ -156,15 +169,23 @@ async def test_the_model_sees_only_the_open_cases_in_short_excerpts(monkeypatch)
         return llm_mod.CitationIds(citation_ids=[])
 
     monkeypatch.setattr(llm_mod, "ask_citations", fake)
-    text = SUPERSCRIPT.replace("We grew 105 cells on 3 m2 plates.", "Reads were counted at day3.")
+    text = SUPERSCRIPT.replace(
+        "We grew 105 cells on 3 m2 plates.", "Reads were counted at day3."
+    )
     report = await _read(text, model="stub:model")
     assert len(seen) == 1 and seen[0].count("⟦") == 1
     assert "day⟦3⟧" in seen[0]
     assert len(seen[0]) < 2 * llm_mod.CONTEXT_CHARS + 40
-    assert [j.reason for j in report.judged if "day" in text[j.candidate.start - 3 : j.candidate.start]] == ["model"]
+    assert [
+        j.reason
+        for j in report.judged
+        if "day" in text[j.candidate.start - 3 : j.candidate.start]
+    ] == ["model"]
 
 
-async def test_mixed_evidence_goes_to_the_model_and_its_answer_is_checked(monkeypatch) -> None:
+async def test_mixed_evidence_goes_to_the_model_and_its_answer_is_checked(
+    monkeypatch,
+) -> None:
     async def says_author_year(prompt: str, *, model: str):
         return llm_mod.StyleAnswer(style="author_year", reason="stub")
 
@@ -191,14 +212,21 @@ async def test_without_a_model_mixed_evidence_is_undecided_and_checks_nothing() 
 async def test_a_reference_manager_field_settles_the_style() -> None:
     text = "Intro\nClaim (Smith, 2020).\nReferences\nSmith, J. (2020). Paper. J 1, 1.\n"
     start = text.index("(Smith")
-    hint = Hint(kind="field_citation", start=start, end=start + len("(Smith, 2020)"), payload="ADDIN ZOTERO_ITEM CSL_CITATION {}")
+    hint = Hint(
+        kind="field_citation",
+        start=start,
+        end=start + len("(Smith, 2020)"),
+        payload="ADDIN ZOTERO_ITEM CSL_CITATION {}",
+    )
     report = await _read(text, hints=[hint])
     assert report.style is not None
     assert (report.style.style, report.style.decided_by) == ("author_year", "evidence")
     assert [j.reason for j in report.judged] == ["rule: a reference-manager field"]
 
 
-async def test_the_model_cannot_name_a_style_whose_only_candidates_were_ruled_out(monkeypatch) -> None:
+async def test_the_model_cannot_name_a_style_whose_only_candidates_were_ruled_out(
+    monkeypatch,
+) -> None:
     """MLA cites author and title with no year, so nothing points at an entry.
     Its only raised numbers are an affiliation and an exponent — a local model
     named "superscript" from them."""
@@ -212,6 +240,9 @@ async def test_the_model_cannot_name_a_style_whose_only_candidates_were_ruled_ou
         "Claims were made (Smith, “A Title”). We grew 105 cells.\n"
         "Works Cited\nSmith, John. “A Title.” Journal, vol. 1, 2020, pp. 1-2.\n"
     )
-    hints = [_hint_after(text, "Ada Lovelace", "1"), _hint_after(text, "We grew 10", "5")]
+    hints = [
+        _hint_after(text, "Ada Lovelace", "1"),
+        _hint_after(text, "We grew 10", "5"),
+    ]
     report = await _read(text, hints=hints, model="stub:model")
     assert report.style is not None and report.style.style == "undecided"

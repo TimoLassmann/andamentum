@@ -625,7 +625,9 @@ async def test_resolve_uncertainties_skips_an_uncertainty_whose_claims_are_all_t
     the resolution. The uncertainty itself is left untouched (still
     unresolved), so nothing here manufactures a false resolution either.
     """
-    capped, repo = await _make_claim_and_repo(tmp_path, "s5_all_terminal", cycle_capped=True)
+    capped, repo = await _make_claim_and_repo(
+        tmp_path, "s5_all_terminal", cycle_capped=True
+    )
     obj_id = capped.objective_id
     abandoned = Claim(
         objective_id=obj_id,
@@ -711,7 +713,9 @@ async def test_resolve_uncertainties_still_resolves_when_one_affected_claim_is_l
     """Sanity: the skip requires ALL affected claims to be terminal. One
     live (non-capped, non-abandoned) affected claim among several is
     enough to resolve normally."""
-    capped, repo = await _make_claim_and_repo(tmp_path, "s5_one_live", cycle_capped=True)
+    capped, repo = await _make_claim_and_repo(
+        tmp_path, "s5_one_live", cycle_capped=True
+    )
     obj_id = capped.objective_id
     live = Claim(
         objective_id=obj_id,
@@ -817,9 +821,7 @@ async def test_conclude_at_cycle_cap_once_per_firing_not_per_reentry_on_unchange
     state.scrutiny_resolve_cycles[claim.entity_id] = SCRUTINY_RESOLVE_CYCLE_CAP
     from .conftest import FakeAgentRunner
 
-    deps = EpistemicDeps(
-        repo=repo, agent_runner=FakeAgentRunner(), embedding_model="t"
-    )
+    deps = EpistemicDeps(repo=repo, agent_runner=FakeAgentRunner(), embedding_model="t")
 
     # ── Firing 1 (ResolveUncertainties, primary loop-breaker) ──
     await ResolveUncertainties().run(_FakeRunContext(state, deps))  # type: ignore[arg-type]
@@ -847,8 +849,7 @@ async def test_conclude_at_cycle_cap_once_per_firing_not_per_reentry_on_unchange
     state.claims_needing_rescrutiny.add(claim.entity_id)
     await Scrutinize().run(_FakeRunContext(state, deps))  # type: ignore[arg-type]
     assert len(_ops(state, "conclude_at_cycle_cap")) == 2, (
-        "conclude_at_cycle_cap did not re-run after the evidence set "
-        "actually changed."
+        "conclude_at_cycle_cap did not re-run after the evidence set actually changed."
     )
     after_3 = await repo.get("claim", claim.entity_id)
     fp_at_firing_3 = await claim_evidence_fingerprint(after_3, repo)
@@ -1039,9 +1040,7 @@ async def test_g1_changed_fingerprint_promotable_resets_only_on_success(
     """(a) Changed fingerprint + promotable: the claim is promoted,
     verification flags/verdict are reset, and routing defaults are set —
     all AFTER the successful promote_claim."""
-    claim, ev1, repo = await _g1_contracted_claim_and_repo(
-        tmp_path, "g1_promotable"
-    )
+    claim, ev1, repo = await _g1_contracted_claim_and_repo(tmp_path, "g1_promotable")
     obj_id = claim.objective_id
 
     # New evidence changes the fingerprint and gives the claim a second
@@ -1095,9 +1094,7 @@ async def test_g1_changed_fingerprint_refused_promotion_keeps_verdict(
     verdict is untouched, and contraction_fingerprint is unchanged — the
     reorder must not erase state on a refusal that has nothing to do
     with the fingerprint check itself."""
-    claim, ev1, repo = await _g1_contracted_claim_and_repo(
-        tmp_path, "g1_refused"
-    )
+    claim, ev1, repo = await _g1_contracted_claim_and_repo(tmp_path, "g1_refused")
     obj_id = claim.objective_id
 
     ev2 = Evidence(

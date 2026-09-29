@@ -499,7 +499,9 @@ class ScrutiniseClaimOperation(BaseOperation):
             tasks.append(asyncio.ensure_future(_check_single_evidence(ev_summary)))
         if len(evidence_summaries) >= 2:
             all_evidence_text = "\n\n".join(s.text for s in evidence_summaries)
-            tasks.append(asyncio.ensure_future(_check_contradictions(all_evidence_text)))
+            tasks.append(
+                asyncio.ensure_future(_check_contradictions(all_evidence_text))
+            )
 
         results = await asyncio.gather(*tasks)
         found_issues: list[FoundIssue] = [r for r in results if r is not None]
@@ -618,7 +620,10 @@ class ScrutiniseClaimOperation(BaseOperation):
             # earlier live pass, on evidence that still carries it.
             return standing_dissents
 
-        from ..direction_opinion import confirm_direction, select_confirmation_candidates
+        from ..direction_opinion import (
+            confirm_direction,
+            select_confirmation_candidates,
+        )
         from ..thresholds import (
             JUDGMENT_CONFIRMATION_MAX_PER_CLAIM,
             JUDGMENT_CONFIRMATION_MAX_PER_PASS,

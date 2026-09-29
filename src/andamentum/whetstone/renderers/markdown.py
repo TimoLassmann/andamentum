@@ -213,7 +213,6 @@ def _render_questions(qs: Iterable[AuthorQuestion]) -> str:
     return "\n".join(lines)
 
 
-
 def _render_novelty_claims(claims: list[NoveltyClaim]) -> str:
     """What the draft stakes as new — found on every run, verified on none.
 
@@ -233,11 +232,16 @@ def _render_novelty_claims(claims: list[NoveltyClaim]) -> str:
         "",
     ]
     for claim in claims:
-        lines.append(f"- \"{claim.claim_text}\"")
+        lines.append(f'- "{claim.claim_text}"')
         if claim.why_load_bearing:
             lines.append(f"  - _Why it matters:_ {claim.why_load_bearing}")
-    lines += ["", "_To check them automatically, re-run with --check-novelty. That sends these sentences to a search engine._", ""]
+    lines += [
+        "",
+        "_To check them automatically, re-run with --check-novelty. That sends these sentences to a search engine._",
+        "",
+    ]
     return "\n".join(lines)
+
 
 def _render_declined(declined: list[DeclinedFinding]) -> str:
     """Findings the editor read and could not answer with a rewrite.

@@ -81,6 +81,7 @@ def test_multi_page_document_is_judged_on_the_sample():
 
 # ---------- thresholds -----------------------------------------------------
 
+
 def test_sparse_text_falls_below_the_threshold():
     """A title page with a dozen characters is not a usable text layer."""
     assert has_text_layer(_pdf_with_text(text="Title")) is False

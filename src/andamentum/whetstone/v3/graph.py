@@ -333,7 +333,11 @@ class EditSections(BaseNode[V3State, V3Deps, ReviewResult]):
             # with it. This is the whole point of running the editor last.
             findings=[
                 *ctx.state.findings,
-                *(f for f in map(to_editor_finding, ctx.deps.extra_findings) if f is not None),
+                *(
+                    f
+                    for f in map(to_editor_finding, ctx.deps.extra_findings)
+                    if f is not None
+                ),
             ],
             brief=ctx.deps.brief,
         )
@@ -676,7 +680,9 @@ async def review_document_v3(
             # Read from the file the text is the projection of, so a superscript
             # citation counts in the review's citation line as it does in a
             # reference check.
-            citation_hints=read_citation_hints(document.docx_path, expected_text=document.text),
+            citation_hints=read_citation_hints(
+                document.docx_path, expected_text=document.text
+            ),
         )
     finally:
         if owned:

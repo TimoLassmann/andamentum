@@ -283,9 +283,7 @@ def make_anchor_validator(
                 n_locked,
                 len(unanchored),
             )
-        return output_class(
-            findings=[f for group in locked.values() for f in group]
-        )
+        return output_class(findings=[f for group in locked.values() for f in group])
 
     return validator
 

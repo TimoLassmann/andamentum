@@ -91,7 +91,9 @@ async def lookup_entry(
             headers=headers,
         )
         if isinstance(response, str):
-            return LookupResult(entry_number=entry.number, status="service_error", detail=response)
+            return LookupResult(
+                entry_number=entry.number, status="service_error", detail=response
+            )
         if response.status_code == 404:
             return LookupResult(
                 entry_number=entry.number,
@@ -150,7 +152,11 @@ def _user_agent(mailto: str | None) -> str:
 
 
 async def _get(
-    client: httpx.AsyncClient, url: str, *, params: dict[str, str], headers: dict[str, str]
+    client: httpx.AsyncClient,
+    url: str,
+    *,
+    params: dict[str, str],
+    headers: dict[str, str],
 ) -> httpx.Response | str:
     """The response, or a one-line reason the call failed.
 
@@ -263,7 +269,9 @@ def author_in_entry(family: str, entry_text: str) -> bool:
 
 
 def _year_agrees(match: Match, years: set[int]) -> bool:
-    return not years or bool(years & set(match.years or ([match.year] if match.year else [])))
+    return not years or bool(
+        years & set(match.years or ([match.year] if match.year else []))
+    )
 
 
 def _numbers_agree(match: Match, entry_text: str) -> bool:
@@ -293,7 +301,9 @@ def _namesake(match: Match, *, entry_text: str, years: set[int]) -> bool:
     )
 
 
-def _judge(entry: ReferenceEntry, candidates: list[Match], *, by_doi: bool) -> LookupResult:
+def _judge(
+    entry: ReferenceEntry, candidates: list[Match], *, by_doi: bool
+) -> LookupResult:
     number = entry.number
     years = years_in(entry.text)
     matched = [

@@ -348,9 +348,7 @@ async def test_a_judge_failure_propagates_out_of_scrutiny(
         await _op(repo, runner=fake_runner).execute(_work(claim))
 
 
-async def test_offline_scrutiny_never_reaches_the_judge(
-    repo, stub_llm_judge
-) -> None:
+async def test_offline_scrutiny_never_reaches_the_judge(repo, stub_llm_judge) -> None:
     """PINS: the whole existing offline suite stays model-free. A mandatory
     second opinion would break dozens of tests; this one names why it is
     not mandatory."""

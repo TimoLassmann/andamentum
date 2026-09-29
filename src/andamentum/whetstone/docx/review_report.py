@@ -691,9 +691,7 @@ def _parse_inline_markdown(text: str, parent_elem):
             t_elem.text = part
             # Preserve space if text has leading/trailing spaces
             if part and (part[0].isspace() or part[-1].isspace()):
-                t_elem.set(
-                    "{http://www.w3.org/XML/1998/namespace}space", "preserve"
-                )
+                t_elem.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
 
 
 def _make_styled_paragraph(*, style_name, body: str):
@@ -753,9 +751,7 @@ def _is_markdown_table_row(line: str) -> bool:
     pipe-wrapped line is ordinary prose.
     """
     stripped = line.strip()
-    return (
-        len(stripped) >= 2 and stripped.startswith("|") and stripped.endswith("|")
-    )
+    return len(stripped) >= 2 and stripped.startswith("|") and stripped.endswith("|")
 
 
 def _split_markdown_table_row(line: str) -> list[str]:
@@ -766,9 +762,7 @@ def _split_markdown_table_row(line: str) -> list[str]:
     gain a column and make the whole table look ragged.
     """
     inner = line.strip()[1:-1]
-    return [
-        cell.replace("\\|", "|").strip() for cell in re.split(r"(?<!\\)\|", inner)
-    ]
+    return [cell.replace("\\|", "|").strip() for cell in re.split(r"(?<!\\)\|", inner)]
 
 
 def _is_markdown_table_separator_row(line: str) -> bool:
@@ -812,14 +806,10 @@ def _build_markdown_table_elements(rows: list[str]) -> list:
         )
         return [_build_review_paragraph(line) for line in rows]
 
-    return [
-        _make_table_element(header_cells=header_cells, body_rows=body_rows)
-    ]
+    return [_make_table_element(header_cells=header_cells, body_rows=body_rows)]
 
 
-def _make_table_element(
-    *, header_cells: list[str], body_rows: list[list[str]]
-):
+def _make_table_element(*, header_cells: list[str], body_rows: list[list[str]]):
     """Build a ``<w:tbl>`` with a bolded, page-repeating header row."""
     tbl = etree.Element(f"{{{NS['w']}}}tbl")
 

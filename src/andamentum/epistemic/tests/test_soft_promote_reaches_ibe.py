@@ -109,9 +109,7 @@ async def test_soft_promote_routes_to_promote_to_supported(
     next_node = await AbandonOrDemote().run(ctx)  # type: ignore[arg-type]
 
     # 1. Soft-promote ran (the precondition for the routing fix to matter).
-    soft_calls = [
-        op for op in state.operations_log if op.operation == "soft_promote"
-    ]
+    soft_calls = [op for op in state.operations_log if op.operation == "soft_promote"]
     assert len(soft_calls) == 1, (
         f"Expected one soft_promote call, got {len(soft_calls)}: {soft_calls}"
     )

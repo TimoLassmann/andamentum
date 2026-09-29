@@ -30,7 +30,9 @@ def _overlaps(a: tuple[int, int], b: tuple[int, int]) -> bool:
 
 async def score(case: dict, directory: Path, model: str | None) -> dict:
     document = await open_source(str(directory / case["file"]))
-    assert document.text == case["text"], f"{case['style']}: projection differs from the manifest"
+    assert document.text == case["text"], (
+        f"{case['style']}: projection differs from the manifest"
+    )
     report = await check_references(
         document.text,
         sections=[(s.title, s.start, s.end) for s in document.sections],
@@ -49,7 +51,11 @@ async def score(case: dict, directory: Path, model: str | None) -> dict:
     for expected in case["planted"]:
         span = (expected["start"], expected["end"])
         for index, problem in enumerate(report.problems):
-            if index not in explained and problem.kind == expected["kind"] and _overlaps((problem.start, problem.end), span):
+            if (
+                index not in explained
+                and problem.kind == expected["kind"]
+                and _overlaps((problem.start, problem.end), span)
+            ):
                 explained.add(index)
                 found_planted += 1
                 break
@@ -63,13 +69,17 @@ async def score(case: dict, directory: Path, model: str | None) -> dict:
         "recall": f"{found}/{len(truth)}",
         "precision": f"{real}/{len(accepted)}",
         "planted": f"{found_planted}/{len(case['planted'])}",
-        "false_alarms": [p.kind for i, p in enumerate(report.problems) if i not in explained],
+        "false_alarms": [
+            p.kind for i, p in enumerate(report.problems) if i not in explained
+        ],
         "model_judged": by_model,
         "unjudged": unjudged,
     }
 
 
-async def score_pdf(case: dict, directory: Path, model: str | None, *, soffice: str) -> dict:
+async def score_pdf(
+    case: dict, directory: Path, model: str | None, *, soffice: str
+) -> dict:
     """The document as a PDF, read through whetstone's real path."""
     import subprocess
 
@@ -78,7 +88,15 @@ async def score_pdf(case: dict, directory: Path, model: str | None, *, soffice: 
     pdf = pdf_dir / case["file"].replace(".docx", ".pdf")
     if not pdf.exists():
         subprocess.run(
-            [soffice, "--headless", "--convert-to", "pdf", "--outdir", str(pdf_dir), str(directory / case["file"])],
+            [
+                soffice,
+                "--headless",
+                "--convert-to",
+                "pdf",
+                "--outdir",
+                str(pdf_dir),
+                str(directory / case["file"]),
+            ],
             check=True,
             capture_output=True,
         )
@@ -100,7 +118,9 @@ async def score_pdf(case: dict, directory: Path, model: str | None, *, soffice: 
             hits += 1
     read_as = report.style.style if report.style else "none"
     wanted = case["expected_style"]
-    ok = (read_as == wanted or (wanted == "unsupported" and read_as == "undecided")) and not remaining
+    ok = (
+        read_as == wanted or (wanted == "unsupported" and read_as == "undecided")
+    ) and not remaining
     return {
         "style": case["style"],
         "read_as": read_as,
@@ -123,7 +143,9 @@ async def main() -> None:
         "harvest, as a PDF submission would be. Scores the style read and the "
         "planted problems by kind; citation spans do not carry over.",
     )
-    parser.add_argument("--soffice", default="soffice", help="LibreOffice binary for --pdf.")
+    parser.add_argument(
+        "--soffice", default="soffice", help="LibreOffice binary for --pdf."
+    )
     args = parser.parse_args()
     cases = json.loads((args.corpus / "manifest.json").read_text())
     if args.only:
@@ -140,7 +162,12 @@ async def main() -> None:
     for case in cases:  # sequential: never two model calls at once
         rows.append(await score(case, args.corpus, args.model))
     for row in rows:
-        ok = "OK " if row["read_as"] == row["expected"] or (row["expected"] == "unsupported" and row["read_as"] == "undecided") else "BAD"
+        ok = (
+            "OK "
+            if row["read_as"] == row["expected"]
+            or (row["expected"] == "unsupported" and row["read_as"] == "undecided")
+            else "BAD"
+        )
         print(
             f"{ok} {row['style']:<30} {row['expected']:<20} read {row['read_as']:<20} "
             f"by {row['decided_by']:<8} recall {row['recall']:<5} precision {row['precision']:<5} "

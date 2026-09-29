@@ -32,6 +32,7 @@ if TYPE_CHECKING:
 REFERENCE_CHECKER = "Reference checker"
 REFERENCE_CHECKER_AUTHOR = "Reference checker (andamentum-whetstone, AI)"
 
+
 def _offline(kind: str) -> bool:
     from andamentum.references import LOOKUP_KINDS
 
@@ -103,7 +104,9 @@ async def check_open_document(
     return to_review_result(report, document=document)
 
 
-def to_review_result(report: "ReferenceReport", *, document: "ReviewedDocument") -> ReviewResult:
+def to_review_result(
+    report: "ReferenceReport", *, document: "ReviewedDocument"
+) -> ReviewResult:
     """The report as findings located in *document*, plus a summary."""
     findings: list[Finding] = []
     for problem in report.problems:
@@ -146,7 +149,9 @@ def to_review_result(report: "ReferenceReport", *, document: "ReviewedDocument")
         findings=findings,
         degraded=bool(unchecked),
         degraded_reason=degraded_reason,
-        document_map=[SectionCard(section_id=s.id, title=s.title) for s in document.sections],
+        document_map=[
+            SectionCard(section_id=s.id, title=s.title) for s in document.sections
+        ],
     )
 
 
@@ -208,19 +213,36 @@ def _summary(report: "ReferenceReport") -> str:
             f"(decided {how}: {style.reason})"
         )
         accepted = [j for j in report.judged if j.is_citation]
-        rejected = [j for j in report.judged if not j.is_citation and not j.reason.startswith(("not judged", "rule: not the document"))]
+        rejected = [
+            j
+            for j in report.judged
+            if not j.is_citation
+            and not j.reason.startswith(("not judged", "rule: not the document"))
+        ]
         unjudged = [j for j in report.judged if j.reason.startswith("not judged")]
         by_model = sum(1 for j in report.judged if j.reason == "model")
         lines.append(
             f"- **Citations read:** {len(accepted)}"
-            + (f"; {len(rejected)} set aside as not citations ({_reasons(rejected)})" if rejected else "")
+            + (
+                f"; {len(rejected)} set aside as not citations ({_reasons(rejected)})"
+                if rejected
+                else ""
+            )
             + (f"; {by_model} judged by the model" if by_model else "")
-            + (f"; {len(unjudged)} left unjudged — pass --model to judge them" if unjudged else "")
+            + (
+                f"; {len(unjudged)} left unjudged — pass --model to judge them"
+                if unjudged
+                else ""
+            )
             + "."
         )
         offline = [p for p in report.problems if _offline(p.kind)]
         lines.append(
-            ("- **The notes, checked in order:** " if notes_only else "- **Citations against the list:** ")
+            (
+                "- **The notes, checked in order:** "
+                if notes_only
+                else "- **Citations against the list:** "
+            )
             + (
                 f"{len(offline)} problem{'s' if len(offline) != 1 else ''}."
                 if offline
@@ -232,7 +254,10 @@ def _summary(report: "ReferenceReport") -> str:
             )
         )
     if report.looked_up:
-        counts = {status: 0 for status in ("found", "not_found", "details_differ", "service_error")}
+        counts = {
+            status: 0
+            for status in ("found", "not_found", "details_differ", "service_error")
+        }
         for result in report.lookups:
             counts[result.status] += 1
         lines.append(
@@ -248,12 +273,14 @@ def _summary(report: "ReferenceReport") -> str:
         )
         lines.append(
             "- *Only the reference entries were sent to Crossref, never the "
-            "text of the draft. \"Not found\" means Crossref has no matching "
+            'text of the draft. "Not found" means Crossref has no matching '
             "record; some conference papers and reports are not indexed "
             "there.*"
         )
     else:
-        lines.append("- **Crossref lookup:** off, so the works themselves were not checked.")
+        lines.append(
+            "- **Crossref lookup:** off, so the works themselves were not checked."
+        )
     return "\n".join(lines)
 
 
@@ -262,4 +289,6 @@ def _reasons(judged: list) -> str:
     for j in judged:
         why = j.reason.removeprefix("rule: ")
         counts[why] = counts.get(why, 0) + 1
-    return "; ".join(f"{n} {why}" for why, n in sorted(counts.items(), key=lambda kv: -kv[1])[:3])
+    return "; ".join(
+        f"{n} {why}" for why, n in sorted(counts.items(), key=lambda kv: -kv[1])[:3]
+    )

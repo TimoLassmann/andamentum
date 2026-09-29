@@ -108,7 +108,9 @@ async def _setup(
 async def _run_cap(repo: EpistemicRepository, claim: Claim) -> Claim:
     op = ConcludeAtCycleCapOperation(repo=repo)
     result = await op.execute(
-        OperationInput(entity_id=claim.entity_id, entity_type="claim", operation="conclude")
+        OperationInput(
+            entity_id=claim.entity_id, entity_type="claim", operation="conclude"
+        )
     )
     assert result.success, result.message
     reloaded = await repo.get("claim", claim.entity_id)
@@ -147,7 +149,9 @@ async def test_cap_writes_when_resolution_bearing_agrees(tmp_path: Path) -> None
         uncertainty_type=UncertaintyType.CONTRADICTION,
         affected_claim_ids=[claim.entity_id],
     )
-    agreeing.resolve("Confirmed: the effect is real and refutes the claim.", bearing="refutes_claim")
+    agreeing.resolve(
+        "Confirmed: the effect is real and refutes the claim.", bearing="refutes_claim"
+    )
     await repo.save(agreeing)
 
     reloaded = await _run_cap(repo, claim)
@@ -173,7 +177,9 @@ async def test_cap_writes_when_only_neutral_or_unassessed_resolutions_exist(
         uncertainty_type=UncertaintyType.CONTRADICTION,
         affected_claim_ids=[claim.entity_id],
     )
-    neutral.resolve("Addressed, but it doesn't bear on truth either way.", bearing="neutral")
+    neutral.resolve(
+        "Addressed, but it doesn't bear on truth either way.", bearing="neutral"
+    )
     await repo.save(neutral)
 
     unassessed = Uncertainty(
@@ -196,7 +202,9 @@ async def test_cap_writes_when_only_neutral_or_unassessed_resolutions_exist(
 # ── Branch: an opposing resolution -> the cap abstains ──────────────────
 
 
-async def test_cap_abstains_when_resolution_bearing_opposes_supports(tmp_path: Path) -> None:
+async def test_cap_abstains_when_resolution_bearing_opposes_supports(
+    tmp_path: Path,
+) -> None:
     """Mass reading says 'supports'; a resolved uncertainty says
     'refutes_claim'. The cap must write no direction."""
     _obj, claim, repo = await _setup(
@@ -347,7 +355,10 @@ async def test_yield_clears_a_previously_cap_owned_verdict(tmp_path: Path) -> No
         uncertainty_type=UncertaintyType.CONTRADICTION,
         affected_claim_ids=[claim.entity_id],
     )
-    opposing.resolve("The refuting studies don't hold up; claim is supported.", bearing="supports_claim")
+    opposing.resolve(
+        "The refuting studies don't hold up; claim is supported.",
+        bearing="supports_claim",
+    )
     await repo.save(opposing)
 
     after_second = await _run_cap(repo, after_first)
@@ -382,7 +393,10 @@ async def test_yield_does_not_clear_a_verdict_it_does_not_own(tmp_path: Path) ->
         uncertainty_type=UncertaintyType.CONTRADICTION,
         affected_claim_ids=[claim.entity_id],
     )
-    opposing.resolve("The refuting studies don't hold up; claim is supported.", bearing="supports_claim")
+    opposing.resolve(
+        "The refuting studies don't hold up; claim is supported.",
+        bearing="supports_claim",
+    )
     await repo.save(opposing)
 
     reloaded = await _run_cap(repo, claim)

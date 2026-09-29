@@ -95,6 +95,7 @@ ConvertFn = Callable[[str], Awaitable[str]]
 _stores: dict[str, DocumentStore] = {}
 _preflight_done: set[str] = set()
 
+
 async def _get_store(database: str) -> DocumentStore:
     """Get or create an initialized DocumentStore."""
     if database not in _stores:
@@ -413,9 +414,7 @@ async def ingest(
     await _preflight(database, embedding_model=embedding_model)
 
     # --- Phase 2: Chunk, embed, store (can be repaired if interrupted) ---
-    await _run_phase2(
-        store, doc_id, content, doc_meta_dict["title"], embedding_model
-    )
+    await _run_phase2(store, doc_id, content, doc_meta_dict["title"], embedding_model)
     await _queue.set_ingest_status(str(store.db_path), doc_id, _queue.COMPLETE)
 
     logger.info(f"Ingested '{doc_meta_dict['title']}' into {database}: doc_id={doc_id}")
@@ -877,9 +876,7 @@ async def reembed_document(
     if doc is None:
         return False
 
-    await _run_phase2(
-        store, doc_id, doc.content, doc.metadata.title, embedding_model
-    )
+    await _run_phase2(store, doc_id, doc.content, doc.metadata.title, embedding_model)
     return True
 
 

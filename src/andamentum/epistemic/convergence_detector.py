@@ -200,7 +200,9 @@ def detect_convergence(
 
     # Step 9: Generate explanation
     explanation = (
-        _generate_explanation(clusters, verdict, independence_score, convergence_detected)
+        _generate_explanation(
+            clusters, verdict, independence_score, convergence_detected
+        )
         + floor_note
     )
 

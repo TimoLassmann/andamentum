@@ -189,9 +189,7 @@ def test_leaf_modules_do_not_import_the_second_opinion_drivers() -> None:
         scrutiny_weight,
     ):
         offenders = [
-            line
-            for line in _import_lines(module)
-            if any(d in line for d in drivers)
+            line for line in _import_lines(module) if any(d in line for d in drivers)
         ]
         assert not offenders, (
             f"{module.__name__} imports an llm_judge driver: {offenders}. "

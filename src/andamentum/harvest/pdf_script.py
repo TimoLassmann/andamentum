@@ -123,7 +123,9 @@ def _read_pages(document, pdfium) -> list[list[list[_Char]]]:
 
 def _script(pages: list[list[list[_Char]]]) -> PdfScript:
 
-    body_sizes = [c.size for page in pages for line in page for c in line if c.ch.isalpha()]
+    body_sizes = [
+        c.size for page in pages for line in page for c in line if c.ch.isalpha()
+    ]
     if not body_sizes:
         return PdfScript()
 
@@ -132,7 +134,9 @@ def _script(pages: list[list[list[_Char]]]) -> PdfScript:
         all_runs = _runs(_stream(lines), page=page_number)
         # Marks right after a digit are exponents (10⁵), not note marks.
         marks = {
-            int(r.text) for r in all_runs if r.text.isdigit() and not r.before[-1:].isdigit()
+            int(r.text)
+            for r in all_runs
+            if r.text.isdigit() and not r.before[-1:].isdigit()
         }
         footnote_start = _footnote_block_start(lines, marks=marks)
         body_lines = lines if footnote_start is None else lines[:footnote_start]
@@ -200,7 +204,9 @@ def _footnote_block_start(lines: list[list[_Char]], *, marks: set[int]) -> int |
         for later in lines[start:]:
             if _leading_number(later) == expected and expected in marks:
                 expected += 1
-        if expected - 1 == highest and all(n in marks for n in range(first, highest + 1)):
+        if expected - 1 == highest and all(
+            n in marks for n in range(first, highest + 1)
+        ):
             return start
     return None
 
@@ -217,7 +223,9 @@ def _runs(stream: list[tuple[_Char, bool]], *, page: int) -> list[RaisedRun]:
             j += 1
         text = "".join(c.ch for c, _ in stream[i:j]).strip(",")
         if any(ch.isalnum() for ch in text):
-            before = "".join(c.ch for c, _ in stream[:i] if not c.ch.isspace())[-_CONTEXT:]
+            before = "".join(c.ch for c, _ in stream[:i] if not c.ch.isspace())[
+                -_CONTEXT:
+            ]
             runs.append(
                 RaisedRun(
                     page=page,
@@ -242,7 +250,9 @@ def _footnotes(lines: list[list[_Char]], *, page: int) -> list[PdfFootnote]:
             notes.append(PdfFootnote(page=page, number=number, text=rest.strip()))
         elif notes:
             last = notes[-1]
-            notes[-1] = PdfFootnote(page=page, number=last.number, text=f"{last.text} {text.strip()}")
+            notes[-1] = PdfFootnote(
+                page=page, number=last.number, text=f"{last.text} {text.strip()}"
+            )
     return notes
 
 
@@ -306,7 +316,9 @@ def mark_markdown(markdown: str, script: PdfScript) -> tuple[str, MarkStats]:
     for key in sorted(used_notes):
         note = footnotes[key]
         span = _find_note(markdown, stripped, positions, note)
-        if span is not None and not any(a < span[1] and span[0] < b for a, b, _ in edits):
+        if span is not None and not any(
+            a < span[1] and span[0] < b for a, b, _ in edits
+        ):
             edits.append((span[0], span[1], ""))
 
     out = markdown
@@ -332,7 +344,9 @@ def mark_markdown(markdown: str, script: PdfScript) -> tuple[str, MarkStats]:
 
 
 _ENTITIES = {"&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"', "&#39;": "'"}
-_SAME = str.maketrans({"‘": "'", "’": "'", "“": "'", "”": "'", '"': "'", "–": "-", "—": "-"})
+_SAME = str.maketrans(
+    {"‘": "'", "’": "'", "“": "'", "”": "'", '"': "'", "–": "-", "—": "-"}
+)
 
 
 def _strip(text: str) -> tuple[str, list[int]]:

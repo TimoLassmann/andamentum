@@ -67,7 +67,9 @@ class TestInfrastructureErrorsRaise:
         # Returns normally => caller proceeds to the prompted-output retry /
         # default-value fallback rather than raising.
         _reraise_if_infrastructure(
-            UnexpectedModelBehavior("ignored the tool schema"), label="Document", model="m"
+            UnexpectedModelBehavior("ignored the tool schema"),
+            label="Document",
+            model="m",
         )
         _reraise_if_infrastructure(ValueError("bad field"), label="Document", model="m")
 
@@ -79,14 +81,18 @@ class TestDegradedSignalsAreVisible:
         from andamentum.document_store.search import _run_fts5_signal
 
         # A database path that does not exist makes the signal fail.
-        with caplog.at_level(logging.WARNING, logger="andamentum.document_store.search"):
+        with caplog.at_level(
+            logging.WARNING, logger="andamentum.document_store.search"
+        ):
             result = await _run_fts5_signal("/nonexistent/nope.db", "query", 5)
 
         assert result is None  # search still degrades rather than aborting
         assert any(
             "FTS5 keyword signal FAILED" in r.message and r.levelno >= logging.WARNING
             for r in caplog.records
-        ), f"expected a WARNING naming the dropped signal, got: {[r.message for r in caplog.records]}"
+        ), (
+            f"expected a WARNING naming the dropped signal, got: {[r.message for r in caplog.records]}"
+        )
 
     async def test_doc_embedding_failure_warns_instead_of_blaming_size(
         self, tmp_path, monkeypatch, caplog
@@ -133,7 +139,9 @@ class TestDegradedSignalsAreVisible:
         assert any(
             "Doc-level embedding FAILED" in r.message and r.levelno >= logging.WARNING
             for r in caplog.records
-        ), f"expected a WARNING, got: {[(r.levelname, r.message) for r in caplog.records]}"
+        ), (
+            f"expected a WARNING, got: {[(r.levelname, r.message) for r in caplog.records]}"
+        )
         # Phase 2 still succeeded: chunks exist, so the document is searchable.
         import sqlite3
 

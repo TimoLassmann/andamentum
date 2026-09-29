@@ -30,15 +30,21 @@ def _args(argv: list[str]):
 def _draft(path: Path, *, first_line: str = "Methods") -> Path:
     document = Document()
     document.add_heading(first_line, level=1)
-    document.add_paragraph("Rare diseases are common [1]. Costs are high [2]. Care is slow [3].")
+    document.add_paragraph(
+        "Rare diseases are common [1]. Costs are high [2]. Care is slow [3]."
+    )
     document.add_heading("References", level=1)
-    document.add_paragraph("1. Smith J (2020) A study of rare disease costs. J Test 1:1")
+    document.add_paragraph(
+        "1. Smith J (2020) A study of rare disease costs. J Test 1:1"
+    )
     document.add_paragraph("3. Lee K (2021) Delays in rare disease care. J Test 2:2")
     document.save(str(path))
     return path
 
 
-def _stub_review(monkeypatch: pytest.MonkeyPatch, *, findings: list[Finding] | None = None) -> dict:
+def _stub_review(
+    monkeypatch: pytest.MonkeyPatch, *, findings: list[Finding] | None = None
+) -> dict:
     """A review that behaves like the real one toward extra findings: it lists
     them after its own, which is what ``Finalize`` does."""
     seen: dict[str, Any] = {}
@@ -79,7 +85,9 @@ async def test_reference_problems_reach_the_editor_and_the_report(
     out = tmp_path / "review.md"
     word = tmp_path / "review.docx"
     await cli_mod._run(
-        _args([str(source), "--model", "stub:none", "--out", str(out), "--out", str(word)]),
+        _args(
+            [str(source), "--model", "stub:none", "--out", str(out), "--out", str(word)]
+        ),
         Console(stderr=True),
     )
     # In Word the checker signs its own comment, whoever signs the rest.
@@ -118,8 +126,16 @@ async def test_a_major_review_finding_suggests_the_structure_loop(
     out = tmp_path / "review.md"
     await cli_mod._run(
         _args(
-            [str(source), "--model", "stub:none", "--reviewer", "claims",
-             "--no-references", "--out", str(out)]
+            [
+                str(source),
+                "--model",
+                "stub:none",
+                "--reviewer",
+                "claims",
+                "--no-references",
+                "--out",
+                str(out),
+            ]
         ),
         Console(stderr=True),
     )
@@ -136,7 +152,9 @@ async def test_no_references_and_no_lookup_turn_the_parts_off(
     seen = _stub_review(monkeypatch)
     out = tmp_path / "off.md"
     await cli_mod._run(
-        _args([str(source), "--model", "stub:none", "--no-references", "--out", str(out)]),
+        _args(
+            [str(source), "--model", "stub:none", "--no-references", "--out", str(out)]
+        ),
         Console(stderr=True),
     )
     assert seen["extra_findings"] is None
@@ -159,7 +177,9 @@ async def test_the_confidentiality_check_runs_before_any_reference_leaves(
     lookups = _found_everything(monkeypatch)
     with pytest.raises(SystemExit) as exc:
         await cli_mod._run(
-            _args([str(source), "--model", "stub:none", "--out", str(tmp_path / "r.md")]),
+            _args(
+                [str(source), "--model", "stub:none", "--out", str(tmp_path / "r.md")]
+            ),
             Console(stderr=True),
         )
     assert exc.value.code == 1
@@ -172,7 +192,20 @@ def test_the_goal_loop_refuses_no_editor(capsys: pytest.CaptureFixture[str]) -> 
     assert "--no-editor cannot be combined with --goal" in capsys.readouterr().err
 
 
-def test_checklist_refuses_the_review_switches(capsys: pytest.CaptureFixture[str]) -> None:
+def test_checklist_refuses_the_review_switches(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     with pytest.raises(SystemExit):
-        _args(["d.md", "--mode", "checklist", "--model", "m", "--out", "r.md", "--no-lookup"])
+        _args(
+            [
+                "d.md",
+                "--mode",
+                "checklist",
+                "--model",
+                "m",
+                "--out",
+                "r.md",
+                "--no-lookup",
+            ]
+        )
     assert "--no-lookup is a review-mode flag" in capsys.readouterr().err

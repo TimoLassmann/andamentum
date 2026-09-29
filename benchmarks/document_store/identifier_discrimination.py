@@ -17,6 +17,7 @@ Three things are measured, old (raw query, today's behaviour) vs new (prepared):
 
 Run:  uv run python benchmarks/document_store/identifier_discrimination.py
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -52,19 +53,35 @@ FAMILIES: dict[str, tuple[str, list[str]]] = {
 }
 
 PROSE_DOCS: list[tuple[str, str]] = [
-    ("mitosis", "Mitosis proceeds through prophase, metaphase, anaphase and telophase, "
-                "segregating replicated chromosomes into two daughter nuclei."),
-    ("ml", "Gradient descent optimises model parameters by iteratively stepping "
-           "against the gradient of a differentiable loss function."),
-    ("history", "The printing press transformed the circulation of ideas across "
-                "early modern Europe and accelerated literacy."),
-    ("ecology", "Keystone predators regulate community structure by limiting the "
-                "abundance of dominant competitors in an ecosystem."),
+    (
+        "mitosis",
+        "Mitosis proceeds through prophase, metaphase, anaphase and telophase, "
+        "segregating replicated chromosomes into two daughter nuclei.",
+    ),
+    (
+        "ml",
+        "Gradient descent optimises model parameters by iteratively stepping "
+        "against the gradient of a differentiable loss function.",
+    ),
+    (
+        "history",
+        "The printing press transformed the circulation of ideas across "
+        "early modern Europe and accelerated literacy.",
+    ),
+    (
+        "ecology",
+        "Keystone predators regulate community structure by limiting the "
+        "abundance of dominant competitors in an ecosystem.",
+    ),
 ]
 
-PROSE_QUERIES = ["sanger sequencing proband", "conserved residue phenotype",
-                 "reference transcript annotation", "gradient descent loss",
-                 "printing press literacy"]
+PROSE_QUERIES = [
+    "sanger sequencing proband",
+    "conserved residue phenotype",
+    "reference transcript annotation",
+    "gradient descent loss",
+    "printing press literacy",
+]
 
 
 def query_fts(db_path: str, match_query: str) -> list[str] | str:
@@ -97,7 +114,9 @@ async def main() -> None:
     identifier_docs: dict[str, str] = {}  # id -> family
     for fam, (template, ids) in FAMILIES.items():
         for ident in ids:
-            await store.register_document(title=ident, content=template.format(id=ident))
+            await store.register_document(
+                title=ident, content=template.format(id=ident)
+            )
             identifier_docs[ident] = fam
     for title, body in PROSE_DOCS:
         await store.register_document(title=title, content=body)
@@ -151,7 +170,7 @@ async def main() -> None:
     print(f"  prepared: correct doc rank #1 : {top1}/{n}")
     print(f"  prepared: near-miss leakage    : {leaked} (want 0)")
     print(f"prose queries identical raw==prep: {prose_identical}/{len(PROSE_QUERIES)}")
-    ok = (top1 == n and leaked == 0 and prose_identical == len(PROSE_QUERIES))
+    ok = top1 == n and leaked == 0 and prose_identical == len(PROSE_QUERIES)
     print(f"\nRESULT: {'PASS' if ok else 'FAIL'}")
 
 

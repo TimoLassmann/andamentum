@@ -380,9 +380,7 @@ async def compute_posterior(
     # docs/superpowers/plans/2026-05-04-confidence-honest-aggregation.md.
     capped = [c for c in active_claims if getattr(c, "cycle_capped", False)]
     n_capped_partial = len(capped)
-    n_contracted_partial = sum(
-        1 for c in active_claims if c.contraction_count > 0
-    )
+    n_contracted_partial = sum(1 for c in active_claims if c.contraction_count > 0)
 
     # No-certified-verdict gate (mirrors CheckCompletion's
     # no_certified_verdict exit, commit 761a5d9).
@@ -957,9 +955,7 @@ async def build_verdict(
     combination_scope = (
         [c for c in ordered if not c.abandoned] if decomposition is not None else active
     )
-    n_no_verdict = sum(
-        1 for c in combination_scope if c.integrated_assessment is None
-    )
+    n_no_verdict = sum(1 for c in combination_scope if c.integrated_assessment is None)
 
     explanation = posterior_report.explanation if posterior_report else ""
     if n_orphan:

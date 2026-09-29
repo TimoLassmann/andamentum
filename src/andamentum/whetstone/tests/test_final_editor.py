@@ -430,7 +430,9 @@ async def test_a_point_both_reviewers_raised_is_one_comment_in_the_docx(
     async def fake_reconcile(reviews: Any, *, model: str) -> Any:
         return ReviewerReconciliation(
             verdict="One shared point.",
-            agreed=[AgreedPoint(issue="The goal is not shown", finding_ids=["R1.1", "R2.1"])],
+            agreed=[
+                AgreedPoint(issue="The goal is not shown", finding_ids=["R1.1", "R2.1"])
+            ],
         )
 
     monkeypatch.setattr("andamentum.whetstone.v3.review_document_v3", fake_review)
@@ -439,7 +441,15 @@ async def test_a_point_both_reviewers_raised_is_one_comment_in_the_docx(
     )
     out = tmp_path / "review.docx"
     args = _args(
-        [str(source), "--model", "stub:none", "--out", str(out), "--reviewer", "claims,methods"]
+        [
+            str(source),
+            "--model",
+            "stub:none",
+            "--out",
+            str(out),
+            "--reviewer",
+            "claims,methods",
+        ]
     )
     await cli_mod._run(args, Console(stderr=True))
 

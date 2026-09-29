@@ -46,9 +46,7 @@ def make_verdict(
     return EpistemicVerdict(
         objective_id=objective_id,
         posterior_report=report,
-        claims=[
-            ClaimVerdict(claim_id=cid, posterior=posterior) for cid in claim_ids
-        ],
+        claims=[ClaimVerdict(claim_id=cid, posterior=posterior) for cid in claim_ids],
         provenance=VerdictProvenance(
             n_claims_total=n_active,
             n_active_claims=n_active,

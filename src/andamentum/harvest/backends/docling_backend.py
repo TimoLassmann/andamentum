@@ -187,9 +187,7 @@ def _extract_sync(
             format_options={
                 input_format: PdfFormatOption(
                     pipeline_cls=_describing_vlm_pipeline(),
-                    pipeline_options=_accurate_options(
-                        data, figure_model=figure_model
-                    ),
+                    pipeline_options=_accurate_options(data, figure_model=figure_model),
                 )
             },
         )

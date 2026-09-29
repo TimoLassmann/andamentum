@@ -100,9 +100,7 @@ async def test_check_completion_routing_agrees_with_the_verdict_object(
     writer/aggregator coherence contract is now a structural property of
     one object rather than two conditions maintained in step."""
     repo = await _repo(tmp_path, f"routing_{assessment}")
-    obj = Objective(
-        description="x", claim_to_verify="x", question_type="verificatory"
-    )
+    obj = Objective(description="x", claim_to_verify="x", question_type="verificatory")
     obj.objective_id = obj.entity_id
     await repo.save(obj)
     claim = Claim(
@@ -163,7 +161,12 @@ def test_verdict_state_field_is_declared_by_every_node_that_touches_it() -> None
     ``test_node_contracts.py`` only checks the ClassVars EXIST, so
     contract drift on a specific field is otherwise invisible."""
     assert "verdict" in CombineClaimVerdicts.writes
-    for node in (CheckCompletion, CheckSynthesisDemand, Synthesize, SynthesizeInsufficient):
+    for node in (
+        CheckCompletion,
+        CheckSynthesisDemand,
+        Synthesize,
+        SynthesizeInsufficient,
+    ):
         assert "verdict" in node.reads, f"{node.__name__} reads state.verdict"
 
 

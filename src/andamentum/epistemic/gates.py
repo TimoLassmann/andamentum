@@ -173,7 +173,9 @@ def refused_only_for_min_supporting_sources(blocking_reasons: list[str]) -> bool
     only recognises the reason text `validate_promotion` already produced,
     so there is one source of truth for the threshold logic itself.
     """
-    return len(blocking_reasons) == 1 and _SUPPORTING_SOURCES_MARKER in blocking_reasons[0]
+    return (
+        len(blocking_reasons) == 1 and _SUPPORTING_SOURCES_MARKER in blocking_reasons[0]
+    )
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -576,12 +578,18 @@ def evidence_fingerprint(rows: Iterable[tuple[str, Optional[str], bool]]) -> str
     rule is built on (S3): a claim contracted once should not be allowed
     to re-promote and contract again on literally the same evidence.
     """
-    normalized = sorted((eid, judgment or "", invalidated) for eid, judgment, invalidated in rows)
-    blob = "\n".join(f"{eid}\t{judgment}\t{invalidated}" for eid, judgment, invalidated in normalized)
+    normalized = sorted(
+        (eid, judgment or "", invalidated) for eid, judgment, invalidated in rows
+    )
+    blob = "\n".join(
+        f"{eid}\t{judgment}\t{invalidated}" for eid, judgment, invalidated in normalized
+    )
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
 
-async def claim_evidence_fingerprint(claim: "Claim", repo: "EpistemicRepository") -> str:
+async def claim_evidence_fingerprint(
+    claim: "Claim", repo: "EpistemicRepository"
+) -> str:
     """Load a claim's evidence and fingerprint it via ``evidence_fingerprint``.
 
     Loads ALL of ``claim.evidence_ids`` — unlike
@@ -872,7 +880,11 @@ async def validate_promotion(
     )
     if balance_threshold > 0:
         balance = claim.adversarial_balance
-        if claim.adversarial_checked and balance is not None and balance < balance_threshold:
+        if (
+            claim.adversarial_checked
+            and balance is not None
+            and balance < balance_threshold
+        ):
             reasons.append(
                 f"Adversarial balance {balance:.2f} < {balance_threshold} required"
             )

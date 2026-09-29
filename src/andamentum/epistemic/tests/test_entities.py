@@ -212,9 +212,7 @@ class TestSerializationRoundTrip:
             distribution_entropy([0.1, 0.2, 0.7])
         )
 
-        plain = Evidence(
-            objective_id="obj-1", source_type="web_search", source_ref="x"
-        )
+        plain = Evidence(objective_id="obj-1", source_type="web_search", source_ref="x")
         c2, m2 = plain.to_document()
         assert "quality_distribution" not in m2
         reloaded = Evidence.from_document(c2, m2)

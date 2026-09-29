@@ -14,7 +14,9 @@ from andamentum.whetstone.reviewed_document import open_source
 
 async def _hints(path: Path):
     document = await open_source(str(path))
-    return document.text, citation_hints(document.docx_path, expected_text=document.text)
+    return document.text, citation_hints(
+        document.docx_path, expected_text=document.text
+    )
 
 
 async def test_superscript_runs_become_hints_at_their_offsets(tmp_path: Path) -> None:

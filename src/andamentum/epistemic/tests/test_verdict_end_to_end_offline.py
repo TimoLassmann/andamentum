@@ -195,7 +195,9 @@ async def test_directional_headline_and_claim_badges_agree(
 ) -> None:
     """One document, one story. The objective headline and every
     per-claim badge come from the same object."""
-    result, repo = await _run_directional(tmp_path, monkeypatch, "verdict_e2e_dir_badge")
+    result, repo = await _run_directional(
+        tmp_path, monkeypatch, "verdict_e2e_dir_badge"
+    )
 
     from andamentum.epistemic.report_generator import ReportGenerator
 

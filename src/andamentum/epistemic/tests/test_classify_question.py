@@ -73,7 +73,6 @@ from ..agents.output_models import ClassifyQuestionOutput  # noqa: E402
 
 
 class TestClassifyQuestionAgent:
-
     def test_output_model_accepts_valid_type(self):
         # Pass the enum value directly — pydantic coerces the str to the
         # QuestionType enum. The type-level check passes because the

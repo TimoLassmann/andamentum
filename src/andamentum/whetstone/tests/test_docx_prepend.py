@@ -320,8 +320,8 @@ def test_markdown_table_header_row_is_bold(tmp_path):
 def test_markdown_table_cell_gets_inline_markdown(tmp_path):
     """A `**major**` in a cell must render as formatting, not literally."""
     editor = _editor_for_blank_doc(tmp_path)
-    prepend_review_section(editor, 
-        "| Check | Severity |\n| --- | --- |\n| Sample size | **major** |"
+    prepend_review_section(
+        editor, "| Check | Severity |\n| --- | --- |\n| Sample size | **major** |"
     )
 
     tbl = _prepended_tables(editor)[0]
@@ -372,8 +372,8 @@ def test_pipe_lines_without_separator_row_stay_paragraphs(tmp_path):
 
 def test_escaped_pipe_in_cell_does_not_add_a_column(tmp_path):
     editor = _editor_for_blank_doc(tmp_path)
-    prepend_review_section(editor, 
-        "| Check | Note |\n| --- | --- |\n| Power | a \\| b |"
+    prepend_review_section(
+        editor, "| Check | Note |\n| --- | --- |\n| Power | a \\| b |"
     )
 
     tbl = _prepended_tables(editor)[0]
@@ -384,8 +384,9 @@ def test_table_between_prose_keeps_document_order(tmp_path):
     """Review mode's report block is unaffected: prose still surrounds
     the table in body order, and the page break stays last."""
     editor = _editor_for_blank_doc(tmp_path)
-    prepend_review_section(editor, 
-        "## Coverage\n\n| Check | Ran |\n| --- | --- |\n| Blinding | yes |\n\nDone."
+    prepend_review_section(
+        editor,
+        "## Coverage\n\n| Check | Ran |\n| --- | --- |\n| Blinding | yes |\n\nDone.",
     )
 
     tree = editor.trees[editor._doc_path]

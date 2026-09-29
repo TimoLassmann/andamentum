@@ -437,8 +437,7 @@ class TestQAPanel:
             e for e in items_atoms[0]["entries"] if e["label"] == "What did we find?"
         )
         assert "Insufficient evidence" not in find["body"], (
-            "the headline must not contradict a Confirmed badge in the "
-            "same document"
+            "the headline must not contradict a Confirmed badge in the same document"
         )
         assert "No single verdict" in find["body"]
         assert _atom_content_contains(atoms, "Confirmed")

@@ -231,8 +231,12 @@ def test_the_survivor_of_a_collision_does_not_depend_on_input_order() -> None:
         narrow = textmap.find("a large effect on outcomes")
         assert wide is not None and narrow is not None
         edits = {
-            "wide": Edit(span=wide, new_text="the results suggest an effect", author="AI"),
-            "narrow": Edit(span=narrow, new_text="a modest effect on outcomes", author="AI"),
+            "wide": Edit(
+                span=wide, new_text="the results suggest an effect", author="AI"
+            ),
+            "narrow": Edit(
+                span=narrow, new_text="a modest effect on outcomes", author="AI"
+            ),
         }
         report = apply_edits(textmap, [edits[name] for name in order])
         assert report.applied == 1 and len(report.conflicted) == 1

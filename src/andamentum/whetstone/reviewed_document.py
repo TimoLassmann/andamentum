@@ -229,7 +229,9 @@ def _write_baseline_docx(markdown: str) -> Path:
             continue
         level = len(block) - len(block.lstrip("#"))
         if level and block[level : level + 1].isspace():
-            document.add_heading(html.unescape(block[level:].strip()), level=min(level, 9))
+            document.add_heading(
+                html.unescape(block[level:].strip()), level=min(level, 9)
+            )
             continue
         paragraph = document.add_paragraph()
         position = 0

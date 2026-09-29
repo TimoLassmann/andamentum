@@ -119,7 +119,13 @@ def _rec(*, agreed=(), disagreements=(), verdict="") -> ReviewerReconciliation:
 def test_a_point_two_reviewers_raised_is_one_finding() -> None:
     """The reason the merge exists: the same point from two reviewers must
     reach the author once, not once per reviewer."""
-    rec = _rec(agreed=[AgreedPoint(issue="The claim outruns the data", finding_ids=["R1.1", "R2.1"])])
+    rec = _rec(
+        agreed=[
+            AgreedPoint(
+                issue="The claim outruns the data", finding_ids=["R1.1", "R2.1"]
+            )
+        ]
+    )
     combined, groups = combine_reviews(_reviews(), reconciliation=rec)
     titles = [f.title for f in combined.findings]
     assert titles == ["conclusion outruns data", "typo", "no power analysis"]
@@ -176,11 +182,18 @@ def test_a_failed_reconciliation_keeps_everything_and_says_so() -> None:
 def test_the_summary_leads_with_agreement_and_does_not_restate_findings() -> None:
     rec = _rec(
         verdict="The draft overclaims.",
-        agreed=[AgreedPoint(issue="The claim outruns the data", finding_ids=["R1.1", "R2.1"])],
+        agreed=[
+            AgreedPoint(
+                issue="The claim outruns the data", finding_ids=["R1.1", "R2.1"]
+            )
+        ],
         disagreements=[
             Disagreement(
                 about="whether the claim is overstated",
-                positions=["Claims reviewer: overstated", "Framing reviewer: undersold"],
+                positions=[
+                    "Claims reviewer: overstated",
+                    "Framing reviewer: undersold",
+                ],
             )
         ],
     )
@@ -207,7 +220,10 @@ def test_a_reviewer_that_does_not_fit_the_document_is_named_in_the_summary() -> 
         fit_warning="This reviewer is meant for academic papers.",
     )
     combined, _ = combine_reviews(reviews, reconciliation=_rec())
-    assert "Methods reviewer: This reviewer is meant for academic papers." in combined.summary
+    assert (
+        "Methods reviewer: This reviewer is meant for academic papers."
+        in combined.summary
+    )
 
 
 def test_each_reviewers_comments_are_signed_by_that_reviewer() -> None:
@@ -218,7 +234,10 @@ def test_each_reviewers_comments_are_signed_by_that_reviewer() -> None:
     _, notes = _to_annotations(
         combined,
         author="Line editor (AI)",
-        comment_authors={"Claims reviewer": "Claims (AI)", "Methods reviewer": "Methods (AI)"},
+        comment_authors={
+            "Claims reviewer": "Claims (AI)",
+            "Methods reviewer": "Methods (AI)",
+        },
     )
     assert [n.author for n in notes] == ["Methods (AI)", "Claims (AI)", "Methods (AI)"]
     assert "Also raised by: Claims reviewer." in notes[0].body

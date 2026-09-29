@@ -29,9 +29,14 @@ def add_footnotes(path: str | Path, notes: list[str]) -> None:
         return
     path = Path(path)
     buffer = BytesIO()
-    with zipfile.ZipFile(path) as source, zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as target:
+    with (
+        zipfile.ZipFile(path) as source,
+        zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as target,
+    ):
         if "word/footnotes.xml" in source.namelist():
-            raise ValueError(f"{path} already has footnotes; add_footnotes writes a new part")
+            raise ValueError(
+                f"{path} already has footnotes; add_footnotes writes a new part"
+            )
         for item in source.infolist():
             body = source.read(item.filename)
             if item.filename == "word/document.xml":
@@ -44,7 +49,9 @@ def add_footnotes(path: str | Path, notes: list[str]) -> None:
                         text,
                     )
                     if count != 1:
-                        raise ValueError(f"footnote placeholder {n} found {count} times")
+                        raise ValueError(
+                            f"footnote placeholder {n} found {count} times"
+                        )
                 body = text.encode("utf-8")
             elif item.filename == "word/_rels/document.xml.rels":
                 body = body.replace(

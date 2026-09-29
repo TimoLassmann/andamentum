@@ -123,7 +123,9 @@ async def consolidate(findings: list[Finding], *, agent_model: str) -> list[Find
     # an exact-match anchor — silently breaks if the quote changes).
     numbered = "\n".join(
         f"  [{i}] ({f.criterion}/{f.severity}, section={f.span.section_id if f.span else '?'}) "
-        f"{f.issue}" + (f" Fix: {f.fix}" if f.fix else "") + f"\n      quote: {f.quote!r}"
+        f"{f.issue}"
+        + (f" Fix: {f.fix}" if f.fix else "")
+        + f"\n      quote: {f.quote!r}"
         for i, f in enumerate(findings)
     )
     try:

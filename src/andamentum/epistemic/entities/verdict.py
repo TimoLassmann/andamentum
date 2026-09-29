@@ -578,7 +578,11 @@ class EpistemicVerdict(BaseModel):
     @computed_field  # type: ignore[prop-decorator]
     @property
     def terminal_state(self) -> str:
-        return self.posterior_report.terminal_state if self.posterior_report else "completed"
+        return (
+            self.posterior_report.terminal_state
+            if self.posterior_report
+            else "completed"
+        )
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -691,4 +695,8 @@ def render_insufficient_verdict_line(verdict: Optional[EpistemicVerdict]) -> str
     if verdict is None:
         return VERDICT_INSUFFICIENT
     parts = _verdict_detail_parts(verdict)
-    return f"{VERDICT_INSUFFICIENT} — " + " · ".join(parts) if parts else VERDICT_INSUFFICIENT
+    return (
+        f"{VERDICT_INSUFFICIENT} — " + " · ".join(parts)
+        if parts
+        else VERDICT_INSUFFICIENT
+    )

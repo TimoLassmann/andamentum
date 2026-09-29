@@ -81,7 +81,7 @@ def test_fast_mode_keeps_doclings_own_defaults():
     assert options.do_table_structure is True
     # `.mode` is declared on the concrete TableStructureOptions, not on the
     # base type the field is annotated with, so read it dynamically.
-    assert getattr(options.table_structure_options, 'mode') is TableFormerMode.ACCURATE
+    assert getattr(options.table_structure_options, "mode") is TableFormerMode.ACCURATE
 
 
 def test_ocr_false_is_the_opt_in_speed_path():

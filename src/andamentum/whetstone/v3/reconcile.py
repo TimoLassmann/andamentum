@@ -141,11 +141,13 @@ def _brief_findings(result: ReviewResult, *, reviewer: int) -> str:
     lines: list[str] = []
     for index, finding in enumerate(result.findings):
         ref = finding_ref(reviewer=reviewer, finding=index)
-        lines.append(f"  [{ref}] ({finding.severity}) {finding.title}: {finding.rationale}")
+        lines.append(
+            f"  [{ref}] ({finding.severity}) {finding.title}: {finding.rationale}"
+        )
         if finding.quotes:
             quote = finding.quotes[0]
             lines.append(
-                f'    concerning ({quote.section_id}, characters '
+                f"    concerning ({quote.section_id}, characters "
                 f'{quote.char_start}-{quote.char_end}): "{quote.text[:160]}"'
             )
     return "\n".join(lines) or "  (no findings)"
@@ -174,8 +176,7 @@ async def reconcile_reviewers(
     ]
     prompt = (
         f"{len(reviews)} reviewers read this draft, in this order: "
-        f"{', '.join(identity for identity, _ in reviews)}.\n\n"
-        + "\n\n".join(blocks)
+        f"{', '.join(identity for identity, _ in reviews)}.\n\n" + "\n\n".join(blocks)
     )
 
     defn = AgentDefinition(
@@ -251,7 +252,9 @@ def _merge(members: list[tuple[int, str, Finding]]) -> Finding:
             if (quote.char_start, quote.char_end) not in seen:
                 seen.add((quote.char_start, quote.char_end))
                 quotes.append(quote)
-    sections = list(dict.fromkeys(s for _, _, f in members for s in f.sections_involved))
+    sections = list(
+        dict.fromkeys(s for _, _, f in members for s in f.sections_involved)
+    )
     return primary.model_copy(
         update={
             "perspective": primary_reviewer,
@@ -304,8 +307,7 @@ def merge_agreed(
         reviewers = list(dict.fromkeys(identity for _, identity, _ in members))
         if len(reviewers) < 2:
             logger.info(
-                "[v3.reconcile] point %r has findings from %d reviewer(s) — "
-                "not merged",
+                "[v3.reconcile] point %r has findings from %d reviewer(s) — not merged",
                 point.issue[:60],
                 len(reviewers),
             )
@@ -397,9 +399,7 @@ def reconciliation_markdown(
             for position in clash.positions:
                 out.append(f"  - {position}")
         out.append("")
-    readings = [
-        (identity, _synopsis(result.summary)) for identity, result in reviews
-    ]
+    readings = [(identity, _synopsis(result.summary)) for identity, result in reviews]
     if any(text for _, text in readings):
         out.append("**How each reviewer read the draft**")
         out.append("")
@@ -449,9 +449,7 @@ def combine_reviews(
             "declined_findings": [
                 d for _, res in reviews for d in res.declined_findings
             ],
-            "author_questions": [
-                q for _, res in reviews for q in res.author_questions
-            ],
+            "author_questions": [q for _, res in reviews for q in res.author_questions],
             "failed_criteria": [
                 f"{identity}: {name}"
                 for identity, res in reviews

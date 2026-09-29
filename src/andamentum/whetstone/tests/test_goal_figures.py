@@ -49,7 +49,9 @@ def test_multiple_referencing_sentences_are_all_kept() -> None:
 
 
 def test_never_mentioned_returns_empty() -> None:
-    caption, referencing = locate_figure_mentions("Nothing about figures here.", "Figure 3")
+    caption, referencing = locate_figure_mentions(
+        "Nothing about figures here.", "Figure 3"
+    )
     assert caption == ""
     assert referencing == []
 
@@ -81,11 +83,11 @@ async def test_check_satisfied_when_the_model_reports_a_match() -> None:
 
     async def fake_critique(image, *, model, schema, extra_context=None):
         assert extra_context is not None and "Counts by group" in extra_context
-        return FigureTextMatch(matches_description=True, discrepancies=[], confidence=0.9)
+        return FigureTextMatch(
+            matches_description=True, discrepancies=[], confidence=0.9
+        )
 
-    with patch(
-        "andamentum.vision_critique.critique_figure", new=fake_critique
-    ):
+    with patch("andamentum.vision_critique.critique_figure", new=fake_critique):
         report = await check_figure_text_match(text, figures, model="stub")
 
     assert report.satisfied
@@ -102,14 +104,14 @@ async def test_check_not_satisfied_on_a_reported_mismatch() -> None:
             confidence=0.8,
         )
 
-    with patch(
-        "andamentum.vision_critique.critique_figure", new=fake_critique
-    ):
+    with patch("andamentum.vision_critique.critique_figure", new=fake_critique):
         report = await check_figure_text_match(text, figures, model="stub")
 
     assert not report.satisfied
     assert report.checks[0].matched is not None
-    assert report.checks[0].matched.discrepancies == ["the figure shows three bars, not four"]
+    assert report.checks[0].matched.discrepancies == [
+        "the figure shows three bars, not four"
+    ]
 
 
 async def test_a_crashed_call_is_recorded_not_raised() -> None:

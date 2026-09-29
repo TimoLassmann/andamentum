@@ -43,7 +43,11 @@ def _finding(
         confidence="medium",
         rationale="You say it holds for everyone, but only 12 were tested.",
         fix=fix,
-        quotes=[Quote(section_id="s1", char_start=start, char_end=start + 10, text="it holds")],
+        quotes=[
+            Quote(
+                section_id="s1", char_start=start, char_end=start + 10, text="it holds"
+            )
+        ],
         sections_involved=["s1"],
     )
 
@@ -72,7 +76,9 @@ def _result(**kw: Any) -> ReviewResult:
 
 
 def test_a_comment_says_how_urgent_what_is_wrong_and_what_to_do() -> None:
-    _, notes = _to_annotations(_result(findings=[_finding(fid="f1", start=0)]), author="t")
+    _, notes = _to_annotations(
+        _result(findings=[_finding(fid="f1", start=0)]), author="t"
+    )
     body = notes[0].body
     assert body.startswith("Should fix: The claim outruns the data")
     assert "only 12 were tested" in body
@@ -123,7 +129,9 @@ def test_a_refusal_is_stated_in_the_comment_it_refuses() -> None:
     assert body.count("Report the n per group.") == 1
 
 
-def test_the_editors_own_edits_get_no_comment_and_are_listed_once_with_a_reason() -> None:
+def test_the_editors_own_edits_get_no_comment_and_are_listed_once_with_a_reason() -> (
+    None
+):
     """A comment per unlinked edit was 51 of 81 comments on a real manuscript,
     and the findings were lost among them. The reason is listed once in the
     report instead — Rewrite.label reaches only the logs."""
