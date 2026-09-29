@@ -71,10 +71,11 @@ def demo_research_state():
     """Construct and inspect a ResearchState."""
     print("=== Research State ===\n")
 
-    state = ResearchState(query="What is spaced repetition?", max_iterations=3)
+    # The iteration limit is run configuration (ResearchDeps.max_iterations),
+    # not state, so it is not set here.
+    state = ResearchState(query="What is spaced repetition?")
 
     print(f"Query:           {state.query}")
-    print(f"Max iterations:  {state.max_iterations}")
     print(f"Current phase:   {state.current_phase}")
     print(f"Is complete:     {state.is_complete}")
     print(f"Iteration count: {state.iteration_count}")
