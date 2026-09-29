@@ -217,6 +217,8 @@ exclude = [
     "**/tests",
     "**/tests/**",
     "**/conftest.py",
+    # Agent notes (per-module CLAUDE.md) are not runtime code.
+    "**/CLAUDE.md",
 ]
 
 [tool.hatch.build.targets.sdist]

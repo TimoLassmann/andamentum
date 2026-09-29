@@ -39,3 +39,15 @@ agentic graph systems; treat changes to it with the same care as changes to a la
 - The rendered HTML (`docs/agentic-systems/agentic-dialect.html`) regenerates from `DIALECT.md` via
   `andamentum-typeset`; the visual one-pager (`agentic-dialect-reference.html`) is hand-authored —
   keep it to law statements + glyphs so it can't drift into a second spec.
+
+## From the root CLAUDE.md
+
+Moved from the root `CLAUDE.md`, word for word. Claude Code loads this file when it reads files in this directory.
+
+### Overview
+
+- `andamentum.agentic_dialect` — the house style for building agentic graph systems (pydantic-graph + pydantic-ai), as data + portable conformance checks. The prose canon is `src/andamentum/agentic_dialect/DIALECT.md` (3 surfaces / 2 roles / 1 agent / 9 laws); the structured laws, role briefs (`for_role`), checklist, and skeleton are the enforceable kernel, drift-tested against the doc. `check_code(path)` runs the portable static gates (no engine import in workers, no `dict[str, Any]`, no nondeterminism/client/literal-bound in node bodies). A leaf module: depends only on `pydantic` + stdlib, imports no other sub-module, relative imports only — kept independently extractable.
+
+### Layering
+
+- `agentic_dialect` depends only on `pydantic` + stdlib. MUST NOT import any other andamentum sub-module, and uses only relative imports internally, so it stays independently extractable (a later spin-out to a standalone package is a `git filter-repo`). Other modules MAY depend on `agentic_dialect`. It is governance/knowledge, not a runtime pipeline — nothing in the data pipelines imports it.
