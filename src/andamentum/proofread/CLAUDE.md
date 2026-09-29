@@ -13,5 +13,6 @@ Moved from the root `CLAUDE.md`, word for word. Claude Code loads this file when
 ## Slide mode
 
 - `analyze_slides(slides: list[Slide]) -> SlidesResult` (in `slides.py`) is pure, like `analyze`. Checks: headline length (62 wraps, 90 is two messages), deixis opener, banned words, acronyms not expanded on the slide, one entity under two names, and `restatement` (the body repeats two or more of the headline's lower-case content words).
+- Placeholder markers (`[SOURCE NEEDED: ...]` and its three siblings) are notes to the author: the acronym check ignores them, the restatement check reads them. A headline at 40 pt or more (`Slide.headline_pt`) is a statement slide and may run to 100 characters.
 - `restatement` is a heuristic. A direct label of the entity the headline names can trip it; callers read each hit rather than treat it as a verdict. Capitalised words, acronyms and numbers are excluded on purpose, so entity labels mostly pass.
 - `slides_io.read_pptx` is the only place that imports `pptx`, and only the CLI imports `slides_io`. The library stays free of I/O. Harvest is not used for decks: its markdown loses slide boundaries, notes and font sizes.

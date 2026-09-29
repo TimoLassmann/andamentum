@@ -4,7 +4,9 @@ A slide is a headline, the body text frames under it, the source line, and the
 speaker notes. The checks are the ones a scientific talk fails most often and a
 machine can see without judgement:
 
-- ``headline_length``   — over 62 characters wraps; over 90 is two messages.
+- ``headline_length``   — over 62 characters wraps; over 90 is two messages. A
+                          statement slide (headline at 40 pt or more) holds up to
+                          100 characters over three lines.
 - ``deixis``            — a headline that opens on "This", "These", "Here", ...
 - ``banned_word``       — words from a fixed list, in the headline or the body.
 - ``acronym``           — an acronym on the slide with no expansion on that slide.
@@ -27,6 +29,8 @@ from pydantic import BaseModel, Field
 
 ONE_LINE = 62
 MAX_HEADLINE = 90
+STATEMENT_PT = 40
+MAX_STATEMENT = 100
 
 DEFAULT_BANNED = frozenset(
     {
@@ -59,6 +63,8 @@ DEFAULT_BANNED = frozenset(
 # Acronyms that need no expansion in any scientific room. Callers extend it.
 DEFAULT_ALLOWED_ACRONYMS = frozenset({"DNA", "RNA", "PCR", "USA", "UK", "EU", "OK"})
 
+# A placeholder is a note to the author, not text for the room: "[SOURCE NEEDED: ...]".
+_MARKER = re.compile(r"\[(?:EVIDENCE|CLAIM|SOURCE|METHOD) NEEDED[^\]]*\]")
 _DEIXIS = re.compile(r"^\s*(this|these|that|those|here|it|they)\b", re.IGNORECASE)
 _ACRONYM = re.compile(r"(?<![\w-])([A-Z]{2,6})(?![\w-])")
 _WORD = re.compile(r"[A-Za-z][A-Za-z'’-]*")
@@ -114,6 +120,10 @@ class Slide(BaseModel):
 
     number: int
     headline: str
+    headline_pt: float | None = Field(
+        default=None,
+        description="Largest font size in the headline; 40 pt or more marks a statement slide.",
+    )
     body: list[str] = Field(
         default_factory=list,
         description="Text frames other than the headline and source line.",
@@ -219,7 +229,17 @@ def analyze_slides(
         body = " ".join(s.body)
         visible = f"{head} {body}"
 
-        if len(head) > MAX_HEADLINE:
+        statement = s.headline_pt is not None and s.headline_pt >= STATEMENT_PT
+        if statement:
+            if len(head) > MAX_STATEMENT:
+                findings.append(
+                    SlideFinding(
+                        slide=s.number,
+                        check="headline_length",
+                        detail=f"{len(head)} characters; a statement over {MAX_STATEMENT} runs past three lines",
+                    )
+                )
+        elif len(head) > MAX_HEADLINE:
             findings.append(
                 SlideFinding(
                     slide=s.number,
@@ -250,8 +270,9 @@ def analyze_slides(
                 SlideFinding(slide=s.number, check="banned_word", detail=f"'{w}'")
             )
 
-        for acr in sorted(set(_ACRONYM.findall(visible)) - allowed_acronyms):
-            if not _expanded(acr, visible):
+        spoken = _MARKER.sub(" ", visible)
+        for acr in sorted(set(_ACRONYM.findall(spoken)) - allowed_acronyms):
+            if not _expanded(acr, spoken):
                 findings.append(
                     SlideFinding(
                         slide=s.number,

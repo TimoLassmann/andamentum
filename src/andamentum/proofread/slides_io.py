@@ -85,6 +85,7 @@ def read_pptx(path: str | Path) -> list[Slide]:
             Slide(
                 number=number,
                 headline=head.text if head else "",
+                headline_pt=head.max_pt if head else None,
                 body=[f.text for f in rest if f is not head],
                 source=" ".join(f.text for f in source),
                 notes=notes,

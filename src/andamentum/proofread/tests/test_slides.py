@@ -143,3 +143,26 @@ def test_cli_slides_rejects_non_pptx(tmp_path: Path) -> None:
     with pytest.raises(SystemExit) as exc:
         main([str(f), "--slides"])
     assert exc.value.code == 1
+
+
+def test_placeholders_are_not_acronyms() -> None:
+    slides = [
+        Slide(
+            number=1,
+            headline="SaltLog halves the time to a report",
+            body=["[SOURCE NEEDED: SGT count for 2026]"],
+        )
+    ]
+    assert _checks(slides, "acronym") == []
+
+
+def test_statement_slide_takes_three_lines() -> None:
+    text = "SaltLog now answers every question from the Saltmarsh group within a day"
+    assert _checks([Slide(number=1, headline=text)], "headline_length") == [1]
+    assert (
+        _checks([Slide(number=1, headline=text, headline_pt=44)], "headline_length")
+        == []
+    )
+    assert _checks(
+        [Slide(number=1, headline="x" * 105, headline_pt=44)], "headline_length"
+    ) == [1]
