@@ -4,6 +4,16 @@ Follow the rules in @CONSTITUTION.md. Project-specific rules below override or e
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Public repository: what may be committed
+
+This repository is **public** on GitHub. Everything committed — files, test fixtures, examples in prompts and docstrings, code comments, commit messages — is published, and a force push does not unpublish it (old commits stay reachable by SHA). Treat every commit as a publication.
+
+- **Test data is synthetic, always.** Fixtures, examples, prompt few-shots and docstring samples are invented for the purpose or taken from public sources (arXiv, public datasets). Never derive them from a real document, meeting, email, draft, review run or document-store content — not anonymised, not a short fragment in a comment. Invented names are obviously invented (Apollo, SaltLog, Jane Doe), never real project names, colleagues, students or collaborators. When a comment cites real-world behaviour ("measured on a real manuscript"), give counts, never quoted text.
+- **Kept local, never committed** (all in `.gitignore`): working notes (`WORK.md`, `PARKED.md`, `REVIEW_LOG.md`), plans and specs (`docs/plans/`, `docs/superpowers/`, `docs/.internal/`, `docs/epistemic/*_PLAN.md` and the ledger, audit and spec files beside them), unpublished results (`docs/results/`, `paper/`, experiment `FINDINGS.md` / `*_PLAN.md`), `private/`, and `.docx` / `.pdf` / smoke output at the repo root. Never `git add -f` any of these. Public code does not link to them either: a link to an ignored file is broken and advertises that the file exists.
+- **No machine-specific data.** No absolute home paths (`/Users/<name>/`), hostnames or usernames in code, docs or recorded results; record paths repo-relative.
+- **Commit messages are neutral.** Describe what changed mechanically. Never write "remove private / sensitive / confidential material" — on a public repo that is a beacon.
+- **Pushing is the user's action, never Claude's.**
+
 ## Project
 
 Andamentum is a single Python package (`src/andamentum/`) of tightly-scoped sub-modules for building agentic reasoning pipelines. The core three were consolidated from separate packages; the commit history around that migration is relevant context.
