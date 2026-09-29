@@ -130,7 +130,10 @@ class SubprocessSandbox:
         cwd: Path | None = None,
         extra_path: Path | None = None,
         timeout: int = 30,
-        mem_mb: int = 512,
+        # An address-space cap (RLIMIT_AS), which Linux enforces and macOS does not.
+        # numpy reserves address space per CPU core; at 512 MB a generated package's
+        # pytest run exits 1 with no output on Linux, and it needs ~1 GB.
+        mem_mb: int = 2048,
         allow_network: bool = False,
         extra_deps: frozenset[str] = frozenset(),
     ) -> SandboxResult:
