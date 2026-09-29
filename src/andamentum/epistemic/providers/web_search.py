@@ -182,8 +182,10 @@ class WebSearchProvider:
                         return result, page
                     except Exception as e:  # noqa: BLE001
                         logger.debug(
-                            "web_search fetch failed for %s: %s", result.url, e
-                        )  # type: ignore[attr-defined]
+                            "web_search fetch failed for %s: %s",
+                            result.url,  # type: ignore[attr-defined]
+                            e,
+                        )
                         return result, None
 
                 fetched = await asyncio.gather(*(_fetch(r) for r in to_fetch))
