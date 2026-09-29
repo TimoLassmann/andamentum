@@ -305,9 +305,7 @@ A comprehensive pre-release audit drove a final hardening pass:
   - **Bedrock model-id map** reduced to an empty stub — the exact
     friendly→ID mappings are account/region-specific local config,
     not shipped surface.
-  - **Privacy.** Smoke-run artifacts that embedded an unpublished
-    collaborator manuscript, and internal planning docs, were removed
-    from the working tree *and* purged from git history.
+  - Removed internal scratch files.
   - Repo-wide `ruff format`; README reframed to a neutral toolkit
     positioning.
 
