@@ -69,7 +69,6 @@ class V3Deps:
     # The full markdown is no longer always-passed alongside the digest;
     # instead the criterion-review agents get layer-1 tools
     # (read_section / search_paper) and ask for source content on demand.
-    # See internal plans/2026-05-24-whetstone-v3-layer1-tools-pid.md §3.
     editor_enabled: bool = False
     editor_criteria: list[str] = field(
         default_factory=lambda: list(DEFAULT_EDITOR_CRITERIA)

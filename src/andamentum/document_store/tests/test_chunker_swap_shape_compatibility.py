@@ -27,7 +27,7 @@ from pathlib import Path
 import pytest
 
 FIXTURES = Path(__file__).parent / "fixtures" / "chunker_baseline"
-FIXTURE_NAMES = ["short_note", "meeting_log", "paper"]
+FIXTURE_NAMES = ["short_note", "team_meeting", "article"]
 
 
 def _fake_embedder():

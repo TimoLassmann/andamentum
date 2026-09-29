@@ -7,9 +7,6 @@ question:
 > Holding the model constant, does whetstone's chunked architecture miss
 > **critical** issues that a whole-document read catches?
 
-Full design, rubric, and methodology:
-**`internal plans/2026-05-21-whetstone-benchmark-prd.md`**.
-
 ## Layout (planned)
 
 | Path | What | Tracked? |

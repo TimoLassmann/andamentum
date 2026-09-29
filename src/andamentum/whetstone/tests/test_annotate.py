@@ -42,7 +42,7 @@ def _superscript_doc(path: Path) -> str:
     document = Document()
     document.add_heading("Methods", level=1)
     paragraph = document.add_paragraph("We met the ")
-    paragraph.add_run("goal")
+    paragraph.add_run("aim")
     paragraph.add_run("3,4").font.superscript = True
     paragraph.add_run(". Then we stopped.")
     document.save(str(path))

@@ -33,7 +33,7 @@ def _manuscript(path: Path) -> None:
     document.add_paragraph("We set out to measure the thing.")
     document.add_heading("Methods", level=1)
     paragraph = document.add_paragraph("We met the ")
-    paragraph.add_run("goal")
+    paragraph.add_run("aim")
     paragraph.add_run("3,4").font.superscript = True
     paragraph.add_run(". Then we stopped.")
     document.add_heading("Results", level=1)
@@ -309,7 +309,7 @@ async def test_every_annotation_lands_on_a_document_of_hard_shapes(
     document = Document()
     document.add_heading("Methods", level=1)
     paragraph = document.add_paragraph("We met the ")
-    paragraph.add_run("goal")
+    paragraph.add_run("aim")
     paragraph.add_run("3,4").font.superscript = True
     paragraph.add_run(". Then we stopped.")
     document.add_heading("Results", level=1)

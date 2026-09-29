@@ -34,6 +34,24 @@ dist/
 # never published. Removed from tracking + history; this keeps it that way.
 docs/.internal/
 
+# Working notes, plans and unpublished results — kept locally, never published.
+# Removed from tracking + history (2026-09-29); this keeps it that way.
+private/
+/WORK.md
+/PARKED.md
+/REVIEW_LOG.md
+/paper/
+docs/plans/
+docs/results/
+docs/superpowers/
+docs/epistemic/*_PLAN.md
+docs/epistemic/FIDELITY_LEDGER.md
+docs/epistemic/system_issue_audit.md
+docs/epistemic/harness_backstops_design.md
+docs/epistemic/multiphrasing_confidence_spec.md
+experiments/dirichlet_confidence/FINDINGS.md
+experiments/dirichlet_confidence/MULTIMODEL_PLAN.md
+
 # Local experiment scratch — exploratory scripts kept locally, never published.
 # NOTE the glob + negation. `experiments/` on its own excludes the DIRECTORY, and
 # git never descends into an excluded directory, so a child .gitignore inside one
@@ -47,8 +65,7 @@ experiments/*
 /*.docx
 /*.pdf
 
-# Smoke-run / scratch review outputs at repo root — keep them under
-# docs/results/smoke/ if they're worth keeping, otherwise discard.
+# Smoke-run / scratch review outputs at repo root — never published.
 /smoke_*.md
 /reviewed*.docx
 

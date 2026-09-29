@@ -18,8 +18,7 @@ fixed part at all, and that is the reason this mode exists beside it rather
 than inside it.
 
 **Three things the review graph does are deliberately absent here. Do not add
-them back.** (See ``internal plans/2026-08-11-whetstone-probes.md`` §"What
-checklist mode does NOT reuse".)
+them back.**
 
 ``consolidate``
     Review mode merges near-duplicate findings with a stochastic LLM call,

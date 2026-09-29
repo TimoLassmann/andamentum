@@ -8,8 +8,8 @@ text.
 The alternative, and what whetstone did before, is to convert the document to
 markdown and look for ``#``. That answer is only as good as the converter:
 Docling emits a heading for a bold standalone line that is not one, misses a
-``Heading2`` whose text happens to end in a colon, and — measured on a real
-manuscript — writes ``aim 3,4 .`` where Word holds ``aim3,4.``. Once
+``Heading2`` whose text happens to end in a colon, and writes ``aim 3,4 .``
+where Word holds ``aim3,4.``. Once
 the text has been rewritten, the offsets a reviewer quotes are offsets into the
 rewrite, and placing them back in the document becomes a matching problem. Read
 the style instead and there is nothing to match: a section boundary is a

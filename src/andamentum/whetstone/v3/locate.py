@@ -7,8 +7,7 @@ paraphrase) and is rejected.
 This module is now a thin shim over ``andamentum.core.text_match.find_span``
 — the single canonical answer to "is this verbatim in the source." Before
 consolidation there were five separate implementations across the codebase
-with materially different normalisation rules; see
-internal plans/2026-05-24-string-match-consolidation.md.
+with materially different normalisation rules.
 
 Behaviour is preserved (markdown stripping + case folding + whitespace
 collapsing) and gains smart-quote stripping from the canonical defaults —

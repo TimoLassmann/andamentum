@@ -158,8 +158,7 @@ policy restricts.
 - Tiered cloud-call gates (interactive prompt for `andamentum-whetstone`;
   TTY-aware one-time stderr warning for `andamentum-research` and
   `andamentum-epistemic`; silent for the pipeline CLIs) are planned
-  for a future release (see
-  `internal plans/2026-05-16-responsible-release.md`).
+  for a future release.
 
 ## Audit log (opt-in, partial)
 
@@ -186,8 +185,7 @@ home.
 > building block; the sub-module LLM call sites do not call it yet, so
 > enabling the env var alone does **not** currently produce a complete
 > record of every cloud call. Automatic, pipeline-wide invocation is
-> planned for a future release (tracked alongside the cloud-call gates
-> in `internal plans/2026-05-16-responsible-release.md`). Until
+> planned for a future release, alongside the cloud-call gates. Until
 > then, treat it as an API your own code can call, not a guarantee.
 
 ## Reporting misuse

@@ -57,8 +57,7 @@ def _synopsis_length_band(source: str) -> str:
     Bands are tuned against the empirical observation that all four models
     obeyed the previous fixed "2-3 sentences" instruction but produced
     summaries that were too tight for ≥5000-word ML papers (could not
-    name where issues clustered) — see research synthesis §8 Issue 9 of
-    internal plans/2026-05-24-whetstone-v3-prompt-quality.md.
+    name where issues clustered).
 
     Word-count thresholds:
       - ≤1000 words: 1 sentence (short tech notes, single-page memos)
@@ -133,8 +132,7 @@ async def critique_and_revise(
     the author doesn't claim what's missing. Empirical audit found
     5/13 weaknesses in the smoke runs were absence-based and 4/13
     typo/presentation; both classes would be silently deleted by the
-    old critique step. See plan
-    internal plans/2026-05-24-whetstone-v3-prompt-quality.md §8 issue 1.
+    old critique step.
     """
     defn = AgentDefinition(
         name="v3_critique_revise",

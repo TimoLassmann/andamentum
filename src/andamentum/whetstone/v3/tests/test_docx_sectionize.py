@@ -133,7 +133,7 @@ def test_a_quote_from_a_section_is_already_a_document_address(tmp_path) -> None:
     def build(doc):
         doc.add_heading("Methods", 1)
         paragraph = doc.add_paragraph("Mice were assigned to ")
-        paragraph.add_run("goal").bold = True
+        paragraph.add_run("aim").bold = True
         paragraph.add_run("3,4. Then we waited.")
 
     path = _write(tmp_path, build)

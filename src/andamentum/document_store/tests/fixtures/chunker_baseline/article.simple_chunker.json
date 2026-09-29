@@ -1,0 +1,160 @@
+{
+  "source_chars": 17567,
+  "chunk_count": 17,
+  "chunks": [
+    {
+      "chunk_index": 0,
+      "section_path": "SaltLog: A Low-Cost Sensor Network for Estuary Salinity Monitoring",
+      "start_char": 0,
+      "end_char": 70,
+      "text_chars": 68,
+      "text_preview": "# SaltLog: A Low-Cost Sensor Network for Estuary Salinity Monitoring"
+    },
+    {
+      "chunk_index": 1,
+      "section_path": "SaltLog: A Low-Cost Sensor Network for Estuary Salinity Monitoring > Abstract",
+      "start_char": 70,
+      "end_char": 1227,
+      "text_chars": 1154,
+      "text_preview": "## Abstract Estuary salinity is measured today in one of two ways, and both leav..."
+    },
+    {
+      "chunk_index": 2,
+      "section_path": "SaltLog: A Low-Cost Sensor Network for Estuary Salinity Monitoring > Introduction",
+      "start_char": 1227,
+      "end_char": 3227,
+      "text_chars": 2000,
+      "text_preview": "## Introduction Salinity is one of the most basic quantities an estuary manager ..."
+    },
+    {
+      "chunk_index": 3,
+      "section_path": "SaltLog: A Low-Cost Sensor Network for Estuary Salinity Monitoring > Introduction",
+      "start_char": 3027,
+      "end_char": 3893,
+      "text_chars": 866,
+      "text_preview": "issing is a design that scales to dozens of nodes without a matching increase in..."
+    },
+    {
+      "chunk_index": 4,
+      "section_path": "SaltLog: A Low-Cost Sensor Network for Estuary Salinity Monitoring > Related work",
+      "start_char": 3896,
+      "end_char": 5617,
+      "text_chars": 1718,
+      "text_preview": "## Related work Low-cost water quality sensing has a long history in citizen sci..."
+    },
+    {
+      "chunk_index": 5,
+      "section_path": "SaltLog: A Low-Cost Sensor Network for Estuary Salinity Monitoring > Methods",
+      "start_char": 5617,
+      "end_char": 5871,
+      "text_chars": 251,
+      "text_preview": "## Methods The network has three parts: the sensor nodes, a shore gateway that r..."
+    },
+    {
+      "chunk_index": 6,
+      "section_path": "SaltLog: A Low-Cost Sensor Network for Estuary Salinity Monitoring > Methods > Sensor hardware",
+      "start_char": 5871,
+      "end_char": 7083,
+      "text_chars": 1209,
+      "text_preview": "### Sensor hardware Each node is built around a low-power microcontroller, a fou..."
+    },
+    {
+      "chunk_index": 7,
+      "section_path": "SaltLog: A Low-Cost Sensor Network for Estuary Salinity Monitoring > Methods > Calibration",
+      "start_char": 7083,
+      "end_char": 8023,
+      "text_chars": 937,
+      "text_preview": "### Calibration Each node is calibrated in the field against two reference solut..."
+    },
+    {
+      "chunk_index": 8,
+      "section_path": "SaltLog: A Low-Cost Sensor Network for Estuary Salinity Monitoring > Methods > Deployment",
+      "start_char": 8023,
+      "end_char": 9327,
+      "text_chars": 1301,
+      "text_preview": "### Deployment The deployment ran for six weeks in a temperate estuary with a ti..."
+    },
+    {
+      "chunk_index": 9,
+      "section_path": "SaltLog: A Low-Cost Sensor Network for Estuary Salinity Monitoring > Methods > Data pipeline",
+      "start_char": 9327,
+      "end_char": 10695,
+      "text_chars": 1365,
+      "text_preview": "### Data pipeline Readings arrive at the gateway as short radio packets carrying..."
+    },
+    {
+      "chunk_index": 10,
+      "section_path": "SaltLog: A Low-Cost Sensor Network for Estuary Salinity Monitoring > Methods > Quality control",
+      "start_char": 10695,
+      "end_char": 11286,
+      "text_chars": 588,
+      "text_preview": "### Quality control Every reading passes three automatic checks before it is sho..."
+    },
+    {
+      "chunk_index": 11,
+      "section_path": "SaltLog: A Low-Cost Sensor Network for Estuary Salinity Monitoring > Methods > Implementation and release",
+      "start_char": 11286,
+      "end_char": 11673,
+      "text_chars": 384,
+      "text_preview": "### Implementation and release The node firmware, the gateway software and the s..."
+    },
+    {
+      "chunk_index": 12,
+      "section_path": "SaltLog: A Low-Cost Sensor Network for Estuary Salinity Monitoring > Results",
+      "start_char": 11673,
+      "end_char": 13118,
+      "text_chars": 1442,
+      "text_preview": "## Results Over the six weeks the network delivered 91% of the readings it would..."
+    },
+    {
+      "chunk_index": 13,
+      "section_path": "SaltLog: A Low-Cost Sensor Network for Estuary Salinity Monitoring > Intrusion event \u2014 week three",
+      "start_char": 13118,
+      "end_char": 14872,
+      "text_chars": 1751,
+      "text_preview": "## Intrusion event \u2014 week three In the third week a period of low river flow coi..."
+    },
+    {
+      "chunk_index": 14,
+      "section_path": "SaltLog: A Low-Cost Sensor Network for Estuary Salinity Monitoring > Discussion",
+      "start_char": 14872,
+      "end_char": 16872,
+      "text_chars": 2000,
+      "text_preview": "## Discussion SaltLog shows that a dense network of low-cost nodes can resolve e..."
+    },
+    {
+      "chunk_index": 15,
+      "section_path": "SaltLog: A Low-Cost Sensor Network for Estuary Salinity Monitoring > Discussion",
+      "start_char": 16672,
+      "end_char": 17005,
+      "text_chars": 333,
+      "text_preview": "itation of the deployment is its length. Six weeks covers one intrusion event an..."
+    },
+    {
+      "chunk_index": 16,
+      "section_path": "SaltLog: A Low-Cost Sensor Network for Estuary Salinity Monitoring > Conclusion",
+      "start_char": 17008,
+      "end_char": 17567,
+      "text_chars": 557,
+      "text_preview": "## Conclusion We have presented SaltLog, a network of low-cost salinity sensors ..."
+    }
+  ],
+  "covered_chars": 17961,
+  "unique_section_paths": [
+    "SaltLog: A Low-Cost Sensor Network for Estuary Salinity Monitoring",
+    "SaltLog: A Low-Cost Sensor Network for Estuary Salinity Monitoring > Abstract",
+    "SaltLog: A Low-Cost Sensor Network for Estuary Salinity Monitoring > Conclusion",
+    "SaltLog: A Low-Cost Sensor Network for Estuary Salinity Monitoring > Discussion",
+    "SaltLog: A Low-Cost Sensor Network for Estuary Salinity Monitoring > Introduction",
+    "SaltLog: A Low-Cost Sensor Network for Estuary Salinity Monitoring > Intrusion event \u2014 week three",
+    "SaltLog: A Low-Cost Sensor Network for Estuary Salinity Monitoring > Methods",
+    "SaltLog: A Low-Cost Sensor Network for Estuary Salinity Monitoring > Methods > Calibration",
+    "SaltLog: A Low-Cost Sensor Network for Estuary Salinity Monitoring > Methods > Data pipeline",
+    "SaltLog: A Low-Cost Sensor Network for Estuary Salinity Monitoring > Methods > Deployment",
+    "SaltLog: A Low-Cost Sensor Network for Estuary Salinity Monitoring > Methods > Implementation and release",
+    "SaltLog: A Low-Cost Sensor Network for Estuary Salinity Monitoring > Methods > Quality control",
+    "SaltLog: A Low-Cost Sensor Network for Estuary Salinity Monitoring > Methods > Sensor hardware",
+    "SaltLog: A Low-Cost Sensor Network for Estuary Salinity Monitoring > Related work",
+    "SaltLog: A Low-Cost Sensor Network for Estuary Salinity Monitoring > Results"
+  ]
+}

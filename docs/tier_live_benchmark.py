@@ -39,8 +39,9 @@ def _counting_posterior(dist: list[float] | None, verdict: str) -> float:
     s, c = _evidence_counting_vote(ev)
     return 1.0 / (1.0 + math.exp(-(s - c)))
 
-SCIFACT_DIR = Path(
-    "experiments/dirichlet_confidence/data/scifact"
+SCIFACT_DIR = (
+    Path(__file__).resolve().parents[1]
+    / "experiments/dirichlet_confidence/data/scifact"
 )
 MODEL = "ollama:gemma4:12b-mxfp8"
 N = 12
