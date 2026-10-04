@@ -1,0 +1,6 @@
+task: |
+  Write a report for the SaltLog facilities manager on the energy audit of the main warehouse:
+  findings and recommendations. Include a figure of monthly electricity use from the data table.
+sources:
+  - audit.md
+  - electricity.csv

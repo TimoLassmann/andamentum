@@ -1,39 +1,33 @@
-"""andamentum.scribe — structured document drafting.
+"""andamentum.scribe — a document as a folder bundle.
 
-Block-based document authoring. Markdown is the source of truth;
-.docx is a derived artifact. See docs/superpowers/plans/2026-04-25-scribe-module.md
-for design rationale.
+A bundle is a plain directory: ``bundle.yaml``, one markdown file per section,
+``figures/``, ``references.yaml`` and ``out/``. Markdown is the source of
+truth; .docx / .md / .html / .txt are derived. No LLM, no database.
 """
 
 # === Functions you can wrap as agent tools ===
-# `Document` is a class — wrap its methods (`create`, `open`, `append`, `query`,
-# `replace`, `replace_section`, `insert_into_section`, `add_reference`,
-# `references`, `citations`, `validate`, `render`) as tools.
-# `Heading`, `Paragraph`, `Figure`, `Table` are factory helpers — wrap each
-# as a tool that returns a block dict, then pass the dict to `Document.append`.
-from .api import Document, Figure, Heading, Paragraph, Table
+# `Bundle` is a class — wrap its methods (`create`, `open`, `sections`,
+# `section`, `section_by_title`, `add_section`, `write_section`,
+# `rename_section`, `remove_section`, `reorder`, `add_figure`, `references`,
+# `add_reference`, `validate`, `render`) as tools.
+from .bundle import Bundle
 
 # === Result/data types (returned by the above; not tools themselves) ===
 from .models import (
-    Block,
     Reference,
-    Revision,
+    ScribeError,
+    Section,
     StaleRevisionError,
     ValidationIssue,
 )
 
-
 __all__ = [
     # Functions / callables
-    "Document",
-    "Figure",
-    "Heading",
-    "Paragraph",
-    "Table",
+    "Bundle",
     # Data types
-    "Block",
     "Reference",
-    "Revision",
+    "ScribeError",
+    "Section",
     "StaleRevisionError",
     "ValidationIssue",
 ]

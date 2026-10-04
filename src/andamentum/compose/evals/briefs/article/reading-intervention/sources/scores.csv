@@ -1,0 +1,5 @@
+group,timepoint,mean_wpm
+intervention,baseline,48.2
+intervention,week10,62.8
+control,baseline,47.9
+control,week10,54.0

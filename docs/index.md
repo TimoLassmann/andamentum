@@ -6,7 +6,8 @@ Andamentum is a single Python package of tightly-scoped sub-modules covering the
 
 | Module | Role |
 |---|---|
-| **scribe** | Block-based document authoring (paragraph, heading, figure, table) backed by SQLite, one-way render to .docx. |
+| **compose** | A task in, a finished document out (email, memo, report, article, how-to, proposal, grant): brief, evidence, outline, draft, independent checks, revision. No approval step; never sends anything. |
+| **scribe** | A document as a plain folder bundle (markdown sections with frontmatter, figures, references), rendered to .docx / .md / .html / .txt. |
 | **figures** | Publication-quality scientific figure rendering — deterministic plotting of your data with journal-matched sizing (10 chart types, 7 journal palettes and the andamentum report palette). |
 | **typeset** | Standalone typesetting system (7 visual atoms, 3 named styles, HTML + PDF output) used by other modules. |
 | [**whetstone**](./whetstone.html) | Structured review of your own drafts → markdown / HTML / .docx with comments and tracked changes. The default run reviews, rewrites, checks the references and suggests a next step; flags turn parts off, and `--goal` loops until a condition you state holds. Three review shapes over one substrate: `review` (criterion cascade, default), `checklist` (probe bank + coverage table), `panel` (simulated experts); plus `references`, `proofread`, `apply-patches`, `verify-provenance`. |
@@ -35,7 +36,8 @@ An additional experimental sub-module ships installed but is not yet publicly do
 
 ```python
 from andamentum.whetstone import review_document
-from andamentum.scribe import Document
+from andamentum.scribe import Bundle
+from andamentum.compose import write_document, Roles
 from andamentum.figures import figure
 from andamentum.proofread import analyze
 from andamentum.harvest import extract
@@ -48,11 +50,12 @@ from andamentum.llm_judge import judge_score, judge_compare
 
 ## CLIs
 
-Nine scripts installed by the package. Run `--help` on any binary for full flag reference.
+Ten scripts installed by the package. Run `--help` on any binary for full flag reference.
 
 | Script | What it does | LLM? |
 |---|---|---|
-| `andamentum-scribe` | Block-based document authoring; renders to .docx. | none |
+| `andamentum-compose` | A task in, a finished document out, in a bundle folder. | required |
+| `andamentum-scribe` | Folder-bundle document authoring; renders to .docx / .md / .html / .txt. | none |
 | `andamentum-figures` | Publication-quality scientific figure rendering (deterministic plotting). | none |
 | `andamentum-whetstone` | Draft review → markdown / HTML / .docx with comments and tracked changes; the default run also checks the references. Seven subcommands: `review` (default), `panel`, `checklist` (probe bank + coverage table), `references`, `proofread`, `apply-patches`, `verify-provenance`. | required for `review`, `panel` + `checklist`; optional for `references` |
 | `andamentum-proofread` | Deterministic readability + style check. | none |

@@ -132,11 +132,16 @@ machine-checkable via grep and are enforced by code review.
 - **`references`** depends on `pydantic`, `httpx`, `rapidfuzz` and —
   for its two model calls only — `core`. It imports no other
   sub-module.
-- **`scribe`** depends only on `typeset` and stdlib `sqlite3`. MUST
-  NOT depend on `whetstone`, `figures`, or `core`.
+- **`scribe`** depends only on `typeset`, `python-docx` and `pyyaml`
+  (a bundle is a plain folder; there is no database). MUST NOT depend
+  on `whetstone`, `figures`, or `core`.
+- **`compose`** depends on `core`, `scribe`, `whetstone` (public API
+  only), `proofread`, `llm_judge`, `harvest` and `figures`;
+  `deep_research` only behind `--research`. Nothing depends on
+  `compose`. MUST NOT depend on `epistemic` or `document_store`.
 - **`figures`** depends on `matplotlib`, `numpy`, `pydantic`. The
-  optional `figures.scribe_glue` is the ONLY place `scribe` is
-  imported; the rest of `figures` MUST NOT touch `scribe`.
+  optional `figures.scribe_glue` is the ONLY place in `figures` that
+  imports `scribe`; the rest of `figures` MUST NOT touch `scribe`.
 - **`vision_critique`** depends on `core` and `pydantic-ai`. Used
   standalone, by `figures` for refinement, or by `whetstone` for
   figure review.
@@ -153,7 +158,8 @@ src/andamentum/
 ├── document_store/   — SQLite + FTS5 + sqlite-vec personal knowledge base
 ├── deep_research/    — web research pipeline (search → fetch → extract → verify → synthesise)
 ├── typeset/          — typesetting system (HTML + PDF output)
-├── scribe/           — block-based document authoring → .docx
+├── scribe/           — folder-bundle document authoring → .docx / .md / .html / .txt
+├── compose/          — a task in, a finished document out (brief → evidence → draft → checks → revise)
 ├── figures/          — publication-quality figure rendering
 ├── whetstone/        — document review over user drafts (criterion cascade, panel, checklist, goal loop)
 ├── references/       — reference checking in any citation style, with a Crossref lookup

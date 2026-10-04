@@ -1,0 +1,5 @@
+task: |
+  Write a memo to the SaltLog operations director recommending one of two label-printer vendors
+  and listing the next steps, using the comparison in the source.
+sources:
+  - vendors.md

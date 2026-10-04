@@ -1,0 +1,5 @@
+task: |
+  Write a how-to guide for the SaltLog engineering team on rotating the service API keys,
+  based on the runbook notes in the source.
+sources:
+  - runbook.md

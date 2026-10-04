@@ -1,13 +1,10 @@
-# src/andamentum/scribe/scaffolds.py
-"""Built-in document scaffolds.
+"""Built-in bundle scaffolds.
 
-Each scaffold is a list of (section_name, guide_text) tuples. When a
-document is created with `scaffold=<name>`, scribe inserts one level-1
-heading per section and one placeholder paragraph carrying the guide
-text in `metadata.guide` for downstream agents to consume.
-
-Guide text is sourced from the section structures in
-manuscript-tools/section-guides.md and is intentionally short.
+A scaffold is a list of (section title, guide text) tuples. ``Bundle.create``
+with ``scaffold=<name>`` adds one empty ``planned`` section per entry. The
+guide text is kept for callers that draft into the scaffold; it is not stored
+in the bundle. References are not a section: they render from
+``references.yaml`` at the end of the document.
 """
 
 from __future__ import annotations
@@ -33,7 +30,6 @@ ARTICLE: list[tuple[str, str]] = [
         "Discussion",
         "Restate finding in context. Compare with prior work. Limitations honestly. Concrete future directions.",
     ),
-    ("References", ""),
 ]
 
 SCAFFOLDS: dict[str, list[tuple[str, str]]] = {

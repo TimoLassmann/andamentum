@@ -1,0 +1,6 @@
+task: |
+  Write a report for the Apollo Labs engineering board on the latency pilot: what was measured,
+  what was found, and what to do next. Include a figure of the weekly latency from the data table.
+sources:
+  - summary.md
+  - latency.csv

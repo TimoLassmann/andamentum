@@ -1,0 +1,5 @@
+task: |
+  Write a short email to the SaltLog warehouse team telling them the sensor shipment will
+  arrive late, what that changes for the installation week, and what we need from them.
+sources:
+  - notes.md

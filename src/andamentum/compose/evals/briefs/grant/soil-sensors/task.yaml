@@ -1,0 +1,6 @@
+task: |
+  Write a research grant application to the Fictional Foundation small grants round for the
+  soil-sensor project described in the source. Follow the call text for the sections it asks for.
+sources:
+  - call.md
+  - project.md

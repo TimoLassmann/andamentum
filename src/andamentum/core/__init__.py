@@ -14,6 +14,7 @@ from .agents import (
     AgentRunner,
     build_pydantic_ai_agent,
     run_agent_with_fallback,
+    run_agent_with_usage,
 )
 from .embeddings import (
     DEFAULT_EMBEDDING_MODEL,
@@ -38,6 +39,7 @@ __all__ = [
     "AgentRunner",
     "build_pydantic_ai_agent",
     "run_agent_with_fallback",
+    "run_agent_with_usage",
     # Models
     "resolve_model",
     "resolve_model_from_args",

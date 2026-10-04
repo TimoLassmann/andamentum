@@ -49,6 +49,14 @@ The two pipelines are intentionally disjoint; whetstone reviews IDEAS,
 proofread reviews STYLE.
 """
 
+from pathlib import Path
+
+from ._confidentiality import check_confidentiality
+from ._watermark import (
+    provenance_line,
+    stamp_docx_core_properties,
+    write_provenance_customxml,
+)
 from .renderers import render_docx, render_html, render_markdown
 from .reviewed_document import ReviewedDocument, open_source
 from .schemas import (
@@ -78,6 +86,28 @@ from .v3 import (
     run_review_v3 as run_review,
 )
 from .v3.panel import run_panel_v3 as run_panel
+from .v3.reviewers import PROFILES, ReviewerProfile
+
+
+def stamp_provenance(docx_path: str | Path, *, model: str | None) -> None:
+    """Mark a ``.docx`` as AI-assisted: core properties plus the custom XML part.
+
+    The same two steps the review renderers apply to a reviewed document, for
+    callers that generate a ``.docx`` themselves.
+    """
+    stamp_docx_core_properties(docx_path, model=model)
+    write_provenance_customxml(docx_path, model=model)
+
+
+def reviewer_profile(name: str) -> ReviewerProfile:
+    """The built-in reviewer profile called *name*; ``ValueError`` if there is none."""
+    try:
+        return PROFILES[name]
+    except KeyError:
+        raise ValueError(
+            f"unknown reviewer profile {name!r}; valid: {', '.join(sorted(PROFILES))}"
+        ) from None
+
 
 __all__ = [
     "review_document",
@@ -95,6 +125,11 @@ __all__ = [
     "render_docx",
     "render_html",
     "render_markdown",
+    "check_confidentiality",
+    "stamp_provenance",
+    "provenance_line",
+    "ReviewerProfile",
+    "reviewer_profile",
     "AuthorQuestion",
     "CheckableItem",
     "CustomEvaluation",

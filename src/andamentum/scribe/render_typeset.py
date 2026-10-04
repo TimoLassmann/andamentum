@@ -1,72 +1,61 @@
-"""Map scribe blocks to typeset atom dicts.
+"""Map a bundle to typeset atom dicts (HTML output).
 
-Typeset is the package's display layer (HTML+PDF). Scribe owns the
-authoring schema; this module is the thin adapter that lets typeset
-render scribe documents without typeset learning anything new.
-
-For v1 we map:
-  paragraph -> prose
-  heading   -> heading
-  figure    -> card (with embedded <img> + caption)
-  table     -> prose with a markdown table body (typeset already loads
-               python-markdown's tables extension)
+The title becomes the ``heading`` atom; each section becomes one ``prose`` atom
+that opens with a ``##`` heading, split around images, which become ``card``
+atoms. References follow as ``reference`` atoms.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+import html
+from typing import Any, Callable
 
-if TYPE_CHECKING:  # pragma: no cover
-    from .api import Document
-
-
-def _table_to_markdown(rows: list[list[str]], header_row: bool) -> str:
-    if not rows:
-        return ""
-    if header_row:
-        head, *body = rows
-    else:
-        head = [""] * len(rows[0])
-        body = rows
-    out = ["| " + " | ".join(head) + " |"]
-    out.append("| " + " | ".join(["---"] * len(head)) + " |")
-    for r in body:
-        out.append("| " + " | ".join(r) + " |")
-    return "\n".join(out)
+from .markdown import ImageBlock, blocks_to_markdown, parse_blocks
+from .models import Reference, Section
 
 
-def to_typeset_atoms(doc: "Document") -> list[dict[str, Any]]:
-    """Convert the document's blocks to typeset atom dicts."""
-    atoms: list[dict[str, Any]] = []
-    for blk in doc.query():
-        if blk.type == "paragraph":
-            atoms.append({"kind": "prose", "content": blk.content})
-        elif blk.type == "heading":
-            atoms.append(
-                {
-                    "kind": "heading",
-                    "content": blk.content,
-                    "level": int(blk.metadata.get("level", 1)),
-                }
-            )
-        elif blk.type == "figure":
-            path = blk.metadata.get("path", "")
-            caption = blk.metadata.get("caption", "")
-            label = blk.metadata.get("label", "")
-            body = (
-                f'<img src="{path}" alt="{label}" />\n\n**{caption}**'
-                if caption
-                else f'<img src="{path}" />'
-            )
-            atoms.append({"kind": "card", "content": body})
-        elif blk.type == "table":
-            md_table = _table_to_markdown(
-                blk.metadata.get("rows", []),
-                bool(blk.metadata.get("header_row", True)),
-            )
-            caption = blk.metadata.get("caption", "")
-            content = md_table if not caption else f"{md_table}\n\n*{caption}*"
-            atoms.append({"kind": "prose", "content": content})
-        else:  # pragma: no cover — schema enforces the type literal
-            raise ValueError(f"Unknown block type for typeset render: {blk.type!r}")
+def to_typeset_atoms(
+    *,
+    title: str,
+    sections: list[Section],
+    references: list[Reference],
+    text_filter: Callable[[str], str] | None,
+    image_path: Callable[[str], str],
+) -> list[dict[str, Any]]:
+    atoms: list[dict[str, Any]] = [{"kind": "heading", "content": title}]
+    for section in sections:
+        body = text_filter(section.body) if text_filter else section.body
+        pending = [f"## {section.title}"]
+        buffer: list = []
+
+        def flush_text() -> None:
+            if buffer:
+                pending.append(blocks_to_markdown(buffer))
+                buffer.clear()
+            if pending:
+                atoms.append({"kind": "prose", "content": "\n\n".join(pending)})
+                pending.clear()
+
+        for block in parse_blocks(body):
+            if isinstance(block, ImageBlock):
+                flush_text()
+                src = html.escape(image_path(block.path), quote=True)
+                alt = html.escape(block.label or block.caption, quote=True)
+                content = f'<img src="{src}" alt="{alt}" />'
+                if block.caption:
+                    content += f"\n\n**{block.caption}**"
+                atoms.append({"kind": "card", "content": content})
+            else:
+                buffer.append(block)
+        flush_text()
+    if references:
+        atoms.append({"kind": "prose", "content": "## References"})
+        for ref in references:
+            atom: dict[str, Any] = {
+                "kind": "reference",
+                "content": f"[{ref.key}] {ref.text}",
+            }
+            if ref.url:
+                atom["source"] = ref.url
+            atoms.append(atom)
     return atoms

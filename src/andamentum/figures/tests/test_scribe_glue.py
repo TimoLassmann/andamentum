@@ -3,108 +3,82 @@
 import pytest
 
 from andamentum.figures.scribe_glue import insert_figure
-from andamentum.scribe.api import Document, Heading, Paragraph
+from andamentum.scribe import Bundle, ScribeError, StaleRevisionError
+
+DATA = {"Method": ["A", "B", "C"], "Score": [0.5, 0.7, 0.9]}
 
 
-def _seed(monkeypatch, tmp_path) -> Document:
-    monkeypatch.setenv("SCRIBE_DIR", str(tmp_path / "scribe_db"))
-    doc = Document.create(title="P", database="t")
-    doc.append(Heading("Introduction", level=1))
-    doc.append(Paragraph("Intro body."))
-    doc.append(Heading("Results", level=1))
-    doc.append(Paragraph("Results body."))
-    return doc
+def _bundle(tmp_path) -> Bundle:
+    b = Bundle.create(tmp_path / "b", title="P")
+    b.add_section(title="Introduction", body="Intro body.")
+    b.add_section(title="Results", body="Results body.")
+    return b
 
 
-def test_insert_figure_renders_file_and_inserts_block(monkeypatch, tmp_path):
-    doc = _seed(monkeypatch, tmp_path)
-
-    bid = insert_figure(
-        doc,
-        "Results",
-        output_dir=tmp_path / "figures",
+def test_insert_figure_copies_png_and_appends_markdown(tmp_path):
+    b = _bundle(tmp_path)
+    section = insert_figure(
+        b,
+        "s02",
         caption="Bench results.",
         label="fig:bench",
-        data={"Method": ["A", "B", "C"], "Score": [0.5, 0.7, 0.9]},
+        data=DATA,
         kind="bar",
         x="Method",
         y="Score",
     )
-
-    assert isinstance(bid, str)
-    assert (tmp_path / "figures" / "fig_bench.png").exists()
-
-    results = doc.section("Results")
-    fig_blocks = [b for b in results if b.type == "figure"]
-    assert len(fig_blocks) == 1
-    assert fig_blocks[0].metadata["label"] == "fig:bench"
-    assert fig_blocks[0].metadata["caption"] == "Bench results."
-    assert "fig_bench.png" in fig_blocks[0].metadata["path"]
+    assert (tmp_path / "b" / "figures" / "bench.png").is_file()
+    assert section.revision == 2
+    assert section.body.endswith("![Bench results.](figures/bench.png){#fig:bench}")
+    assert b.section("s01").body == "Intro body."
+    assert b.validate() == []
 
 
-def test_insert_figure_creates_output_dir_if_missing(monkeypatch, tmp_path):
-    doc = _seed(monkeypatch, tmp_path)
-    nested = tmp_path / "deep" / "nested" / "figs"
-
-    insert_figure(
-        doc,
-        "Results",
-        output_dir=nested,
-        caption="x",
-        label="fig:x",
-        data={"A": [1, 2], "B": [3, 4]},
-        kind="bar",
-        x="A",
-        y="B",
-    )
-    assert nested.exists()
-
-
-def test_insert_figure_unknown_section_raises(monkeypatch, tmp_path):
-    doc = _seed(monkeypatch, tmp_path)
-    with pytest.raises(KeyError):
+def test_insert_figure_unknown_section_raises_before_rendering(tmp_path):
+    b = _bundle(tmp_path)
+    with pytest.raises(ScribeError):
         insert_figure(
-            doc,
-            "NoSuchSection",
-            output_dir=tmp_path / "figures",
+            b,
+            "s99",
             caption="x",
-            label="fig:x",
-            data={"A": [1, 2], "B": [3, 4]},
+            label="x",
+            data=DATA,
             kind="bar",
-            x="A",
-            y="B",
+            x="Method",
+            y="Score",
+        )
+    assert list((tmp_path / "b" / "figures").iterdir()) == []
+
+
+def test_insert_figure_stale_revision(tmp_path):
+    b = _bundle(tmp_path)
+    with pytest.raises(StaleRevisionError):
+        insert_figure(
+            b,
+            "s02",
+            caption="x",
+            label="x",
+            expected_revision=7,
+            data=DATA,
+            kind="bar",
+            x="Method",
+            y="Score",
         )
 
 
-def test_insert_figure_filename_override(monkeypatch, tmp_path):
-    doc = _seed(monkeypatch, tmp_path)
-    insert_figure(
-        doc,
-        "Results",
-        output_dir=tmp_path / "figures",
-        caption="c",
-        label="fig:y",
-        filename="custom_name.png",
-        data={"A": [1, 2], "B": [3, 4]},
-        kind="bar",
-        x="A",
-        y="B",
-    )
-    assert (tmp_path / "figures" / "custom_name.png").exists()
+def test_insert_figure_renders_into_docx(tmp_path):
+    from docx import Document as DocxDocument
 
-
-def test_insert_figure_appends_png_to_extensionless_filename(monkeypatch, tmp_path):
-    doc = _seed(monkeypatch, tmp_path)
+    b = _bundle(tmp_path)
     insert_figure(
-        doc,
-        "Results",
-        output_dir=tmp_path / "figures",
+        b,
+        "s02",
         caption="c",
         label="fig:z",
-        filename="bare_name",
-        data={"A": [1, 2], "B": [3, 4]},
+        data=DATA,
         kind="bar",
-        x="A",
-        y="B",
+        x="Method",
+        y="Score",
     )
-    assert (tmp_path / "figures" / "bare_name.png").exists()
+    out = b.render(tmp_path / "o.docx", format="docx")
+    assert len(DocxDocument(str(out)).inline_shapes) == 1

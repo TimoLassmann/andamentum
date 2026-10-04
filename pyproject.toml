@@ -78,6 +78,7 @@ dependencies = [
     "rapidfuzz>=3.0,<4",             # chunker fuzzy anchor matching
     "textstat>=0.7.4,<1",            # proofread deterministic readability
     "python-pptx>=1.0,<2",           # proofread --slides (already in the lock via docling)
+    "pyyaml>=6,<7",                  # scribe bundle frontmatter, compose genre files (already in the lock)
 ]
 
 [project.urls]
@@ -92,6 +93,7 @@ andamentum-epistemic    = "andamentum.epistemic.cli:main"
 andamentum-research     = "andamentum.deep_research.cli:main"
 andamentum-whetstone    = "andamentum.whetstone.cli:main"
 andamentum-scribe       = "andamentum.scribe.cli:main"
+andamentum-compose      = "andamentum.compose.cli:main"
 andamentum-figures      = "andamentum.figures.cli:main"
 andamentum-chunker      = "andamentum.chunker.cli:main"
 andamentum-harvest      = "andamentum.harvest.cli:main"
@@ -260,7 +262,8 @@ markers = [
     "live_provider: test calls a live evidence provider API (PubMed, OpenAlex, etc.) — needs internet, no auth typically required",
     "vlm: harvest test that imports docling (~1 GB of torch) and/or runs a local vision-language model for mode='accurate'. Deselected so the default suite stays runnable while other models hold the machine's memory",
     "rerank: document_store test that downloads and runs a real cross-encoder (~2 GB of weights, needs the `rerank` extra). Deselected for the same reason as `vlm`; every other rerank test stubs the model",
+    "compose_eval: compose test that calls real models (costs tokens or local compute). Deselected like `cloud`; run with `uv run pytest -m compose_eval`",
 ]
 # Exclude gated tests from default runs. Explicitly selecting a marker
 # overrides this.
-addopts = "-m 'not ollama and not benchmark and not cloud and not live_provider and not vlm and not rerank'"
+addopts = "-m 'not ollama and not benchmark and not cloud and not live_provider and not vlm and not rerank and not compose_eval'"

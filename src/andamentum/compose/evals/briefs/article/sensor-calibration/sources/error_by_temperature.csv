@@ -1,0 +1,6 @@
+temperature_c,mean_abs_error_c
+5,0.31
+15,0.33
+25,0.38
+35,0.52
+45,0.71

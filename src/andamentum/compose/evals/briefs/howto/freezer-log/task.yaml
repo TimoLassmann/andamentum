@@ -1,0 +1,5 @@
+task: |
+  Write a how-to guide for lab staff on setting up and keeping the shared freezer temperature log,
+  using the notes in the source.
+sources:
+  - notes.md

@@ -1,85 +1,65 @@
 """Glue between :mod:`andamentum.figures` and :mod:`andamentum.scribe`.
 
-The figures module renders standalone PNG/PDF files; scribe stores
-documents whose ``Figure`` blocks reference image paths. This module
-ties them together: render a figure to PNG and insert it into a
-named section of a scribe document in one call.
+The figures module renders standalone image files; a scribe bundle keeps its
+images in ``figures/`` and references them from section bodies. This module
+ties them together: render a figure to PNG and add it to a section of a
+bundle in one call.
 
 Coupling is one-directional: this module imports from both
-``andamentum.figures`` and ``andamentum.scribe``, but neither of the
-two depends on this glue. Removing it leaves both modules intact.
+``andamentum.figures`` and ``andamentum.scribe``, but neither of the two
+depends on this glue. Removing it leaves both modules intact.
 """
 
 from __future__ import annotations
 
+import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from .render import figure as render_figure
 
 if TYPE_CHECKING:  # pragma: no cover
-    from andamentum.scribe.api import Document
-
-
-_RASTER_EXTS = (".png", ".jpg", ".jpeg", ".tif", ".tiff")
+    from andamentum.scribe import Bundle, Section
 
 
 def insert_figure(
-    doc: "Document",
-    section: str,
+    bundle: "Bundle",
+    section_id: str,
     *,
-    output_dir: str | Path,
     caption: str,
     label: str,
-    width_in: float | None = None,
-    position: str = "end",
-    filename: str | None = None,
+    expected_revision: int | None = None,
     **chart_kwargs: Any,
-) -> str:
-    """Render a figure and insert it into a scribe document section.
+) -> "Section":
+    """Render a figure and append it to a section of a scribe bundle.
 
-    The figure is rendered as a raster file (PNG by default) because
-    scribe's docx renderer embeds via python-docx, which does not
-    accept PDF. The file is written under ``output_dir`` and the
-    scribe ``Figure`` block stores its path.
+    The figure is rendered as PNG (python-docx cannot embed PDF) into a
+    temporary directory and copied into the bundle's ``figures/`` folder by
+    :meth:`Bundle.add_figure`, which names the file after *label*.
 
     Args:
-        doc: Scribe ``Document`` to insert into.
-        section: Name of the section to receive the figure.
-        output_dir: Directory where the rendered file will be written.
-            Created if missing.
+        bundle: The scribe ``Bundle`` to add to.
+        section_id: Id of the section that receives the figure.
         caption: Figure caption.
-        label: Figure label (e.g. ``"fig:benchmark"``); also used to
-            derive the default filename.
-        width_in: Optional width in inches for the docx render.
-        position: ``"end"`` (after the section's last block) or
-            ``"start"`` (immediately after the heading).
-        filename: Override the auto-derived filename. If the extension
-            is not a python-docx-compatible raster format, ``.png`` is
-            appended.
+        label: Figure label (e.g. ``"benchmark"``); also the file name.
+        expected_revision: The section revision you read. ``None`` uses the
+            section's current revision.
         **chart_kwargs: Forwarded to :func:`andamentum.figures.figure`
             (``data``, ``kind``, ``x``, ``y``, ``style``, etc.).
 
     Returns:
-        The block id of the inserted figure.
+        The updated section.
     """
-    from andamentum.scribe.api import Figure as ScribeFigure
-
-    out_dir = Path(output_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    fname = filename or f"{label.replace(':', '_')}.png"
-    if not fname.lower().endswith(_RASTER_EXTS):
-        fname = f"{fname}.png"
-    out_path = out_dir / fname
-
-    chart_kwargs["output"] = out_path
-    render_figure(**chart_kwargs)
-
-    spec = ScribeFigure(
-        path=str(out_path),
-        caption=caption,
-        label=label,
-        width_in=width_in,
-    )
-    return doc.insert_into_section(section, spec, position=position)
+    section = bundle.section(section_id)  # fails before any rendering work
+    revision = section.revision if expected_revision is None else expected_revision
+    with tempfile.TemporaryDirectory(prefix="scribe-figure-") as tmp:
+        rendered = Path(tmp) / "figure.png"
+        chart_kwargs["output"] = rendered
+        render_figure(**chart_kwargs)
+        return bundle.add_figure(
+            section_id,
+            image=rendered,
+            caption=caption,
+            label=label,
+            expected_revision=revision,
+        )

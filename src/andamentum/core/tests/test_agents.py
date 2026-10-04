@@ -80,3 +80,26 @@ class TestAgentRunner:
     def test_is_local_false_for_anthropic_string(self):
         runner = AgentRunner(model="anthropic:claude-haiku-4-5")
         assert runner.is_local is False
+
+
+async def test_run_agent_with_usage_returns_output_and_real_usage():
+    """Runs a real pydantic-ai Agent on its built-in test model (no network)."""
+    from pydantic_ai.models.test import TestModel
+
+    from andamentum.core.agents import run_agent_with_fallback, run_agent_with_usage
+
+    output, usage = await run_agent_with_usage(
+        TestModel(),
+        instructions="Answer.",
+        output_type=SimpleOutput,
+        user_message="Question?",
+    )
+    assert isinstance(output, SimpleOutput)
+    assert usage.requests >= 1 and usage.input_tokens > 0 and usage.output_tokens > 0
+    plain = await run_agent_with_fallback(
+        TestModel(),
+        instructions="Answer.",
+        output_type=SimpleOutput,
+        user_message="Question?",
+    )
+    assert isinstance(plain, SimpleOutput)

@@ -22,7 +22,7 @@ Andamentum is a single Python package (`src/andamentum/`) of tightly-scoped sub-
 - `andamentum.deep_research` — web research pipeline (search → fetch → extract → verify → synthesize) built on `pydantic-graph`
 - `andamentum.document_store` — SQLite + FTS5 + sqlite-vec knowledge base: 4-signal RRF search ranks documents; `get_chunks` / `get_chunk` read the passages, and an opt-in rerank (`rerank` extra) scores them
 - `andamentum.whetstone` — criterion-cascade review of your own drafts → markdown / HTML / tracked-changes `.docx`; reviewer profiles, checklist and panel modes, the goal loop
-- `andamentum.scribe` — block-based document drafting backed by SQLite, rendered to `.docx`; `article` scaffold only (no grant scaffold)
+- `andamentum.scribe` — a document as a plain folder bundle (markdown sections with frontmatter), rendered to `.docx` / `.md` / `.html` / `.txt`; `article` scaffold only
 - `andamentum.figures` — publication-quality scientific figures: 10 chart types, journal palettes and the andamentum report look
 - `andamentum.chunker` — structural-first semantic chunking of long markdown into 2k–10k char self-contained units. Stage 1: split at markdown headings. Stage 2: embedding-based split for over-budget sections. Stage 3 (optional): small-LLM judge for grey-zone boundaries. The LLM is never the primary segmenter.
 - `andamentum.harvest` — any source (PDF / HTML / DOCX / PPTX / Markdown / plain) → markdown; `mode="fast"` (default) or `"accurate"` (VLM pipeline, PDF only, `vlm` extra)
@@ -33,6 +33,7 @@ Andamentum is a single Python package (`src/andamentum/`) of tightly-scoped sub-
 - `andamentum.forge` — a natural-language brief → a runnable agentic system built in the dialect; LLM-written code runs only in a sandbox
 - `andamentum.llm_judge` — LLM-as-judge: `judge_score` / `judge_compare`; the `model` argument's type sets the mode (one id = fast, a list = panel)
 - `andamentum.references` — reference checking for a draft in any citation style: find, decide by evidence, check, Crossref lookup; the package's only citation reader
+- `andamentum.compose` — a task in, a finished document out (email, memo, report, article, howto, proposal, grant): brief → evidence → outline → draft → independent checks → revise, no approval step; the result is a scribe folder bundle plus rendered outputs; never sends anything
 - `andamentum.core` — shared model-resolution, `AgentRunner`, and embedding infrastructure (`core.embeddings`) used by all sub-modules
 
 **Each module's full notes** — design decisions, measured numbers, pitfalls, layering reasons — live in `src/andamentum/<module>/CLAUDE.md`, which Claude Code loads when it reads files in that directory. Read it before you change the module.
@@ -76,7 +77,7 @@ uv run ruff format
 uv build
 ```
 
-The canonical green state: **pyright 32 errors (test-only typing noise — pydantic-graph generic variance in `test_topology.py` and in the `_Ctx` stand-in that several `v3` node tests pass to `run()`, `Decomposition` dict-form fixtures in several test files; zero errors in shipped `src/` code. The count moves by one for every node test added, which is why it is a baseline to re-measure rather than a target), `uv run ruff check src/` clean (note: `ruff format` still wants to reformat ~110 pre-existing files — a known cleanup, run `uv run ruff format` once and commit), pytest 4013 passing (29 skipped, 73 deselected)**. Don't claim completion until you've run these three and seen that state.
+The canonical green state: **pyright 32 errors (test-only typing noise — pydantic-graph generic variance in `test_topology.py` and in the `_Ctx` stand-in that several `v3` node tests pass to `run()`, `Decomposition` dict-form fixtures in several test files; zero errors in shipped `src/` code. The count moves by one for every node test added, which is why it is a baseline to re-measure rather than a target), `uv run ruff check src/` clean (note: `ruff format` still wants to reformat ~110 pre-existing files — a known cleanup, run `uv run ruff format` once and commit), pytest 4291 passing (34 skipped, 75 deselected)**. Don't claim completion until you've run these three and seen that state.
 
 Run pytest from the **repo root**. `testpaths` is relative, so invoking it from inside a sub-package silently collects only that subtree — which looks like a green run against a fraction of the suite.
 
@@ -91,7 +92,7 @@ The scripts installed by the package. Run `--help` on any binary for the exhaust
 | `andamentum-epistemic` | Formal-epistemology pipeline. Two modes: `ask "<question>"` (research mode — system attempts decomposition, falls back to open research if the question doesn't decompose) or `verify "<claim>"` (single-claim verification, SciFact-style — seeds exactly one Claim from the provided text, skips decomposition) | required |
 | `andamentum-research` | Web-research pipeline (search → fetch → extract → verify → synthesise) over a local SearxNG | required |
 | `andamentum-whetstone` | Review of your own draft → markdown / HTML / tracked-changes .docx. Subcommands: `review` (default), `panel`, `checklist`, `references`, `proofread`, `apply-patches`, `verify-provenance`. Details: `src/andamentum/whetstone/CLAUDE.md` | required for `review`, `panel`, `checklist`; optional for `references`; none for the rest |
-| `andamentum-scribe` | Block-based document authoring backed by SQLite; renders to .docx | none |
+| `andamentum-scribe` | Folder-bundle document authoring (`init`, `sections`, `show`, `write`, `add`, `validate`, `render`); renders to .docx / .md / .html / .txt | none |
 | `andamentum-figures` | Publication-quality scientific figures (10 chart types, 7 journal palettes and the andamentum report palette, journal-matched sizing; `--journal report --style andamentum --svg-inline` for a report figure) | none |
 | `andamentum-chunker` | Verifiable semantic chunking of long markdown into 2k–10k char self-contained units | required |
 | `andamentum-harvest` | Any source → markdown (PDF / HTML / DOCX / PPTX / Markdown / plain). `--mode fast` (default) or `--mode accurate` (VLM pipeline, PDF only, `uv sync --extra vlm`); `--no-ocr`; `--figure-model` | none for `fast`; `accurate` needs local vision models |
@@ -100,6 +101,7 @@ The scripts installed by the package. Run `--help` on any binary for the exhaust
 | `andamentum-agentic-dialect` | The agentic-systems house style: `laws` / `law <id>` (the 9 laws), `roles` / `role <role>` (the prompt-slice for a job), `checklist`, `skeleton`, `check <path> [--strict]` (portable conformance gates, nonzero exit on fail; `--strict` adds the opt-in swallowed-exception gate) | none |
 | `andamentum-forge` | Meta-system: a natural-language brief → a recipe/dialect-validated `SystemSpec` → rendered, agent-authored, sandbox-audited runnable package. `build` (full pipeline: design → render → author code → audit) or `design` (validated spec only). `--stop-after {render,build,audit}`, `--sandbox {podman,subprocess}`, `--verbose` (live progress dashboard) | required |
 | `andamentum-llm-judge` | LLM-as-judge → JSON on stdout (or `-o FILE`). `score <output>` (per-criterion, against `--criteria` or the built-in six) or `compare <output_a> <output_b>` (both presentation orders, always). `--model` once = fast single judge; repeated or comma-separated = sequential panel with an agreement gate. Every result carries `confidence`, `doubt`, and `needs_review` | required |
+| `andamentum-compose` | A task → a finished document in a bundle folder. `write "<task>" --out DIR` (`--genre`, `--source`, `--model` or per-role `--drafter/--critic/--judge/--reader`, `--max-rounds`, `--research`, `--format`, `--no-provenance`), `run DIR`, `status DIR`, `check DIR`, `render DIR`, `genres`, `eval` (compose vs a single-call baseline). Exit 0 goal met, 4 not met, 3 crash, 2 usage. Details: `src/andamentum/compose/CLAUDE.md` | required |
 | `andamentum-docstore` | Deferred ingestion for the document store: `ingest [--defer]`, `ingest-source`, `status`, `process-pending`, `retry-failed` | only for `process-pending` and the non-deferred paths |
 
 `andamentum-epistemic`, `andamentum-research`, `andamentum-chunker`, and `andamentum-forge` resolve their LLM via `--model anthropic:claude-haiku-4-5` or `$ANDAMENTUM_MAIN_LLM_MODEL`, routed through `core.models.resolve_model_from_args`, which `sys.exit(1)`s if neither is set — no hidden defaults. `andamentum-whetstone`, `andamentum-vision-critique`, and `andamentum-llm-judge` take `--model` directly (any pydantic-ai model id; vision-critique requires a multimodal one, and llm-judge accepts the flag more than once to form a panel). `andamentum-scribe`, `andamentum-figures`, `andamentum-harvest`, and `andamentum-proofread` have no LLM dependency.
@@ -122,8 +124,9 @@ Worked example — `document_store/public.py:_preflight` took `(database, embedd
 - `deep_research` is foundational for evidence gathering; `epistemic.evidence_gathering` may depend on it.
 - `document_store` and `deep_research` MUST NOT depend on `epistemic` or on each other.
 - `whetstone` depends on `core`, `typeset`, `chunker`, `harvest` and `references`; on `deep_research`, `vision_critique` and `llm_judge` only behind opt-in features (novelty check, goal checks). It MUST NOT depend on `epistemic` or `document_store`.
-- `scribe` depends only on `typeset` and stdlib `sqlite3`. `figures` depends only on matplotlib + numpy + pydantic; `figures.scribe_glue` is the ONLY place that imports `scribe`.
+- `scribe` depends only on `typeset`, `python-docx` and `pyyaml`. `figures` depends only on matplotlib + numpy + pydantic; `figures.scribe_glue` is the ONLY place that imports `scribe`.
 - `chunker`, `vision_critique`, `llm_judge` and `references` depend on `core` plus their own third-party libraries and on no other sub-module. `llm_judge` MUST NOT import `pydantic-graph`.
+- `compose` depends on `core`, `scribe`, `whetstone`, `proofread`, `llm_judge`, `harvest` and `figures`; `deep_research` only behind `--research` (deferred import). Nothing depends on `compose`. It MUST NOT depend on `epistemic` or `document_store`.
 - Leaf modules that import no other sub-module: `harvest`, `agentic_dialect`, and `proofread` (only `proofread.cli` imports `harvest`).
 - `epistemic` MAY depend on `llm_judge`, one way only. `forge` depends on `core` and `agentic_dialect`.
 - The full rules, with their reasons, are in each module's `CLAUDE.md`; conformance tests enforce several of them.

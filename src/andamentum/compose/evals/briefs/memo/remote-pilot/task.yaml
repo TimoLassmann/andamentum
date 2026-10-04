@@ -1,0 +1,5 @@
+task: |
+  Write an internal memo to the Apollo Labs leadership team recommending whether to extend the
+  remote-work pilot, based on the pilot results in the source.
+sources:
+  - pilot.md

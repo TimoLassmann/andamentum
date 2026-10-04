@@ -1,0 +1,5 @@
+task: |
+  Write an email to Jane Doe at Harbor Foods telling her that the Apollo Labs demo
+  has moved and asking her to confirm the new date and attendees.
+sources:
+  - notes.md

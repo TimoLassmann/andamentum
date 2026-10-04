@@ -1,0 +1,7 @@
+task: |
+  Write a short research article reporting the reading-intervention trial in the source:
+  introduction, methods, results and discussion. Include a figure of mean reading scores
+  by group from the data table.
+sources:
+  - trial.md
+  - scores.csv

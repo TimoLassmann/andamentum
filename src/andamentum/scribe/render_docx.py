@@ -1,48 +1,35 @@
-"""Render scribe blocks to a python-docx Document.
+"""Render a bundle to a python-docx document.
 
-The .docx is a derived artifact: this is a one-way render. We never
-read .docx back into scribe. Templates are honoured if provided
-via Document.template; otherwise python-docx's default styles are used.
-
-Inline markdown formatting (**bold**, *italic*, `code`) inside paragraph
-content is converted to styled runs via parser.inline_runs(). Anything
-fancier (links, images-in-prose) falls back to plain text.
-
-For figures: if the image file exists on disk we embed it; if not we
-emit a placeholder paragraph (validate() will already have flagged the
-missing file separately). Width honours `metadata.width_in` if set,
-defaulting to 5.5 inches.
-
-For tables: emitted as a real Word table with bold header row when
-`metadata.header_row` is true. The caption is added as a styled
-paragraph immediately after the table.
+The title is a Word ``Title`` paragraph and every section title is exactly
+``Heading 1`` — whetstone sectionises a .docx by its heading styles, and
+compose maps whetstone's sections back to bundle sections by title. Lists use
+``List Bullet`` / ``List Number``, tables ``Table Grid``, image captions
+``Caption``. A missing image gets a placeholder paragraph (``validate`` has
+already reported the file).
 """
 
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Callable
 
 from docx import Document as DocxDocument
+from docx.document import Document as DocxDoc
 from docx.shared import Inches
 
+from .markdown import ImageBlock, ListBlock, ParagraphBlock, TableBlock, parse_blocks
+from .models import Reference, Section
 from .parser import find_ai_markers, inline_runs
 
-if TYPE_CHECKING:  # pragma: no cover
-    from .api import Document
-    from docx.document import Document as _DocxDoc
-
-
+IMAGE_WIDTH_IN = 5.5
 _AI_MARKER_KEYWORD = "andamentum:contains-ai-markers"
 
 
-def _stamp_ai_marker_keyword(out: "_DocxDoc") -> None:
-    """Tag the docx's core properties with an AI-provenance keyword.
+def _stamp_ai_marker_keyword(out: DocxDoc) -> None:
+    """Tag the docx's core ``keywords`` with an AI-provenance keyword.
 
-    Visible in Word's File→Info pane and recoverable by any docx-reading
-    tool. Surfaces AI-assistance to readers (editors, integrity workflows)
-    without forcing them to parse the body text. Uses the standard Dublin
-    Core ``keywords`` field — no custom-properties XML needed.
+    Visible in Word's File-Info pane and recoverable by any docx-reading tool,
+    so AI assistance shows without parsing the body text.
     """
     existing = (out.core_properties.keywords or "").strip()
     if _AI_MARKER_KEYWORD in existing:
@@ -52,18 +39,10 @@ def _stamp_ai_marker_keyword(out: "_DocxDoc") -> None:
     )
 
 
-def _document_contains_ai_markers(doc: "Document") -> bool:
-    for blk in doc.query(type="paragraph"):
-        if find_ai_markers(blk.content):
-            return True
-    return False
-
-
-def _emit_paragraph(out: "_DocxDoc", content: str) -> None:
-    para = out.add_paragraph()
-    for text, styles in inline_runs(content):
-        run = para.add_run(text)
-        if "bold" in styles:
+def _add_runs(paragraph, text: str, *, bold: bool = False) -> None:
+    for chunk, styles in inline_runs(text):
+        run = paragraph.add_run(chunk)
+        if bold or "bold" in styles:
             run.bold = True
         if "italic" in styles:
             run.italic = True
@@ -71,58 +50,59 @@ def _emit_paragraph(out: "_DocxDoc", content: str) -> None:
             run.font.name = "Courier New"
 
 
-def _emit_table(out: "_DocxDoc", metadata: dict[str, Any]) -> None:
-    rows = metadata.get("rows", [])
-    if not rows:
-        return
-    table = out.add_table(rows=len(rows), cols=len(rows[0]))
-    table.style = "Table Grid"
-    header_row = bool(metadata.get("header_row", True))
-    for r_idx, row in enumerate(rows):
-        for c_idx, cell_text in enumerate(row):
-            cell = table.rows[r_idx].cells[c_idx]
-            cell.text = cell_text
-            if header_row and r_idx == 0:
-                for run in cell.paragraphs[0].runs:
-                    run.bold = True
-    caption = metadata.get("caption", "")
-    if caption:
-        p = out.add_paragraph(caption)
-        if "Caption" in out.styles:
-            p.style = "Caption"
+def _emit_caption(out: DocxDoc, caption: str) -> None:
+    paragraph = out.add_paragraph(style="Caption")
+    _add_runs(paragraph, caption)
 
 
-def render_to_docx(doc: "Document", output_path: str) -> None:
-    """Render `doc` to `output_path` as a .docx file."""
-    if doc.template:
-        out = DocxDocument(doc.template)
-    else:
-        out = DocxDocument()
-
-    if _document_contains_ai_markers(doc):
-        _stamp_ai_marker_keyword(out)
-
-    for blk in doc.query():
-        if blk.type == "heading":
-            level = int(blk.metadata.get("level", 1))
-            out.add_heading(blk.content, level=level)
-        elif blk.type == "paragraph":
-            _emit_paragraph(out, blk.content)
-        elif blk.type == "figure":
-            path = blk.metadata.get("path", "")
-            caption = blk.metadata.get("caption", "")
-            width_in = blk.metadata.get("width_in") or 5.5
-            if path and Path(path).exists():
-                out.add_picture(path, width=Inches(float(width_in)))
+def _emit_body(out: DocxDoc, body: str, *, root: Path) -> None:
+    for block in parse_blocks(body):
+        if isinstance(block, ParagraphBlock):
+            _add_runs(out.add_paragraph(), block.text)
+        elif isinstance(block, ListBlock):
+            style = "List Number" if block.ordered else "List Bullet"
+            for item in block.items:
+                _add_runs(out.add_paragraph(style=style), item)
+        elif isinstance(block, TableBlock):
+            table = out.add_table(rows=len(block.rows), cols=len(block.rows[0]))
+            table.style = "Table Grid"
+            for r, row in enumerate(block.rows):
+                for c, text in enumerate(row):
+                    _add_runs(table.rows[r].cells[c].paragraphs[0], text, bold=(r == 0))
+        elif isinstance(block, ImageBlock):
+            image = Path(block.path)
+            resolved = image if image.is_absolute() else root / image
+            if resolved.is_file():
+                out.add_picture(str(resolved), width=Inches(IMAGE_WIDTH_IN))
             else:
-                out.add_paragraph(f"[Missing figure: {path}]")
-            if caption:
-                p = out.add_paragraph(caption)
-                if "Caption" in out.styles:
-                    p.style = "Caption"
-        elif blk.type == "table":
-            _emit_table(out, blk.metadata)
-        else:  # pragma: no cover
-            raise ValueError(f"Unknown block type for docx render: {blk.type!r}")
+                out.add_paragraph(f"[Missing figure: {block.path}]")
+            if block.caption:
+                _emit_caption(out, block.caption)
 
-    out.save(output_path)
+
+def render_to_docx(
+    *,
+    title: str,
+    sections: list[Section],
+    references: list[Reference],
+    root: Path,
+    output_path: Path,
+    text_filter: Callable[[str], str] | None,
+) -> None:
+    """Write the bundle's content to *output_path* as a .docx file."""
+    out = DocxDocument()
+    out.core_properties.title = title
+    out.add_heading(title, level=0)
+    for section in sections:
+        out.add_heading(section.title, level=1)
+        body = text_filter(section.body) if text_filter else section.body
+        if find_ai_markers(body):
+            _stamp_ai_marker_keyword(out)
+        _emit_body(out, body, root=root)
+    if references:
+        out.add_heading("References", level=1)
+        for ref in references:
+            line = f"[{ref.key}] {ref.text}" + (f" {ref.url}" if ref.url else "")
+            out.add_paragraph(line)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    out.save(str(output_path))

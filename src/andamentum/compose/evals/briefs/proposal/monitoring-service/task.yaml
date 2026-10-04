@@ -1,0 +1,6 @@
+task: |
+  Write a business proposal from Apollo Labs to Harbor Foods offering a cold-chain monitoring
+  service, using the facts in the source. Cover the problem, solution, benefits, cost and
+  timeline, risks and next steps.
+sources:
+  - background.md

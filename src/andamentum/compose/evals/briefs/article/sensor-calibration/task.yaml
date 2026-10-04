@@ -1,0 +1,7 @@
+task: |
+  Write a short research article for a methods journal reporting the sensor calibration study
+  described in the source: introduction, methods, results and discussion. Include a figure of
+  the error against temperature from the data table.
+sources:
+  - study.md
+  - error_by_temperature.csv

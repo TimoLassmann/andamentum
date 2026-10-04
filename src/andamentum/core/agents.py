@@ -4,6 +4,7 @@ Provides:
 - AgentDefinition: frozen dataclass describing an agent's config
 - AgentRunner: executes agents with caching and PromptedOutput fallback
 - run_agent_with_fallback: one-shot agent execution with fallback
+- run_agent_with_usage: the same, returning (output, token usage)
 
 The PromptedOutput fallback catches both UnexpectedModelBehavior (model
 ignores tool definitions) and ModelHTTPError (model returns invalid
@@ -265,7 +266,7 @@ def build_pydantic_ai_agent(defn: AgentDefinition, model: Any) -> Any:
     )
 
 
-async def run_agent_with_fallback(
+async def run_agent_with_usage(
     model: Any,
     *,
     instructions: str,
@@ -274,8 +275,13 @@ async def run_agent_with_fallback(
     retries: int = 3,
     output_retries: int = 5,
     validators: list[Callable[..., Any]] | None = None,
-) -> Any:
-    """One-shot agent execution with PromptedOutput fallback.
+) -> tuple[Any, Any]:
+    """One-shot agent execution with PromptedOutput fallback, plus token usage.
+
+    Same behaviour and arguments as :func:`run_agent_with_fallback`; returns
+    ``(output, usage)`` where ``usage`` is pydantic-ai's ``RunUsage`` for the
+    run that produced the output (when the tool-based attempt failed and the
+    PromptedOutput retry answered, only the retry's usage is counted).
 
     For callsites that don't need a persistent runner (e.g., document_store
     extraction, query planning). Creates a fresh agent each call.
@@ -290,7 +296,7 @@ async def run_agent_with_fallback(
         validators: Optional output validator callables
 
     Returns:
-        Instance of output_type
+        ``(instance of output_type, RunUsage)``
     """
     from pydantic_ai import Agent
     from pydantic_ai.exceptions import ModelHTTPError, UnexpectedModelBehavior
@@ -312,7 +318,7 @@ async def run_agent_with_fallback(
 
     try:
         result = await agent.run(user_message)
-        return result.output
+        return result.output, result.usage
     except (UnexpectedModelBehavior, ModelHTTPError):
         logger.info("One-shot agent: falling back to PromptedOutput")
         fallback = Agent(
@@ -325,4 +331,31 @@ async def run_agent_with_fallback(
             for v in validators:
                 fallback.output_validator(v)
         result = await fallback.run(user_message)
-        return result.output
+        return result.output, result.usage
+
+
+async def run_agent_with_fallback(
+    model: Any,
+    *,
+    instructions: str,
+    output_type: type[BaseModel],
+    user_message: str,
+    retries: int = 3,
+    output_retries: int = 5,
+    validators: list[Callable[..., Any]] | None = None,
+) -> Any:
+    """One-shot agent execution with PromptedOutput fallback.
+
+    Returns the instance of ``output_type``; see :func:`run_agent_with_usage`
+    for the arguments and for a variant that also returns token usage.
+    """
+    output, _usage = await run_agent_with_usage(
+        model,
+        instructions=instructions,
+        output_type=output_type,
+        user_message=user_message,
+        retries=retries,
+        output_retries=output_retries,
+        validators=validators,
+    )
+    return output
