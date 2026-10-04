@@ -15,7 +15,7 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
-from andamentum.scribe import Bundle, Section
+from andamentum.compose.bundle import Bundle, Section
 from andamentum.whetstone import (
     Finding,
     ReviewResult,

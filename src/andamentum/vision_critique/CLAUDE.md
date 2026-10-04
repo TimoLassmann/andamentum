@@ -8,4 +8,4 @@ Moved from the root `CLAUDE.md`, word for word. Claude Code loads this file when
 
 ## Layering
 
-- `vision_critique` depends on `core` (for `resolve_model`) and `pydantic` / `pydantic-ai` / `httpx`. MUST NOT depend on `epistemic`, `deep_research`, `document_store`, `whetstone`, `scribe`, `figures`, `typeset`, `chunker`, or `harvest`. Other modules MAY depend on `vision_critique` (e.g. `figures` for refinement loops, `whetstone` for figure review during manuscript checking).
+- `vision_critique` depends on `core` (for `resolve_model`) and `pydantic` / `pydantic-ai` / `httpx`. MUST NOT depend on `epistemic`, `deep_research`, `document_store`, `whetstone`, `compose`, `figures`, `typeset`, `chunker`, or `harvest`. Other modules MAY depend on `vision_critique` (e.g. `figures` for refinement loops, `whetstone` for figure review during manuscript checking).

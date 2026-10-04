@@ -10,7 +10,7 @@ import re
 from collections.abc import Sequence
 from pathlib import Path
 
-from andamentum.scribe import Bundle, Section
+from andamentum.compose.bundle import Bundle, Section
 
 from .evidence import stored_source_path
 from .log import ActionLog, sha
@@ -86,7 +86,7 @@ def add_figure(
     A bad chart request (unknown column, empty data) is reported, not hidden:
     the caller records it as an open question and the log keeps it.
     """
-    from andamentum.figures.scribe_glue import insert_figure
+    from andamentum.figures.bundle_glue import insert_figure
 
     source = next((s for s in sources if s.id == figure.source_id), None)
     if source is None:

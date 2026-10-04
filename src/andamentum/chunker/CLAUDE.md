@@ -8,7 +8,7 @@ Moved from the root `CLAUDE.md`, word for word. Claude Code loads this file when
 
 ## Layering
 
-- `chunker` depends only on `core` (for `AgentRunner`, model resolution) and `rapidfuzz` (for tiered anchor matching). MUST NOT depend on `epistemic`, `deep_research`, `document_store`, `whetstone`, `scribe`, `figures`, or `typeset`. Other modules MAY depend on `chunker` (e.g. whetstone for section-by-section review on huge documents, document_store for embedding-quality chunks).
+- `chunker` depends only on `core` (for `AgentRunner`, model resolution) and `rapidfuzz` (for tiered anchor matching). MUST NOT depend on `epistemic`, `deep_research`, `document_store`, `whetstone`, `compose`, `figures`, or `typeset`. Other modules MAY depend on `chunker` (e.g. whetstone for section-by-section review on huge documents, document_store for embedding-quality chunks).
 
 ## Design
 

@@ -34,9 +34,8 @@ Two commitments shape the whole package:
 **Authoring**
 - `andamentum.compose` — a task in, a finished document out (email, memo,
   report, article, how-to, proposal, grant); no approval step, never sends
-  anything
-- `andamentum.scribe` — a document as a plain folder of markdown sections
-  with frontmatter; renders to .docx / .md / .html / .txt
+  anything; its `compose.bundle` subpackage holds a document as a plain folder
+  of markdown sections with frontmatter and renders to .docx / .md / .html / .txt
 - `andamentum.figures` — deterministic publication-quality figure rendering
   with journal-matched sizing (9 chart types, 7 journal palettes)
 - `andamentum.typeset` — HTML / PDF typesetting used by other modules
@@ -126,13 +125,12 @@ export ANDAMENTUM_MAIN_LLM_MODEL=anthropic:claude-haiku-4-5
 
 ## Command-line tools
 
-Thirteen CLIs are installed with the package. Run `--help` on any of them for
+Twelve CLIs are installed with the package. Run `--help` on any of them for
 the full flag reference.
 
 | Command | What it does | LLM? |
 |---|---|---|
-| `andamentum-compose` | A task in, a finished document out (`write "<task>" --out DIR`); brief, evidence, draft, independent checks and revision run without an approval step; the result is a folder bundle plus rendered outputs | required |
-| `andamentum-scribe` | Folder-bundle document authoring; renders to .docx / .md / .html / .txt | none |
+| `andamentum-compose` | A task in, a finished document out (`write "<task>" --out DIR`); brief, evidence, draft, independent checks and revision run without an approval step; the result is a folder bundle plus rendered outputs. Its no-model verbs edit a bundle directly: `new`, `sections`, `show`, `edit`, `add`, `validate`, `render --raw` | required for `write`, `run`, `check`, `eval`; none for the bundle verbs |
 | `andamentum-figures` | Publication-quality scientific figure rendering (9 chart types, journal-matched sizing). Deterministic plotting — no generative AI. | none |
 | `andamentum-whetstone` | Review of your own draft → markdown / HTML / .docx with comments and tracked changes. The default run also checks the references (Crossref lookup on) and suggests a next step; `--no-editor`, `--no-references`, `--no-lookup` turn parts off, `--goal` loops until a condition holds. Seven subcommands: `review` (default), `panel` (multi-expert), `checklist` (fixed probe bank + coverage table), `references` (reference check alone; model optional), `proofread` (no LLM), `apply-patches` (no LLM), `verify-provenance` (no LLM) | required for `review`, `panel` + `checklist`; optional for `references` |
 | `andamentum-proofread` | Deterministic readability + style check (SMOG, Flesch–Kincaid, weasel words, passive voice, weak openers, adverb density). Accepts URLs, PDF, DOCX, HTML, PPTX, Markdown, plain text. | none |

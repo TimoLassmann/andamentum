@@ -8,7 +8,7 @@ Moved from the root `CLAUDE.md`, word for word. Claude Code loads this file when
 
 ## Layering
 
-- `proofread` library depends only on `pydantic` and `textstat`. The optional `proofread.cli` submodule is the ONLY place where `harvest` is imported — so the CLI can accept PDF / HTML / DOCX / PPTX / Markdown sources — and the rest of `proofread` MUST NOT touch `harvest` or any other andamentum sub-module. Other modules MAY depend on `proofread` (e.g. `whetstone` to attach deterministic readability scores to a review, `scribe` for pre-render style flags).
+- `proofread` library depends only on `pydantic` and `textstat`. The optional `proofread.cli` submodule is the ONLY place where `harvest` is imported — so the CLI can accept PDF / HTML / DOCX / PPTX / Markdown sources — and the rest of `proofread` MUST NOT touch `harvest` or any other andamentum sub-module. Other modules MAY depend on `proofread` (e.g. `whetstone` to attach deterministic readability scores to a review, `compose` for pre-render style flags).
 
 ## Slide mode
 

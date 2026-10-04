@@ -1,15 +1,15 @@
-# andamentum.scribe — notes for Claude
+# andamentum.compose.bundle — notes for Claude
 
 Claude Code loads this file when it reads files in this directory.
 
 ## Overview
 
-- `andamentum.scribe` — a document as a plain folder bundle: one markdown file per section with YAML frontmatter, derived renders to `.docx` / `.md` / `.html` / `.txt`. No LLM, no database. Built-in `article` scaffold only (no grant scaffold; the compose module's `grant` genre is a separate, generic thing that does not use a scribe scaffold).
+- `andamentum.compose.bundle` — a document as a plain folder bundle: one markdown file per section with YAML frontmatter, derived renders to `.docx` / `.md` / `.html` / `.txt`. No LLM, no database. Built-in `article` scaffold only (no grant scaffold; the compose `grant` genre is a separate, generic thing that does not use a scaffold).
 
 ## Layering
 
-- `scribe` depends only on `typeset` (HTML output), `python-docx`, `pyyaml` and the standard library. MUST NOT depend on `epistemic`, `deep_research`, `document_store`, `whetstone`, `figures` or `core`. `figures.scribe_glue` is the ONLY place that imports `scribe`. compose imports scribe; scribe never imports compose.
-- The scribe↔whetstone contract is tested from the compose side (`compose/tests/test_scribe_whetstone_roundtrip.py`) so scribe stays free of a whetstone import.
+- `compose.bundle` depends only on `typeset` (HTML output), `python-docx`, `pyyaml` and the standard library. Nothing under `bundle/` may import `pydantic_ai`, `pydantic_graph`, `andamentum.core`, `andamentum.whetstone`, `andamentum.llm_judge`, or any compose module outside `bundle/`; `compose/tests/test_bundle_boundary.py` enforces this with `ast`. It also MUST NOT depend on `epistemic`, `deep_research`, `document_store` or `figures`. `figures.bundle_glue` is the ONLY place in `figures` that imports it. The rest of compose imports `compose.bundle`; the bundle never imports the rest of compose.
+- The bundle↔whetstone contract is tested from the compose side (`compose/tests/test_bundle_whetstone_roundtrip.py`) so the bundle stays free of a whetstone import.
 
 ## Design
 
@@ -39,4 +39,4 @@ It refuses an existing non-empty directory. `Bundle.open` refuses a directory wi
 
 **Validation** (`Bundle.validate`): duplicate section titles (error), heading lines in a body (error), image files missing (error), `[@key]` citations with no `references.yaml` entry (warning), `[verify]` / `[citation needed]` markers (warning), empty bodies (info). Nothing is swallowed; the CLI exits 1 on any error.
 
-**CLI** (`andamentum-scribe`): `init PATH --title T [--scaffold article]`, `sections PATH`, `show PATH ID`, `write PATH ID --from FILE|- --revision N`, `add PATH --title T [--after ID]`, `validate PATH`, `render PATH --format F --out FILE`. No default storage location. Scribe errors print `error: ...` and exit 2.
+**CLI** (`andamentum-compose`, no model): `new DIR --title T [--scaffold article]`, `sections DIR`, `show DIR ID`, `edit DIR ID --from FILE|- --revision N`, `add DIR --title T [--after ID]`, `validate DIR`, and `render DIR --raw --format F --out FILE` for the plain bundle render (the plain `render DIR` is compose's own, with citations, sources list and provenance). The verbs live in `compose/cli.py`. No default storage location. A `BundleError` from these verbs prints `error: ...` and exits 2.

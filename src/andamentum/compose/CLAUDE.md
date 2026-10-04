@@ -33,9 +33,13 @@ Four roles name the model for each job: `drafter`, `critic`, `judge`, `reader`. 
 
 ## Layering
 
-compose depends on `core`, `scribe`, `whetstone` (public API), `proofread`, `llm_judge`, `harvest`, `figures`; `deep_research` only behind `--research` (deferred import). Nothing depends on compose. It MUST NOT depend on `epistemic` or `document_store`. Only `graph.py` imports `pydantic_graph`; workers are plain async functions with a keyword-only `model=`. `tests/test_dialect_conformance.py` enforces this and runs the dialect check in strict mode.
+compose depends on `core`, `compose.bundle`, `whetstone` (public API), `proofread`, `llm_judge`, `harvest`, `figures`; `deep_research` only behind `--research` (deferred import). Nothing depends on compose except `figures.bundle_glue`, which imports the model-free `compose.bundle` only. It MUST NOT depend on `epistemic` or `document_store`. Only `graph.py` imports `pydantic_graph`; workers are plain async functions with a keyword-only `model=`. `tests/test_dialect_conformance.py` enforces this and runs the dialect check in strict mode.
 
-Files: `schemas.py`, `genres.py`, `brief.py`, `evidence.py`, `plan.py`, `write.py`, `revise.py` (workers); `assess.py` (one check pass, shared by the Check node, `check` and `eval`); `checks/` (deterministic, grounding, reader, critic); `route.py`; `render.py`; `steps.py` (deterministic bundle helpers and `report.md`); `store.py` (JSON artefacts); `log.py` and `_call.py` (action log and the one model-call seam); `graph.py`; `api.py`; `cli.py`; `evals/`.
+Files: `schemas.py`, `genres.py`, `brief.py`, `evidence.py`, `plan.py`, `write.py`, `revise.py` (workers); `assess.py` (one check pass, shared by the Check node, `check` and `eval`); `checks/` (deterministic, grounding, reader, critic); `route.py`; `render.py`; `steps.py` (deterministic bundle helpers and `report.md`); `store.py` (JSON artefacts); `log.py` and `_call.py` (action log and the one model-call seam); `graph.py`; `api.py`; `cli.py`; `evals/`; `bundle/` (see below).
+
+## bundle
+
+`compose/bundle/` is the folder-bundle document layer (markdown sections with YAML frontmatter, figures, references; renders to `.docx` / `.md` / `.html` / `.txt`). It is model-free: no `pydantic_ai`, `pydantic_graph`, `core`, `whetstone`, `llm_judge` or compose imports outside `bundle/`, enforced by `tests/test_bundle_boundary.py`. It depends only on `typeset`, `python-docx` and `pyyaml`. Public API: `from andamentum.compose.bundle import Bundle, Section, Reference, ValidationIssue, BundleError, StaleRevisionError`; `Bundle` and `Section` are also on `andamentum.compose`. The no-model CLI verbs (`new`, `sections`, `show`, `edit`, `add`, `validate`, `render --raw`) are in `cli.py`. Full notes (layout, revisions, markdown subset, rendering, validation): `bundle/CLAUDE.md`.
 
 ## Pitfalls
 
@@ -47,7 +51,7 @@ Files: `schemas.py`, `genres.py`, `brief.py`, `evidence.py`, `plan.py`, `write.p
 - **Length failures are section work.** A failed `total_words` check is routed to every section in proportion (`route._length_items`), because only a section revision changes drafted text; it falls back to an outline item only when no section can absorb it.
 - **Sources section is on a throwaway copy.** `render_outputs` adds the numbered "Sources" section to a temporary copy of the bundle (rendered with `image_root=<real bundle>` so md/html figure links point at the real `figures/` folder), so the real bundle never gains one and checks never see it.
 - **Figures survive revision.** `revise_section` rewrites a whole body; `steps.keep_figures` re-appends figure paragraphs it dropped. A figure the planner asked for with a bad column is reported as an open question and logged (`figure_failed`), not hidden and not fatal.
-- **Source ids are `src1..srcN` by input order**; fact ids are `f1..fN` across sources; scribe section ids are `sNN`. They never collide.
+- **Source ids are `src1..srcN` by input order**; fact ids are `f1..fN` across sources; bundle section ids are `sNN`. They never collide.
 - **Resume rounds.** `rounds.json` keeps earlier rounds, so a resumed run continues the numbering (and `reviews/round-NN/`). The no-progress hash history starts empty on resume.
 - Facts are capped at 25 per source and only the first 60000 characters of a source go to the model (`source_truncated` is logged).
 

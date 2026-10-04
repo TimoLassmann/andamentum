@@ -2,6 +2,10 @@
 
 Exit codes for ``write`` and ``run``: 0 goal met, 4 goal not met (outputs are
 still written), 3 crash. A missing role model or a bad argument exits 2.
+
+The bundle verbs (``new``, ``sections``, ``show``, ``edit``, ``add``,
+``validate``, ``render --raw``) call no model. A bundle error prints
+``error: ...`` and exits 2; ``validate`` exits 1 when it finds an error.
 """
 
 from __future__ import annotations
@@ -14,12 +18,15 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from .bundle import Bundle, BundleError
+from .bundle.scaffolds import SCAFFOLDS
 from .schemas import ROLE_NAMES, Roles
 
 EXIT_OK = 0
 EXIT_USAGE = 2
 EXIT_CRASH = 3
 EXIT_NOT_MET = 4
+BUNDLE_COMMANDS = ("new", "sections", "show", "edit", "add", "validate")
 
 
 def _progress(line: str) -> None:
@@ -101,7 +108,44 @@ def build_parser() -> argparse.ArgumentParser:
     render.add_argument(
         "--model", help="producing model for provenance (default: recorded)"
     )
+    render.add_argument(
+        "--raw",
+        action="store_true",
+        help="plain bundle render (no citations, sources list or provenance); "
+        "needs exactly one --format and --out FILE",
+    )
+    render.add_argument("--out", type=Path, help="output file (with --raw)")
     _add_output(render)
+
+    new = sub.add_parser("new", help="create an empty bundle (no model)")
+    new.add_argument("bundle", type=Path)
+    new.add_argument("--title", required=True)
+    new.add_argument("--scaffold", default=None, choices=sorted(SCAFFOLDS))
+
+    sections = sub.add_parser("sections", help="list a bundle's sections")
+    sections.add_argument("bundle", type=Path)
+
+    show = sub.add_parser("show", help="print one section")
+    show.add_argument("bundle", type=Path)
+    show.add_argument("section_id")
+
+    edit = sub.add_parser("edit", help="replace a section's body")
+    edit.add_argument("bundle", type=Path)
+    edit.add_argument("section_id")
+    edit.add_argument(
+        "--from", dest="source", required=True, help="FILE, or - for stdin"
+    )
+    edit.add_argument(
+        "--revision", type=int, required=True, help="the revision you read"
+    )
+
+    add = sub.add_parser("add", help="add a section")
+    add.add_argument("bundle", type=Path)
+    add.add_argument("--title", required=True)
+    add.add_argument("--after", default=None, help="section id to insert after")
+
+    validate = sub.add_parser("validate", help="run the structural checks")
+    validate.add_argument("bundle", type=Path)
 
     sub.add_parser("genres", help="list the genre packs")
 
@@ -235,6 +279,68 @@ async def _eval(args: argparse.Namespace, parser: argparse.ArgumentParser) -> in
     return EXIT_OK
 
 
+def _bundle_command(args: argparse.Namespace) -> int:
+    """The no-model bundle verbs."""
+    if args.command == "new":
+        bundle = Bundle.create(args.bundle, title=args.title, scaffold=args.scaffold)
+        print(bundle.path)
+        return EXIT_OK
+
+    bundle = Bundle.open(args.bundle)
+
+    if args.command == "sections":
+        for s in bundle.sections():
+            words = len(s.body.split())
+            print(
+                f"{s.id}  r{s.revision:<3d} {s.status:10s} {words:6d} words  {s.title}"
+            )
+        return EXIT_OK
+
+    if args.command == "show":
+        s = bundle.section(args.section_id)
+        print(
+            f"id: {s.id}\ntitle: {s.title}\norder: {s.order}\n"
+            f"revision: {s.revision}\nstatus: {s.status}\n"
+        )
+        print(s.body)
+        return EXIT_OK
+
+    if args.command == "edit":
+        body = (
+            sys.stdin.read()
+            if args.source == "-"
+            else Path(args.source).read_text(encoding="utf-8")
+        )
+        s = bundle.write_section(
+            args.section_id, body=body, expected_revision=args.revision
+        )
+        print(f"{s.id} now at revision {s.revision}")
+        return EXIT_OK
+
+    if args.command == "add":
+        s = bundle.add_section(title=args.title, after=args.after)
+        print(s.id)
+        return EXIT_OK
+
+    if args.command == "validate":
+        issues = bundle.validate()
+        if not issues:
+            print("ok: no validation issues")
+            return EXIT_OK
+        for issue in issues:
+            print(f"[{issue.severity:7s}] {issue.location}: {issue.message}")
+        return 1 if any(i.severity == "error" for i in issues) else EXIT_OK
+
+    raise AssertionError(args.command)  # pragma: no cover
+
+
+def _render_raw(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    if not args.formats or len(args.formats) != 1 or args.out is None:
+        parser.error("render --raw needs exactly one --format and --out FILE")
+    print(Bundle.open(args.bundle).render(args.out, format=args.formats[0]))
+    return EXIT_OK
+
+
 def main(argv: list[str] | None = None) -> int:
     load_dotenv()  # secrets only (API keys); configuration comes from flags
     parser = build_parser()
@@ -251,6 +357,14 @@ def main(argv: list[str] | None = None) -> int:
 
             print(bundle_status(args.bundle))
             return EXIT_OK
+        if args.command in BUNDLE_COMMANDS or (args.command == "render" and args.raw):
+            try:
+                if args.command == "render":
+                    return _render_raw(args, parser)
+                return _bundle_command(args)
+            except BundleError as exc:
+                print(f"error: {exc}", file=sys.stderr)
+                return EXIT_USAGE
         if args.command == "render":
             from .api import recorded_roles, render_bundle
 

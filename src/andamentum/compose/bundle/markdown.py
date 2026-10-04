@@ -5,7 +5,7 @@ tables (first row is the header) and whole-line images
 ``![caption](path){#fig:label}``. Blank lines separate blocks. Anything else is
 a plain paragraph — in particular a ``#`` heading line is never a heading
 (``Bundle.validate`` reports it as an error). Inline runs (bold, italic, code)
-are handled by :mod:`andamentum.scribe.parser`.
+are handled by :mod:`andamentum.compose.bundle.parser`.
 """
 
 from __future__ import annotations

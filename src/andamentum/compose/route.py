@@ -11,7 +11,7 @@ from collections.abc import Sequence
 
 from pydantic import BaseModel
 
-from andamentum.scribe import Section
+from andamentum.compose.bundle import Section
 
 from .checks.deterministic import is_error, word_count
 from .render import strip_markers

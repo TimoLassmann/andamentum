@@ -8,7 +8,7 @@ from andamentum.compose.schemas import (
     SectionPlan,
     WorkItem,
 )
-from andamentum.scribe import Section
+from andamentum.compose.bundle import Section
 
 from ._stub import make_brief
 

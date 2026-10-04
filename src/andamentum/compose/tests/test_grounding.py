@@ -10,7 +10,7 @@ from andamentum.compose.checks.grounding import (
 )
 from andamentum.compose.log import ActionLog
 from andamentum.compose.schemas import Fact
-from andamentum.scribe import Section
+from andamentum.compose.bundle import Section
 
 FACTS = [
     Fact(

@@ -11,7 +11,7 @@ import re
 from collections.abc import Sequence
 
 from andamentum.proofread import analyze
-from andamentum.scribe import Section
+from andamentum.compose.bundle import Section
 
 from ..genres import Genre
 from ..render import MARKER_RE, plain_text, strip_markers

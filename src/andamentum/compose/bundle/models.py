@@ -1,4 +1,4 @@
-"""Pydantic models and errors for scribe bundles."""
+"""Pydantic models and errors for bundles."""
 
 from __future__ import annotations
 
@@ -10,11 +10,11 @@ from pydantic import BaseModel
 Severity = Literal["error", "warning", "info"]
 
 
-class ScribeError(Exception):
+class BundleError(Exception):
     """A bundle operation failed (missing section, bad layout, bad argument)."""
 
 
-class StaleRevisionError(ScribeError):
+class StaleRevisionError(BundleError):
     """Raised when a write names a revision that is no longer current."""
 
     def __init__(self, section_id: str, expected: int, actual: int):

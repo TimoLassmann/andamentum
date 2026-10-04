@@ -12,7 +12,7 @@ from andamentum.agentic_dialect.checks import check_code
 
 MODULE_ROOT = Path(__file__).resolve().parents[1]
 
-# compose may use: core, scribe, whetstone (public API), proofread, llm_judge,
+# compose may use: core, compose.bundle, whetstone (public API), proofread, llm_judge,
 # harvest, figures; deep_research only behind --research (deferred import).
 FORBIDDEN_MODULES = {
     "andamentum.epistemic",
@@ -93,6 +93,8 @@ def test_nothing_else_in_the_package_imports_compose():
         if relative.parts[0] == "compose":
             continue
         text = path.read_text(encoding="utf-8")
+        # figures.bundle_glue is the one sanctioned user of the model-free bundle
+        text = text.replace("andamentum.compose.bundle", "")
         assert "andamentum.compose" not in text, f"{relative} references compose"
 
 
@@ -110,6 +112,8 @@ def test_public_surface_matches_documented_set():
         "GENRES",
         "genre_for",
         "StopReason",
+        "Bundle",
+        "Section",
     }
     assert set(compose.__all__) == expected
     for name in expected:

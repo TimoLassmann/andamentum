@@ -1,4 +1,4 @@
-"""andamentum.scribe — a document as a folder bundle.
+"""andamentum.compose.bundle — a document as a folder bundle.
 
 A bundle is a plain directory: ``bundle.yaml``, one markdown file per section,
 ``figures/``, ``references.yaml`` and ``out/``. Markdown is the source of
@@ -15,7 +15,7 @@ from .bundle import Bundle
 # === Result/data types (returned by the above; not tools themselves) ===
 from .models import (
     Reference,
-    ScribeError,
+    BundleError,
     Section,
     StaleRevisionError,
     ValidationIssue,
@@ -26,7 +26,7 @@ __all__ = [
     "Bundle",
     # Data types
     "Reference",
-    "ScribeError",
+    "BundleError",
     "Section",
     "StaleRevisionError",
     "ValidationIssue",

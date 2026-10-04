@@ -1,12 +1,12 @@
-"""Glue between :mod:`andamentum.figures` and :mod:`andamentum.scribe`.
+"""Glue between :mod:`andamentum.figures` and :mod:`andamentum.compose.bundle`.
 
-The figures module renders standalone image files; a scribe bundle keeps its
+The figures module renders standalone image files; a bundle keeps its
 images in ``figures/`` and references them from section bodies. This module
 ties them together: render a figure to PNG and add it to a section of a
 bundle in one call.
 
 Coupling is one-directional: this module imports from both
-``andamentum.figures`` and ``andamentum.scribe``, but neither of the two
+``andamentum.figures`` and ``andamentum.compose.bundle``, but neither of the two
 depends on this glue. Removing it leaves both modules intact.
 """
 
@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Any
 from .render import figure as render_figure
 
 if TYPE_CHECKING:  # pragma: no cover
-    from andamentum.scribe import Bundle, Section
+    from andamentum.compose.bundle import Bundle, Section
 
 
 def insert_figure(
@@ -31,14 +31,14 @@ def insert_figure(
     expected_revision: int | None = None,
     **chart_kwargs: Any,
 ) -> "Section":
-    """Render a figure and append it to a section of a scribe bundle.
+    """Render a figure and append it to a section of a bundle.
 
     The figure is rendered as PNG (python-docx cannot embed PDF) into a
     temporary directory and copied into the bundle's ``figures/`` folder by
     :meth:`Bundle.add_figure`, which names the file after *label*.
 
     Args:
-        bundle: The scribe ``Bundle`` to add to.
+        bundle: The ``Bundle`` to add to.
         section_id: Id of the section that receives the figure.
         caption: Figure caption.
         label: Figure label (e.g. ``"benchmark"``); also the file name.
@@ -52,7 +52,7 @@ def insert_figure(
     """
     section = bundle.section(section_id)  # fails before any rendering work
     revision = section.revision if expected_revision is None else expected_revision
-    with tempfile.TemporaryDirectory(prefix="scribe-figure-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="bundle-figure-") as tmp:
         rendered = Path(tmp) / "figure.png"
         chart_kwargs["output"] = rendered
         render_figure(**chart_kwargs)

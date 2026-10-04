@@ -3,7 +3,7 @@
 ``await write_document("<task>", out=..., roles=Roles.all(model))`` compiles a
 brief, extracts evidence from the sources, plans, drafts section by section and
 revises against independent checks until the goal holds twice running. Every
-artefact lives in a plain folder bundle (``andamentum.scribe.Bundle``).
+artefact lives in a plain folder bundle (``andamentum.compose.bundle.Bundle``, model-free).
 
 compose never sends anything. Public names resolve lazily so that importing the
 package stays cheap (whetstone and pydantic-graph load on first use).
@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from .api import compose_bundle, write_document
     from .brief import compile_brief
+    from .bundle import Bundle, Section
     from .genres import GENRES, Genre, genre_for
     from .schemas import Brief, ComposeResult, Roles, StopReason
 
@@ -31,6 +32,8 @@ __all__ = [
     "GENRES",
     "genre_for",
     "StopReason",
+    "Bundle",
+    "Section",
 ]
 
 _HOME = {
@@ -44,6 +47,8 @@ _HOME = {
     "Genre": "genres",
     "GENRES": "genres",
     "genre_for": "genres",
+    "Bundle": "bundle",
+    "Section": "bundle",
 }
 
 

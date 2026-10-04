@@ -77,7 +77,7 @@ def test_genres_lists_all_seven_packs(capsys):
 
 
 def test_status_of_a_fresh_bundle(tmp_path, capsys):
-    from andamentum.scribe import Bundle
+    from andamentum.compose.bundle import Bundle
 
     bundle = Bundle.create(tmp_path / "doc.compose", title="Apollo")
     bundle.add_section(title="Body")

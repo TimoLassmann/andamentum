@@ -34,7 +34,7 @@ Moved from the root `CLAUDE.md`, word for word. Claude Code loads this file when
 
 ### Design
 
-**Typeset module** (`andamentum.typeset`) — a standalone typesetting system with 7 visual atoms (`heading`, `prose`, `callout`, `items`, `aside`, `card`, `reference`), 3 named styles (`article`, `cv`, `report`), and HTML + PDF output. Used by the epistemic audit report (`epistemic/audit_report.py`, the only HTML renderer in the epistemic pipeline — the prose-led `typeset_report.py` was retired when the audit layout reached production), by `whetstone` for its HTML review output, and by `scribe` for its HTML/PDF render path. The epistemic data schema (the dataclasses consumed by the renderer) lives in `epistemic/report_data.py`. See `src/andamentum/typeset/USAGE.md` for the full API reference.
+**Typeset module** (`andamentum.typeset`) — a standalone typesetting system with 7 visual atoms (`heading`, `prose`, `callout`, `items`, `aside`, `card`, `reference`), 3 named styles (`article`, `cv`, `report`), and HTML + PDF output. Used by the epistemic audit report (`epistemic/audit_report.py`, the only HTML renderer in the epistemic pipeline — the prose-led `typeset_report.py` was retired when the audit layout reached production), by `whetstone` for its HTML review output, and by `compose.bundle` for its HTML/PDF render path. The epistemic data schema (the dataclasses consumed by the renderer) lives in `epistemic/report_data.py`. See `src/andamentum/typeset/USAGE.md` for the full API reference.
 
 ### Design language (andamentum visual system)
 

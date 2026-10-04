@@ -1,9 +1,9 @@
-"""Tests for andamentum.figures.scribe_glue."""
+"""Tests for andamentum.figures.bundle_glue."""
 
 import pytest
 
-from andamentum.figures.scribe_glue import insert_figure
-from andamentum.scribe import Bundle, ScribeError, StaleRevisionError
+from andamentum.figures.bundle_glue import insert_figure
+from andamentum.compose.bundle import Bundle, BundleError, StaleRevisionError
 
 DATA = {"Method": ["A", "B", "C"], "Score": [0.5, 0.7, 0.9]}
 
@@ -36,7 +36,7 @@ def test_insert_figure_copies_png_and_appends_markdown(tmp_path):
 
 def test_insert_figure_unknown_section_raises_before_rendering(tmp_path):
     b = _bundle(tmp_path)
-    with pytest.raises(ScribeError):
+    with pytest.raises(BundleError):
         insert_figure(
             b,
             "s99",

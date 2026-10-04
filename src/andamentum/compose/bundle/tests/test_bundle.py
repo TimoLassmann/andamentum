@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from andamentum.scribe import Bundle, ScribeError, StaleRevisionError
+from andamentum.compose.bundle import Bundle, BundleError, StaleRevisionError
 
 from ._png import PNG_BYTES
 
@@ -37,13 +37,13 @@ def test_create_layout_and_scaffold(tmp_path):
 def test_create_refuses_non_empty_dir(tmp_path):
     (tmp_path / "x").mkdir()
     (tmp_path / "x" / "f").write_text("a")
-    with pytest.raises(ScribeError):
+    with pytest.raises(BundleError):
         Bundle.create(tmp_path / "x", title="T")
     Bundle.create(tmp_path / "empty_ok", title="T")
 
 
 def test_create_unknown_scaffold(tmp_path):
-    with pytest.raises(ScribeError, match="unknown scaffold"):
+    with pytest.raises(BundleError, match="unknown scaffold"):
         Bundle.create(tmp_path / "d", title="T", scaffold="grant")
 
 
@@ -56,14 +56,14 @@ def test_open_roundtrip_and_metadata(tmp_path):
 
 
 def test_open_rejects_non_bundle_and_bad_version(tmp_path):
-    with pytest.raises(ScribeError, match="not a scribe bundle"):
+    with pytest.raises(BundleError, match="not a bundle"):
         Bundle.open(tmp_path)
     Bundle.create(tmp_path / "d", title="T")
     manifest = tmp_path / "d" / "bundle.yaml"
     manifest.write_text(
         manifest.read_text().replace("format_version: 1", "format_version: 9")
     )
-    with pytest.raises(ScribeError, match="format_version"):
+    with pytest.raises(BundleError, match="format_version"):
         Bundle.open(tmp_path / "d")
 
 
@@ -102,7 +102,7 @@ def test_add_section_ids_and_after_with_gap_and_renumber(tmp_path):
 
 def test_add_section_unknown_after(tmp_path):
     b = Bundle.create(tmp_path / "d", title="T")
-    with pytest.raises(ScribeError):
+    with pytest.raises(BundleError):
         b.add_section(title="X", after="s99")
 
 
@@ -129,13 +129,13 @@ def test_write_is_idempotent_bytes(tmp_path):
 
 def test_missing_section_errors(tmp_path):
     b = Bundle.create(tmp_path / "d", title="T")
-    with pytest.raises(ScribeError):
+    with pytest.raises(BundleError):
         b.section("s09")
-    with pytest.raises(ScribeError):
+    with pytest.raises(BundleError):
         b.section("../bundle")
-    with pytest.raises(ScribeError):
+    with pytest.raises(BundleError):
         b.section_by_title("Nope")
-    with pytest.raises(ScribeError):
+    with pytest.raises(BundleError):
         b.remove_section("s09")
 
 
@@ -148,9 +148,9 @@ def test_rename_remove_reorder(tmp_path):
         b.rename_section(a.id, title="X", expected_revision=1)
     b.reorder([c.id, a.id])
     assert [s.title for s in b.sections()] == ["C", "Alpha"]
-    with pytest.raises(ScribeError):
+    with pytest.raises(BundleError):
         b.reorder([c.id])
-    with pytest.raises(ScribeError):
+    with pytest.raises(BundleError):
         b.reorder([c.id, c.id])
     b.remove_section(c.id)
     assert [s.title for s in b.sections()] == ["Alpha"]
@@ -189,7 +189,7 @@ def test_add_figure_copies_and_appends(tmp_path):
     assert updated.body.startswith("Text.\n\n")
     with pytest.raises(StaleRevisionError):
         b.add_figure(s.id, image=img, caption="c", label="x", expected_revision=1)
-    with pytest.raises(ScribeError, match="not found"):
+    with pytest.raises(BundleError, match="not found"):
         b.add_figure(
             s.id,
             image=tmp_path / "nope.png",

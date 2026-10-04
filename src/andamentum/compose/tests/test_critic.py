@@ -11,7 +11,7 @@ from andamentum.compose.checks import critic
 from andamentum.compose.checks.critic import map_findings, round_dir, run_critic
 from andamentum.compose.genres import genre_for
 from andamentum.compose.log import ActionLog
-from andamentum.scribe import Bundle, Section
+from andamentum.compose.bundle import Bundle, Section
 from andamentum.whetstone import Finding, Quote, ReviewResult
 
 

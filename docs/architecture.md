@@ -36,13 +36,13 @@ trusting the README.
   Instructions, Editorial Office, Decision Letter, …). Override is
   the explicit `confirm_own_draft=True` flag.
 - **AI-provenance watermarking** (`whetstone._watermark`,
-  `scribe.parser`, `scribe.render_docx`) — invisible metadata
+  `compose.bundle.parser`, `compose.bundle.render_docx`) — invisible metadata
   stamping (docx core properties, HTML `<meta>` tags, markdown
   HTML-comment headers) always on; visible banner on standalone
   review reports default ON, default OFF on `--apply-patches`
   modified-manuscript output. The user can mark prose spans
   with the conventional `[ai-drafted]` / `[ai-edited]` inline
-  markers that scribe surfaces and stamps as docx keywords.
+  markers that the bundle surfaces and stamps as docx keywords.
 - **Audit log** (`core.audit_log`) — an opt-in cloud-call paper-trail
   *facility* (timestamp · component · model · sha256(prompt) · size,
   one line per call; explicit log path only — no XDG default, no hidden
@@ -77,7 +77,7 @@ external source
    └────┬────┘    / docling / passthrough)            │
         │                                             ▼
         ▼                                       ┌─────────────┐
-   ┌─────────┐         ┌─────────────────┐      │   scribe    │ ── block-based
+   ┌─────────┐         ┌─────────────────┐      │   bundle    │ ── folder-bundle
    │ chunker │ ────▶   │ document_store  │ ◀────│             │    .docx authoring
    └────┬────┘   2k-10k│ FTS5 + sqlite-  │      └──────┬──────┘
         │       chunks │ vec + RRF       │             │
@@ -122,7 +122,7 @@ machine-checkable via grep and are enforced by code review.
   `httpx`. Other modules may depend on it.
 - **`deep_research`** depends on `core`, `harvest`. MUST NOT depend on
   `document_store`.
-- **`typeset`** is a leaf. Used by `whetstone`, `scribe`,
+- **`typeset`** is a leaf. Used by `whetstone`, `compose.bundle`,
   `deep_research` for HTML/PDF output.
 - **`whetstone`** depends on `core`, `typeset`, `chunker`, `harvest`,
   `references` (its only citation reader — the review's citation
@@ -132,16 +132,17 @@ machine-checkable via grep and are enforced by code review.
 - **`references`** depends on `pydantic`, `httpx`, `rapidfuzz` and —
   for its two model calls only — `core`. It imports no other
   sub-module.
-- **`scribe`** depends only on `typeset`, `python-docx` and `pyyaml`
-  (a bundle is a plain folder; there is no database). MUST NOT depend
-  on `whetstone`, `figures`, or `core`.
-- **`compose`** depends on `core`, `scribe`, `whetstone` (public API
+- **`compose.bundle`** (a subpackage of `compose`) depends only on
+  `typeset`, `python-docx` and `pyyaml` (a bundle is a plain folder;
+  there is no database). It imports no model library, no `core`, no
+  `whetstone`, and no compose code outside `bundle/`; a test enforces it.
+- **`compose`** depends on `core`, `compose.bundle`, `whetstone` (public API
   only), `proofread`, `llm_judge`, `harvest` and `figures`;
   `deep_research` only behind `--research`. Nothing depends on
-  `compose`. MUST NOT depend on `epistemic` or `document_store`.
+  `compose` except `figures.bundle_glue` (the model-free `compose.bundle` only). MUST NOT depend on `epistemic` or `document_store`.
 - **`figures`** depends on `matplotlib`, `numpy`, `pydantic`. The
-  optional `figures.scribe_glue` is the ONLY place in `figures` that
-  imports `scribe`; the rest of `figures` MUST NOT touch `scribe`.
+  optional `figures.bundle_glue` is the ONLY place in `figures` that
+  imports `compose.bundle`; the rest of `figures` MUST NOT touch it.
 - **`vision_critique`** depends on `core` and `pydantic-ai`. Used
   standalone, by `figures` for refinement, or by `whetstone` for
   figure review.
@@ -158,8 +159,7 @@ src/andamentum/
 ├── document_store/   — SQLite + FTS5 + sqlite-vec personal knowledge base
 ├── deep_research/    — web research pipeline (search → fetch → extract → verify → synthesise)
 ├── typeset/          — typesetting system (HTML + PDF output)
-├── scribe/           — folder-bundle document authoring → .docx / .md / .html / .txt
-├── compose/          — a task in, a finished document out (brief → evidence → draft → checks → revise)
+├── compose/          — a task in, a finished document out (brief → evidence → draft → checks → revise); `compose/bundle/` is the model-free folder-bundle layer → .docx / .md / .html / .txt
 ├── figures/          — publication-quality figure rendering
 ├── whetstone/        — document review over user drafts (criterion cascade, panel, checklist, goal loop)
 ├── references/       — reference checking in any citation style, with a Crossref lookup
@@ -182,7 +182,7 @@ installed but is not described in this overview — see the
 - `docs/document_store/overview.md` — document_store search and ingestion.
 - `docs/design/` — the andamentum visual design system (cream paper,
   serif body, hairline rules) shared by `typeset`, `whetstone`'s HTML
-  output, and `scribe`'s render path.
+  output, and `compose.bundle`'s render path.
 
 ## Pre-release checkpoint
 

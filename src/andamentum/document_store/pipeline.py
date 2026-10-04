@@ -4,7 +4,7 @@ The store core is deliberately harvest-free: :func:`process_pending` takes a
 ``convert_fn`` rather than importing a converter, so a caller that already has
 markdown never pulls in Docling/trafilatura. This module is the optional adapter
 that fills that parameter in with :func:`andamentum.harvest.extract`, following
-the same single-glue-point pattern as ``figures.scribe_glue`` and
+the same single-glue-point pattern as ``figures.bundle_glue`` and
 ``proofread.cli``.
 
 Nothing here is privileged. It is a convenience, not a gateway — an app may call

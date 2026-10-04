@@ -1,6 +1,6 @@
 """The body markdown subset."""
 
-from andamentum.scribe.markdown import (
+from andamentum.compose.bundle.markdown import (
     ImageBlock,
     ListBlock,
     ParagraphBlock,

@@ -24,7 +24,7 @@ from andamentum.compose.schemas import (
     WorkItem,
 )
 from andamentum.compose.tests._stub import make_brief
-from andamentum.scribe import Bundle
+from andamentum.compose.bundle import Bundle
 
 ROLES = Roles.all("test:model")
 ITEM = WorkItem(level="section", section_id="s01", reason="too vague", source="critic")

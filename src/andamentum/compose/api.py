@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
-from andamentum.scribe import Bundle
+from andamentum.compose.bundle import Bundle
 
 from . import store
 from .assess import Assessment, assess
@@ -71,12 +71,15 @@ def _deps(
 ) -> ComposeDeps:
     meta = bundle.metadata
     genre = meta.get("genre")
+    sources = meta.get("sources")
     return ComposeDeps(
         roles=roles,
         bundle_dir=bundle.path,
         task=str(meta.get("task", "")),
         genre_spec=str(genre) if genre else None,
-        source_paths=tuple(str(p) for p in meta.get("sources") or ()),
+        source_paths=tuple(str(p) for p in sources)
+        if isinstance(sources, list)
+        else (),
         log=ActionLog(bundle.path),
         progress=progress,
         max_rounds=max_rounds,

@@ -1,7 +1,7 @@
 """The durable run artefacts of a compose bundle, as plain JSON files.
 
 The bundle on disk is the store (dialect L1): the brief, sources, facts, outline
-and round records live beside the scribe sections, so a run can be resumed or
+and round records live beside the bundle sections, so a run can be resumed or
 inspected from the folder alone. Writes are atomic and idempotent.
 """
 

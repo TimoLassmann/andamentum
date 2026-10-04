@@ -17,7 +17,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import NamedTuple
 
-from andamentum.scribe import Bundle, Section
+from andamentum.compose.bundle import Bundle, Section
 from andamentum.whetstone import provenance_line, stamp_provenance
 
 from .genres import OutputFormat, Genre

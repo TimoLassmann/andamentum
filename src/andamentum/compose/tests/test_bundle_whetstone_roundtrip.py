@@ -1,8 +1,8 @@
-"""A scribe .docx is sectionised by whetstone into the bundle's own sections.
+"""A bundle .docx is sectionised by whetstone into the bundle's own sections.
 
 compose maps whetstone findings back to bundle sections by title, so the
 titles whetstone reads out of the rendered .docx must equal the bundle's, in
-order. Scribe stays free of a whetstone import; the check lives here.
+order. The bundle stays free of a whetstone import; the check lives here.
 
 Whetstone bands its sections by size (6000 characters). A document longer than
 that splits at its ``Heading 1`` paragraphs, and the Word ``Title`` paragraph
@@ -11,7 +11,7 @@ the band is ONE section named after the document — compose cannot map findings
 by section title there, and the last test pins that so the behaviour is known.
 """
 
-from andamentum.scribe import Bundle
+from andamentum.compose.bundle import Bundle
 from andamentum.whetstone import open_source
 
 TITLES = ["Summary", "Findings", "Next steps"]

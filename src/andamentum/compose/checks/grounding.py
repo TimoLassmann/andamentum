@@ -12,7 +12,7 @@ from collections.abc import Sequence
 from pydantic import BaseModel
 
 from andamentum.core.agents import run_agent_with_usage
-from andamentum.scribe import Section
+from andamentum.compose.bundle import Section
 
 from ..log import ActionLog
 from ..render import MARKER_RE

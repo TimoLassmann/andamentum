@@ -19,7 +19,7 @@ from andamentum.compose.render import (
     strip_markers,
 )
 from andamentum.compose.schemas import Brief, Fact, Source
-from andamentum.scribe import Bundle, Section
+from andamentum.compose.bundle import Bundle, Section
 
 FACTS = [
     Fact(id="f1", source_id="a", statement="s", quote="q", start=0, end=1),
@@ -257,7 +257,7 @@ def test_unknown_format_raises(tmp_path):
 
 
 def _bundle_with_figure(path: Path) -> Bundle:
-    from andamentum.scribe.tests._png import PNG_BYTES
+    from andamentum.compose.bundle.tests._png import PNG_BYTES
 
     bundle = make_bundle(
         path,

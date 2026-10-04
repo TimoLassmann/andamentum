@@ -1,6 +1,6 @@
 """Bundle validation."""
 
-from andamentum.scribe import Bundle
+from andamentum.compose.bundle import Bundle
 
 
 def _issues(b):

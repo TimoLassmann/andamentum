@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
-from andamentum.scribe import Bundle
+from andamentum.compose.bundle import Bundle
 
 from .checks.critic import CriticResult, run_critic
 from .checks.deterministic import is_error, run_deterministic_checks

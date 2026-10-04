@@ -26,7 +26,7 @@ from pathlib import Path
 
 from pydantic_graph import BaseNode, End, GraphBuilder, GraphRunContext
 
-from andamentum.scribe import Bundle
+from andamentum.compose.bundle import Bundle
 
 from . import store
 from .assess import Assessment, assess

@@ -1,4 +1,4 @@
-"""Lightweight inline parsers for scribe markdown bodies.
+"""Lightweight inline parsers for bundle markdown bodies.
 
 For v1 we cover three concerns:
   - Pandoc-style citation spans: `[@key]` or `[@k1; @k2; @k3]`

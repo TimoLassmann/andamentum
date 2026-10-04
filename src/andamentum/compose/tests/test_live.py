@@ -14,7 +14,7 @@ from andamentum.compose import Roles, write_document
 from andamentum.compose.checks.critic import run_critic
 from andamentum.compose.genres import genre_for
 from andamentum.compose.log import ActionLog
-from andamentum.scribe import Bundle
+from andamentum.compose.bundle import Bundle
 
 pytestmark = pytest.mark.compose_eval
 

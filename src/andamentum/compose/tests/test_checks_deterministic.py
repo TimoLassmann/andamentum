@@ -9,7 +9,7 @@ from andamentum.compose.checks.deterministic import (
 )
 from andamentum.compose.genres import genre_for
 from andamentum.compose.schemas import Brief, Fact, Outline, SectionPlan
-from andamentum.scribe import Section
+from andamentum.compose.bundle import Section
 
 
 def brief(**kw) -> Brief:

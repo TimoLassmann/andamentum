@@ -21,7 +21,7 @@ import yaml
 from pydantic import BaseModel
 
 from andamentum.llm_judge import judge_compare
-from andamentum.scribe import Bundle
+from andamentum.compose.bundle import Bundle
 
 from .. import store
 from ..api import check_bundle, write_document

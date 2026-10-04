@@ -1,4 +1,4 @@
-"""The folder bundle: scribe's source of truth.
+"""The folder bundle: the source of truth.
 
 A bundle is a plain directory — ``bundle.yaml``, ``sections/sNN.md``
 (YAML frontmatter + markdown body), ``figures/``, ``references.yaml`` and
@@ -21,7 +21,7 @@ import yaml
 
 from .models import (
     Reference,
-    ScribeError,
+    BundleError,
     Section,
     StaleRevisionError,
     ValidationIssue,
@@ -76,10 +76,10 @@ def _parse_section(path: Path) -> Section:
     text = path.read_text(encoding="utf-8")
     match = _FRONTMATTER_RE.match(text)
     if match is None:
-        raise ScribeError(f"{path}: section file has no YAML frontmatter")
+        raise BundleError(f"{path}: section file has no YAML frontmatter")
     meta = yaml.safe_load(match.group("meta"))
     if not isinstance(meta, dict):
-        raise ScribeError(f"{path}: frontmatter is not a mapping")
+        raise BundleError(f"{path}: frontmatter is not a mapping")
     try:
         return Section(
             id=str(meta["id"]),
@@ -90,13 +90,13 @@ def _parse_section(path: Path) -> Section:
             body=_normalise_body(match.group("body")),
         )
     except KeyError as exc:
-        raise ScribeError(f"{path}: frontmatter is missing {exc.args[0]!r}") from exc
+        raise BundleError(f"{path}: frontmatter is missing {exc.args[0]!r}") from exc
 
 
 class Bundle:
     """A document held as a folder of plain files."""
 
-    def __init__(self, path: Path, *, title: str, metadata: dict[str, Any]):
+    def __init__(self, path: Path, *, title: str, metadata: dict[str, object]):
         self.path = path
         self.title = title
         self.metadata = metadata
@@ -110,14 +110,14 @@ class Bundle:
         *,
         title: str,
         scaffold: str | None = None,
-        metadata: dict[str, Any] | None = None,
+        metadata: dict[str, object] | None = None,
     ) -> Bundle:
         """Create a new bundle at *path*; refuses an existing non-empty directory."""
         root = Path(path)
         if root.exists() and (not root.is_dir() or any(root.iterdir())):
-            raise ScribeError(f"{root} already exists and is not an empty directory")
+            raise BundleError(f"{root} already exists and is not an empty directory")
         if scaffold is not None and scaffold not in SCAFFOLDS:
-            raise ScribeError(
+            raise BundleError(
                 f"unknown scaffold {scaffold!r}; valid scaffolds: {sorted(SCAFFOLDS)}"
             )
         for sub in ("sections", "figures", "out"):
@@ -145,15 +145,15 @@ class Bundle:
         root = Path(path)
         manifest = root / "bundle.yaml"
         if not manifest.is_file():
-            raise ScribeError(f"{root} is not a scribe bundle (no bundle.yaml)")
+            raise BundleError(f"{root} is not a bundle (no bundle.yaml)")
         data = yaml.safe_load(manifest.read_text(encoding="utf-8"))
         if not isinstance(data, dict) or "title" not in data:
-            raise ScribeError(f"{manifest} is malformed (needs a title)")
+            raise BundleError(f"{manifest} is malformed (needs a title)")
         version = data.get("format_version")
         if version != FORMAT_VERSION:
-            raise ScribeError(
+            raise BundleError(
                 f"{manifest}: format_version {version!r} is not supported "
-                f"(this scribe reads {FORMAT_VERSION})"
+                f"(this bundle reads {FORMAT_VERSION})"
             )
         return cls(
             root, title=str(data["title"]), metadata=dict(data.get("metadata") or {})
@@ -197,13 +197,13 @@ class Bundle:
     def section(self, section_id: str) -> Section:
         path = self._section_path(section_id)
         if not _SECTION_FILE_RE.match(path.name) or not path.is_file():
-            raise ScribeError(f"no section with id {section_id!r}")
+            raise BundleError(f"no section with id {section_id!r}")
         return _parse_section(path)
 
     def section_by_title(self, title: str) -> Section:
         matches = [s for s in self.sections() if s.title == title]
         if not matches:
-            raise ScribeError(f"no section titled {title!r}")
+            raise BundleError(f"no section titled {title!r}")
         return matches[0]
 
     def _next_id(self) -> str:
@@ -229,7 +229,7 @@ class Bundle:
         else:
             ids = [s.id for s in existing]
             if after not in ids:
-                raise ScribeError(f"no section with id {after!r}")
+                raise BundleError(f"no section with id {after!r}")
             index = ids.index(after) + 1
         new = Section(
             id=self._next_id(),
@@ -297,7 +297,7 @@ class Bundle:
         if len(section_ids) != len(set(section_ids)) or set(section_ids) != set(
             current
         ):
-            raise ScribeError(
+            raise BundleError(
                 "reorder needs every section id exactly once; "
                 f"have {sorted(current)}, got {sorted(section_ids)}"
             )
@@ -322,11 +322,11 @@ class Bundle:
         section = self._checked(section_id, expected_revision)
         source = Path(image)
         if not source.is_file():
-            raise ScribeError(f"figure image not found: {source}")
+            raise BundleError(f"figure image not found: {source}")
         label = label.removeprefix("fig:")
         stem = _LABEL_CLEAN_RE.sub("-", label).strip("-")
         if not stem:
-            raise ScribeError(f"figure label {label!r} has no usable characters")
+            raise BundleError(f"figure label {label!r} has no usable characters")
         target = self.path / "figures" / f"{stem}{source.suffix.lower()}"
         if target.resolve() != source.resolve():
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -355,7 +355,7 @@ class Bundle:
             return []
         data = yaml.safe_load(path.read_text(encoding="utf-8")) or []
         if not isinstance(data, list):
-            raise ScribeError(f"{path} must hold a list of references")
+            raise BundleError(f"{path} must hold a list of references")
         return [Reference(**item) for item in data]
 
     def add_reference(

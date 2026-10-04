@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Callable, Literal
 
 from .bundle import _atomic_write
 from .markdown import ImageBlock, ListBlock, ParagraphBlock, TableBlock, parse_blocks
-from .models import Reference, ScribeError, Section
+from .models import Reference, BundleError, Section
 from .parser import inline_runs
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -108,7 +108,7 @@ def render_bundle(
     """
     root = image_root if image_root is not None else bundle.path
     if format not in _FORMATS:
-        raise ScribeError(f"unknown format {format!r}; valid formats: {list(_FORMATS)}")
+        raise BundleError(f"unknown format {format!r}; valid formats: {list(_FORMATS)}")
     sections = bundle.sections()
     references = bundle.references()
     output_path.parent.mkdir(parents=True, exist_ok=True)

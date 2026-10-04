@@ -18,7 +18,7 @@ FORBIDDEN_MODULES = {
     "andamentum.whetstone",
     "andamentum.deep_research",
     "andamentum.document_store",
-    "andamentum.scribe",
+    "andamentum.compose.bundle",
     "andamentum.figures",
     "andamentum.typeset",
     "andamentum.chunker",

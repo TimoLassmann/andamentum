@@ -94,7 +94,7 @@ check:
   whose work you are reviewing or to whom you are submitting.
 
 `andamentum` does not insert disclosure language for you. The
-`scribe.validate()` pass surfaces `[ai-drafted]` / `[ai-edited]`
+`compose.bundle` `Bundle.validate()` pass surfaces `[ai-drafted]` / `[ai-edited]`
 markers as warnings if you choose to use them in your draft, but
 that is a convention, not enforcement.
 

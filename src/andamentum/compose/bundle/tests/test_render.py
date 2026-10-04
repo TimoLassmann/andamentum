@@ -3,7 +3,7 @@
 import pytest
 from docx import Document as DocxDocument
 
-from andamentum.scribe import Bundle, ScribeError
+from andamentum.compose.bundle import Bundle, BundleError
 
 from ._png import PNG_BYTES as PNG
 
@@ -101,7 +101,7 @@ def test_render_is_deterministic_for_text_formats(bundle, tmp_path):
 
 
 def test_unknown_format(bundle, tmp_path):
-    with pytest.raises(ScribeError, match="unknown format"):
+    with pytest.raises(BundleError, match="unknown format"):
         bundle.render(tmp_path / "o.rtf", format="rtf")  # type: ignore[arg-type]
 
 

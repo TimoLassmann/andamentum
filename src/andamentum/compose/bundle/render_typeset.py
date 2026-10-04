@@ -8,7 +8,7 @@ atoms. References follow as ``reference`` atoms.
 from __future__ import annotations
 
 import html
-from typing import Any, Callable
+from typing import Callable
 
 from .markdown import ImageBlock, blocks_to_markdown, parse_blocks
 from .models import Reference, Section
@@ -21,8 +21,8 @@ def to_typeset_atoms(
     references: list[Reference],
     text_filter: Callable[[str], str] | None,
     image_path: Callable[[str], str],
-) -> list[dict[str, Any]]:
-    atoms: list[dict[str, Any]] = [{"kind": "heading", "content": title}]
+) -> list[dict[str, object]]:
+    atoms: list[dict[str, object]] = [{"kind": "heading", "content": title}]
     for section in sections:
         body = text_filter(section.body) if text_filter else section.body
         pending = [f"## {section.title}"]
@@ -51,7 +51,7 @@ def to_typeset_atoms(
     if references:
         atoms.append({"kind": "prose", "content": "## References"})
         for ref in references:
-            atom: dict[str, Any] = {
+            atom: dict[str, object] = {
                 "kind": "reference",
                 "content": f"[{ref.key}] {ref.text}",
             }

@@ -1,6 +1,6 @@
 """Markdown body parser tests (citation spans + verify markers + inline runs)."""
 
-from andamentum.scribe.parser import (
+from andamentum.compose.bundle.parser import (
     extract_citation_keys,
     find_unresolved_markers,
     inline_runs,
