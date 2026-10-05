@@ -1,0 +1,290 @@
+{
+  "_meta": {
+    "keys": {
+      "urls": "URL -> {status|None, final_url, error: dns_failure|timeout|None, redirects}"
+    },
+    "provenance": "hand-built in the shape of Crossref REST API output; not a live recording. Regenerate with `python -m andamentum.compose.harness.bench.planted --write-fixtures DIR`.",
+    "version": 1
+  },
+  "urls": {
+    "https://analysis.apollo-project.example/protocol/73": {
+      "error": null,
+      "final_url": "https://analysis.apollo-project.example/protocol/73",
+      "redirects": [],
+      "status": 200
+    },
+    "https://analysis.apollo-study.example/supplement/72": {
+      "error": null,
+      "final_url": "https://analysis.apollo-study.example/supplement/72",
+      "redirects": [],
+      "status": 404
+    },
+    "https://analysis.basalt-project.example/materials/25": {
+      "error": "dns_failure",
+      "final_url": null,
+      "redirects": [],
+      "status": null
+    },
+    "https://analysis.kestrel-group.example/materials/78": {
+      "error": null,
+      "final_url": "https://analysis.kestrel-group.example/materials/78",
+      "redirects": [],
+      "status": 200
+    },
+    "https://analysis.orrery-group.example/materials/92": {
+      "error": null,
+      "final_url": "https://analysis.orrery-group.example/materials/92",
+      "redirects": [],
+      "status": 200
+    },
+    "https://analysis.pelican-unit.example/data/25": {
+      "error": null,
+      "final_url": "https://analysis.pelican-unit.example/data/25",
+      "redirects": [],
+      "status": 200
+    },
+    "https://analysis.saltlog-study.example/materials/97": {
+      "error": null,
+      "final_url": "https://analysis.saltlog-study.example/materials/97",
+      "redirects": [],
+      "status": 404
+    },
+    "https://analysis.wren-lab.example/materials/55": {
+      "error": null,
+      "final_url": "https://analysis.wren-lab.example/materials/55",
+      "redirects": [],
+      "status": 404
+    },
+    "https://code.apollo-lab.example/analysis/53": {
+      "error": null,
+      "final_url": "https://code.apollo-lab.example/analysis/53",
+      "redirects": [],
+      "status": 200
+    },
+    "https://code.quill-pilot.example/data/10": {
+      "error": null,
+      "final_url": "https://code.quill-pilot.example/data/10",
+      "redirects": [],
+      "status": 200
+    },
+    "https://code.saltlog-lab.example/materials/77": {
+      "error": null,
+      "final_url": "https://code.saltlog-lab.example/materials/77",
+      "redirects": [],
+      "status": 200
+    },
+    "https://code.saltlog-unit.example/analysis/32": {
+      "error": "dns_failure",
+      "final_url": null,
+      "redirects": [],
+      "status": null
+    },
+    "https://code.wren-project.example/data/61": {
+      "error": null,
+      "final_url": "https://code.wren-project.example/data/61",
+      "redirects": [],
+      "status": 200
+    },
+    "https://data.bramble-lab.example/supplement/29": {
+      "error": null,
+      "final_url": "https://data.bramble-lab.example/supplement/29",
+      "redirects": [],
+      "status": 200
+    },
+    "https://data.bramble-pilot.example/materials/16": {
+      "error": null,
+      "final_url": "https://data.bramble-pilot.example/materials/16",
+      "redirects": [],
+      "status": 200
+    },
+    "https://data.cinder-study.example/analysis/12": {
+      "error": null,
+      "final_url": "https://data.cinder-study.example/analysis/12",
+      "redirects": [],
+      "status": 200
+    },
+    "https://data.marrow-lab.example/code/94": {
+      "error": null,
+      "final_url": "https://data.marrow-lab.example/code/94",
+      "redirects": [],
+      "status": 200
+    },
+    "https://data.marrow-study.example/code/48": {
+      "error": null,
+      "final_url": "https://data.marrow-study.example/code/48",
+      "redirects": [],
+      "status": 200
+    },
+    "https://data.quill-unit.example/protocol/86": {
+      "error": null,
+      "final_url": "https://data.quill-unit.example/protocol/86",
+      "redirects": [],
+      "status": 200
+    },
+    "https://materials.basalt-pilot.example/materials/88": {
+      "error": null,
+      "final_url": "https://materials.basalt-pilot.example/materials/88",
+      "redirects": [],
+      "status": 200
+    },
+    "https://materials.pelican-group.example/data/11": {
+      "error": null,
+      "final_url": "https://materials.pelican-group.example/data/11",
+      "redirects": [],
+      "status": 404
+    },
+    "https://materials.pelican-lab.example/code/81": {
+      "error": "timeout",
+      "final_url": null,
+      "redirects": [],
+      "status": null
+    },
+    "https://materials.quill-group.example/protocol/29": {
+      "error": null,
+      "final_url": "https://www.materials.quill-group.example/protocol/29",
+      "redirects": [
+        {
+          "location": "https://www.materials.quill-group.example/protocol/29",
+          "status": 301
+        }
+      ],
+      "status": 200
+    },
+    "https://protocol.basalt-group.example/supplement/82": {
+      "error": null,
+      "final_url": "https://protocol.basalt-group.example/supplement/82",
+      "redirects": [],
+      "status": 200
+    },
+    "https://protocol.basalt-lab.example/data/10": {
+      "error": "dns_failure",
+      "final_url": null,
+      "redirects": [],
+      "status": null
+    },
+    "https://protocol.basalt-study.example/protocol/86": {
+      "error": null,
+      "final_url": "https://protocol.basalt-study.example/protocol/86",
+      "redirects": [],
+      "status": 200
+    },
+    "https://protocol.bramble-project.example/code/52": {
+      "error": null,
+      "final_url": "https://protocol.bramble-project.example/code/52",
+      "redirects": [],
+      "status": 404
+    },
+    "https://protocol.bramble-study.example/supplement/32": {
+      "error": "timeout",
+      "final_url": null,
+      "redirects": [],
+      "status": null
+    },
+    "https://protocol.cinder-pilot.example/supplement/90": {
+      "error": null,
+      "final_url": "https://protocol.cinder-pilot.example/supplement/90",
+      "redirects": [],
+      "status": 410
+    },
+    "https://protocol.harrow-pilot.example/supplement/22": {
+      "error": null,
+      "final_url": "https://protocol.harrow-pilot.example/supplement/22",
+      "redirects": [],
+      "status": 200
+    },
+    "https://protocol.marrow-group.example/supplement/21": {
+      "error": null,
+      "final_url": "https://protocol.marrow-group.example/supplement/21",
+      "redirects": [],
+      "status": 410
+    },
+    "https://protocol.mistral-study.example/code/78": {
+      "error": null,
+      "final_url": "https://www.protocol.mistral-study.example/code/78",
+      "redirects": [
+        {
+          "location": "https://www.protocol.mistral-study.example/code/78",
+          "status": 301
+        }
+      ],
+      "status": 200
+    },
+    "https://protocol.pelican-study.example/code/56": {
+      "error": "dns_failure",
+      "final_url": null,
+      "redirects": [],
+      "status": null
+    },
+    "https://protocol.quill-lab.example/protocol/68": {
+      "error": null,
+      "final_url": "https://protocol.quill-lab.example/protocol/68",
+      "redirects": [],
+      "status": 200
+    },
+    "https://supplement.apollo-pilot.example/code/49": {
+      "error": null,
+      "final_url": "https://supplement.apollo-pilot.example/code/49",
+      "redirects": [],
+      "status": 200
+    },
+    "https://supplement.cinder-group.example/protocol/76": {
+      "error": null,
+      "final_url": "https://supplement.cinder-group.example/protocol/76",
+      "redirects": [],
+      "status": 200
+    },
+    "https://supplement.kestrel-project.example/supplement/33": {
+      "error": null,
+      "final_url": "https://supplement.kestrel-project.example/supplement/33",
+      "redirects": [],
+      "status": 200
+    },
+    "https://supplement.lumen-unit.example/materials/40": {
+      "error": "timeout",
+      "final_url": null,
+      "redirects": [],
+      "status": null
+    },
+    "https://supplement.marrow-unit.example/data/32": {
+      "error": null,
+      "final_url": "https://supplement.marrow-unit.example/data/32",
+      "redirects": [],
+      "status": 200
+    },
+    "https://supplement.mistral-unit.example/data/21": {
+      "error": null,
+      "final_url": "https://supplement.mistral-unit.example/data/21",
+      "redirects": [],
+      "status": 200
+    },
+    "https://supplement.orrery-unit.example/data/13": {
+      "error": null,
+      "final_url": "https://supplement.orrery-unit.example/data/13",
+      "redirects": [],
+      "status": 200
+    },
+    "https://supplement.saltlog-group.example/supplement/44": {
+      "error": null,
+      "final_url": "https://www.supplement.saltlog-group.example/supplement/44",
+      "redirects": [
+        {
+          "location": "https://www.supplement.saltlog-group.example/supplement/44",
+          "status": 301
+        }
+      ],
+      "status": 200
+    },
+    "https://supplement.tern-study.example/materials/90": {
+      "error": null,
+      "final_url": "https://supplement.tern-study.example/materials/90",
+      "redirects": [],
+      "status": 200
+    },
+    "https://supplement.wren-unit.example/code/24": {
+      "error": null,
+      "final_url": "https://supplement.wren-unit.example/code/24",
+      "redirects": [],
+      "status": 200
+    }
+  }
+}

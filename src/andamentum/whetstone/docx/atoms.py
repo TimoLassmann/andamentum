@@ -60,11 +60,19 @@ PARAGRAPH_TAG = qn("p")
 # Rendered as the one space a reader sees them as.
 SPACE_TAGS: frozenset[str] = frozenset({qn("br"), qn("tab")})
 
-# The only subtree excluded from the reading. Deleted text is not part of what
-# the document says; a comment bracketing it would vanish the moment the author
-# accepts the deletion it belongs to. Field plumbing (``<w:instrText>``) and
-# deleted text (``<w:delText>``) are excluded already by not being ``<w:t>``.
-EXCLUDED_SUBTREES: frozenset[str] = frozenset({qn("del")})
+MC_NS = "http://schemas.openxmlformats.org/markup-compatibility/2006"
+
+# Subtrees excluded from the reading. Deleted text is not part of what the
+# document says; a comment bracketing it would vanish the moment the author
+# accepts the deletion it belongs to. Text moved away (``<w:moveFrom>``)
+# disappears on accept in the same way (its copy at the new place is
+# ``<w:moveTo>``, which is read). ``<mc:Fallback>`` holds a second rendering of
+# what ``<mc:Choice>`` already holds (a text box is written twice), so reading
+# both would duplicate the text. Field plumbing (``<w:instrText>``) and deleted
+# text (``<w:delText>``) are excluded already by not being ``<w:t>``.
+EXCLUDED_SUBTREES: frozenset[str] = frozenset(
+    {qn("del"), qn("moveFrom"), f"{{{MC_NS}}}Fallback"}
+)
 
 
 class AtomKind(Enum):

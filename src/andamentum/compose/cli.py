@@ -3,6 +3,9 @@
 Exit codes for ``write`` and ``run``: 0 goal met, 4 goal not met (outputs are
 still written), 3 crash. A missing role model or a bad argument exits 2.
 
+``check FILE.docx`` is the harness verb (see ``harness/check.py``: commented copy
+and report, exit 0/1/2/3); ``check-bundle DIR`` is the bundle's own one-pass check.
+
 The bundle verbs (``new``, ``sections``, ``show``, ``edit``, ``add``,
 ``validate``, ``render --raw``) call no model. A bundle error prints
 ``error: ...`` and exits 2; ``validate`` exits 1 when it finds an error.
@@ -20,6 +23,7 @@ from dotenv import load_dotenv
 
 from .bundle import Bundle, BundleError
 from .bundle.scaffolds import SCAFFOLDS
+from .harness.kernel.verbs import build_subparsers, dispatch_verb, load_builtin_verbs
 from .schemas import ROLE_NAMES, Roles
 
 EXIT_OK = 0
@@ -99,7 +103,9 @@ def build_parser() -> argparse.ArgumentParser:
     status = sub.add_parser("status", help="show where a bundle stands")
     status.add_argument("bundle", type=Path)
 
-    check = sub.add_parser("check", help="run the checks once, without revising")
+    check = sub.add_parser(
+        "check-bundle", help="run a bundle's checks once, without revising"
+    )
     check.add_argument("bundle", type=Path)
     _add_models(check)
 
@@ -161,6 +167,8 @@ def build_parser() -> argparse.ArgumentParser:
     ev.add_argument("--out", required=True, type=Path)
     ev.add_argument("--max-rounds", type=int, default=4)
     _add_models(ev)
+    load_builtin_verbs()
+    build_subparsers(sub)  # harness verbs (registered in the kernel) become subcommands
     return parser
 
 
@@ -346,9 +354,11 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv if argv is not None else sys.argv[1:])
     try:
+        if getattr(args, "verb", None) is not None:
+            return dispatch_verb(args)
         if args.command in ("write", "run"):
             return asyncio.run(_write_or_run(args, parser))
-        if args.command == "check":
+        if args.command == "check-bundle":
             return asyncio.run(_check(args, parser))
         if args.command == "eval":
             return asyncio.run(_eval(args, parser))

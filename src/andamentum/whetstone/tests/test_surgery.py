@@ -301,3 +301,23 @@ def test_change_ids_are_read_off_the_document_not_restarted() -> None:
     marker.set(qn("id"), "77")
     marker.set(qn("author"), "Someone Else")
     assert next_change_id(root) == 78
+
+
+def test_tracked_paragraph_is_one_insertion_with_its_mark():
+    from andamentum.whetstone.docx.surgery import tracked_paragraph
+
+    paragraph = tracked_paragraph("New text.", author="A", cid=7, style_id="Heading1")
+    ins = paragraph.findall(qn("ins"))
+    marks = paragraph.findall(f"{qn('pPr')}/{qn('rPr')}/{qn('ins')}")
+    assert [(m.get(qn("id")), m.get(qn("author"))) for m in marks] == [("7", "A")]
+    assert [(i.get(qn("id")), i.get(qn("author"))) for i in ins] == [("8", "A")]
+    assert "".join(t.text for t in paragraph.iter(qn("t"))) == "New text."
+    assert paragraph.find(f"{qn('pPr')}/{qn('pStyle')}").get(qn("val")) == "Heading1"
+    assert marks[0].get(qn("date")) == ins[0].get(qn("date"))
+
+
+def test_tracked_paragraph_without_a_style_has_no_pstyle():
+    from andamentum.whetstone.docx.surgery import tracked_paragraph
+
+    paragraph = tracked_paragraph("Plain.", author="A", cid=1)
+    assert paragraph.find(f"{qn('pPr')}/{qn('pStyle')}") is None

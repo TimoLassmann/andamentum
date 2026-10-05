@@ -1,0 +1,7609 @@
+{
+  "_meta": {
+    "keys": {
+      "search": "lower-cased title -> candidate work messages, best first (fabricated titles get unrelated candidates)",
+      "updates": "DOI -> {status, body} for GET /works?filter=updates:<doi>; notice items carry update-to (type retraction|correction|expression_of_concern)",
+      "works": "DOI -> {status, body} for GET /works/<doi>"
+    },
+    "provenance": "hand-built in the shape of Crossref REST API output; not a live recording. Regenerate with `python -m andamentum.compose.harness.bench.planted --write-fixtures DIR`.",
+    "version": 1
+  },
+  "search": {
+    "blinded analysis of cold-chain logging in coastal schools": [
+      {
+        "DOI": "10.5555/am.bench.v020",
+        "URL": "https://doi.org/10.5555/am.bench.v020",
+        "author": [
+          {
+            "family": "Fennimore",
+            "given": "H.",
+            "sequence": "first"
+          }
+        ],
+        "container-title": [
+          "Cinder Bay Clinical Letters"
+        ],
+        "issue": "6",
+        "issued": {
+          "date-parts": [
+            [
+              2011
+            ]
+          ]
+        },
+        "page": "467-479",
+        "title": [
+          "Blinded analysis of cold-chain logging in coastal schools"
+        ],
+        "type": "journal-article",
+        "volume": "5"
+      }
+    ],
+    "blinded audit of handover notes in rural pharmacies": [
+      {
+        "DOI": "10.5555/am.bench.r004",
+        "URL": "https://doi.org/10.5555/am.bench.r004",
+        "author": [
+          {
+            "family": "Greymantle",
+            "given": "H.",
+            "sequence": "first"
+          },
+          {
+            "family": "Ashgrove-Pell",
+            "given": "T.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "Harrow Journal of Field Physiology"
+        ],
+        "issue": "6",
+        "issued": {
+          "date-parts": [
+            [
+              2017
+            ]
+          ]
+        },
+        "page": "127-135",
+        "title": [
+          "Blinded audit of handover notes in rural pharmacies"
+        ],
+        "type": "journal-article",
+        "volume": "9"
+      }
+    ],
+    "blinded comparison of rest schedules in orchard teams": [
+      {
+        "DOI": "10.5555/am.bench.v008",
+        "URL": "https://doi.org/10.5555/am.bench.v008",
+        "author": [
+          {
+            "family": "Thistlewood",
+            "given": "H.",
+            "sequence": "first"
+          },
+          {
+            "family": "Yarrowdale",
+            "given": "C.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Quillfeather",
+            "given": "D.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Zimmerlith",
+            "given": "E.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "Annals of Quillwork Medicine"
+        ],
+        "issue": "3",
+        "issued": {
+          "date-parts": [
+            [
+              2024
+            ]
+          ]
+        },
+        "page": "821-828",
+        "title": [
+          "Blinded comparison of rest schedules in orchard teams"
+        ],
+        "type": "journal-article",
+        "volume": "24"
+      }
+    ],
+    "blinded evaluation of a pacing aid in coastal schools": [
+      {
+        "DOI": "10.5555/am.bench.v011",
+        "URL": "https://doi.org/10.5555/am.bench.v011",
+        "author": [
+          {
+            "family": "Greymantle",
+            "given": "E.",
+            "sequence": "first"
+          },
+          {
+            "family": "Lanternby",
+            "given": "C.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "Cinder Bay Clinical Letters"
+        ],
+        "issue": "5",
+        "issued": {
+          "date-parts": [
+            [
+              2020
+            ]
+          ]
+        },
+        "page": "251-259",
+        "title": [
+          "Blinded evaluation of a pacing aid in coastal schools"
+        ],
+        "type": "journal-article",
+        "volume": "16"
+      }
+    ],
+    "blinded evaluation of a pacing aid in night-shift crews": [
+      {
+        "DOI": "10.5555/am.bench.v004",
+        "URL": "https://doi.org/10.5555/am.bench.v004",
+        "author": [
+          {
+            "family": "Quillfeather",
+            "given": "T.",
+            "sequence": "first"
+          },
+          {
+            "family": "Nettlefold",
+            "given": "B.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "Journal of Applied Brinework"
+        ],
+        "issue": "5",
+        "issued": {
+          "date-parts": [
+            [
+              2009
+            ]
+          ]
+        },
+        "page": "635-646",
+        "title": [
+          "Blinded evaluation of a pacing aid in night-shift crews"
+        ],
+        "type": "journal-article",
+        "volume": "11"
+      }
+    ],
+    "blinded evaluation of a pacing aid in regional depots": [
+      {
+        "DOI": "10.5555/am.bench.v003",
+        "URL": "https://doi.org/10.5555/am.bench.v003",
+        "author": [
+          {
+            "family": "Garrowby",
+            "given": "C.",
+            "sequence": "first"
+          },
+          {
+            "family": "Mossgrave",
+            "given": "J.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Ingleby-Rusk",
+            "given": "M.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Thistlewood",
+            "given": "P.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "Cinder Bay Clinical Letters"
+        ],
+        "issue": "5",
+        "issued": {
+          "date-parts": [
+            [
+              2009
+            ]
+          ]
+        },
+        "page": "322-331",
+        "title": [
+          "Open-label trial of timed hydration in small laboratories"
+        ],
+        "type": "journal-article",
+        "volume": "12"
+      },
+      {
+        "DOI": "10.5555/am.bench.v004",
+        "URL": "https://doi.org/10.5555/am.bench.v004",
+        "author": [
+          {
+            "family": "Quillfeather",
+            "given": "T.",
+            "sequence": "first"
+          },
+          {
+            "family": "Nettlefold",
+            "given": "B.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "Journal of Applied Brinework"
+        ],
+        "issue": "5",
+        "issued": {
+          "date-parts": [
+            [
+              2009
+            ]
+          ]
+        },
+        "page": "635-646",
+        "title": [
+          "Blinded evaluation of a pacing aid in night-shift crews"
+        ],
+        "type": "journal-article",
+        "volume": "11"
+      },
+      {
+        "DOI": "10.5555/am.bench.v005",
+        "URL": "https://doi.org/10.5555/am.bench.v005",
+        "author": [
+          {
+            "family": "Foxglove-Hart",
+            "given": "C.",
+            "sequence": "first"
+          }
+        ],
+        "container-title": [
+          "Cinder Bay Clinical Letters"
+        ],
+        "issue": "5",
+        "issued": {
+          "date-parts": [
+            [
+              2014
+            ]
+          ]
+        },
+        "page": "377-389",
+        "title": [
+          "Open-label cohort study of shift patterns in orchard teams"
+        ],
+        "type": "journal-article",
+        "volume": "6"
+      }
+    ],
+    "blinded survey of reporting habits in coastal schools": [
+      {
+        "DOI": "10.5555/am.bench.v018",
+        "URL": "https://doi.org/10.5555/am.bench.v018",
+        "author": [
+          {
+            "family": "Wetherby-Lund",
+            "given": "M.",
+            "sequence": "first"
+          }
+        ],
+        "container-title": [
+          "Journal of Applied Brinework"
+        ],
+        "issue": "6",
+        "issued": {
+          "date-parts": [
+            [
+              2018
+            ]
+          ]
+        },
+        "page": "857-868",
+        "title": [
+          "Blinded survey of reporting habits in coastal schools"
+        ],
+        "type": "journal-article",
+        "volume": "3"
+      }
+    ],
+    "cluster analysis of cold-chain logging in rural pharmacies": [
+      {
+        "DOI": "10.5555/am.bench.v048",
+        "URL": "https://doi.org/10.5555/am.bench.v048",
+        "author": [
+          {
+            "family": "Bellweather",
+            "given": "E.",
+            "sequence": "first"
+          },
+          {
+            "family": "Dunmarrow",
+            "given": "E.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Jessamoor",
+            "given": "F.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "Orrery Methods in Epidemiology"
+        ],
+        "issue": "4",
+        "issued": {
+          "date-parts": [
+            [
+              2013
+            ]
+          ]
+        },
+        "page": "96-108",
+        "title": [
+          "Cluster analysis of cold-chain logging in rural pharmacies"
+        ],
+        "type": "journal-article",
+        "volume": "32"
+      }
+    ],
+    "cluster analysis of cold-chain logging in small laboratories": [
+      {
+        "DOI": "10.5555/am.bench.v040",
+        "URL": "https://doi.org/10.5555/am.bench.v040",
+        "author": [
+          {
+            "family": "Underhill-Cray",
+            "given": "D.",
+            "sequence": "first"
+          },
+          {
+            "family": "Juniperby",
+            "given": "D.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Ashgrove-Pell",
+            "given": "S.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "Annals of Quillwork Medicine"
+        ],
+        "issue": "2",
+        "issued": {
+          "date-parts": [
+            [
+              2019
+            ]
+          ]
+        },
+        "page": "734-746",
+        "title": [
+          "Cluster analysis of cold-chain logging in small laboratories"
+        ],
+        "type": "journal-article",
+        "volume": "23"
+      }
+    ],
+    "cluster comparison of rest schedules in small laboratories": [
+      {
+        "DOI": "10.5555/am.bench.v015",
+        "URL": "https://doi.org/10.5555/am.bench.v015",
+        "author": [
+          {
+            "family": "Plumtree-Vane",
+            "given": "E.",
+            "sequence": "first"
+          },
+          {
+            "family": "Foxglove-Hart",
+            "given": "P.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Pemberlow",
+            "given": "S.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "Harrow Journal of Field Physiology"
+        ],
+        "issue": "1",
+        "issued": {
+          "date-parts": [
+            [
+              2010
+            ]
+          ]
+        },
+        "page": "864-873",
+        "title": [
+          "Exploratory trial of timed hydration in small laboratories"
+        ],
+        "type": "journal-article",
+        "volume": "19"
+      },
+      {
+        "DOI": "10.5555/am.bench.v016",
+        "URL": "https://doi.org/10.5555/am.bench.v016",
+        "author": [
+          {
+            "family": "Quillfeather",
+            "given": "J.",
+            "sequence": "first"
+          }
+        ],
+        "container-title": [
+          "Cinder Bay Clinical Letters"
+        ],
+        "issue": "4",
+        "issued": {
+          "date-parts": [
+            [
+              2025
+            ]
+          ]
+        },
+        "page": "452-462",
+        "title": [
+          "Longitudinal evaluation of a pacing aid in rural pharmacies"
+        ],
+        "type": "journal-article",
+        "volume": "14"
+      },
+      {
+        "DOI": "10.5555/am.bench.v017",
+        "URL": "https://doi.org/10.5555/am.bench.v017",
+        "author": [
+          {
+            "family": "Fennimore",
+            "given": "G.",
+            "sequence": "first"
+          }
+        ],
+        "container-title": [
+          "Journal of Applied Brinework"
+        ],
+        "issue": "2",
+        "issued": {
+          "date-parts": [
+            [
+              2012
+            ]
+          ]
+        },
+        "page": "140-151",
+        "title": [
+          "Randomised evaluation of a pacing aid in regional depots"
+        ],
+        "type": "journal-article",
+        "volume": "10"
+      }
+    ],
+    "cluster pilot of peer coaching in orchard teams": [
+      {
+        "DOI": "10.5555/am.bench.v026",
+        "URL": "https://doi.org/10.5555/am.bench.v026",
+        "author": [
+          {
+            "family": "Jessamoor",
+            "given": "A.",
+            "sequence": "first"
+          }
+        ],
+        "container-title": [
+          "Journal of Applied Brinework"
+        ],
+        "issue": "3",
+        "issued": {
+          "date-parts": [
+            [
+              2024
+            ]
+          ]
+        },
+        "page": "24-37",
+        "title": [
+          "Cluster pilot of peer coaching in orchard teams"
+        ],
+        "type": "journal-article",
+        "volume": "5"
+      }
+    ],
+    "cluster trial of timed hydration in regional depots": [
+      {
+        "DOI": "10.5555/am.bench.v019",
+        "URL": "https://doi.org/10.5555/am.bench.v019",
+        "author": [
+          {
+            "family": "Ravenscroft",
+            "given": "H.",
+            "sequence": "first"
+          }
+        ],
+        "container-title": [
+          "Cinder Bay Clinical Letters"
+        ],
+        "issue": "5",
+        "issued": {
+          "date-parts": [
+            [
+              2014
+            ]
+          ]
+        },
+        "page": "102-110",
+        "title": [
+          "Cluster trial of timed hydration in regional depots"
+        ],
+        "type": "journal-article",
+        "volume": "27"
+      }
+    ],
+    "cluster trial of timed hydration in river-port workers": [
+      {
+        "DOI": "10.5555/am.bench.v007",
+        "URL": "https://doi.org/10.5555/am.bench.v007",
+        "author": [
+          {
+            "family": "Ashgrove-Pell",
+            "given": "M.",
+            "sequence": "first"
+          },
+          {
+            "family": "Quillfeather",
+            "given": "A.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Abernethy-Roke",
+            "given": "L.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Fennimore",
+            "given": "J.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "Annals of Quillwork Medicine"
+        ],
+        "issue": "6",
+        "issued": {
+          "date-parts": [
+            [
+              2021
+            ]
+          ]
+        },
+        "page": "454-464",
+        "title": [
+          "Cluster trial of timed hydration in river-port workers"
+        ],
+        "type": "journal-article",
+        "volume": "18"
+      }
+    ],
+    "crossover analysis of cold-chain logging in regional depots": [
+      {
+        "DOI": "10.5555/am.bench.v013",
+        "URL": "https://doi.org/10.5555/am.bench.v013",
+        "author": [
+          {
+            "family": "Sallowfield",
+            "given": "N.",
+            "sequence": "first"
+          }
+        ],
+        "container-title": [
+          "Journal of Applied Brinework"
+        ],
+        "issue": "5",
+        "issued": {
+          "date-parts": [
+            [
+              2010
+            ]
+          ]
+        },
+        "page": "260-269",
+        "title": [
+          "Crossover analysis of cold-chain logging in regional depots"
+        ],
+        "type": "journal-article",
+        "volume": "40"
+      }
+    ],
+    "crossover audit of handover notes in community clinics": [
+      {
+        "DOI": "10.5555/am.bench.r003",
+        "URL": "https://doi.org/10.5555/am.bench.r003",
+        "author": [
+          {
+            "family": "Bellweather",
+            "given": "E.",
+            "sequence": "first"
+          },
+          {
+            "family": "Mossgrave",
+            "given": "J.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "Cinder Bay Clinical Letters"
+        ],
+        "issue": "4",
+        "issued": {
+          "date-parts": [
+            [
+              2017
+            ]
+          ]
+        },
+        "page": "337-347",
+        "title": [
+          "Crossover audit of handover notes in community clinics"
+        ],
+        "type": "journal-article",
+        "volume": "28"
+      }
+    ],
+    "crossover cohort study of shift patterns in night-shift crews": [
+      {
+        "DOI": "10.5555/am.bench.v052",
+        "URL": "https://doi.org/10.5555/am.bench.v052",
+        "author": [
+          {
+            "family": "Brindlemoor",
+            "given": "T.",
+            "sequence": "first"
+          },
+          {
+            "family": "Greymantle",
+            "given": "A.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "Meridian Reports in Behavioural Health"
+        ],
+        "issue": "5",
+        "issued": {
+          "date-parts": [
+            [
+              2017
+            ]
+          ]
+        },
+        "page": "123-131",
+        "title": [
+          "Crossover cohort study of shift patterns in night-shift crews"
+        ],
+        "type": "journal-article",
+        "volume": "12"
+      }
+    ],
+    "crossover cohort study of shift patterns in orchard teams": [
+      {
+        "DOI": "10.5555/am.bench.v014",
+        "URL": "https://doi.org/10.5555/am.bench.v014",
+        "author": [
+          {
+            "family": "Vexworth",
+            "given": "N.",
+            "sequence": "first"
+          },
+          {
+            "family": "Juniperby",
+            "given": "L.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Plumtree-Vane",
+            "given": "N.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Haldane-Wyck",
+            "given": "G.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "Harrow Journal of Field Physiology"
+        ],
+        "issue": "5",
+        "issued": {
+          "date-parts": [
+            [
+              2018
+            ]
+          ]
+        },
+        "page": "846-858",
+        "title": [
+          "Crossover cohort study of shift patterns in orchard teams"
+        ],
+        "type": "journal-article",
+        "volume": "34"
+      }
+    ],
+    "crossover comparison of rest schedules in regional depots": [
+      {
+        "DOI": "10.5555/am.bench.v032",
+        "URL": "https://doi.org/10.5555/am.bench.v032",
+        "author": [
+          {
+            "family": "Foxglove-Hart",
+            "given": "M.",
+            "sequence": "first"
+          },
+          {
+            "family": "Bellweather",
+            "given": "P.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Marrowby",
+            "given": "J.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "Cinder Bay Clinical Letters"
+        ],
+        "issue": "6",
+        "issued": {
+          "date-parts": [
+            [
+              2016
+            ]
+          ]
+        },
+        "page": "445-453",
+        "title": [
+          "Crossover comparison of rest schedules in regional depots"
+        ],
+        "type": "journal-article",
+        "volume": "35"
+      }
+    ],
+    "crossover comparison of rest schedules in river-port workers": [
+      {
+        "DOI": "10.5555/am.bench.v044",
+        "URL": "https://doi.org/10.5555/am.bench.v044",
+        "author": [
+          {
+            "family": "Dunmarrow",
+            "given": "F.",
+            "sequence": "first"
+          },
+          {
+            "family": "Garrowby",
+            "given": "T.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Quarrelby",
+            "given": "L.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Brindlemoor",
+            "given": "C.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "Harrow Journal of Field Physiology"
+        ],
+        "issue": "5",
+        "issued": {
+          "date-parts": [
+            [
+              2017
+            ]
+          ]
+        },
+        "page": "834-843",
+        "title": [
+          "Crossover comparison of rest schedules in river-port workers"
+        ],
+        "type": "journal-article",
+        "volume": "23"
+      }
+    ],
+    "crossover evaluation of a pacing aid in night-shift crews": [
+      {
+        "DOI": "10.5555/am.bench.v001",
+        "URL": "https://doi.org/10.5555/am.bench.v001",
+        "author": [
+          {
+            "family": "Haldane-Wyck",
+            "given": "P.",
+            "sequence": "first"
+          },
+          {
+            "family": "Oakhollow",
+            "given": "D.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Cranmoor",
+            "given": "T.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Kettlewick",
+            "given": "L.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "Meridian Reports in Behavioural Health"
+        ],
+        "issue": "1",
+        "issued": {
+          "date-parts": [
+            [
+              2021
+            ]
+          ]
+        },
+        "page": "643-652",
+        "title": [
+          "Crossover evaluation of a pacing aid in night-shift crews"
+        ],
+        "type": "journal-article",
+        "volume": "14"
+      }
+    ],
+    "crossover evaluation of a pacing aid in regional depots": [
+      {
+        "DOI": "10.5555/am.bench.v009",
+        "URL": "https://doi.org/10.5555/am.bench.v009",
+        "author": [
+          {
+            "family": "Thistlewood",
+            "given": "H.",
+            "sequence": "first"
+          },
+          {
+            "family": "Jessamoor",
+            "given": "N.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Ashgrove-Pell",
+            "given": "B.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Juniperby",
+            "given": "B.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "Orrery Methods in Epidemiology"
+        ],
+        "issue": "6",
+        "issued": {
+          "date-parts": [
+            [
+              2010
+            ]
+          ]
+        },
+        "page": "245-252",
+        "title": [
+          "Exploratory survey of reporting habits in coastal schools"
+        ],
+        "type": "journal-article",
+        "volume": "4"
+      },
+      {
+        "DOI": "10.5555/am.bench.v010",
+        "URL": "https://doi.org/10.5555/am.bench.v010",
+        "author": [
+          {
+            "family": "Elderthwaite",
+            "given": "K.",
+            "sequence": "first"
+          },
+          {
+            "family": "Sallowfield",
+            "given": "S.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Wetherby-Lund",
+            "given": "M.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "Annals of Quillwork Medicine"
+        ],
+        "issue": "1",
+        "issued": {
+          "date-parts": [
+            [
+              2019
+            ]
+          ]
+        },
+        "page": "817-825",
+        "title": [
+          "Open-label audit of handover notes in community clinics"
+        ],
+        "type": "journal-article",
+        "volume": "14"
+      },
+      {
+        "DOI": "10.5555/am.bench.v011",
+        "URL": "https://doi.org/10.5555/am.bench.v011",
+        "author": [
+          {
+            "family": "Greymantle",
+            "given": "E.",
+            "sequence": "first"
+          },
+          {
+            "family": "Lanternby",
+            "given": "C.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "Cinder Bay Clinical Letters"
+        ],
+        "issue": "5",
+        "issued": {
+          "date-parts": [
+            [
+              2020
+            ]
+          ]
+        },
+        "page": "251-259",
+        "title": [
+          "Blinded evaluation of a pacing aid in coastal schools"
+        ],
+        "type": "journal-article",
+        "volume": "16"
+      }
+    ],
+    "crossover pilot of peer coaching in orchard teams": [
+      {
+        "DOI": "10.5555/am.bench.r002",
+        "URL": "https://doi.org/10.5555/am.bench.r002",
+        "author": [
+          {
+            "family": "Eastmarch",
+            "given": "E.",
+            "sequence": "first"
+          }
+        ],
+        "container-title": [
+          "Annals of Quillwork Medicine"
+        ],
+        "issue": "3",
+        "issued": {
+          "date-parts": [
+            [
+              2023
+            ]
+          ]
+        },
+        "page": "475-486",
+        "title": [
+          "Crossover pilot of peer coaching in orchard teams"
+        ],
+        "type": "journal-article",
+        "volume": "31"
+      }
+    ],
+    "crossover pilot of peer coaching in regional depots": [
+      {
+        "DOI": "10.5555/am.bench.v021",
+        "URL": "https://doi.org/10.5555/am.bench.v021",
+        "author": [
+          {
+            "family": "Elderthwaite",
+            "given": "D.",
+            "sequence": "first"
+          },
+          {
+            "family": "Quarrelby",
+            "given": "F.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Juniperby",
+            "given": "K.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "Cinder Bay Clinical Letters"
+        ],
+        "issue": "3",
+        "issued": {
+          "date-parts": [
+            [
+              2024
+            ]
+          ]
+        },
+        "page": "629-641",
+        "title": [
+          "Crossover pilot of peer coaching in regional depots"
+        ],
+        "type": "journal-article",
+        "volume": "8"
+      }
+    ],
+    "crossover pilot of peer coaching in river-port workers": [
+      {
+        "DOI": "10.5555/am.bench.v047",
+        "URL": "https://doi.org/10.5555/am.bench.v047",
+        "author": [
+          {
+            "family": "Ashgrove-Pell",
+            "given": "T.",
+            "sequence": "first"
+          },
+          {
+            "family": "Foxglove-Hart",
+            "given": "M.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Zimmerlith",
+            "given": "R.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "Harrow Journal of Field Physiology"
+        ],
+        "issue": "1",
+        "issued": {
+          "date-parts": [
+            [
+              2020
+            ]
+          ]
+        },
+        "page": "369-378",
+        "title": [
+          "Crossover pilot of peer coaching in river-port workers"
+        ],
+        "type": "journal-article",
+        "volume": "37"
+      }
+    ],
+    "crossover pilot of peer coaching in rural pharmacies": [
+      {
+        "DOI": "10.5555/am.bench.v034",
+        "URL": "https://doi.org/10.5555/am.bench.v034",
+        "author": [
+          {
+            "family": "Zimmerlith",
+            "given": "H.",
+            "sequence": "first"
+          },
+          {
+            "family": "Yarrowdale",
+            "given": "S.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "Annals of Quillwork Medicine"
+        ],
+        "issue": "4",
+        "issued": {
+          "date-parts": [
+            [
+              2021
+            ]
+          ]
+        },
+        "page": "348-362",
+        "title": [
+          "Crossover pilot of peer coaching in rural pharmacies"
+        ],
+        "type": "journal-article",
+        "volume": "6"
+      }
+    ],
+    "crossover survey of reporting habits in night-shift crews": [
+      {
+        "DOI": "10.5555/am.bench.v031",
+        "URL": "https://doi.org/10.5555/am.bench.v031",
+        "author": [
+          {
+            "family": "Corrigan-Tate",
+            "given": "G.",
+            "sequence": "first"
+          }
+        ],
+        "container-title": [
+          "Annals of Quillwork Medicine"
+        ],
+        "issue": "1",
+        "issued": {
+          "date-parts": [
+            [
+              2019
+            ]
+          ]
+        },
+        "page": "404-412",
+        "title": [
+          "Crossover survey of reporting habits in night-shift crews"
+        ],
+        "type": "journal-article",
+        "volume": "7"
+      }
+    ],
+    "crossover trial of timed hydration in regional depots": [
+      {
+        "DOI": "10.5555/am.bench.r001",
+        "URL": "https://doi.org/10.5555/am.bench.r001",
+        "author": [
+          {
+            "family": "Ravenscroft",
+            "given": "B.",
+            "sequence": "first"
+          },
+          {
+            "family": "Corrigan-Tate",
+            "given": "P.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "Meridian Reports in Behavioural Health"
+        ],
+        "issue": "5",
+        "issued": {
+          "date-parts": [
+            [
+              2019
+            ]
+          ]
+        },
+        "page": "389-396",
+        "title": [
+          "Crossover trial of timed hydration in regional depots"
+        ],
+        "type": "journal-article",
+        "volume": "18"
+      }
+    ],
+    "crossover trial of timed hydration in rural pharmacies": [
+      {
+        "DOI": "10.5555/am.bench.v058",
+        "URL": "https://doi.org/10.5555/am.bench.v058",
+        "author": [
+          {
+            "family": "Foxglove-Hart",
+            "given": "H.",
+            "sequence": "first"
+          }
+        ],
+        "container-title": [
+          "Orrery Methods in Epidemiology"
+        ],
+        "issue": "2",
+        "issued": {
+          "date-parts": [
+            [
+              2016
+            ]
+          ]
+        },
+        "page": "414-428",
+        "title": [
+          "Crossover trial of timed hydration in rural pharmacies"
+        ],
+        "type": "journal-article",
+        "volume": "20"
+      }
+    ],
+    "exploratory analysis of cold-chain logging in river-port workers": [
+      {
+        "DOI": "10.5555/am.bench.v041",
+        "URL": "https://doi.org/10.5555/am.bench.v041",
+        "author": [
+          {
+            "family": "Thistlewood",
+            "given": "T.",
+            "sequence": "first"
+          }
+        ],
+        "container-title": [
+          "Cinder Bay Clinical Letters"
+        ],
+        "issue": "4",
+        "issued": {
+          "date-parts": [
+            [
+              2019
+            ]
+          ]
+        },
+        "page": "141-148",
+        "title": [
+          "Exploratory analysis of cold-chain logging in river-port workers"
+        ],
+        "type": "journal-article",
+        "volume": "31"
+      }
+    ],
+    "exploratory comparison of rest schedules in night-shift crews": [
+      {
+        "DOI": "10.5555/am.bench.v033",
+        "URL": "https://doi.org/10.5555/am.bench.v033",
+        "author": [
+          {
+            "family": "Thistlewood",
+            "given": "F.",
+            "sequence": "first"
+          }
+        ],
+        "container-title": [
+          "Meridian Reports in Behavioural Health"
+        ],
+        "issue": "1",
+        "issued": {
+          "date-parts": [
+            [
+              2014
+            ]
+          ]
+        },
+        "page": "95-109",
+        "title": [
+          "Exploratory comparison of rest schedules in night-shift crews"
+        ],
+        "type": "journal-article",
+        "volume": "33"
+      }
+    ],
+    "exploratory evaluation of a pacing aid in community clinics": [
+      {
+        "DOI": "10.5555/am.bench.v059",
+        "URL": "https://doi.org/10.5555/am.bench.v059",
+        "author": [
+          {
+            "family": "Cranmoor",
+            "given": "T.",
+            "sequence": "first"
+          }
+        ],
+        "container-title": [
+          "Cinder Bay Clinical Letters"
+        ],
+        "issue": "4",
+        "issued": {
+          "date-parts": [
+            [
+              2024
+            ]
+          ]
+        },
+        "page": "896-907",
+        "title": [
+          "Exploratory evaluation of a pacing aid in community clinics"
+        ],
+        "type": "journal-article",
+        "volume": "6"
+      }
+    ],
+    "exploratory survey of reporting habits in coastal schools": [
+      {
+        "DOI": "10.5555/am.bench.v009",
+        "URL": "https://doi.org/10.5555/am.bench.v009",
+        "author": [
+          {
+            "family": "Thistlewood",
+            "given": "H.",
+            "sequence": "first"
+          },
+          {
+            "family": "Jessamoor",
+            "given": "N.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Ashgrove-Pell",
+            "given": "B.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Juniperby",
+            "given": "B.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "Orrery Methods in Epidemiology"
+        ],
+        "issue": "6",
+        "issued": {
+          "date-parts": [
+            [
+              2010
+            ]
+          ]
+        },
+        "page": "245-252",
+        "title": [
+          "Exploratory survey of reporting habits in coastal schools"
+        ],
+        "type": "journal-article",
+        "volume": "4"
+      }
+    ],
+    "exploratory survey of reporting habits in orchard teams": [
+      {
+        "DOI": "10.5555/am.bench.v037",
+        "URL": "https://doi.org/10.5555/am.bench.v037",
+        "author": [
+          {
+            "family": "Kettlewick",
+            "given": "C.",
+            "sequence": "first"
+          },
+          {
+            "family": "Nettlefold",
+            "given": "K.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Ravenscroft",
+            "given": "G.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Wetherby-Lund",
+            "given": "N.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "Orrery Methods in Epidemiology"
+        ],
+        "issue": "6",
+        "issued": {
+          "date-parts": [
+            [
+              2022
+            ]
+          ]
+        },
+        "page": "646-657",
+        "title": [
+          "Exploratory survey of reporting habits in orchard teams"
+        ],
+        "type": "journal-article",
+        "volume": "12"
+      }
+    ],
+    "exploratory trial of timed hydration in night-shift crews": [
+      {
+        "DOI": "10.5555/am.bench.v030",
+        "URL": "https://doi.org/10.5555/am.bench.v030",
+        "author": [
+          {
+            "family": "Wetherby-Lund",
+            "given": "R.",
+            "sequence": "first"
+          },
+          {
+            "family": "Nettlefold",
+            "given": "L.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "Journal of Applied Brinework"
+        ],
+        "issue": "2",
+        "issued": {
+          "date-parts": [
+            [
+              2020
+            ]
+          ]
+        },
+        "page": "214-221",
+        "title": [
+          "Open-label trial of timed hydration in rural pharmacies"
+        ],
+        "type": "journal-article",
+        "volume": "12"
+      },
+      {
+        "DOI": "10.5555/am.bench.v031",
+        "URL": "https://doi.org/10.5555/am.bench.v031",
+        "author": [
+          {
+            "family": "Corrigan-Tate",
+            "given": "G.",
+            "sequence": "first"
+          }
+        ],
+        "container-title": [
+          "Annals of Quillwork Medicine"
+        ],
+        "issue": "1",
+        "issued": {
+          "date-parts": [
+            [
+              2019
+            ]
+          ]
+        },
+        "page": "404-412",
+        "title": [
+          "Crossover survey of reporting habits in night-shift crews"
+        ],
+        "type": "journal-article",
+        "volume": "7"
+      },
+      {
+        "DOI": "10.5555/am.bench.v032",
+        "URL": "https://doi.org/10.5555/am.bench.v032",
+        "author": [
+          {
+            "family": "Foxglove-Hart",
+            "given": "M.",
+            "sequence": "first"
+          },
+          {
+            "family": "Bellweather",
+            "given": "P.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Marrowby",
+            "given": "J.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "Cinder Bay Clinical Letters"
+        ],
+        "issue": "6",
+        "issued": {
+          "date-parts": [
+            [
+              2016
+            ]
+          ]
+        },
+        "page": "445-453",
+        "title": [
+          "Crossover comparison of rest schedules in regional depots"
+        ],
+        "type": "journal-article",
+        "volume": "35"
+      }
+    ],
+    "exploratory trial of timed hydration in river-port workers": [
+      {
+        "DOI": "10.5555/am.bench.v027",
+        "URL": "https://doi.org/10.5555/am.bench.v027",
+        "author": [
+          {
+            "family": "Ashgrove-Pell",
+            "given": "C.",
+            "sequence": "first"
+          },
+          {
+            "family": "Sallowfield",
+            "given": "T.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Plumtree-Vane",
+            "given": "S.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "Orrery Methods in Epidemiology"
+        ],
+        "issue": "4",
+        "issued": {
+          "date-parts": [
+            [
+              2020
+            ]
+          ]
+        },
+        "page": "605-611",
+        "title": [
+          "Open-label comparison of rest schedules in community clinics"
+        ],
+        "type": "journal-article",
+        "volume": "10"
+      },
+      {
+        "DOI": "10.5555/am.bench.v028",
+        "URL": "https://doi.org/10.5555/am.bench.v028",
+        "author": [
+          {
+            "family": "Delacroft",
+            "given": "B.",
+            "sequence": "first"
+          }
+        ],
+        "container-title": [
+          "Journal of Applied Brinework"
+        ],
+        "issue": "1",
+        "issued": {
+          "date-parts": [
+            [
+              2019
+            ]
+          ]
+        },
+        "page": "768-778",
+        "title": [
+          "Open-label evaluation of a pacing aid in orchard teams"
+        ],
+        "type": "journal-article",
+        "volume": "18"
+      },
+      {
+        "DOI": "10.5555/am.bench.v029",
+        "URL": "https://doi.org/10.5555/am.bench.v029",
+        "author": [
+          {
+            "family": "Juniperby",
+            "given": "L.",
+            "sequence": "first"
+          },
+          {
+            "family": "Yarrowdale",
+            "given": "D.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Ravenscroft",
+            "given": "B.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Marrowby",
+            "given": "K.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "Annals of Quillwork Medicine"
+        ],
+        "issue": "6",
+        "issued": {
+          "date-parts": [
+            [
+              2009
+            ]
+          ]
+        },
+        "page": "306-318",
+        "title": [
+          "Randomised pilot of peer coaching in night-shift crews"
+        ],
+        "type": "journal-article",
+        "volume": "28"
+      }
+    ],
+    "exploratory trial of timed hydration in small laboratories": [
+      {
+        "DOI": "10.5555/am.bench.v015",
+        "URL": "https://doi.org/10.5555/am.bench.v015",
+        "author": [
+          {
+            "family": "Plumtree-Vane",
+            "given": "E.",
+            "sequence": "first"
+          },
+          {
+            "family": "Foxglove-Hart",
+            "given": "P.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Pemberlow",
+            "given": "S.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "Harrow Journal of Field Physiology"
+        ],
+        "issue": "1",
+        "issued": {
+          "date-parts": [
+            [
+              2010
+            ]
+          ]
+        },
+        "page": "864-873",
+        "title": [
+          "Exploratory trial of timed hydration in small laboratories"
+        ],
+        "type": "journal-article",
+        "volume": "19"
+      }
+    ],
+    "ileal-lymphoid-nodular hyperplasia, non-specific colitis, and pervasive developmental disorder in children": [
+      {
+        "DOI": "10.1016/S0140-6736(97)11096-0",
+        "URL": "https://doi.org/10.1016/S0140-6736(97)11096-0",
+        "author": [
+          {
+            "family": "Wakefield",
+            "given": "A. J.",
+            "sequence": "first"
+          },
+          {
+            "family": "Murch",
+            "given": "S. H.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Anthony",
+            "given": "A.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Linnell",
+            "given": "J.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Casson",
+            "given": "D. M.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Malik",
+            "given": "M.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Berelowitz",
+            "given": "M.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Dhillon",
+            "given": "A. P.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Thomson",
+            "given": "M. A.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Harvey",
+            "given": "P.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Valentine",
+            "given": "A.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Davies",
+            "given": "S. E.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Walker-Smith",
+            "given": "J. A.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "The Lancet"
+        ],
+        "issue": "9103",
+        "issued": {
+          "date-parts": [
+            [
+              1998
+            ]
+          ]
+        },
+        "page": "637-641",
+        "title": [
+          "Ileal-lymphoid-nodular hyperplasia, non-specific colitis, and pervasive developmental disorder in children"
+        ],
+        "type": "journal-article",
+        "volume": "351"
+      }
+    ],
+    "longitudinal analysis of cold-chain logging in night-shift crews": [
+      {
+        "DOI": "10.5555/am.bench.v042",
+        "URL": "https://doi.org/10.5555/am.bench.v042",
+        "author": [
+          {
+            "family": "Underhill-Cray",
+            "given": "E.",
+            "sequence": "first"
+          },
+          {
+            "family": "Zimmerlith",
+            "given": "D.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Mossgrave",
+            "given": "C.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Yarrowdale",
+            "given": "R.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "Meridian Reports in Behavioural Health"
+        ],
+        "issue": "6",
+        "issued": {
+          "date-parts": [
+            [
+              2018
+            ]
+          ]
+        },
+        "page": "492-499",
+        "title": [
+          "Longitudinal analysis of cold-chain logging in night-shift crews"
+        ],
+        "type": "journal-article",
+        "volume": "15"
+      }
+    ],
+    "longitudinal analysis of cold-chain logging in orchard teams": [
+      {
+        "DOI": "10.5555/am.bench.v043",
+        "URL": "https://doi.org/10.5555/am.bench.v043",
+        "author": [
+          {
+            "family": "Cranmoor",
+            "given": "M.",
+            "sequence": "first"
+          },
+          {
+            "family": "Ashgrove-Pell",
+            "given": "B.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "Journal of Applied Brinework"
+        ],
+        "issue": "5",
+        "issued": {
+          "date-parts": [
+            [
+              2011
+            ]
+          ]
+        },
+        "page": "98-107",
+        "title": [
+          "Longitudinal analysis of cold-chain logging in orchard teams"
+        ],
+        "type": "journal-article",
+        "volume": "13"
+      }
+    ],
+    "longitudinal audit of handover notes in coastal schools": [
+      {
+        "DOI": "10.5555/am.bench.v024",
+        "URL": "https://doi.org/10.5555/am.bench.v024",
+        "author": [
+          {
+            "family": "Foxglove-Hart",
+            "given": "J.",
+            "sequence": "first"
+          },
+          {
+            "family": "Ingleby-Rusk",
+            "given": "E.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Kettlewick",
+            "given": "C.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Vexworth",
+            "given": "T.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "Journal of Applied Brinework"
+        ],
+        "issue": "6",
+        "issued": {
+          "date-parts": [
+            [
+              2009
+            ]
+          ]
+        },
+        "page": "486-500",
+        "title": [
+          "Longitudinal trial of timed hydration in night-shift crews"
+        ],
+        "type": "journal-article",
+        "volume": "10"
+      },
+      {
+        "DOI": "10.5555/am.bench.v025",
+        "URL": "https://doi.org/10.5555/am.bench.v025",
+        "author": [
+          {
+            "family": "Abernethy-Roke",
+            "given": "K.",
+            "sequence": "first"
+          }
+        ],
+        "container-title": [
+          "Journal of Applied Brinework"
+        ],
+        "issue": "3",
+        "issued": {
+          "date-parts": [
+            [
+              2013
+            ]
+          ]
+        },
+        "page": "662-672",
+        "title": [
+          "Randomised survey of reporting habits in river-port workers"
+        ],
+        "type": "journal-article",
+        "volume": "4"
+      },
+      {
+        "DOI": "10.5555/am.bench.v026",
+        "URL": "https://doi.org/10.5555/am.bench.v026",
+        "author": [
+          {
+            "family": "Jessamoor",
+            "given": "A.",
+            "sequence": "first"
+          }
+        ],
+        "container-title": [
+          "Journal of Applied Brinework"
+        ],
+        "issue": "3",
+        "issued": {
+          "date-parts": [
+            [
+              2024
+            ]
+          ]
+        },
+        "page": "24-37",
+        "title": [
+          "Cluster pilot of peer coaching in orchard teams"
+        ],
+        "type": "journal-article",
+        "volume": "5"
+      }
+    ],
+    "longitudinal audit of handover notes in regional depots": [
+      {
+        "DOI": "10.5555/am.bench.v053",
+        "URL": "https://doi.org/10.5555/am.bench.v053",
+        "author": [
+          {
+            "family": "Mossgrave",
+            "given": "C.",
+            "sequence": "first"
+          },
+          {
+            "family": "Oakhollow",
+            "given": "N.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "Cinder Bay Clinical Letters"
+        ],
+        "issue": "3",
+        "issued": {
+          "date-parts": [
+            [
+              2025
+            ]
+          ]
+        },
+        "page": "869-875",
+        "title": [
+          "Longitudinal audit of handover notes in regional depots"
+        ],
+        "type": "journal-article",
+        "volume": "28"
+      }
+    ],
+    "longitudinal cohort study of shift patterns in river-port workers": [
+      {
+        "DOI": "10.5555/am.bench.v000",
+        "URL": "https://doi.org/10.5555/am.bench.v000",
+        "author": [
+          {
+            "family": "Kettlewick",
+            "given": "D.",
+            "sequence": "first"
+          }
+        ],
+        "container-title": [
+          "Meridian Reports in Behavioural Health"
+        ],
+        "issue": "4",
+        "issued": {
+          "date-parts": [
+            [
+              2024
+            ]
+          ]
+        },
+        "page": "318-325",
+        "title": [
+          "Open-label evaluation of a pacing aid in night-shift crews"
+        ],
+        "type": "journal-article",
+        "volume": "34"
+      },
+      {
+        "DOI": "10.5555/am.bench.v001",
+        "URL": "https://doi.org/10.5555/am.bench.v001",
+        "author": [
+          {
+            "family": "Haldane-Wyck",
+            "given": "P.",
+            "sequence": "first"
+          },
+          {
+            "family": "Oakhollow",
+            "given": "D.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Cranmoor",
+            "given": "T.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Kettlewick",
+            "given": "L.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "Meridian Reports in Behavioural Health"
+        ],
+        "issue": "1",
+        "issued": {
+          "date-parts": [
+            [
+              2021
+            ]
+          ]
+        },
+        "page": "643-652",
+        "title": [
+          "Crossover evaluation of a pacing aid in night-shift crews"
+        ],
+        "type": "journal-article",
+        "volume": "14"
+      },
+      {
+        "DOI": "10.5555/am.bench.v002",
+        "URL": "https://doi.org/10.5555/am.bench.v002",
+        "author": [
+          {
+            "family": "Juniperby",
+            "given": "J.",
+            "sequence": "first"
+          }
+        ],
+        "container-title": [
+          "Meridian Reports in Behavioural Health"
+        ],
+        "issue": "4",
+        "issued": {
+          "date-parts": [
+            [
+              2015
+            ]
+          ]
+        },
+        "page": "557-569",
+        "title": [
+          "Open-label pilot of peer coaching in regional depots"
+        ],
+        "type": "journal-article",
+        "volume": "33"
+      }
+    ],
+    "longitudinal evaluation of a pacing aid in community clinics": [
+      {
+        "DOI": "10.5555/am.bench.v054",
+        "URL": "https://doi.org/10.5555/am.bench.v054",
+        "author": [
+          {
+            "family": "Corrigan-Tate",
+            "given": "A.",
+            "sequence": "first"
+          }
+        ],
+        "container-title": [
+          "Harrow Journal of Field Physiology"
+        ],
+        "issue": "4",
+        "issued": {
+          "date-parts": [
+            [
+              2024
+            ]
+          ]
+        },
+        "page": "376-389",
+        "title": [
+          "Longitudinal evaluation of a pacing aid in community clinics"
+        ],
+        "type": "journal-article",
+        "volume": "25"
+      }
+    ],
+    "longitudinal evaluation of a pacing aid in rural pharmacies": [
+      {
+        "DOI": "10.5555/am.bench.v016",
+        "URL": "https://doi.org/10.5555/am.bench.v016",
+        "author": [
+          {
+            "family": "Quillfeather",
+            "given": "J.",
+            "sequence": "first"
+          }
+        ],
+        "container-title": [
+          "Cinder Bay Clinical Letters"
+        ],
+        "issue": "4",
+        "issued": {
+          "date-parts": [
+            [
+              2025
+            ]
+          ]
+        },
+        "page": "452-462",
+        "title": [
+          "Longitudinal evaluation of a pacing aid in rural pharmacies"
+        ],
+        "type": "journal-article",
+        "volume": "14"
+      }
+    ],
+    "longitudinal pilot of peer coaching in night-shift crews": [
+      {
+        "DOI": "10.5555/am.bench.v046",
+        "URL": "https://doi.org/10.5555/am.bench.v046",
+        "author": [
+          {
+            "family": "Quillfeather",
+            "given": "H.",
+            "sequence": "first"
+          },
+          {
+            "family": "Ashgrove-Pell",
+            "given": "T.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Thistlewood",
+            "given": "C.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Inkwell",
+            "given": "S.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "Harrow Journal of Field Physiology"
+        ],
+        "issue": "5",
+        "issued": {
+          "date-parts": [
+            [
+              2021
+            ]
+          ]
+        },
+        "page": "635-643",
+        "title": [
+          "Longitudinal pilot of peer coaching in night-shift crews"
+        ],
+        "type": "journal-article",
+        "volume": "10"
+      }
+    ],
+    "longitudinal trial of timed hydration in community clinics": [
+      {
+        "DOI": "10.5555/am.bench.v006",
+        "URL": "https://doi.org/10.5555/am.bench.v006",
+        "author": [
+          {
+            "family": "Kestrelmoor",
+            "given": "E.",
+            "sequence": "first"
+          }
+        ],
+        "container-title": [
+          "Harrow Journal of Field Physiology"
+        ],
+        "issue": "6",
+        "issued": {
+          "date-parts": [
+            [
+              2020
+            ]
+          ]
+        },
+        "page": "890-901",
+        "title": [
+          "Longitudinal trial of timed hydration in regional depots"
+        ],
+        "type": "journal-article",
+        "volume": "40"
+      },
+      {
+        "DOI": "10.5555/am.bench.v007",
+        "URL": "https://doi.org/10.5555/am.bench.v007",
+        "author": [
+          {
+            "family": "Ashgrove-Pell",
+            "given": "M.",
+            "sequence": "first"
+          },
+          {
+            "family": "Quillfeather",
+            "given": "A.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Abernethy-Roke",
+            "given": "L.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Fennimore",
+            "given": "J.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "Annals of Quillwork Medicine"
+        ],
+        "issue": "6",
+        "issued": {
+          "date-parts": [
+            [
+              2021
+            ]
+          ]
+        },
+        "page": "454-464",
+        "title": [
+          "Cluster trial of timed hydration in river-port workers"
+        ],
+        "type": "journal-article",
+        "volume": "18"
+      },
+      {
+        "DOI": "10.5555/am.bench.v008",
+        "URL": "https://doi.org/10.5555/am.bench.v008",
+        "author": [
+          {
+            "family": "Thistlewood",
+            "given": "H.",
+            "sequence": "first"
+          },
+          {
+            "family": "Yarrowdale",
+            "given": "C.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Quillfeather",
+            "given": "D.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Zimmerlith",
+            "given": "E.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "Annals of Quillwork Medicine"
+        ],
+        "issue": "3",
+        "issued": {
+          "date-parts": [
+            [
+              2024
+            ]
+          ]
+        },
+        "page": "821-828",
+        "title": [
+          "Blinded comparison of rest schedules in orchard teams"
+        ],
+        "type": "journal-article",
+        "volume": "24"
+      }
+    ],
+    "longitudinal trial of timed hydration in night-shift crews": [
+      {
+        "DOI": "10.5555/am.bench.v024",
+        "URL": "https://doi.org/10.5555/am.bench.v024",
+        "author": [
+          {
+            "family": "Foxglove-Hart",
+            "given": "J.",
+            "sequence": "first"
+          },
+          {
+            "family": "Ingleby-Rusk",
+            "given": "E.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Kettlewick",
+            "given": "C.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Vexworth",
+            "given": "T.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "Journal of Applied Brinework"
+        ],
+        "issue": "6",
+        "issued": {
+          "date-parts": [
+            [
+              2009
+            ]
+          ]
+        },
+        "page": "486-500",
+        "title": [
+          "Longitudinal trial of timed hydration in night-shift crews"
+        ],
+        "type": "journal-article",
+        "volume": "10"
+      }
+    ],
+    "longitudinal trial of timed hydration in regional depots": [
+      {
+        "DOI": "10.5555/am.bench.v006",
+        "URL": "https://doi.org/10.5555/am.bench.v006",
+        "author": [
+          {
+            "family": "Kestrelmoor",
+            "given": "E.",
+            "sequence": "first"
+          }
+        ],
+        "container-title": [
+          "Harrow Journal of Field Physiology"
+        ],
+        "issue": "6",
+        "issued": {
+          "date-parts": [
+            [
+              2020
+            ]
+          ]
+        },
+        "page": "890-901",
+        "title": [
+          "Longitudinal trial of timed hydration in regional depots"
+        ],
+        "type": "journal-article",
+        "volume": "40"
+      }
+    ],
+    "open-label audit of handover notes in community clinics": [
+      {
+        "DOI": "10.5555/am.bench.v010",
+        "URL": "https://doi.org/10.5555/am.bench.v010",
+        "author": [
+          {
+            "family": "Elderthwaite",
+            "given": "K.",
+            "sequence": "first"
+          },
+          {
+            "family": "Sallowfield",
+            "given": "S.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Wetherby-Lund",
+            "given": "M.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "Annals of Quillwork Medicine"
+        ],
+        "issue": "1",
+        "issued": {
+          "date-parts": [
+            [
+              2019
+            ]
+          ]
+        },
+        "page": "817-825",
+        "title": [
+          "Open-label audit of handover notes in community clinics"
+        ],
+        "type": "journal-article",
+        "volume": "14"
+      }
+    ],
+    "open-label audit of handover notes in regional depots": [
+      {
+        "DOI": "10.5555/am.bench.v057",
+        "URL": "https://doi.org/10.5555/am.bench.v057",
+        "author": [
+          {
+            "family": "Brindlemoor",
+            "given": "N.",
+            "sequence": "first"
+          },
+          {
+            "family": "Vexworth",
+            "given": "A.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Underhill-Cray",
+            "given": "R.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Foxglove-Hart",
+            "given": "C.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "Harrow Journal of Field Physiology"
+        ],
+        "issue": "6",
+        "issued": {
+          "date-parts": [
+            [
+              2016
+            ]
+          ]
+        },
+        "page": "214-220",
+        "title": [
+          "Open-label audit of handover notes in regional depots"
+        ],
+        "type": "journal-article",
+        "volume": "22"
+      }
+    ],
+    "open-label cohort study of shift patterns in orchard teams": [
+      {
+        "DOI": "10.5555/am.bench.v005",
+        "URL": "https://doi.org/10.5555/am.bench.v005",
+        "author": [
+          {
+            "family": "Foxglove-Hart",
+            "given": "C.",
+            "sequence": "first"
+          }
+        ],
+        "container-title": [
+          "Cinder Bay Clinical Letters"
+        ],
+        "issue": "5",
+        "issued": {
+          "date-parts": [
+            [
+              2014
+            ]
+          ]
+        },
+        "page": "377-389",
+        "title": [
+          "Open-label cohort study of shift patterns in orchard teams"
+        ],
+        "type": "journal-article",
+        "volume": "6"
+      }
+    ],
+    "open-label comparison of rest schedules in community clinics": [
+      {
+        "DOI": "10.5555/am.bench.v027",
+        "URL": "https://doi.org/10.5555/am.bench.v027",
+        "author": [
+          {
+            "family": "Ashgrove-Pell",
+            "given": "C.",
+            "sequence": "first"
+          },
+          {
+            "family": "Sallowfield",
+            "given": "T.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Plumtree-Vane",
+            "given": "S.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "Orrery Methods in Epidemiology"
+        ],
+        "issue": "4",
+        "issued": {
+          "date-parts": [
+            [
+              2020
+            ]
+          ]
+        },
+        "page": "605-611",
+        "title": [
+          "Open-label comparison of rest schedules in community clinics"
+        ],
+        "type": "journal-article",
+        "volume": "10"
+      }
+    ],
+    "open-label comparison of rest schedules in orchard teams": [
+      {
+        "DOI": "10.5555/am.bench.v012",
+        "URL": "https://doi.org/10.5555/am.bench.v012",
+        "author": [
+          {
+            "family": "Hartlebury-Nye",
+            "given": "K.",
+            "sequence": "first"
+          },
+          {
+            "family": "Hollowell",
+            "given": "S.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Delacroft",
+            "given": "E.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "Orrery Methods in Epidemiology"
+        ],
+        "issue": "1",
+        "issued": {
+          "date-parts": [
+            [
+              2017
+            ]
+          ]
+        },
+        "page": "629-637",
+        "title": [
+          "Open-label comparison of rest schedules in orchard teams"
+        ],
+        "type": "journal-article",
+        "volume": "16"
+      }
+    ],
+    "open-label evaluation of a pacing aid in night-shift crews": [
+      {
+        "DOI": "10.5555/am.bench.v000",
+        "URL": "https://doi.org/10.5555/am.bench.v000",
+        "author": [
+          {
+            "family": "Kettlewick",
+            "given": "D.",
+            "sequence": "first"
+          }
+        ],
+        "container-title": [
+          "Meridian Reports in Behavioural Health"
+        ],
+        "issue": "4",
+        "issued": {
+          "date-parts": [
+            [
+              2024
+            ]
+          ]
+        },
+        "page": "318-325",
+        "title": [
+          "Open-label evaluation of a pacing aid in night-shift crews"
+        ],
+        "type": "journal-article",
+        "volume": "34"
+      }
+    ],
+    "open-label evaluation of a pacing aid in orchard teams": [
+      {
+        "DOI": "10.5555/am.bench.v028",
+        "URL": "https://doi.org/10.5555/am.bench.v028",
+        "author": [
+          {
+            "family": "Delacroft",
+            "given": "B.",
+            "sequence": "first"
+          }
+        ],
+        "container-title": [
+          "Journal of Applied Brinework"
+        ],
+        "issue": "1",
+        "issued": {
+          "date-parts": [
+            [
+              2019
+            ]
+          ]
+        },
+        "page": "768-778",
+        "title": [
+          "Open-label evaluation of a pacing aid in orchard teams"
+        ],
+        "type": "journal-article",
+        "volume": "18"
+      }
+    ],
+    "open-label pilot of peer coaching in regional depots": [
+      {
+        "DOI": "10.5555/am.bench.v002",
+        "URL": "https://doi.org/10.5555/am.bench.v002",
+        "author": [
+          {
+            "family": "Juniperby",
+            "given": "J.",
+            "sequence": "first"
+          }
+        ],
+        "container-title": [
+          "Meridian Reports in Behavioural Health"
+        ],
+        "issue": "4",
+        "issued": {
+          "date-parts": [
+            [
+              2015
+            ]
+          ]
+        },
+        "page": "557-569",
+        "title": [
+          "Open-label pilot of peer coaching in regional depots"
+        ],
+        "type": "journal-article",
+        "volume": "33"
+      }
+    ],
+    "open-label survey of reporting habits in regional depots": [
+      {
+        "DOI": "10.5555/am.bench.v018",
+        "URL": "https://doi.org/10.5555/am.bench.v018",
+        "author": [
+          {
+            "family": "Wetherby-Lund",
+            "given": "M.",
+            "sequence": "first"
+          }
+        ],
+        "container-title": [
+          "Journal of Applied Brinework"
+        ],
+        "issue": "6",
+        "issued": {
+          "date-parts": [
+            [
+              2018
+            ]
+          ]
+        },
+        "page": "857-868",
+        "title": [
+          "Blinded survey of reporting habits in coastal schools"
+        ],
+        "type": "journal-article",
+        "volume": "3"
+      },
+      {
+        "DOI": "10.5555/am.bench.v019",
+        "URL": "https://doi.org/10.5555/am.bench.v019",
+        "author": [
+          {
+            "family": "Ravenscroft",
+            "given": "H.",
+            "sequence": "first"
+          }
+        ],
+        "container-title": [
+          "Cinder Bay Clinical Letters"
+        ],
+        "issue": "5",
+        "issued": {
+          "date-parts": [
+            [
+              2014
+            ]
+          ]
+        },
+        "page": "102-110",
+        "title": [
+          "Cluster trial of timed hydration in regional depots"
+        ],
+        "type": "journal-article",
+        "volume": "27"
+      },
+      {
+        "DOI": "10.5555/am.bench.v020",
+        "URL": "https://doi.org/10.5555/am.bench.v020",
+        "author": [
+          {
+            "family": "Fennimore",
+            "given": "H.",
+            "sequence": "first"
+          }
+        ],
+        "container-title": [
+          "Cinder Bay Clinical Letters"
+        ],
+        "issue": "6",
+        "issued": {
+          "date-parts": [
+            [
+              2011
+            ]
+          ]
+        },
+        "page": "467-479",
+        "title": [
+          "Blinded analysis of cold-chain logging in coastal schools"
+        ],
+        "type": "journal-article",
+        "volume": "5"
+      }
+    ],
+    "open-label survey of reporting habits in small laboratories": [
+      {
+        "DOI": "10.5555/am.bench.v023",
+        "URL": "https://doi.org/10.5555/am.bench.v023",
+        "author": [
+          {
+            "family": "Oakhollow",
+            "given": "N.",
+            "sequence": "first"
+          },
+          {
+            "family": "Wetherby-Lund",
+            "given": "A.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Fennimore",
+            "given": "N.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "Cinder Bay Clinical Letters"
+        ],
+        "issue": "6",
+        "issued": {
+          "date-parts": [
+            [
+              2010
+            ]
+          ]
+        },
+        "page": "716-728",
+        "title": [
+          "Open-label survey of reporting habits in small laboratories"
+        ],
+        "type": "journal-article",
+        "volume": "39"
+      }
+    ],
+    "open-label trial of timed hydration in orchard teams": [
+      {
+        "DOI": "10.5555/am.bench.v051",
+        "URL": "https://doi.org/10.5555/am.bench.v051",
+        "author": [
+          {
+            "family": "Underhill-Cray",
+            "given": "B.",
+            "sequence": "first"
+          },
+          {
+            "family": "Haldane-Wyck",
+            "given": "B.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "Cinder Bay Clinical Letters"
+        ],
+        "issue": "2",
+        "issued": {
+          "date-parts": [
+            [
+              2020
+            ]
+          ]
+        },
+        "page": "750-763",
+        "title": [
+          "Open-label trial of timed hydration in orchard teams"
+        ],
+        "type": "journal-article",
+        "volume": "33"
+      }
+    ],
+    "open-label trial of timed hydration in rural pharmacies": [
+      {
+        "DOI": "10.5555/am.bench.v030",
+        "URL": "https://doi.org/10.5555/am.bench.v030",
+        "author": [
+          {
+            "family": "Wetherby-Lund",
+            "given": "R.",
+            "sequence": "first"
+          },
+          {
+            "family": "Nettlefold",
+            "given": "L.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "Journal of Applied Brinework"
+        ],
+        "issue": "2",
+        "issued": {
+          "date-parts": [
+            [
+              2020
+            ]
+          ]
+        },
+        "page": "214-221",
+        "title": [
+          "Open-label trial of timed hydration in rural pharmacies"
+        ],
+        "type": "journal-article",
+        "volume": "12"
+      }
+    ],
+    "open-label trial of timed hydration in small laboratories": [
+      {
+        "DOI": "10.5555/am.bench.v003",
+        "URL": "https://doi.org/10.5555/am.bench.v003",
+        "author": [
+          {
+            "family": "Garrowby",
+            "given": "C.",
+            "sequence": "first"
+          },
+          {
+            "family": "Mossgrave",
+            "given": "J.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Ingleby-Rusk",
+            "given": "M.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Thistlewood",
+            "given": "P.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "Cinder Bay Clinical Letters"
+        ],
+        "issue": "5",
+        "issued": {
+          "date-parts": [
+            [
+              2009
+            ]
+          ]
+        },
+        "page": "322-331",
+        "title": [
+          "Open-label trial of timed hydration in small laboratories"
+        ],
+        "type": "journal-article",
+        "volume": "12"
+      }
+    ],
+    "pragmatic analysis of cold-chain logging in night-shift crews": [
+      {
+        "DOI": "10.5555/am.bench.v039",
+        "URL": "https://doi.org/10.5555/am.bench.v039",
+        "author": [
+          {
+            "family": "Nettlefold",
+            "given": "F.",
+            "sequence": "first"
+          },
+          {
+            "family": "Lanternby",
+            "given": "T.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Underhill-Cray",
+            "given": "S.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "Meridian Reports in Behavioural Health"
+        ],
+        "issue": "4",
+        "issued": {
+          "date-parts": [
+            [
+              2011
+            ]
+          ]
+        },
+        "page": "502-511",
+        "title": [
+          "Pragmatic analysis of cold-chain logging in night-shift crews"
+        ],
+        "type": "journal-article",
+        "volume": "15"
+      }
+    ],
+    "pragmatic cohort study of shift patterns in regional depots": [
+      {
+        "DOI": "10.5555/am.bench.v033",
+        "URL": "https://doi.org/10.5555/am.bench.v033",
+        "author": [
+          {
+            "family": "Thistlewood",
+            "given": "F.",
+            "sequence": "first"
+          }
+        ],
+        "container-title": [
+          "Meridian Reports in Behavioural Health"
+        ],
+        "issue": "1",
+        "issued": {
+          "date-parts": [
+            [
+              2014
+            ]
+          ]
+        },
+        "page": "95-109",
+        "title": [
+          "Exploratory comparison of rest schedules in night-shift crews"
+        ],
+        "type": "journal-article",
+        "volume": "33"
+      },
+      {
+        "DOI": "10.5555/am.bench.v034",
+        "URL": "https://doi.org/10.5555/am.bench.v034",
+        "author": [
+          {
+            "family": "Zimmerlith",
+            "given": "H.",
+            "sequence": "first"
+          },
+          {
+            "family": "Yarrowdale",
+            "given": "S.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "Annals of Quillwork Medicine"
+        ],
+        "issue": "4",
+        "issued": {
+          "date-parts": [
+            [
+              2021
+            ]
+          ]
+        },
+        "page": "348-362",
+        "title": [
+          "Crossover pilot of peer coaching in rural pharmacies"
+        ],
+        "type": "journal-article",
+        "volume": "6"
+      },
+      {
+        "DOI": "10.5555/am.bench.v035",
+        "URL": "https://doi.org/10.5555/am.bench.v035",
+        "author": [
+          {
+            "family": "Marrowby",
+            "given": "R.",
+            "sequence": "first"
+          }
+        ],
+        "container-title": [
+          "Cinder Bay Clinical Letters"
+        ],
+        "issue": "3",
+        "issued": {
+          "date-parts": [
+            [
+              2017
+            ]
+          ]
+        },
+        "page": "777-785",
+        "title": [
+          "Randomised cohort study of shift patterns in coastal schools"
+        ],
+        "type": "journal-article",
+        "volume": "20"
+      }
+    ],
+    "pragmatic comparison of rest schedules in small laboratories": [
+      {
+        "DOI": "10.5555/am.bench.v036",
+        "URL": "https://doi.org/10.5555/am.bench.v036",
+        "author": [
+          {
+            "family": "Thistlewood",
+            "given": "B.",
+            "sequence": "first"
+          },
+          {
+            "family": "Zimmerlith",
+            "given": "P.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Elderthwaite",
+            "given": "F.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "Orrery Methods in Epidemiology"
+        ],
+        "issue": "6",
+        "issued": {
+          "date-parts": [
+            [
+              2018
+            ]
+          ]
+        },
+        "page": "865-879",
+        "title": [
+          "Pragmatic comparison of rest schedules in small laboratories"
+        ],
+        "type": "journal-article",
+        "volume": "11"
+      }
+    ],
+    "pragmatic survey of reporting habits in coastal schools": [
+      {
+        "DOI": "10.5555/am.bench.v049",
+        "URL": "https://doi.org/10.5555/am.bench.v049",
+        "author": [
+          {
+            "family": "Plumtree-Vane",
+            "given": "G.",
+            "sequence": "first"
+          },
+          {
+            "family": "Jessamoor",
+            "given": "G.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Wetherby-Lund",
+            "given": "R.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Quarrelby",
+            "given": "H.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "Harrow Journal of Field Physiology"
+        ],
+        "issue": "3",
+        "issued": {
+          "date-parts": [
+            [
+              2024
+            ]
+          ]
+        },
+        "page": "797-806",
+        "title": [
+          "Pragmatic survey of reporting habits in coastal schools"
+        ],
+        "type": "journal-article",
+        "volume": "18"
+      }
+    ],
+    "randomised analysis of cold-chain logging in night-shift crews": [
+      {
+        "DOI": "10.5555/am.bench.v038",
+        "URL": "https://doi.org/10.5555/am.bench.v038",
+        "author": [
+          {
+            "family": "Quillfeather",
+            "given": "S.",
+            "sequence": "first"
+          },
+          {
+            "family": "Marrowby",
+            "given": "F.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "Orrery Methods in Epidemiology"
+        ],
+        "issue": "1",
+        "issued": {
+          "date-parts": [
+            [
+              2022
+            ]
+          ]
+        },
+        "page": "268-280",
+        "title": [
+          "Randomised analysis of cold-chain logging in night-shift crews"
+        ],
+        "type": "journal-article",
+        "volume": "39"
+      }
+    ],
+    "randomised audit of handover notes in regional depots": [
+      {
+        "DOI": "10.5555/am.bench.v050",
+        "URL": "https://doi.org/10.5555/am.bench.v050",
+        "author": [
+          {
+            "family": "Vexworth",
+            "given": "H.",
+            "sequence": "first"
+          },
+          {
+            "family": "Hollowell",
+            "given": "A.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Delacroft",
+            "given": "F.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "Journal of Applied Brinework"
+        ],
+        "issue": "2",
+        "issued": {
+          "date-parts": [
+            [
+              2017
+            ]
+          ]
+        },
+        "page": "553-564",
+        "title": [
+          "Randomised audit of handover notes in regional depots"
+        ],
+        "type": "journal-article",
+        "volume": "16"
+      }
+    ],
+    "randomised audit of handover notes in small laboratories": [
+      {
+        "DOI": "10.5555/am.bench.v021",
+        "URL": "https://doi.org/10.5555/am.bench.v021",
+        "author": [
+          {
+            "family": "Elderthwaite",
+            "given": "D.",
+            "sequence": "first"
+          },
+          {
+            "family": "Quarrelby",
+            "given": "F.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Juniperby",
+            "given": "K.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "Cinder Bay Clinical Letters"
+        ],
+        "issue": "3",
+        "issued": {
+          "date-parts": [
+            [
+              2024
+            ]
+          ]
+        },
+        "page": "629-641",
+        "title": [
+          "Crossover pilot of peer coaching in regional depots"
+        ],
+        "type": "journal-article",
+        "volume": "8"
+      },
+      {
+        "DOI": "10.5555/am.bench.v022",
+        "URL": "https://doi.org/10.5555/am.bench.v022",
+        "author": [
+          {
+            "family": "Greymantle",
+            "given": "M.",
+            "sequence": "first"
+          },
+          {
+            "family": "Lanternby",
+            "given": "N.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Haldane-Wyck",
+            "given": "N.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Jessamoor",
+            "given": "F.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "Annals of Quillwork Medicine"
+        ],
+        "issue": "4",
+        "issued": {
+          "date-parts": [
+            [
+              2018
+            ]
+          ]
+        },
+        "page": "768-775",
+        "title": [
+          "Randomised comparison of rest schedules in river-port workers"
+        ],
+        "type": "journal-article",
+        "volume": "8"
+      },
+      {
+        "DOI": "10.5555/am.bench.v023",
+        "URL": "https://doi.org/10.5555/am.bench.v023",
+        "author": [
+          {
+            "family": "Oakhollow",
+            "given": "N.",
+            "sequence": "first"
+          },
+          {
+            "family": "Wetherby-Lund",
+            "given": "A.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Fennimore",
+            "given": "N.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "Cinder Bay Clinical Letters"
+        ],
+        "issue": "6",
+        "issued": {
+          "date-parts": [
+            [
+              2010
+            ]
+          ]
+        },
+        "page": "716-728",
+        "title": [
+          "Open-label survey of reporting habits in small laboratories"
+        ],
+        "type": "journal-article",
+        "volume": "39"
+      }
+    ],
+    "randomised cohort study of shift patterns in coastal schools": [
+      {
+        "DOI": "10.5555/am.bench.v035",
+        "URL": "https://doi.org/10.5555/am.bench.v035",
+        "author": [
+          {
+            "family": "Marrowby",
+            "given": "R.",
+            "sequence": "first"
+          }
+        ],
+        "container-title": [
+          "Cinder Bay Clinical Letters"
+        ],
+        "issue": "3",
+        "issued": {
+          "date-parts": [
+            [
+              2017
+            ]
+          ]
+        },
+        "page": "777-785",
+        "title": [
+          "Randomised cohort study of shift patterns in coastal schools"
+        ],
+        "type": "journal-article",
+        "volume": "20"
+      }
+    ],
+    "randomised comparison of rest schedules in river-port workers": [
+      {
+        "DOI": "10.5555/am.bench.v022",
+        "URL": "https://doi.org/10.5555/am.bench.v022",
+        "author": [
+          {
+            "family": "Greymantle",
+            "given": "M.",
+            "sequence": "first"
+          },
+          {
+            "family": "Lanternby",
+            "given": "N.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Haldane-Wyck",
+            "given": "N.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Jessamoor",
+            "given": "F.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "Annals of Quillwork Medicine"
+        ],
+        "issue": "4",
+        "issued": {
+          "date-parts": [
+            [
+              2018
+            ]
+          ]
+        },
+        "page": "768-775",
+        "title": [
+          "Randomised comparison of rest schedules in river-port workers"
+        ],
+        "type": "journal-article",
+        "volume": "8"
+      }
+    ],
+    "randomised evaluation of a pacing aid in regional depots": [
+      {
+        "DOI": "10.5555/am.bench.v017",
+        "URL": "https://doi.org/10.5555/am.bench.v017",
+        "author": [
+          {
+            "family": "Fennimore",
+            "given": "G.",
+            "sequence": "first"
+          }
+        ],
+        "container-title": [
+          "Journal of Applied Brinework"
+        ],
+        "issue": "2",
+        "issued": {
+          "date-parts": [
+            [
+              2012
+            ]
+          ]
+        },
+        "page": "140-151",
+        "title": [
+          "Randomised evaluation of a pacing aid in regional depots"
+        ],
+        "type": "journal-article",
+        "volume": "10"
+      }
+    ],
+    "randomised pilot of peer coaching in night-shift crews": [
+      {
+        "DOI": "10.5555/am.bench.v029",
+        "URL": "https://doi.org/10.5555/am.bench.v029",
+        "author": [
+          {
+            "family": "Juniperby",
+            "given": "L.",
+            "sequence": "first"
+          },
+          {
+            "family": "Yarrowdale",
+            "given": "D.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Ravenscroft",
+            "given": "B.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Marrowby",
+            "given": "K.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "Annals of Quillwork Medicine"
+        ],
+        "issue": "6",
+        "issued": {
+          "date-parts": [
+            [
+              2009
+            ]
+          ]
+        },
+        "page": "306-318",
+        "title": [
+          "Randomised pilot of peer coaching in night-shift crews"
+        ],
+        "type": "journal-article",
+        "volume": "28"
+      }
+    ],
+    "randomised survey of reporting habits in night-shift crews": [
+      {
+        "DOI": "10.5555/am.bench.v055",
+        "URL": "https://doi.org/10.5555/am.bench.v055",
+        "author": [
+          {
+            "family": "Hollowell",
+            "given": "M.",
+            "sequence": "first"
+          },
+          {
+            "family": "Wetherby-Lund",
+            "given": "R.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Ravenscroft",
+            "given": "J.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "Meridian Reports in Behavioural Health"
+        ],
+        "issue": "6",
+        "issued": {
+          "date-parts": [
+            [
+              2013
+            ]
+          ]
+        },
+        "page": "618-627",
+        "title": [
+          "Randomised survey of reporting habits in night-shift crews"
+        ],
+        "type": "journal-article",
+        "volume": "4"
+      }
+    ],
+    "randomised survey of reporting habits in river-port workers": [
+      {
+        "DOI": "10.5555/am.bench.v025",
+        "URL": "https://doi.org/10.5555/am.bench.v025",
+        "author": [
+          {
+            "family": "Abernethy-Roke",
+            "given": "K.",
+            "sequence": "first"
+          }
+        ],
+        "container-title": [
+          "Journal of Applied Brinework"
+        ],
+        "issue": "3",
+        "issued": {
+          "date-parts": [
+            [
+              2013
+            ]
+          ]
+        },
+        "page": "662-672",
+        "title": [
+          "Randomised survey of reporting habits in river-port workers"
+        ],
+        "type": "journal-article",
+        "volume": "4"
+      }
+    ],
+    "randomised trial of timed hydration in community clinics": [
+      {
+        "DOI": "10.5555/am.bench.v012",
+        "URL": "https://doi.org/10.5555/am.bench.v012",
+        "author": [
+          {
+            "family": "Hartlebury-Nye",
+            "given": "K.",
+            "sequence": "first"
+          },
+          {
+            "family": "Hollowell",
+            "given": "S.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Delacroft",
+            "given": "E.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "Orrery Methods in Epidemiology"
+        ],
+        "issue": "1",
+        "issued": {
+          "date-parts": [
+            [
+              2017
+            ]
+          ]
+        },
+        "page": "629-637",
+        "title": [
+          "Open-label comparison of rest schedules in orchard teams"
+        ],
+        "type": "journal-article",
+        "volume": "16"
+      },
+      {
+        "DOI": "10.5555/am.bench.v013",
+        "URL": "https://doi.org/10.5555/am.bench.v013",
+        "author": [
+          {
+            "family": "Sallowfield",
+            "given": "N.",
+            "sequence": "first"
+          }
+        ],
+        "container-title": [
+          "Journal of Applied Brinework"
+        ],
+        "issue": "5",
+        "issued": {
+          "date-parts": [
+            [
+              2010
+            ]
+          ]
+        },
+        "page": "260-269",
+        "title": [
+          "Crossover analysis of cold-chain logging in regional depots"
+        ],
+        "type": "journal-article",
+        "volume": "40"
+      },
+      {
+        "DOI": "10.5555/am.bench.v014",
+        "URL": "https://doi.org/10.5555/am.bench.v014",
+        "author": [
+          {
+            "family": "Vexworth",
+            "given": "N.",
+            "sequence": "first"
+          },
+          {
+            "family": "Juniperby",
+            "given": "L.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Plumtree-Vane",
+            "given": "N.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Haldane-Wyck",
+            "given": "G.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "Harrow Journal of Field Physiology"
+        ],
+        "issue": "5",
+        "issued": {
+          "date-parts": [
+            [
+              2018
+            ]
+          ]
+        },
+        "page": "846-858",
+        "title": [
+          "Crossover cohort study of shift patterns in orchard teams"
+        ],
+        "type": "journal-article",
+        "volume": "34"
+      }
+    ],
+    "randomised trial of timed hydration in orchard teams": [
+      {
+        "DOI": "10.5555/am.bench.v056",
+        "URL": "https://doi.org/10.5555/am.bench.v056",
+        "author": [
+          {
+            "family": "Garrowby",
+            "given": "F.",
+            "sequence": "first"
+          }
+        ],
+        "container-title": [
+          "Journal of Applied Brinework"
+        ],
+        "issue": "1",
+        "issued": {
+          "date-parts": [
+            [
+              2009
+            ]
+          ]
+        },
+        "page": "883-891",
+        "title": [
+          "Randomised trial of timed hydration in orchard teams"
+        ],
+        "type": "journal-article",
+        "volume": "29"
+      }
+    ],
+    "randomised trial of timed hydration in small laboratories": [
+      {
+        "DOI": "10.5555/am.bench.v045",
+        "URL": "https://doi.org/10.5555/am.bench.v045",
+        "author": [
+          {
+            "family": "Haldane-Wyck",
+            "given": "L.",
+            "sequence": "first"
+          },
+          {
+            "family": "Vexworth",
+            "given": "N.",
+            "sequence": "additional"
+          },
+          {
+            "family": "Underhill-Cray",
+            "given": "R.",
+            "sequence": "additional"
+          }
+        ],
+        "container-title": [
+          "Meridian Reports in Behavioural Health"
+        ],
+        "issue": "5",
+        "issued": {
+          "date-parts": [
+            [
+              2021
+            ]
+          ]
+        },
+        "page": "20-34",
+        "title": [
+          "Randomised trial of timed hydration in small laboratories"
+        ],
+        "type": "journal-article",
+        "volume": "15"
+      }
+    ]
+  },
+  "updates": {
+    "10.1016/S0140-6736(97)11096-0": {
+      "body": {
+        "message": {
+          "items": [
+            {
+              "DOI": "10.1016/S0140-6736(10)60175-4",
+              "container-title": [
+                "The Lancet"
+              ],
+              "issued": {
+                "date-parts": [
+                  [
+                    2010,
+                    2,
+                    6
+                  ]
+                ]
+              },
+              "title": [
+                "Retraction: Ileal-lymphoid-nodular hyperplasia, non-specific colitis, and pervasive developmental disorder in children"
+              ],
+              "type": "journal-article",
+              "update-to": [
+                {
+                  "DOI": "10.1016/S0140-6736(97)11096-0",
+                  "label": "Retraction",
+                  "source": "publisher",
+                  "type": "retraction",
+                  "updated": {
+                    "date-parts": [
+                      [
+                        2010,
+                        2,
+                        6
+                      ]
+                    ]
+                  }
+                }
+              ]
+            }
+          ],
+          "total-results": 1
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.r001": {
+      "body": {
+        "message": {
+          "items": [
+            {
+              "DOI": "10.5555/am.bench.r001.retraction",
+              "container-title": [
+                "Meridian Reports in Behavioural Health"
+              ],
+              "issued": {
+                "date-parts": [
+                  [
+                    2021,
+                    10,
+                    22
+                  ]
+                ]
+              },
+              "title": [
+                "Retraction: Crossover trial of timed hydration in regional depots"
+              ],
+              "type": "journal-article",
+              "update-to": [
+                {
+                  "DOI": "10.5555/am.bench.r001",
+                  "label": "Retraction",
+                  "source": "retraction-watch",
+                  "type": "retraction",
+                  "updated": {
+                    "date-parts": [
+                      [
+                        2021,
+                        10,
+                        22
+                      ]
+                    ]
+                  }
+                }
+              ]
+            }
+          ],
+          "total-results": 1
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.r002": {
+      "body": {
+        "message": {
+          "items": [
+            {
+              "DOI": "10.5555/am.bench.r002.retraction",
+              "container-title": [
+                "Annals of Quillwork Medicine"
+              ],
+              "issued": {
+                "date-parts": [
+                  [
+                    2025,
+                    4,
+                    25
+                  ]
+                ]
+              },
+              "title": [
+                "Retraction: Crossover pilot of peer coaching in orchard teams"
+              ],
+              "type": "journal-article",
+              "update-to": [
+                {
+                  "DOI": "10.5555/am.bench.r002",
+                  "label": "Retraction",
+                  "source": "publisher",
+                  "type": "retraction",
+                  "updated": {
+                    "date-parts": [
+                      [
+                        2025,
+                        4,
+                        25
+                      ]
+                    ]
+                  }
+                }
+              ]
+            }
+          ],
+          "total-results": 1
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.r003": {
+      "body": {
+        "message": {
+          "items": [
+            {
+              "DOI": "10.5555/am.bench.r003.retraction",
+              "container-title": [
+                "Cinder Bay Clinical Letters"
+              ],
+              "issued": {
+                "date-parts": [
+                  [
+                    2019,
+                    5,
+                    14
+                  ]
+                ]
+              },
+              "title": [
+                "Retraction: Crossover audit of handover notes in community clinics"
+              ],
+              "type": "journal-article",
+              "update-to": [
+                {
+                  "DOI": "10.5555/am.bench.r003",
+                  "label": "Retraction",
+                  "source": "retraction-watch",
+                  "type": "retraction",
+                  "updated": {
+                    "date-parts": [
+                      [
+                        2019,
+                        5,
+                        14
+                      ]
+                    ]
+                  }
+                }
+              ]
+            }
+          ],
+          "total-results": 1
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.r004": {
+      "body": {
+        "message": {
+          "items": [
+            {
+              "DOI": "10.5555/am.bench.r004.retraction",
+              "container-title": [
+                "Harrow Journal of Field Physiology"
+              ],
+              "issued": {
+                "date-parts": [
+                  [
+                    2019,
+                    1,
+                    2
+                  ]
+                ]
+              },
+              "title": [
+                "Retraction: Blinded audit of handover notes in rural pharmacies"
+              ],
+              "type": "journal-article",
+              "update-to": [
+                {
+                  "DOI": "10.5555/am.bench.r004",
+                  "label": "Retraction",
+                  "source": "publisher",
+                  "type": "retraction",
+                  "updated": {
+                    "date-parts": [
+                      [
+                        2019,
+                        1,
+                        2
+                      ]
+                    ]
+                  }
+                }
+              ]
+            }
+          ],
+          "total-results": 1
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v000": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v001": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v002": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v003": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v004": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v005": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v006": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v007": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v008": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v009": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v010": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v011": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v012": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v013": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v014": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v015": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v016": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v017": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v018": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v019": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v020": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v021": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v022": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v023": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v024": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v025": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v026": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v027": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v028": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v029": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v030": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v031": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v032": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v033": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v034": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v035": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v036": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v037": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v038": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v039": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v040": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v041": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v042": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v043": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v044": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v045": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v046": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v047": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v048": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v049": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v050": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v051": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v052": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v053": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v054": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v055": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v056": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v057": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v058": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v059": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.x000": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.x001": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.x002": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.x003": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.x004": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.x005": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.x006": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.x007": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.x008": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.x009": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.x010": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.x011": {
+      "body": {
+        "message": {
+          "items": [],
+          "total-results": 0
+        },
+        "message-type": "work-list",
+        "status": "ok"
+      },
+      "status": 200
+    }
+  },
+  "works": {
+    "10.1016/S0140-6736(97)11096-0": {
+      "body": {
+        "message": {
+          "DOI": "10.1016/S0140-6736(97)11096-0",
+          "URL": "https://doi.org/10.1016/S0140-6736(97)11096-0",
+          "author": [
+            {
+              "family": "Wakefield",
+              "given": "A. J.",
+              "sequence": "first"
+            },
+            {
+              "family": "Murch",
+              "given": "S. H.",
+              "sequence": "additional"
+            },
+            {
+              "family": "Anthony",
+              "given": "A.",
+              "sequence": "additional"
+            },
+            {
+              "family": "Linnell",
+              "given": "J.",
+              "sequence": "additional"
+            },
+            {
+              "family": "Casson",
+              "given": "D. M.",
+              "sequence": "additional"
+            },
+            {
+              "family": "Malik",
+              "given": "M.",
+              "sequence": "additional"
+            },
+            {
+              "family": "Berelowitz",
+              "given": "M.",
+              "sequence": "additional"
+            },
+            {
+              "family": "Dhillon",
+              "given": "A. P.",
+              "sequence": "additional"
+            },
+            {
+              "family": "Thomson",
+              "given": "M. A.",
+              "sequence": "additional"
+            },
+            {
+              "family": "Harvey",
+              "given": "P.",
+              "sequence": "additional"
+            },
+            {
+              "family": "Valentine",
+              "given": "A.",
+              "sequence": "additional"
+            },
+            {
+              "family": "Davies",
+              "given": "S. E.",
+              "sequence": "additional"
+            },
+            {
+              "family": "Walker-Smith",
+              "given": "J. A.",
+              "sequence": "additional"
+            }
+          ],
+          "container-title": [
+            "The Lancet"
+          ],
+          "issue": "9103",
+          "issued": {
+            "date-parts": [
+              [
+                1998
+              ]
+            ]
+          },
+          "page": "637-641",
+          "title": [
+            "Ileal-lymphoid-nodular hyperplasia, non-specific colitis, and pervasive developmental disorder in children"
+          ],
+          "type": "journal-article",
+          "updated-by": [
+            {
+              "DOI": "10.1016/S0140-6736(10)60175-4",
+              "label": "Retraction",
+              "source": "publisher",
+              "type": "retraction"
+            }
+          ],
+          "volume": "351"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.r001": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.r001",
+          "URL": "https://doi.org/10.5555/am.bench.r001",
+          "author": [
+            {
+              "family": "Ravenscroft",
+              "given": "B.",
+              "sequence": "first"
+            },
+            {
+              "family": "Corrigan-Tate",
+              "given": "P.",
+              "sequence": "additional"
+            }
+          ],
+          "container-title": [
+            "Meridian Reports in Behavioural Health"
+          ],
+          "issue": "5",
+          "issued": {
+            "date-parts": [
+              [
+                2019
+              ]
+            ]
+          },
+          "page": "389-396",
+          "title": [
+            "Crossover trial of timed hydration in regional depots"
+          ],
+          "type": "journal-article",
+          "updated-by": [
+            {
+              "DOI": "10.5555/am.bench.r001.retraction",
+              "label": "Retraction",
+              "source": "retraction-watch",
+              "type": "retraction"
+            }
+          ],
+          "volume": "18"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.r002": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.r002",
+          "URL": "https://doi.org/10.5555/am.bench.r002",
+          "author": [
+            {
+              "family": "Eastmarch",
+              "given": "E.",
+              "sequence": "first"
+            }
+          ],
+          "container-title": [
+            "Annals of Quillwork Medicine"
+          ],
+          "issue": "3",
+          "issued": {
+            "date-parts": [
+              [
+                2023
+              ]
+            ]
+          },
+          "page": "475-486",
+          "title": [
+            "Crossover pilot of peer coaching in orchard teams"
+          ],
+          "type": "journal-article",
+          "updated-by": [
+            {
+              "DOI": "10.5555/am.bench.r002.retraction",
+              "label": "Retraction",
+              "source": "publisher",
+              "type": "retraction"
+            }
+          ],
+          "volume": "31"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.r003": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.r003",
+          "URL": "https://doi.org/10.5555/am.bench.r003",
+          "author": [
+            {
+              "family": "Bellweather",
+              "given": "E.",
+              "sequence": "first"
+            },
+            {
+              "family": "Mossgrave",
+              "given": "J.",
+              "sequence": "additional"
+            }
+          ],
+          "container-title": [
+            "Cinder Bay Clinical Letters"
+          ],
+          "issue": "4",
+          "issued": {
+            "date-parts": [
+              [
+                2017
+              ]
+            ]
+          },
+          "page": "337-347",
+          "title": [
+            "Crossover audit of handover notes in community clinics"
+          ],
+          "type": "journal-article",
+          "updated-by": [
+            {
+              "DOI": "10.5555/am.bench.r003.retraction",
+              "label": "Retraction",
+              "source": "retraction-watch",
+              "type": "retraction"
+            }
+          ],
+          "volume": "28"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.r004": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.r004",
+          "URL": "https://doi.org/10.5555/am.bench.r004",
+          "author": [
+            {
+              "family": "Greymantle",
+              "given": "H.",
+              "sequence": "first"
+            },
+            {
+              "family": "Ashgrove-Pell",
+              "given": "T.",
+              "sequence": "additional"
+            }
+          ],
+          "container-title": [
+            "Harrow Journal of Field Physiology"
+          ],
+          "issue": "6",
+          "issued": {
+            "date-parts": [
+              [
+                2017
+              ]
+            ]
+          },
+          "page": "127-135",
+          "title": [
+            "Blinded audit of handover notes in rural pharmacies"
+          ],
+          "type": "journal-article",
+          "updated-by": [
+            {
+              "DOI": "10.5555/am.bench.r004.retraction",
+              "label": "Retraction",
+              "source": "publisher",
+              "type": "retraction"
+            }
+          ],
+          "volume": "9"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v000": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.v000",
+          "URL": "https://doi.org/10.5555/am.bench.v000",
+          "author": [
+            {
+              "family": "Kettlewick",
+              "given": "D.",
+              "sequence": "first"
+            }
+          ],
+          "container-title": [
+            "Meridian Reports in Behavioural Health"
+          ],
+          "issue": "4",
+          "issued": {
+            "date-parts": [
+              [
+                2024
+              ]
+            ]
+          },
+          "page": "318-325",
+          "title": [
+            "Open-label evaluation of a pacing aid in night-shift crews"
+          ],
+          "type": "journal-article",
+          "volume": "34"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v001": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.v001",
+          "URL": "https://doi.org/10.5555/am.bench.v001",
+          "author": [
+            {
+              "family": "Haldane-Wyck",
+              "given": "P.",
+              "sequence": "first"
+            },
+            {
+              "family": "Oakhollow",
+              "given": "D.",
+              "sequence": "additional"
+            },
+            {
+              "family": "Cranmoor",
+              "given": "T.",
+              "sequence": "additional"
+            },
+            {
+              "family": "Kettlewick",
+              "given": "L.",
+              "sequence": "additional"
+            }
+          ],
+          "container-title": [
+            "Meridian Reports in Behavioural Health"
+          ],
+          "issue": "1",
+          "issued": {
+            "date-parts": [
+              [
+                2021
+              ]
+            ]
+          },
+          "page": "643-652",
+          "title": [
+            "Crossover evaluation of a pacing aid in night-shift crews"
+          ],
+          "type": "journal-article",
+          "volume": "14"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v002": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.v002",
+          "URL": "https://doi.org/10.5555/am.bench.v002",
+          "author": [
+            {
+              "family": "Juniperby",
+              "given": "J.",
+              "sequence": "first"
+            }
+          ],
+          "container-title": [
+            "Meridian Reports in Behavioural Health"
+          ],
+          "issue": "4",
+          "issued": {
+            "date-parts": [
+              [
+                2015
+              ]
+            ]
+          },
+          "page": "557-569",
+          "title": [
+            "Open-label pilot of peer coaching in regional depots"
+          ],
+          "type": "journal-article",
+          "volume": "33"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v003": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.v003",
+          "URL": "https://doi.org/10.5555/am.bench.v003",
+          "author": [
+            {
+              "family": "Garrowby",
+              "given": "C.",
+              "sequence": "first"
+            },
+            {
+              "family": "Mossgrave",
+              "given": "J.",
+              "sequence": "additional"
+            },
+            {
+              "family": "Ingleby-Rusk",
+              "given": "M.",
+              "sequence": "additional"
+            },
+            {
+              "family": "Thistlewood",
+              "given": "P.",
+              "sequence": "additional"
+            }
+          ],
+          "container-title": [
+            "Cinder Bay Clinical Letters"
+          ],
+          "issue": "5",
+          "issued": {
+            "date-parts": [
+              [
+                2009
+              ]
+            ]
+          },
+          "page": "322-331",
+          "title": [
+            "Open-label trial of timed hydration in small laboratories"
+          ],
+          "type": "journal-article",
+          "volume": "12"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v004": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.v004",
+          "URL": "https://doi.org/10.5555/am.bench.v004",
+          "author": [
+            {
+              "family": "Quillfeather",
+              "given": "T.",
+              "sequence": "first"
+            },
+            {
+              "family": "Nettlefold",
+              "given": "B.",
+              "sequence": "additional"
+            }
+          ],
+          "container-title": [
+            "Journal of Applied Brinework"
+          ],
+          "issue": "5",
+          "issued": {
+            "date-parts": [
+              [
+                2009
+              ]
+            ]
+          },
+          "page": "635-646",
+          "title": [
+            "Blinded evaluation of a pacing aid in night-shift crews"
+          ],
+          "type": "journal-article",
+          "volume": "11"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v005": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.v005",
+          "URL": "https://doi.org/10.5555/am.bench.v005",
+          "author": [
+            {
+              "family": "Foxglove-Hart",
+              "given": "C.",
+              "sequence": "first"
+            }
+          ],
+          "container-title": [
+            "Cinder Bay Clinical Letters"
+          ],
+          "issue": "5",
+          "issued": {
+            "date-parts": [
+              [
+                2014
+              ]
+            ]
+          },
+          "page": "377-389",
+          "title": [
+            "Open-label cohort study of shift patterns in orchard teams"
+          ],
+          "type": "journal-article",
+          "volume": "6"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v006": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.v006",
+          "URL": "https://doi.org/10.5555/am.bench.v006",
+          "author": [
+            {
+              "family": "Kestrelmoor",
+              "given": "E.",
+              "sequence": "first"
+            }
+          ],
+          "container-title": [
+            "Harrow Journal of Field Physiology"
+          ],
+          "issue": "6",
+          "issued": {
+            "date-parts": [
+              [
+                2020
+              ]
+            ]
+          },
+          "page": "890-901",
+          "title": [
+            "Longitudinal trial of timed hydration in regional depots"
+          ],
+          "type": "journal-article",
+          "volume": "40"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v007": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.v007",
+          "URL": "https://doi.org/10.5555/am.bench.v007",
+          "author": [
+            {
+              "family": "Ashgrove-Pell",
+              "given": "M.",
+              "sequence": "first"
+            },
+            {
+              "family": "Quillfeather",
+              "given": "A.",
+              "sequence": "additional"
+            },
+            {
+              "family": "Abernethy-Roke",
+              "given": "L.",
+              "sequence": "additional"
+            },
+            {
+              "family": "Fennimore",
+              "given": "J.",
+              "sequence": "additional"
+            }
+          ],
+          "container-title": [
+            "Annals of Quillwork Medicine"
+          ],
+          "issue": "6",
+          "issued": {
+            "date-parts": [
+              [
+                2021
+              ]
+            ]
+          },
+          "page": "454-464",
+          "title": [
+            "Cluster trial of timed hydration in river-port workers"
+          ],
+          "type": "journal-article",
+          "volume": "18"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v008": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.v008",
+          "URL": "https://doi.org/10.5555/am.bench.v008",
+          "author": [
+            {
+              "family": "Thistlewood",
+              "given": "H.",
+              "sequence": "first"
+            },
+            {
+              "family": "Yarrowdale",
+              "given": "C.",
+              "sequence": "additional"
+            },
+            {
+              "family": "Quillfeather",
+              "given": "D.",
+              "sequence": "additional"
+            },
+            {
+              "family": "Zimmerlith",
+              "given": "E.",
+              "sequence": "additional"
+            }
+          ],
+          "container-title": [
+            "Annals of Quillwork Medicine"
+          ],
+          "issue": "3",
+          "issued": {
+            "date-parts": [
+              [
+                2024
+              ]
+            ]
+          },
+          "page": "821-828",
+          "title": [
+            "Blinded comparison of rest schedules in orchard teams"
+          ],
+          "type": "journal-article",
+          "volume": "24"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v009": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.v009",
+          "URL": "https://doi.org/10.5555/am.bench.v009",
+          "author": [
+            {
+              "family": "Thistlewood",
+              "given": "H.",
+              "sequence": "first"
+            },
+            {
+              "family": "Jessamoor",
+              "given": "N.",
+              "sequence": "additional"
+            },
+            {
+              "family": "Ashgrove-Pell",
+              "given": "B.",
+              "sequence": "additional"
+            },
+            {
+              "family": "Juniperby",
+              "given": "B.",
+              "sequence": "additional"
+            }
+          ],
+          "container-title": [
+            "Orrery Methods in Epidemiology"
+          ],
+          "issue": "6",
+          "issued": {
+            "date-parts": [
+              [
+                2010
+              ]
+            ]
+          },
+          "page": "245-252",
+          "title": [
+            "Exploratory survey of reporting habits in coastal schools"
+          ],
+          "type": "journal-article",
+          "volume": "4"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v010": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.v010",
+          "URL": "https://doi.org/10.5555/am.bench.v010",
+          "author": [
+            {
+              "family": "Elderthwaite",
+              "given": "K.",
+              "sequence": "first"
+            },
+            {
+              "family": "Sallowfield",
+              "given": "S.",
+              "sequence": "additional"
+            },
+            {
+              "family": "Wetherby-Lund",
+              "given": "M.",
+              "sequence": "additional"
+            }
+          ],
+          "container-title": [
+            "Annals of Quillwork Medicine"
+          ],
+          "issue": "1",
+          "issued": {
+            "date-parts": [
+              [
+                2019
+              ]
+            ]
+          },
+          "page": "817-825",
+          "title": [
+            "Open-label audit of handover notes in community clinics"
+          ],
+          "type": "journal-article",
+          "volume": "14"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v011": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.v011",
+          "URL": "https://doi.org/10.5555/am.bench.v011",
+          "author": [
+            {
+              "family": "Greymantle",
+              "given": "E.",
+              "sequence": "first"
+            },
+            {
+              "family": "Lanternby",
+              "given": "C.",
+              "sequence": "additional"
+            }
+          ],
+          "container-title": [
+            "Cinder Bay Clinical Letters"
+          ],
+          "issue": "5",
+          "issued": {
+            "date-parts": [
+              [
+                2020
+              ]
+            ]
+          },
+          "page": "251-259",
+          "title": [
+            "Blinded evaluation of a pacing aid in coastal schools"
+          ],
+          "type": "journal-article",
+          "volume": "16"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v012": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.v012",
+          "URL": "https://doi.org/10.5555/am.bench.v012",
+          "author": [
+            {
+              "family": "Hartlebury-Nye",
+              "given": "K.",
+              "sequence": "first"
+            },
+            {
+              "family": "Hollowell",
+              "given": "S.",
+              "sequence": "additional"
+            },
+            {
+              "family": "Delacroft",
+              "given": "E.",
+              "sequence": "additional"
+            }
+          ],
+          "container-title": [
+            "Orrery Methods in Epidemiology"
+          ],
+          "issue": "1",
+          "issued": {
+            "date-parts": [
+              [
+                2017
+              ]
+            ]
+          },
+          "page": "629-637",
+          "title": [
+            "Open-label comparison of rest schedules in orchard teams"
+          ],
+          "type": "journal-article",
+          "volume": "16"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v013": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.v013",
+          "URL": "https://doi.org/10.5555/am.bench.v013",
+          "author": [
+            {
+              "family": "Sallowfield",
+              "given": "N.",
+              "sequence": "first"
+            }
+          ],
+          "container-title": [
+            "Journal of Applied Brinework"
+          ],
+          "issue": "5",
+          "issued": {
+            "date-parts": [
+              [
+                2010
+              ]
+            ]
+          },
+          "page": "260-269",
+          "title": [
+            "Crossover analysis of cold-chain logging in regional depots"
+          ],
+          "type": "journal-article",
+          "volume": "40"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v014": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.v014",
+          "URL": "https://doi.org/10.5555/am.bench.v014",
+          "author": [
+            {
+              "family": "Vexworth",
+              "given": "N.",
+              "sequence": "first"
+            },
+            {
+              "family": "Juniperby",
+              "given": "L.",
+              "sequence": "additional"
+            },
+            {
+              "family": "Plumtree-Vane",
+              "given": "N.",
+              "sequence": "additional"
+            },
+            {
+              "family": "Haldane-Wyck",
+              "given": "G.",
+              "sequence": "additional"
+            }
+          ],
+          "container-title": [
+            "Harrow Journal of Field Physiology"
+          ],
+          "issue": "5",
+          "issued": {
+            "date-parts": [
+              [
+                2018
+              ]
+            ]
+          },
+          "page": "846-858",
+          "title": [
+            "Crossover cohort study of shift patterns in orchard teams"
+          ],
+          "type": "journal-article",
+          "volume": "34"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v015": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.v015",
+          "URL": "https://doi.org/10.5555/am.bench.v015",
+          "author": [
+            {
+              "family": "Plumtree-Vane",
+              "given": "E.",
+              "sequence": "first"
+            },
+            {
+              "family": "Foxglove-Hart",
+              "given": "P.",
+              "sequence": "additional"
+            },
+            {
+              "family": "Pemberlow",
+              "given": "S.",
+              "sequence": "additional"
+            }
+          ],
+          "container-title": [
+            "Harrow Journal of Field Physiology"
+          ],
+          "issue": "1",
+          "issued": {
+            "date-parts": [
+              [
+                2010
+              ]
+            ]
+          },
+          "page": "864-873",
+          "title": [
+            "Exploratory trial of timed hydration in small laboratories"
+          ],
+          "type": "journal-article",
+          "volume": "19"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v016": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.v016",
+          "URL": "https://doi.org/10.5555/am.bench.v016",
+          "author": [
+            {
+              "family": "Quillfeather",
+              "given": "J.",
+              "sequence": "first"
+            }
+          ],
+          "container-title": [
+            "Cinder Bay Clinical Letters"
+          ],
+          "issue": "4",
+          "issued": {
+            "date-parts": [
+              [
+                2025
+              ]
+            ]
+          },
+          "page": "452-462",
+          "title": [
+            "Longitudinal evaluation of a pacing aid in rural pharmacies"
+          ],
+          "type": "journal-article",
+          "volume": "14"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v017": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.v017",
+          "URL": "https://doi.org/10.5555/am.bench.v017",
+          "author": [
+            {
+              "family": "Fennimore",
+              "given": "G.",
+              "sequence": "first"
+            }
+          ],
+          "container-title": [
+            "Journal of Applied Brinework"
+          ],
+          "issue": "2",
+          "issued": {
+            "date-parts": [
+              [
+                2012
+              ]
+            ]
+          },
+          "page": "140-151",
+          "title": [
+            "Randomised evaluation of a pacing aid in regional depots"
+          ],
+          "type": "journal-article",
+          "volume": "10"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v018": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.v018",
+          "URL": "https://doi.org/10.5555/am.bench.v018",
+          "author": [
+            {
+              "family": "Wetherby-Lund",
+              "given": "M.",
+              "sequence": "first"
+            }
+          ],
+          "container-title": [
+            "Journal of Applied Brinework"
+          ],
+          "issue": "6",
+          "issued": {
+            "date-parts": [
+              [
+                2018
+              ]
+            ]
+          },
+          "page": "857-868",
+          "title": [
+            "Blinded survey of reporting habits in coastal schools"
+          ],
+          "type": "journal-article",
+          "volume": "3"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v019": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.v019",
+          "URL": "https://doi.org/10.5555/am.bench.v019",
+          "author": [
+            {
+              "family": "Ravenscroft",
+              "given": "H.",
+              "sequence": "first"
+            }
+          ],
+          "container-title": [
+            "Cinder Bay Clinical Letters"
+          ],
+          "issue": "5",
+          "issued": {
+            "date-parts": [
+              [
+                2014
+              ]
+            ]
+          },
+          "page": "102-110",
+          "title": [
+            "Cluster trial of timed hydration in regional depots"
+          ],
+          "type": "journal-article",
+          "volume": "27"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v020": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.v020",
+          "URL": "https://doi.org/10.5555/am.bench.v020",
+          "author": [
+            {
+              "family": "Fennimore",
+              "given": "H.",
+              "sequence": "first"
+            }
+          ],
+          "container-title": [
+            "Cinder Bay Clinical Letters"
+          ],
+          "issue": "6",
+          "issued": {
+            "date-parts": [
+              [
+                2011
+              ]
+            ]
+          },
+          "page": "467-479",
+          "title": [
+            "Blinded analysis of cold-chain logging in coastal schools"
+          ],
+          "type": "journal-article",
+          "volume": "5"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v021": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.v021",
+          "URL": "https://doi.org/10.5555/am.bench.v021",
+          "author": [
+            {
+              "family": "Elderthwaite",
+              "given": "D.",
+              "sequence": "first"
+            },
+            {
+              "family": "Quarrelby",
+              "given": "F.",
+              "sequence": "additional"
+            },
+            {
+              "family": "Juniperby",
+              "given": "K.",
+              "sequence": "additional"
+            }
+          ],
+          "container-title": [
+            "Cinder Bay Clinical Letters"
+          ],
+          "issue": "3",
+          "issued": {
+            "date-parts": [
+              [
+                2024
+              ]
+            ]
+          },
+          "page": "629-641",
+          "title": [
+            "Crossover pilot of peer coaching in regional depots"
+          ],
+          "type": "journal-article",
+          "volume": "8"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v022": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.v022",
+          "URL": "https://doi.org/10.5555/am.bench.v022",
+          "author": [
+            {
+              "family": "Greymantle",
+              "given": "M.",
+              "sequence": "first"
+            },
+            {
+              "family": "Lanternby",
+              "given": "N.",
+              "sequence": "additional"
+            },
+            {
+              "family": "Haldane-Wyck",
+              "given": "N.",
+              "sequence": "additional"
+            },
+            {
+              "family": "Jessamoor",
+              "given": "F.",
+              "sequence": "additional"
+            }
+          ],
+          "container-title": [
+            "Annals of Quillwork Medicine"
+          ],
+          "issue": "4",
+          "issued": {
+            "date-parts": [
+              [
+                2018
+              ]
+            ]
+          },
+          "page": "768-775",
+          "title": [
+            "Randomised comparison of rest schedules in river-port workers"
+          ],
+          "type": "journal-article",
+          "volume": "8"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v023": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.v023",
+          "URL": "https://doi.org/10.5555/am.bench.v023",
+          "author": [
+            {
+              "family": "Oakhollow",
+              "given": "N.",
+              "sequence": "first"
+            },
+            {
+              "family": "Wetherby-Lund",
+              "given": "A.",
+              "sequence": "additional"
+            },
+            {
+              "family": "Fennimore",
+              "given": "N.",
+              "sequence": "additional"
+            }
+          ],
+          "container-title": [
+            "Cinder Bay Clinical Letters"
+          ],
+          "issue": "6",
+          "issued": {
+            "date-parts": [
+              [
+                2010
+              ]
+            ]
+          },
+          "page": "716-728",
+          "title": [
+            "Open-label survey of reporting habits in small laboratories"
+          ],
+          "type": "journal-article",
+          "volume": "39"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v024": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.v024",
+          "URL": "https://doi.org/10.5555/am.bench.v024",
+          "author": [
+            {
+              "family": "Foxglove-Hart",
+              "given": "J.",
+              "sequence": "first"
+            },
+            {
+              "family": "Ingleby-Rusk",
+              "given": "E.",
+              "sequence": "additional"
+            },
+            {
+              "family": "Kettlewick",
+              "given": "C.",
+              "sequence": "additional"
+            },
+            {
+              "family": "Vexworth",
+              "given": "T.",
+              "sequence": "additional"
+            }
+          ],
+          "container-title": [
+            "Journal of Applied Brinework"
+          ],
+          "issue": "6",
+          "issued": {
+            "date-parts": [
+              [
+                2009
+              ]
+            ]
+          },
+          "page": "486-500",
+          "title": [
+            "Longitudinal trial of timed hydration in night-shift crews"
+          ],
+          "type": "journal-article",
+          "volume": "10"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v025": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.v025",
+          "URL": "https://doi.org/10.5555/am.bench.v025",
+          "author": [
+            {
+              "family": "Abernethy-Roke",
+              "given": "K.",
+              "sequence": "first"
+            }
+          ],
+          "container-title": [
+            "Journal of Applied Brinework"
+          ],
+          "issue": "3",
+          "issued": {
+            "date-parts": [
+              [
+                2013
+              ]
+            ]
+          },
+          "page": "662-672",
+          "title": [
+            "Randomised survey of reporting habits in river-port workers"
+          ],
+          "type": "journal-article",
+          "volume": "4"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v026": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.v026",
+          "URL": "https://doi.org/10.5555/am.bench.v026",
+          "author": [
+            {
+              "family": "Jessamoor",
+              "given": "A.",
+              "sequence": "first"
+            }
+          ],
+          "container-title": [
+            "Journal of Applied Brinework"
+          ],
+          "issue": "3",
+          "issued": {
+            "date-parts": [
+              [
+                2024
+              ]
+            ]
+          },
+          "page": "24-37",
+          "title": [
+            "Cluster pilot of peer coaching in orchard teams"
+          ],
+          "type": "journal-article",
+          "volume": "5"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v027": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.v027",
+          "URL": "https://doi.org/10.5555/am.bench.v027",
+          "author": [
+            {
+              "family": "Ashgrove-Pell",
+              "given": "C.",
+              "sequence": "first"
+            },
+            {
+              "family": "Sallowfield",
+              "given": "T.",
+              "sequence": "additional"
+            },
+            {
+              "family": "Plumtree-Vane",
+              "given": "S.",
+              "sequence": "additional"
+            }
+          ],
+          "container-title": [
+            "Orrery Methods in Epidemiology"
+          ],
+          "issue": "4",
+          "issued": {
+            "date-parts": [
+              [
+                2020
+              ]
+            ]
+          },
+          "page": "605-611",
+          "title": [
+            "Open-label comparison of rest schedules in community clinics"
+          ],
+          "type": "journal-article",
+          "volume": "10"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v028": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.v028",
+          "URL": "https://doi.org/10.5555/am.bench.v028",
+          "author": [
+            {
+              "family": "Delacroft",
+              "given": "B.",
+              "sequence": "first"
+            }
+          ],
+          "container-title": [
+            "Journal of Applied Brinework"
+          ],
+          "issue": "1",
+          "issued": {
+            "date-parts": [
+              [
+                2019
+              ]
+            ]
+          },
+          "page": "768-778",
+          "title": [
+            "Open-label evaluation of a pacing aid in orchard teams"
+          ],
+          "type": "journal-article",
+          "volume": "18"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v029": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.v029",
+          "URL": "https://doi.org/10.5555/am.bench.v029",
+          "author": [
+            {
+              "family": "Juniperby",
+              "given": "L.",
+              "sequence": "first"
+            },
+            {
+              "family": "Yarrowdale",
+              "given": "D.",
+              "sequence": "additional"
+            },
+            {
+              "family": "Ravenscroft",
+              "given": "B.",
+              "sequence": "additional"
+            },
+            {
+              "family": "Marrowby",
+              "given": "K.",
+              "sequence": "additional"
+            }
+          ],
+          "container-title": [
+            "Annals of Quillwork Medicine"
+          ],
+          "issue": "6",
+          "issued": {
+            "date-parts": [
+              [
+                2009
+              ]
+            ]
+          },
+          "page": "306-318",
+          "title": [
+            "Randomised pilot of peer coaching in night-shift crews"
+          ],
+          "type": "journal-article",
+          "volume": "28"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v030": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.v030",
+          "URL": "https://doi.org/10.5555/am.bench.v030",
+          "author": [
+            {
+              "family": "Wetherby-Lund",
+              "given": "R.",
+              "sequence": "first"
+            },
+            {
+              "family": "Nettlefold",
+              "given": "L.",
+              "sequence": "additional"
+            }
+          ],
+          "container-title": [
+            "Journal of Applied Brinework"
+          ],
+          "issue": "2",
+          "issued": {
+            "date-parts": [
+              [
+                2020
+              ]
+            ]
+          },
+          "page": "214-221",
+          "title": [
+            "Open-label trial of timed hydration in rural pharmacies"
+          ],
+          "type": "journal-article",
+          "volume": "12"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v031": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.v031",
+          "URL": "https://doi.org/10.5555/am.bench.v031",
+          "author": [
+            {
+              "family": "Corrigan-Tate",
+              "given": "G.",
+              "sequence": "first"
+            }
+          ],
+          "container-title": [
+            "Annals of Quillwork Medicine"
+          ],
+          "issue": "1",
+          "issued": {
+            "date-parts": [
+              [
+                2019
+              ]
+            ]
+          },
+          "page": "404-412",
+          "title": [
+            "Crossover survey of reporting habits in night-shift crews"
+          ],
+          "type": "journal-article",
+          "volume": "7"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v032": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.v032",
+          "URL": "https://doi.org/10.5555/am.bench.v032",
+          "author": [
+            {
+              "family": "Foxglove-Hart",
+              "given": "M.",
+              "sequence": "first"
+            },
+            {
+              "family": "Bellweather",
+              "given": "P.",
+              "sequence": "additional"
+            },
+            {
+              "family": "Marrowby",
+              "given": "J.",
+              "sequence": "additional"
+            }
+          ],
+          "container-title": [
+            "Cinder Bay Clinical Letters"
+          ],
+          "issue": "6",
+          "issued": {
+            "date-parts": [
+              [
+                2016
+              ]
+            ]
+          },
+          "page": "445-453",
+          "title": [
+            "Crossover comparison of rest schedules in regional depots"
+          ],
+          "type": "journal-article",
+          "volume": "35"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v033": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.v033",
+          "URL": "https://doi.org/10.5555/am.bench.v033",
+          "author": [
+            {
+              "family": "Thistlewood",
+              "given": "F.",
+              "sequence": "first"
+            }
+          ],
+          "container-title": [
+            "Meridian Reports in Behavioural Health"
+          ],
+          "issue": "1",
+          "issued": {
+            "date-parts": [
+              [
+                2014
+              ]
+            ]
+          },
+          "page": "95-109",
+          "title": [
+            "Exploratory comparison of rest schedules in night-shift crews"
+          ],
+          "type": "journal-article",
+          "volume": "33"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v034": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.v034",
+          "URL": "https://doi.org/10.5555/am.bench.v034",
+          "author": [
+            {
+              "family": "Zimmerlith",
+              "given": "H.",
+              "sequence": "first"
+            },
+            {
+              "family": "Yarrowdale",
+              "given": "S.",
+              "sequence": "additional"
+            }
+          ],
+          "container-title": [
+            "Annals of Quillwork Medicine"
+          ],
+          "issue": "4",
+          "issued": {
+            "date-parts": [
+              [
+                2021
+              ]
+            ]
+          },
+          "page": "348-362",
+          "title": [
+            "Crossover pilot of peer coaching in rural pharmacies"
+          ],
+          "type": "journal-article",
+          "volume": "6"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v035": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.v035",
+          "URL": "https://doi.org/10.5555/am.bench.v035",
+          "author": [
+            {
+              "family": "Marrowby",
+              "given": "R.",
+              "sequence": "first"
+            }
+          ],
+          "container-title": [
+            "Cinder Bay Clinical Letters"
+          ],
+          "issue": "3",
+          "issued": {
+            "date-parts": [
+              [
+                2017
+              ]
+            ]
+          },
+          "page": "777-785",
+          "title": [
+            "Randomised cohort study of shift patterns in coastal schools"
+          ],
+          "type": "journal-article",
+          "volume": "20"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v036": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.v036",
+          "URL": "https://doi.org/10.5555/am.bench.v036",
+          "author": [
+            {
+              "family": "Thistlewood",
+              "given": "B.",
+              "sequence": "first"
+            },
+            {
+              "family": "Zimmerlith",
+              "given": "P.",
+              "sequence": "additional"
+            },
+            {
+              "family": "Elderthwaite",
+              "given": "F.",
+              "sequence": "additional"
+            }
+          ],
+          "container-title": [
+            "Orrery Methods in Epidemiology"
+          ],
+          "issue": "6",
+          "issued": {
+            "date-parts": [
+              [
+                2018
+              ]
+            ]
+          },
+          "page": "865-879",
+          "title": [
+            "Pragmatic comparison of rest schedules in small laboratories"
+          ],
+          "type": "journal-article",
+          "volume": "11"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v037": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.v037",
+          "URL": "https://doi.org/10.5555/am.bench.v037",
+          "author": [
+            {
+              "family": "Kettlewick",
+              "given": "C.",
+              "sequence": "first"
+            },
+            {
+              "family": "Nettlefold",
+              "given": "K.",
+              "sequence": "additional"
+            },
+            {
+              "family": "Ravenscroft",
+              "given": "G.",
+              "sequence": "additional"
+            },
+            {
+              "family": "Wetherby-Lund",
+              "given": "N.",
+              "sequence": "additional"
+            }
+          ],
+          "container-title": [
+            "Orrery Methods in Epidemiology"
+          ],
+          "issue": "6",
+          "issued": {
+            "date-parts": [
+              [
+                2022
+              ]
+            ]
+          },
+          "page": "646-657",
+          "title": [
+            "Exploratory survey of reporting habits in orchard teams"
+          ],
+          "type": "journal-article",
+          "volume": "12"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v038": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.v038",
+          "URL": "https://doi.org/10.5555/am.bench.v038",
+          "author": [
+            {
+              "family": "Quillfeather",
+              "given": "S.",
+              "sequence": "first"
+            },
+            {
+              "family": "Marrowby",
+              "given": "F.",
+              "sequence": "additional"
+            }
+          ],
+          "container-title": [
+            "Orrery Methods in Epidemiology"
+          ],
+          "issue": "1",
+          "issued": {
+            "date-parts": [
+              [
+                2022
+              ]
+            ]
+          },
+          "page": "268-280",
+          "title": [
+            "Randomised analysis of cold-chain logging in night-shift crews"
+          ],
+          "type": "journal-article",
+          "volume": "39"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v039": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.v039",
+          "URL": "https://doi.org/10.5555/am.bench.v039",
+          "author": [
+            {
+              "family": "Nettlefold",
+              "given": "F.",
+              "sequence": "first"
+            },
+            {
+              "family": "Lanternby",
+              "given": "T.",
+              "sequence": "additional"
+            },
+            {
+              "family": "Underhill-Cray",
+              "given": "S.",
+              "sequence": "additional"
+            }
+          ],
+          "container-title": [
+            "Meridian Reports in Behavioural Health"
+          ],
+          "issue": "4",
+          "issued": {
+            "date-parts": [
+              [
+                2011
+              ]
+            ]
+          },
+          "page": "502-511",
+          "title": [
+            "Pragmatic analysis of cold-chain logging in night-shift crews"
+          ],
+          "type": "journal-article",
+          "volume": "15"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v040": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.v040",
+          "URL": "https://doi.org/10.5555/am.bench.v040",
+          "author": [
+            {
+              "family": "Underhill-Cray",
+              "given": "D.",
+              "sequence": "first"
+            },
+            {
+              "family": "Juniperby",
+              "given": "D.",
+              "sequence": "additional"
+            },
+            {
+              "family": "Ashgrove-Pell",
+              "given": "S.",
+              "sequence": "additional"
+            }
+          ],
+          "container-title": [
+            "Annals of Quillwork Medicine"
+          ],
+          "issue": "2",
+          "issued": {
+            "date-parts": [
+              [
+                2019
+              ]
+            ]
+          },
+          "page": "734-746",
+          "title": [
+            "Cluster analysis of cold-chain logging in small laboratories"
+          ],
+          "type": "journal-article",
+          "volume": "23"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v041": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.v041",
+          "URL": "https://doi.org/10.5555/am.bench.v041",
+          "author": [
+            {
+              "family": "Thistlewood",
+              "given": "T.",
+              "sequence": "first"
+            }
+          ],
+          "container-title": [
+            "Cinder Bay Clinical Letters"
+          ],
+          "issue": "4",
+          "issued": {
+            "date-parts": [
+              [
+                2019
+              ]
+            ]
+          },
+          "page": "141-148",
+          "title": [
+            "Exploratory analysis of cold-chain logging in river-port workers"
+          ],
+          "type": "journal-article",
+          "volume": "31"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v042": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.v042",
+          "URL": "https://doi.org/10.5555/am.bench.v042",
+          "author": [
+            {
+              "family": "Underhill-Cray",
+              "given": "E.",
+              "sequence": "first"
+            },
+            {
+              "family": "Zimmerlith",
+              "given": "D.",
+              "sequence": "additional"
+            },
+            {
+              "family": "Mossgrave",
+              "given": "C.",
+              "sequence": "additional"
+            },
+            {
+              "family": "Yarrowdale",
+              "given": "R.",
+              "sequence": "additional"
+            }
+          ],
+          "container-title": [
+            "Meridian Reports in Behavioural Health"
+          ],
+          "issue": "6",
+          "issued": {
+            "date-parts": [
+              [
+                2018
+              ]
+            ]
+          },
+          "page": "492-499",
+          "title": [
+            "Longitudinal analysis of cold-chain logging in night-shift crews"
+          ],
+          "type": "journal-article",
+          "volume": "15"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v043": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.v043",
+          "URL": "https://doi.org/10.5555/am.bench.v043",
+          "author": [
+            {
+              "family": "Cranmoor",
+              "given": "M.",
+              "sequence": "first"
+            },
+            {
+              "family": "Ashgrove-Pell",
+              "given": "B.",
+              "sequence": "additional"
+            }
+          ],
+          "container-title": [
+            "Journal of Applied Brinework"
+          ],
+          "issue": "5",
+          "issued": {
+            "date-parts": [
+              [
+                2011
+              ]
+            ]
+          },
+          "page": "98-107",
+          "title": [
+            "Longitudinal analysis of cold-chain logging in orchard teams"
+          ],
+          "type": "journal-article",
+          "volume": "13"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v044": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.v044",
+          "URL": "https://doi.org/10.5555/am.bench.v044",
+          "author": [
+            {
+              "family": "Dunmarrow",
+              "given": "F.",
+              "sequence": "first"
+            },
+            {
+              "family": "Garrowby",
+              "given": "T.",
+              "sequence": "additional"
+            },
+            {
+              "family": "Quarrelby",
+              "given": "L.",
+              "sequence": "additional"
+            },
+            {
+              "family": "Brindlemoor",
+              "given": "C.",
+              "sequence": "additional"
+            }
+          ],
+          "container-title": [
+            "Harrow Journal of Field Physiology"
+          ],
+          "issue": "5",
+          "issued": {
+            "date-parts": [
+              [
+                2017
+              ]
+            ]
+          },
+          "page": "834-843",
+          "title": [
+            "Crossover comparison of rest schedules in river-port workers"
+          ],
+          "type": "journal-article",
+          "volume": "23"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v045": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.v045",
+          "URL": "https://doi.org/10.5555/am.bench.v045",
+          "author": [
+            {
+              "family": "Haldane-Wyck",
+              "given": "L.",
+              "sequence": "first"
+            },
+            {
+              "family": "Vexworth",
+              "given": "N.",
+              "sequence": "additional"
+            },
+            {
+              "family": "Underhill-Cray",
+              "given": "R.",
+              "sequence": "additional"
+            }
+          ],
+          "container-title": [
+            "Meridian Reports in Behavioural Health"
+          ],
+          "issue": "5",
+          "issued": {
+            "date-parts": [
+              [
+                2021
+              ]
+            ]
+          },
+          "page": "20-34",
+          "title": [
+            "Randomised trial of timed hydration in small laboratories"
+          ],
+          "type": "journal-article",
+          "volume": "15"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v046": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.v046",
+          "URL": "https://doi.org/10.5555/am.bench.v046",
+          "author": [
+            {
+              "family": "Quillfeather",
+              "given": "H.",
+              "sequence": "first"
+            },
+            {
+              "family": "Ashgrove-Pell",
+              "given": "T.",
+              "sequence": "additional"
+            },
+            {
+              "family": "Thistlewood",
+              "given": "C.",
+              "sequence": "additional"
+            },
+            {
+              "family": "Inkwell",
+              "given": "S.",
+              "sequence": "additional"
+            }
+          ],
+          "container-title": [
+            "Harrow Journal of Field Physiology"
+          ],
+          "issue": "5",
+          "issued": {
+            "date-parts": [
+              [
+                2021
+              ]
+            ]
+          },
+          "page": "635-643",
+          "title": [
+            "Longitudinal pilot of peer coaching in night-shift crews"
+          ],
+          "type": "journal-article",
+          "volume": "10"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v047": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.v047",
+          "URL": "https://doi.org/10.5555/am.bench.v047",
+          "author": [
+            {
+              "family": "Ashgrove-Pell",
+              "given": "T.",
+              "sequence": "first"
+            },
+            {
+              "family": "Foxglove-Hart",
+              "given": "M.",
+              "sequence": "additional"
+            },
+            {
+              "family": "Zimmerlith",
+              "given": "R.",
+              "sequence": "additional"
+            }
+          ],
+          "container-title": [
+            "Harrow Journal of Field Physiology"
+          ],
+          "issue": "1",
+          "issued": {
+            "date-parts": [
+              [
+                2020
+              ]
+            ]
+          },
+          "page": "369-378",
+          "title": [
+            "Crossover pilot of peer coaching in river-port workers"
+          ],
+          "type": "journal-article",
+          "volume": "37"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v048": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.v048",
+          "URL": "https://doi.org/10.5555/am.bench.v048",
+          "author": [
+            {
+              "family": "Bellweather",
+              "given": "E.",
+              "sequence": "first"
+            },
+            {
+              "family": "Dunmarrow",
+              "given": "E.",
+              "sequence": "additional"
+            },
+            {
+              "family": "Jessamoor",
+              "given": "F.",
+              "sequence": "additional"
+            }
+          ],
+          "container-title": [
+            "Orrery Methods in Epidemiology"
+          ],
+          "issue": "4",
+          "issued": {
+            "date-parts": [
+              [
+                2013
+              ]
+            ]
+          },
+          "page": "96-108",
+          "title": [
+            "Cluster analysis of cold-chain logging in rural pharmacies"
+          ],
+          "type": "journal-article",
+          "volume": "32"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v049": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.v049",
+          "URL": "https://doi.org/10.5555/am.bench.v049",
+          "author": [
+            {
+              "family": "Plumtree-Vane",
+              "given": "G.",
+              "sequence": "first"
+            },
+            {
+              "family": "Jessamoor",
+              "given": "G.",
+              "sequence": "additional"
+            },
+            {
+              "family": "Wetherby-Lund",
+              "given": "R.",
+              "sequence": "additional"
+            },
+            {
+              "family": "Quarrelby",
+              "given": "H.",
+              "sequence": "additional"
+            }
+          ],
+          "container-title": [
+            "Harrow Journal of Field Physiology"
+          ],
+          "issue": "3",
+          "issued": {
+            "date-parts": [
+              [
+                2024
+              ]
+            ]
+          },
+          "page": "797-806",
+          "title": [
+            "Pragmatic survey of reporting habits in coastal schools"
+          ],
+          "type": "journal-article",
+          "volume": "18"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v050": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.v050",
+          "URL": "https://doi.org/10.5555/am.bench.v050",
+          "author": [
+            {
+              "family": "Vexworth",
+              "given": "H.",
+              "sequence": "first"
+            },
+            {
+              "family": "Hollowell",
+              "given": "A.",
+              "sequence": "additional"
+            },
+            {
+              "family": "Delacroft",
+              "given": "F.",
+              "sequence": "additional"
+            }
+          ],
+          "container-title": [
+            "Journal of Applied Brinework"
+          ],
+          "issue": "2",
+          "issued": {
+            "date-parts": [
+              [
+                2017
+              ]
+            ]
+          },
+          "page": "553-564",
+          "title": [
+            "Randomised audit of handover notes in regional depots"
+          ],
+          "type": "journal-article",
+          "volume": "16"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v051": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.v051",
+          "URL": "https://doi.org/10.5555/am.bench.v051",
+          "author": [
+            {
+              "family": "Underhill-Cray",
+              "given": "B.",
+              "sequence": "first"
+            },
+            {
+              "family": "Haldane-Wyck",
+              "given": "B.",
+              "sequence": "additional"
+            }
+          ],
+          "container-title": [
+            "Cinder Bay Clinical Letters"
+          ],
+          "issue": "2",
+          "issued": {
+            "date-parts": [
+              [
+                2020
+              ]
+            ]
+          },
+          "page": "750-763",
+          "title": [
+            "Open-label trial of timed hydration in orchard teams"
+          ],
+          "type": "journal-article",
+          "volume": "33"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v052": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.v052",
+          "URL": "https://doi.org/10.5555/am.bench.v052",
+          "author": [
+            {
+              "family": "Brindlemoor",
+              "given": "T.",
+              "sequence": "first"
+            },
+            {
+              "family": "Greymantle",
+              "given": "A.",
+              "sequence": "additional"
+            }
+          ],
+          "container-title": [
+            "Meridian Reports in Behavioural Health"
+          ],
+          "issue": "5",
+          "issued": {
+            "date-parts": [
+              [
+                2017
+              ]
+            ]
+          },
+          "page": "123-131",
+          "title": [
+            "Crossover cohort study of shift patterns in night-shift crews"
+          ],
+          "type": "journal-article",
+          "volume": "12"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v053": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.v053",
+          "URL": "https://doi.org/10.5555/am.bench.v053",
+          "author": [
+            {
+              "family": "Mossgrave",
+              "given": "C.",
+              "sequence": "first"
+            },
+            {
+              "family": "Oakhollow",
+              "given": "N.",
+              "sequence": "additional"
+            }
+          ],
+          "container-title": [
+            "Cinder Bay Clinical Letters"
+          ],
+          "issue": "3",
+          "issued": {
+            "date-parts": [
+              [
+                2025
+              ]
+            ]
+          },
+          "page": "869-875",
+          "title": [
+            "Longitudinal audit of handover notes in regional depots"
+          ],
+          "type": "journal-article",
+          "volume": "28"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v054": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.v054",
+          "URL": "https://doi.org/10.5555/am.bench.v054",
+          "author": [
+            {
+              "family": "Corrigan-Tate",
+              "given": "A.",
+              "sequence": "first"
+            }
+          ],
+          "container-title": [
+            "Harrow Journal of Field Physiology"
+          ],
+          "issue": "4",
+          "issued": {
+            "date-parts": [
+              [
+                2024
+              ]
+            ]
+          },
+          "page": "376-389",
+          "title": [
+            "Longitudinal evaluation of a pacing aid in community clinics"
+          ],
+          "type": "journal-article",
+          "volume": "25"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v055": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.v055",
+          "URL": "https://doi.org/10.5555/am.bench.v055",
+          "author": [
+            {
+              "family": "Hollowell",
+              "given": "M.",
+              "sequence": "first"
+            },
+            {
+              "family": "Wetherby-Lund",
+              "given": "R.",
+              "sequence": "additional"
+            },
+            {
+              "family": "Ravenscroft",
+              "given": "J.",
+              "sequence": "additional"
+            }
+          ],
+          "container-title": [
+            "Meridian Reports in Behavioural Health"
+          ],
+          "issue": "6",
+          "issued": {
+            "date-parts": [
+              [
+                2013
+              ]
+            ]
+          },
+          "page": "618-627",
+          "title": [
+            "Randomised survey of reporting habits in night-shift crews"
+          ],
+          "type": "journal-article",
+          "volume": "4"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v056": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.v056",
+          "URL": "https://doi.org/10.5555/am.bench.v056",
+          "author": [
+            {
+              "family": "Garrowby",
+              "given": "F.",
+              "sequence": "first"
+            }
+          ],
+          "container-title": [
+            "Journal of Applied Brinework"
+          ],
+          "issue": "1",
+          "issued": {
+            "date-parts": [
+              [
+                2009
+              ]
+            ]
+          },
+          "page": "883-891",
+          "title": [
+            "Randomised trial of timed hydration in orchard teams"
+          ],
+          "type": "journal-article",
+          "volume": "29"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v057": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.v057",
+          "URL": "https://doi.org/10.5555/am.bench.v057",
+          "author": [
+            {
+              "family": "Brindlemoor",
+              "given": "N.",
+              "sequence": "first"
+            },
+            {
+              "family": "Vexworth",
+              "given": "A.",
+              "sequence": "additional"
+            },
+            {
+              "family": "Underhill-Cray",
+              "given": "R.",
+              "sequence": "additional"
+            },
+            {
+              "family": "Foxglove-Hart",
+              "given": "C.",
+              "sequence": "additional"
+            }
+          ],
+          "container-title": [
+            "Harrow Journal of Field Physiology"
+          ],
+          "issue": "6",
+          "issued": {
+            "date-parts": [
+              [
+                2016
+              ]
+            ]
+          },
+          "page": "214-220",
+          "title": [
+            "Open-label audit of handover notes in regional depots"
+          ],
+          "type": "journal-article",
+          "volume": "22"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v058": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.v058",
+          "URL": "https://doi.org/10.5555/am.bench.v058",
+          "author": [
+            {
+              "family": "Foxglove-Hart",
+              "given": "H.",
+              "sequence": "first"
+            }
+          ],
+          "container-title": [
+            "Orrery Methods in Epidemiology"
+          ],
+          "issue": "2",
+          "issued": {
+            "date-parts": [
+              [
+                2016
+              ]
+            ]
+          },
+          "page": "414-428",
+          "title": [
+            "Crossover trial of timed hydration in rural pharmacies"
+          ],
+          "type": "journal-article",
+          "volume": "20"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.v059": {
+      "body": {
+        "message": {
+          "DOI": "10.5555/am.bench.v059",
+          "URL": "https://doi.org/10.5555/am.bench.v059",
+          "author": [
+            {
+              "family": "Cranmoor",
+              "given": "T.",
+              "sequence": "first"
+            }
+          ],
+          "container-title": [
+            "Cinder Bay Clinical Letters"
+          ],
+          "issue": "4",
+          "issued": {
+            "date-parts": [
+              [
+                2024
+              ]
+            ]
+          },
+          "page": "896-907",
+          "title": [
+            "Exploratory evaluation of a pacing aid in community clinics"
+          ],
+          "type": "journal-article",
+          "volume": "6"
+        },
+        "message-type": "work",
+        "status": "ok"
+      },
+      "status": 200
+    },
+    "10.5555/am.bench.x000": {
+      "body": "Resource not found.",
+      "status": 404
+    },
+    "10.5555/am.bench.x001": {
+      "body": "Resource not found.",
+      "status": 404
+    },
+    "10.5555/am.bench.x002": {
+      "body": "Resource not found.",
+      "status": 404
+    },
+    "10.5555/am.bench.x003": {
+      "body": "Resource not found.",
+      "status": 404
+    },
+    "10.5555/am.bench.x004": {
+      "body": "Resource not found.",
+      "status": 404
+    },
+    "10.5555/am.bench.x005": {
+      "body": "Resource not found.",
+      "status": 404
+    },
+    "10.5555/am.bench.x006": {
+      "body": "Resource not found.",
+      "status": 404
+    },
+    "10.5555/am.bench.x007": {
+      "body": "Resource not found.",
+      "status": 404
+    },
+    "10.5555/am.bench.x008": {
+      "body": "Resource not found.",
+      "status": 404
+    },
+    "10.5555/am.bench.x009": {
+      "body": "Resource not found.",
+      "status": 404
+    },
+    "10.5555/am.bench.x010": {
+      "body": "Resource not found.",
+      "status": 404
+    },
+    "10.5555/am.bench.x011": {
+      "body": "Resource not found.",
+      "status": 404
+    }
+  }
+}

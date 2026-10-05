@@ -4,6 +4,7 @@ Provides:
 - Model resolution (ollama, bedrock, passthrough)
 - Agent execution with PromptedOutput fallback
 - Embedding client (Ollama HTTP, cosine similarity, chunked-doc embeds)
+- Decision models (Ollama /v1/systemone) and calibration tooling
 
 Sub-modules (epistemic, deep_research, document_store, chunker, ...)
 import from here instead of maintaining independent implementations.
@@ -15,6 +16,14 @@ from .agents import (
     build_pydantic_ai_agent,
     run_agent_with_fallback,
     run_agent_with_usage,
+)
+from .decisions import (
+    CalibrationRecord,
+    DecisionAnswer,
+    DecisionQuestion,
+    calibrate,
+    decide,
+    model_digest,
 )
 from .embeddings import (
     DEFAULT_EMBEDDING_MODEL,
@@ -40,6 +49,13 @@ __all__ = [
     "build_pydantic_ai_agent",
     "run_agent_with_fallback",
     "run_agent_with_usage",
+    # Decision models
+    "CalibrationRecord",
+    "DecisionAnswer",
+    "DecisionQuestion",
+    "calibrate",
+    "decide",
+    "model_digest",
     # Models
     "resolve_model",
     "resolve_model_from_args",

@@ -57,6 +57,26 @@ from ._watermark import (
     stamp_docx_core_properties,
     write_provenance_customxml,
 )
+from .docx.atoms import (
+    EXCLUDED_SUBTREES,
+    Atom,
+    AtomKind,
+    document_atoms,
+    paragraph_atoms,
+)
+from .docx.reading import body_paragraphs, main_document_part
+from .docx.surgery import (
+    Edit as SpanEdit,
+    EditReport,
+    apply_edits,
+    next_change_id,
+    run_bounds,
+    split_at_boundaries,
+    tracked_paragraph,
+    translate_span,
+)
+from .docx.textmap import AtomSpan, TextMap
+from .docx.xml_builder import XMLElementBuilder
 from .renderers import render_docx, render_html, render_markdown
 from .reviewed_document import ReviewedDocument, open_source
 from .schemas import (
@@ -122,6 +142,24 @@ __all__ = [
     "extract_criteria_from_guidelines",
     "ReviewedDocument",
     "open_source",
+    "Atom",
+    "AtomKind",
+    "paragraph_atoms",
+    "EXCLUDED_SUBTREES",
+    "document_atoms",
+    "body_paragraphs",
+    "main_document_part",
+    "AtomSpan",
+    "TextMap",
+    "SpanEdit",
+    "EditReport",
+    "apply_edits",
+    "next_change_id",
+    "tracked_paragraph",
+    "run_bounds",
+    "split_at_boundaries",
+    "translate_span",
+    "XMLElementBuilder",
     "render_docx",
     "render_html",
     "render_markdown",

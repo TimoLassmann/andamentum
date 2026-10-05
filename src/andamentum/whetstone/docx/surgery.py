@@ -96,6 +96,24 @@ def _deletion_of_text(text: str, rpr: Any | None, *, author: str, cid: int) -> A
     return container
 
 
+def tracked_paragraph(
+    text: str, *, author: str, cid: int, style_id: str | None = None
+) -> Any:
+    """A new ``<w:p>`` that is one tracked insertion: its mark and its text.
+
+    Uses ``cid`` for the paragraph mark's revision and ``cid + 1`` for the text
+    insertion, so a caller placing several paragraphs steps by two. Rejecting
+    the change removes the paragraph entirely.
+    """
+    paragraph = etree.Element(qn("p"))
+    if style_id is not None:
+        ppr = etree.SubElement(paragraph, qn("pPr"))
+        etree.SubElement(ppr, qn("pStyle")).set(qn("val"), style_id)
+    _mark_paragraph_mark(paragraph, "ins", author=author, cid=cid)
+    paragraph.append(_insertion(text, None, author=author, cid=cid + 1))
+    return paragraph
+
+
 #: Where change ids start in a document that carries none. Arbitrary, and high
 #: enough to be recognisable as ours in a hand-inspected file.
 FIRST_CHANGE_ID = 1000

@@ -63,7 +63,7 @@ def test_resolve_roles_model_fills_the_gaps():
 
 def test_resolve_roles_falls_back_to_recorded_models():
     parser = cli.build_parser()
-    args = parser.parse_args(["check", "bundle", "--judge", "j"])
+    args = parser.parse_args(["check-bundle", "bundle", "--judge", "j"])
     recorded = Roles.all("old")
     roles = cli.resolve_roles(args, parser, fallback=recorded)
     assert roles.judge == "j" and roles.drafter == "old"

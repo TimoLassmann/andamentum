@@ -35,7 +35,9 @@ Four roles name the model for each job: `drafter`, `critic`, `judge`, `reader`. 
 
 compose depends on `core`, `compose.bundle`, `whetstone` (public API), `proofread`, `llm_judge`, `harvest`, `figures`; `deep_research` only behind `--research` (deferred import). Nothing depends on compose except `figures.bundle_glue`, which imports the model-free `compose.bundle` only. It MUST NOT depend on `epistemic` or `document_store`. Only `graph.py` imports `pydantic_graph`; workers are plain async functions with a keyword-only `model=`. `tests/test_dialect_conformance.py` enforces this and runs the dialect check in strict mode.
 
-Files: `schemas.py`, `genres.py`, `brief.py`, `evidence.py`, `plan.py`, `write.py`, `revise.py` (workers); `assess.py` (one check pass, shared by the Check node, `check` and `eval`); `checks/` (deterministic, grounding, reader, critic); `route.py`; `render.py`; `steps.py` (deterministic bundle helpers and `report.md`); `store.py` (JSON artefacts); `log.py` and `_call.py` (action log and the one model-call seam); `graph.py`; `api.py`; `cli.py`; `evals/`; `bundle/` (see below).
+The writing harness (`harness/`: a format-neutral kernel, `.docx` and markdown adapters, deterministic and model-assisted checks, the `check FILE.docx` verb and the planted-defect benchmark) is documented in `harness/CLAUDE.md`; the CLI's `check-bundle DIR` is the bundle's own one-pass check, `check FILE.docx` is the harness verb. Nothing outside compose imports `compose.harness`.
+
+Files: `schemas.py`, `genres.py`, `brief.py`, `evidence.py`, `plan.py`, `write.py`, `revise.py` (workers); `assess.py` (one check pass, shared by the Check node, `check-bundle` and `eval`); `checks/` (deterministic, grounding, reader, critic); `route.py`; `render.py`; `steps.py` (deterministic bundle helpers and `report.md`); `store.py` (JSON artefacts); `log.py` and `_call.py` (action log and the one model-call seam); `graph.py`; `api.py`; `cli.py`; `evals/`; `bundle/` (see below).
 
 ## bundle
 
