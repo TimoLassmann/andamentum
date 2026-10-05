@@ -372,7 +372,8 @@ def test_reader_flags_exactly_the_planted_dangling_references(out_dir: Path):
         refs = [
             f
             for f in view.fields
-            if f.kind == "crossref" and f.data.get("field") in {"REF", "PAGEREF", "NOTEREF"}
+            if f.kind == "crossref"
+            and f.data.get("field") in {"REF", "PAGEREF", "NOTEREF"}
         ]
         assert all(isinstance(f.data["target_exists"], bool) for f in refs)
         missing = [f for f in refs if f.data["target_exists"] is False]

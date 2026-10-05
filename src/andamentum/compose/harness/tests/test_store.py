@@ -124,6 +124,23 @@ def test_http_cache_counts_hits_and_misses(tmp_path: Path) -> None:
     assert (cache.hits, cache.misses) == (1, 1)
 
 
+def test_project_cache_fetches_an_answer_again_once_it_is_stale(tmp_path: Path) -> None:
+    from andamentum.compose.harness.kernel.store import ProjectCache
+
+    now = [1_000.0]
+    http = ProjectStore(tmp_path / "a.harness").http_cache
+    cache = ProjectCache(http, max_age=100.0, clock=lambda: now[0])
+    assert cache.get("https://api.crossref.org/works/10.1/x") is None
+    cache.put("https://api.crossref.org/works/10.1/x", b'{"clean": true}')
+    now[0] += 99
+    assert cache.get("https://api.crossref.org/works/10.1/x") == b'{"clean": true}'
+    now[0] += 2  # a work checked once may be retracted since
+    assert cache.get("https://api.crossref.org/works/10.1/x") is None
+    cache.put("https://api.crossref.org/works/10.1/x", b'{"retracted": true}')
+    assert cache.get("https://api.crossref.org/works/10.1/x") == b'{"retracted": true}'
+    assert (http.hits, http.misses) == (2, 2)
+
+
 def test_snapshot_view_makes_one_commit_per_call(tmp_path: Path) -> None:
     store = ProjectStore(tmp_path / "a.harness")
     assert store.snapshot_log() == []

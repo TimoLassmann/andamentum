@@ -14,9 +14,11 @@ from .checks import (
 from .diagnostics import Action, Diagnostic, Severity, Tier
 from .ops import (
     Bind,
+    CitationItem,
     CommentOp,
     Delete,
     Insert,
+    InsertCitation,
     InsertParagraph,
     Move,
     Operation,
@@ -24,6 +26,7 @@ from .ops import (
     Reply,
     Transaction,
     Unbind,
+    UpdateBibliography,
 )
 from .store import ProjectStore
 from .verbs import Verb, all_verbs, get_verb, register_verb
@@ -35,6 +38,7 @@ __all__ = [
     "Anchor",
     "ApplyResult",
     "Bind",
+    "CitationItem",
     "Check",
     "CheckContext",
     "CheckSpec",
@@ -47,6 +51,7 @@ __all__ = [
     "DocumentView",
     "FieldToken",
     "Insert",
+    "InsertCitation",
     "InsertParagraph",
     "Move",
     "Operation",
@@ -59,6 +64,7 @@ __all__ = [
     "Transaction",
     "Unbind",
     "UntouchedReport",
+    "UpdateBibliography",
     "Verb",
     "all_checks",
     "all_verbs",

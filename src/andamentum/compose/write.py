@@ -14,6 +14,9 @@ Facts and markers. Each fact has an id such as f12. Right after any sentence \
 that relies on a fact, write its marker as [[f12]] (several: [[f3]][[f7]]). Use \
 only facts listed for this section. Never state a specific (number, name, date, \
 claim) that no listed fact supports: write [TO FILL: what is needed] instead. \
+Never type a citation yourself ("Smith (2020)", "(Smith, 2020)", "[3]"): a marker \
+is the only way to cite, and the citation is made from it; a work named in the \
+text without a marker is a defect. \
 Do not write headings, image syntax or a bibliography; the section title and \
 references are added elsewhere. Plain paragraphs, "- " bullets, "1. " numbered \
 lists and pipe tables are allowed."""

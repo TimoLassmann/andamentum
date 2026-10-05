@@ -75,6 +75,7 @@ import datetime
 import uuid
 import zipfile
 from bisect import bisect_left, bisect_right
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -102,6 +103,7 @@ from ..kernel.ops import (
     CommentOp,
     Delete,
     Insert,
+    InsertCitation,
     InsertParagraph,
     Move,
     Operation,
@@ -111,6 +113,15 @@ from ..kernel.ops import (
     Unbind,
 )
 from ..kernel.view import Comment, DocumentView
+from .citations import (
+    Expansion,
+    FieldPlan,
+    convert_to_field,
+    entry_runs,
+    expand_citations,
+    field_instruction,
+    new_bibliography_paragraph,
+)
 from .anchors import HARNESS_NS, anchor_tag, project_id_part_xml, read_project_id
 from .field_spans import (
     Field,
@@ -290,7 +301,9 @@ class _Writer:
         txn: Transaction,
         parsed: ParsedDocx,
         package: _Package,
+        expansion: Expansion,
     ) -> None:
+        self.expansion = expansion
         self.view = view
         self.txn = txn
         self.parsed = parsed
@@ -321,6 +334,12 @@ class _Writer:
             etree.tostring(el, with_tail=False) for el in self.elements
         ]  # byte-identity baseline, taken before any change
         self.expected: list[str] = list(self.texts)
+        # Citation work: the edit of each field citation, where the fields
+        # went, and what the new or extended bibliography field must read as.
+        self.field_edits: dict[int, FieldPlan] = {}  # id(edit) -> plan
+        self.new_fields: list[tuple[int, str]] = []  # (original paragraph, display)
+        self.bibliography_append: tuple[Field, SpanEdit, list[str]] | None = None
+        self.bibliography_text: str | None = None  # a newly written field's result
 
     # ------------------------------------------------------------- helpers
 
@@ -422,18 +441,70 @@ class _Writer:
             origin[id(edit)] = index
             self.edits.append(edit)
             self.edit_paragraph[id(edit)] = paragraph
+            if index in self.expansion.citation_fields:
+                self.field_edits[id(edit)] = self.expansion.citation_fields[index]
+        self._plan_bibliography_append()
         return origin
 
-    def apply_edits(self, origin: dict[int, int]) -> None:
-        if not self.edits:
+    def _plan_bibliography_append(self) -> None:
+        """Entries to add to the document's Zotero bibliography field.
+
+        The text goes in as a tracked insertion at the end of the field's
+        result. It is not a surgery edit (surgery would put a line break in a
+        new paragraph and the writer refuses edits inside field results), but
+        it joins ``applied_edits`` so every later span is translated past it.
+        """
+        entries = self.expansion.append_entries
+        if not entries:
             return
-        atoms = document_atoms(self.elements)
-        first_id = next_change_id(self.root)
-        report = apply_edits(TextMap(atoms), self.edits)
-        self._hoist_insertions(first_id)
-        for loser, _winner in report.conflicted:
-            self._refuse(origin[id(loser)], "overlaps another edit in this transaction")
-        self.applied_edits = report.applied_edits
+        target = next(
+            (f for f in self.fields if "ZOTERO_BIBL" in field_instruction(f)), None
+        )
+        if target is None or target.sep is None:
+            raise DocxApplyError(
+                "the document has no Zotero bibliography field with a result to extend"
+            )
+        leading = target.stop > target.start
+        text = "".join(
+            (" " if position or leading else "") + entry
+            for position, entry in enumerate(entries)
+        )
+        edit = SpanEdit(
+            span=AtomSpan(target.stop, target.stop),
+            new_text=text,
+            author=self.txn.author,
+        )
+        self.edit_paragraph[id(edit)] = bisect_right(self.starts, target.stop) - 1
+        self.bibliography_append = (target, edit, list(entries))
+
+    def apply_edits(self, origin: dict[int, int]) -> None:
+        if not self.edits and self.bibliography_append is None:
+            return
+        applied: list[SpanEdit] = []
+        if self.edits:
+            atoms = document_atoms(self.elements)
+            first_id = next_change_id(self.root)
+            report = apply_edits(TextMap(atoms), self.edits)
+            self._hoist_insertions(first_id)
+            for loser, _winner in report.conflicted:
+                self._refuse(
+                    origin[id(loser)], "overlaps another edit in this transaction"
+                )
+            applied = list(report.applied_edits)
+            self._write_citation_fields(applied, report.insertions)
+        if self.bibliography_append is not None:
+            bibliography = self._write_bibliography_append()
+            applied.append(bibliography)
+        # Ties: the bibliography text sits inside the field, before an edit
+        # that was moved to its edge.
+        self.applied_edits = sorted(
+            applied,
+            key=lambda e: (
+                e.span.start,
+                self.bibliography_append is None
+                or e is not self.bibliography_append[1],
+            ),
+        )
         # Only edits that ran count as having touched their paragraph.
         self.text_edited = {self.edit_paragraph[id(e)] for e in self.applied_edits}
         self.touched |= self.text_edited
@@ -447,6 +518,40 @@ class _Writer:
                 + edit.new_text
                 + text[edit.span.end - base :]
             )
+
+    def _write_citation_fields(
+        self, applied: list[SpanEdit], insertions: dict[int, list[Any]]
+    ) -> None:
+        """Turn each applied citation insertion into a Zotero field."""
+        for edit in applied:
+            plan = self.field_edits.get(id(edit))
+            if plan is None:
+                continue
+            written = insertions.get(id(edit), [])
+            if len(written) != 1:
+                raise DocxApplyError(
+                    f"a citation insertion produced {len(written)} tracked insertions"
+                )
+            try:
+                convert_to_field(written[0], plan)
+            except ValueError as exc:
+                raise DocxApplyError(f"cannot write the citation field: {exc}") from exc
+            self.new_fields.append((self.edit_paragraph[id(edit)], plan.display))
+
+    def _write_bibliography_append(self) -> SpanEdit:
+        """Add the planned entries inside the bibliography field, tracked."""
+        assert self.bibliography_append is not None
+        target, edit, entries = self.bibliography_append
+        previous = target.end.getprevious()
+        rpr = previous.find(w("rPr")) if previous is not None else None
+        insertion = etree.Element(w("ins"))
+        insertion.set(w("id"), str(next_change_id(self.root)))
+        insertion.set(w("author"), self.txn.author)
+        insertion.set(w("date"), self.date)
+        for run in entry_runs(entries, rpr, leading_break=target.stop > target.start):
+            insertion.append(run)
+        target.end.addprevious(insertion)
+        return edit
 
     def _hoist_insertions(self, first_id: int) -> None:
         """Move each new tracked insertion out of a field result, hyperlink or
@@ -469,9 +574,19 @@ class _Writer:
             return
         fields = fields_in(self.elements, document_atoms(self.elements))
         new = set(created)
-        placed: dict[int, XmlNode] = {}  # id(anchor element) -> last element put after it
+        deleted = {
+            element
+            for element in self.root.iter(w("del"))
+            if (element.get(w("id")) or "").isdigit()
+            and int(element.get(w("id"))) >= first_id
+        }
+        placed: dict[
+            int, XmlNode
+        ] = {}  # id(anchor element) -> last element put after it
         for element in created:
             _hoist(self.root, element, fields, new, placed)
+        for element in created:
+            _adopt_replaced(element, deleted)
 
     # ------------------------------------------------------------- phase 2
 
@@ -495,6 +610,16 @@ class _Writer:
                     self._refuse(index, f"style {op.style!r} is not in the document")
                     continue
             paragraph = self._new_paragraph(op.text, style_id, cid=cid)
+            if index == self.expansion.new_bibliography:
+                try:
+                    new_bibliography_paragraph(
+                        paragraph, self.expansion.new_bibliography_entries
+                    )
+                except ValueError as exc:
+                    raise DocxApplyError(
+                        f"cannot write the bibliography field: {exc}"
+                    ) from exc
+                self.bibliography_text = op.text
             cid += 2
             anchor = after.get(reference, self.elements[reference])
             anchor.addnext(paragraph)
@@ -507,27 +632,7 @@ class _Writer:
         )
 
     def _style_ids(self) -> dict[str, str]:
-        """Lower-cased style name and id -> style id, from ``styles.xml``."""
-        with zipfile.ZipFile(self.view.path) as archive:
-            part = related_part(
-                archive,
-                self.parsed.document_part,
-                type_suffix="/styles",
-                fallback=_sibling(self.parsed.document_part, "styles.xml"),
-            )
-        data = self.package.get(part) if part else None
-        if data is None:
-            return {}
-        found: dict[str, str] = {}
-        for style in parse_xml(data).iter(w("style")):
-            style_id = style.get(w("styleId"))
-            if not style_id:
-                continue
-            found[style_id.lower()] = style_id
-            name = style.find(w("name"))
-            if name is not None and name.get(w("val")):
-                found[name.get(w("val")).lower()] = style_id
-        return found
+        return _read_style_ids(self.view.path, self.parsed, self.package)
 
     # ------------------------------------------------------------- phase 3
 
@@ -801,6 +906,32 @@ class _Writer:
             )
 
 
+def _read_style_ids(
+    path: Path, parsed: ParsedDocx, package: _Package
+) -> dict[str, str]:
+    """Lower-cased style name and id -> style id, from ``styles.xml``."""
+    with zipfile.ZipFile(path) as archive:
+        part = related_part(
+            archive,
+            parsed.document_part,
+            type_suffix="/styles",
+            fallback=_sibling(parsed.document_part, "styles.xml"),
+        )
+    data = package.get(part) if part else None
+    if data is None:
+        return {}
+    found: dict[str, str] = {}
+    for style in parse_xml(data).iter(w("style")):
+        style_id = style.get(w("styleId"))
+        if not style_id:
+            continue
+        found[style_id.lower()] = style_id
+        name = style.find(w("name"))
+        if name is not None and name.get(w("val")):
+            found[name.get(w("val")).lower()] = style_id
+    return found
+
+
 def _root_of(by_id: dict[str, Comment], comment_id: str) -> str:
     """The id of the first comment of *comment_id*'s thread."""
     seen = {comment_id}
@@ -944,6 +1075,35 @@ def _hoist(
                 target = target.getparent()
             target.addprevious(element)
         _restyle(element, donor.getparent() if donor is not None else None)
+
+
+def _adopt_replaced(insertion: Any, deleted: set[Any]) -> None:
+    """Move a replacement's insertion into the content control that holds the
+    text it replaces.
+
+    Surgery attaches inserted text after the character before it, so a
+    replacement of a whole control's text lands just before the control while
+    the deletion stays inside, leaving the control with no live text and the
+    anchor empty. When the next element is a control whose content starts with
+    a deletion of this transaction, the insertion goes first into that content,
+    with the run properties of the text it replaces.
+    """
+    following = insertion.getnext()
+    if following is None or following.tag != w("sdt"):
+        return
+    content = following.find(w("sdtContent"))
+    if content is None:
+        return
+    # A comment range may open inside the control, ahead of the deletion.
+    markers = (w("commentRangeStart"), w("bookmarkStart"))
+    position = 0
+    while position < len(content) and content[position].tag in markers:
+        position += 1
+    if position == len(content) or content[position] not in deleted:
+        return
+    first_run = content[position].find(w("r"))
+    content.insert(position, insertion)
+    _restyle(insertion, first_run)
 
 
 def _restyle(insertion: Any, donor_run: Any | None) -> None:
@@ -1306,7 +1466,57 @@ def _verify(writer: _Writer, output: Path) -> UntouchedReport:
             raise DocxApplyError(
                 f"anchor {new_anchor.anchor_id!r} is not where requested"
             )
+    _verify_citations(writer, view, out_index)
     return UntouchedReport(ok=True, changed_outside=[])
+
+
+def _zotero_citations(view: DocumentView, position_of: dict[str, int]) -> Counter:
+    """``(paragraph position, display)`` of every well-formed Zotero citation field."""
+    return Counter(
+        (position_of[token.paragraph_id], token.display)
+        for token in view.fields
+        if token.kind == "citation"
+        and token.manager == "zotero"
+        and "parse_error" not in token.data
+        and isinstance(token.data.get("citationItems"), list)
+    )
+
+
+def _verify_citations(
+    writer: _Writer, view: DocumentView, out_index: dict[int, int]
+) -> None:
+    """Citation fields and the bibliography read back as written."""
+    if writer.new_fields:
+        before = _zotero_citations(
+            writer.view,
+            {p.id: out_index[i] for i, p in enumerate(writer.view.paragraphs)},
+        )
+        after = _zotero_citations(
+            view, {p.id: i for i, p in enumerate(view.paragraphs)}
+        )
+        expected = Counter((out_index[i], d) for i, d in writer.new_fields)
+        missing = expected - (after - before)
+        if missing:
+            raise DocxApplyError(
+                f"citation fields missing from the output: {sorted(missing)}"
+            )
+    bibliographies = [
+        token
+        for token in view.fields
+        if token.kind == "bibliography" and token.manager == "zotero"
+    ]
+    if writer.bibliography_text is not None and not any(
+        token.display == writer.bibliography_text for token in bibliographies
+    ):
+        raise DocxApplyError("the new bibliography field is missing from the output")
+    if writer.bibliography_append is not None:
+        entries = writer.bibliography_append[2]
+        if not any(
+            all(entry in token.display for entry in entries) for token in bibliographies
+        ):
+            raise DocxApplyError(
+                "the bibliography field does not hold the entries that were added"
+            )
 
 
 # ------------------------------------------------------------------- adapter
@@ -1346,9 +1556,26 @@ class DocxAdapter:
                 f"the view is stale: {source} no longer has the paragraphs it was read with"
             )
         package = _read_package(source)
-        writer = _Writer(view, txn, parsed, package)
-
-        origin = writer.plan_edits()
+        style_ids = _read_style_ids(source, parsed, package)
+        # A citation the writer refuses must not leave its work in the
+        # bibliography: plan again without it, until no citation is refused.
+        dropped: dict[int, str] = {}
+        while True:
+            expansion = expand_citations(
+                view, txn, style_ids=style_ids, skip=frozenset(dropped)
+            )
+            writer = _Writer(view, expansion.txn, parsed, package, expansion)
+            origin = writer.plan_edits()
+            refused_citations = {
+                expansion.origin[i]: message
+                for i, message in writer.refusals.items()
+                if isinstance(txn.ops[expansion.origin[i]], InsertCitation)
+            }
+            if not refused_citations:
+                break
+            dropped.update(refused_citations)
+            parsed = parse_docx(source)
+            package = _read_package(source)
         writer.apply_edits(origin)
         writer.insert_paragraphs()
         comments = _CommentParts(
@@ -1366,10 +1593,12 @@ class DocxAdapter:
         except Exception:
             output.unlink(missing_ok=True)
             raise
+        refused = {expansion.origin[i]: m for i, m in writer.refusals.items()}
+        refused.update(dropped)
         return ApplyResult(
             output=output,
-            applied=len(txn.ops) - len(writer.refusals),
-            refused=[writer.refusals[i] for i in sorted(writer.refusals)],
+            applied=len(txn.ops) - len(refused),
+            refused=[refused[i] for i in sorted(refused)],
             untouched=untouched,
         )
 

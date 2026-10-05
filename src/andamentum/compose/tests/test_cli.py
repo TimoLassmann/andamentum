@@ -13,18 +13,10 @@ def run(argv: list[str]) -> int:
 
 
 def test_missing_role_model_exits_2_and_names_the_roles(tmp_path, capsys):
-    with pytest.raises(SystemExit) as exc:
-        run(
-            [
-                "write",
-                "Write to Jane Doe",
-                "--out",
-                str(tmp_path / "d"),
-                "--drafter",
-                "m",
-            ]
-        )
-    assert exc.value.code == 2
+    code = run(
+        ["write", "Write to Jane Doe", "--out", str(tmp_path / "d"), "--drafter", "m"]
+    )
+    assert code == 2
     err = capsys.readouterr().err
     assert "critic" in err and "judge" in err and "reader" in err
     assert "--model" in err
@@ -32,9 +24,25 @@ def test_missing_role_model_exits_2_and_names_the_roles(tmp_path, capsys):
 
 
 def test_no_models_at_all_exits_2(tmp_path):
-    with pytest.raises(SystemExit) as exc:
-        run(["write", "Write to Jane Doe", "--out", str(tmp_path / "d")])
-    assert exc.value.code == 2
+    assert run(["write", "Write to Jane Doe", "--out", str(tmp_path / "d")]) == 2
+
+
+def test_word_write_needs_only_the_drafter_and_the_judge(tmp_path, capsys):
+    out = str(tmp_path / "paper.docx")
+    assert run(["write", "t", "--out", out, "--drafter", "m"]) == 2
+    err = capsys.readouterr().err
+    assert "judge" in err and "critic" not in err and "reader" not in err
+
+
+def test_flags_of_the_other_destination_are_refused(tmp_path, capsys):
+    bundle = ["write", "t", "--out", str(tmp_path / "d"), "--model", "m"]
+    assert run([*bundle, "--library", "refs.json"]) == 2
+    assert "--library" in capsys.readouterr().err
+    word = ["write", "t", "--out", str(tmp_path / "p.docx"), "--model", "m"]
+    assert run([*word, "--research"]) == 2
+    assert "--research" in capsys.readouterr().err
+    assert run([*word, "--offline", "--library", "refs.json"]) == 2
+    assert "--offline" in capsys.readouterr().err
 
 
 def test_missing_required_arguments_exit_2():
@@ -47,16 +55,13 @@ def test_missing_required_arguments_exit_2():
 
 
 def test_unknown_format_exits_2(tmp_path):
-    with pytest.raises(SystemExit) as exc:
-        run(["write", "t", "--out", str(tmp_path), "--model", "m", "--format", "pdf"])
-    assert exc.value.code == 2
+    argv = ["write", "t", "--out", str(tmp_path), "--model", "m", "--format", "pdf"]
+    assert run(argv) == 2
 
 
 def test_resolve_roles_model_fills_the_gaps():
     parser = cli.build_parser()
-    args = parser.parse_args(
-        ["write", "t", "--out", "x", "--model", "base", "--critic", "big"]
-    )
+    args = parser.parse_args(["run", "bundle", "--model", "base", "--critic", "big"])
     roles = cli.resolve_roles(args, parser)
     assert roles == Roles(drafter="base", critic="big", judge="base", reader="base")
 

@@ -44,7 +44,6 @@ from andamentum.references import ReferenceHttp
 from .docx.reader import DocxReadError
 from .docx.writer import DocxAdapter
 from .kernel import (
-    ApplyResult,
     CheckContext,
     CommentOp,
     Diagnostic,
@@ -65,7 +64,8 @@ from .kernel.checks import (
     save_cached,
 )
 from .kernel.models import ModelRegistry
-from .kernel.store import HttpCache, CachedResponse
+from .kernel.store import ANSWER_MAX_AGE, ProjectCache
+from .project import project_dir, write_copy
 
 # Importing the check modules registers them.
 from .checks import (  # noqa: F401  (imported for registration)
@@ -154,23 +154,6 @@ class CheckRun(BaseModel):
     report_md: Path
     report_json: Path
     output: Path
-
-
-class _ProjectCache:
-    """The project's HTTP cache seen as the bytes cache ``ReferenceHttp`` takes."""
-
-    def __init__(self, cache: HttpCache) -> None:
-        self._cache = cache
-
-    def get(self, key: str) -> bytes | None:
-        found = self._cache.get(HttpCache.key("GET", key))
-        return None if found is None else found.body.encode("utf-8")
-
-    def put(self, key: str, value: bytes) -> None:
-        self._cache.put(
-            HttpCache.key("GET", key),
-            CachedResponse(url=key, status=200, body=value.decode("utf-8")),
-        )
 
 
 # ----------------------------------------------------------------- selection
@@ -282,7 +265,7 @@ def _comment_text(diagnostic: Diagnostic) -> str:
     return "\n".join(lines)
 
 
-def _comment_ops(view: DocumentView, diagnostics: list[Diagnostic]) -> list[CommentOp]:
+def comment_ops(view: DocumentView, diagnostics: list[Diagnostic]) -> list[CommentOp]:
     lengths = {p.id: len(p.text) for p in view.paragraphs}
     ops: list[CommentOp] = []
     for diagnostic in diagnostics:
@@ -368,9 +351,7 @@ async def run_check(
         view = adapter.open(params.file)
     except DocxReadError as exc:
         raise CheckUsageError(str(exc)) from exc
-    store = ProjectStore(
-        params.project or params.file.with_name(f"{params.file.stem}.harness")
-    )
+    store = ProjectStore(project_dir(params.file, view, params.project))
     try:
         meta = store.init(params.file, project_id=view.project_id)
     except ValueError as exc:
@@ -398,7 +379,7 @@ async def run_check(
             timeout=20.0,
             event_hooks={"request": [count_request]},
         )
-        cache = _ProjectCache(store.http_cache)
+        cache = ProjectCache(store.http_cache, max_age=ANSWER_MAX_AGE)
         http = (
             ReferenceHttp(
                 client=client, cache=cache, mailto=params.mailto, url_check=url_check
@@ -433,7 +414,13 @@ async def run_check(
             await http.client.aclose()
 
     ordered = _ordered(view, diagnostics)
-    result = _write_copy(adapter, view, ordered, out=out, project_id=meta.id)
+    transaction = Transaction(
+        ops=list(comment_ops(view, ordered)),
+        author=AUTHOR,
+        reason="check diagnostics as comments",
+        source="check",
+    )
+    result = write_copy(adapter, view, transaction, out=out, project_id=meta.id)
     counts = Counter(d.severity for d in ordered)
     report = CheckReport(
         file=str(params.file),
@@ -503,34 +490,6 @@ def _ordered(view: DocumentView, diagnostics: list[Diagnostic]) -> list[Diagnost
             d.start or 0,
         ),
     )
-
-
-def _write_copy(
-    adapter: DocxAdapter,
-    view: DocumentView,
-    diagnostics: list[Diagnostic],
-    *,
-    out: Path,
-    project_id: str,
-) -> ApplyResult:
-    """The commented copy at *out*, carrying the project id."""
-    out.parent.mkdir(parents=True, exist_ok=True)
-    transaction = Transaction(
-        ops=list(_comment_ops(view, diagnostics)),
-        author=AUTHOR,
-        reason="check diagnostics as comments",
-        source="check",
-    )
-    needs_id = view.project_id is None
-    staged = out.with_name(f".{out.name}.staged.docx") if needs_id else out
-    result = adapter.apply(view, transaction, output=staged)
-    if needs_id:
-        try:
-            adapter.write_project_id(staged, project_id=project_id, output=out)
-        finally:
-            staged.unlink(missing_ok=True)
-        result = result.model_copy(update={"output": out})
-    return result
 
 
 # -------------------------------------------------------------------- report
@@ -620,7 +579,8 @@ def _handle(params: CheckParams) -> int:
 CHECK_VERB = Verb(
     name="check",
     summary="check a .docx (citations, cross-references, statistics, numbers); "
-    "writes a commented copy and a report",
+    "writes a commented copy and a report. "
+    "Example: andamentum-compose check collaborator.docx --results results",
     params=CheckParams,
     handler=_handle,
 )

@@ -146,7 +146,9 @@ def load_cached(store: ProjectStore, key: str) -> list[Diagnostic] | None:
 
 
 def save_cached(store: ProjectStore, key: str, diagnostics: list[Diagnostic]) -> None:
-    store.cache_put(CACHE_NAMESPACE, key, [d.model_dump(mode="json") for d in diagnostics])
+    store.cache_put(
+        CACHE_NAMESPACE, key, [d.model_dump(mode="json") for d in diagnostics]
+    )
 
 
 def effective_tier(check: Check, *, precision: float | None) -> Tier:

@@ -1,0 +1,263 @@
+{
+  "_meta": {
+    "keys": {
+      "note": "same shape as bench/fixtures/crossref.json"
+    },
+    "provenance": "hand-written to match saltlog/refs.json; not a live recording",
+    "version": 1
+  },
+  "works": {
+    "10.5555/saltlog.001": {
+      "status": 200,
+      "body": {
+        "status": "ok",
+        "message-type": "work",
+        "message": {
+          "DOI": "10.5555/saltlog.001",
+          "URL": "https://doi.org/10.5555/saltlog.001",
+          "type": "journal-article",
+          "title": [
+            "Dietary sodium and blood pressure in community cohorts"
+          ],
+          "container-title": [
+            "Journal of Invented Nutrition"
+          ],
+          "author": [
+            {
+              "family": "Okafor",
+              "given": "Adaeze",
+              "sequence": "first"
+            }
+          ],
+          "issued": {
+            "date-parts": [
+              [
+                2019
+              ]
+            ]
+          },
+          "volume": "14",
+          "issue": "3",
+          "page": "211-224"
+        }
+      }
+    },
+    "10.5555/saltlog.002": {
+      "status": 200,
+      "body": {
+        "status": "ok",
+        "message-type": "work",
+        "message": {
+          "DOI": "10.5555/saltlog.002",
+          "URL": "https://doi.org/10.5555/saltlog.002",
+          "type": "journal-article",
+          "title": [
+            "Meal-by-meal sodium logging in adults: a feasibility study"
+          ],
+          "container-title": [
+            "Cinder Bay Clinical Letters"
+          ],
+          "author": [
+            {
+              "family": "Marlowe",
+              "given": "Tessa",
+              "sequence": "first"
+            },
+            {
+              "family": "Idris",
+              "given": "Karim",
+              "sequence": "additional"
+            }
+          ],
+          "issued": {
+            "date-parts": [
+              [
+                2021
+              ]
+            ]
+          },
+          "volume": "8",
+          "issue": "2",
+          "page": "101-113"
+        }
+      }
+    },
+    "10.5555/saltlog.003": {
+      "status": 200,
+      "body": {
+        "status": "ok",
+        "message-type": "work",
+        "message": {
+          "DOI": "10.5555/saltlog.003",
+          "URL": "https://doi.org/10.5555/saltlog.003",
+          "type": "journal-article",
+          "title": [
+            "Smartphone food diaries and reporting accuracy"
+          ],
+          "container-title": [
+            "Journal of Invented Nutrition"
+          ],
+          "author": [
+            {
+              "family": "Lindqvist",
+              "given": "Sofia",
+              "sequence": "first"
+            },
+            {
+              "family": "Tran",
+              "given": "Minh",
+              "sequence": "additional"
+            }
+          ],
+          "issued": {
+            "date-parts": [
+              [
+                2022
+              ]
+            ]
+          },
+          "volume": "17",
+          "issue": "1",
+          "page": "45-58"
+        }
+      }
+    }
+  },
+  "updates": {
+    "10.5555/saltlog.001": {
+      "status": 200,
+      "body": {
+        "status": "ok",
+        "message-type": "work-list",
+        "message": {
+          "items": [],
+          "total-results": 0
+        }
+      }
+    },
+    "10.5555/saltlog.002": {
+      "status": 200,
+      "body": {
+        "status": "ok",
+        "message-type": "work-list",
+        "message": {
+          "items": [],
+          "total-results": 0
+        }
+      }
+    },
+    "10.5555/saltlog.003": {
+      "status": 200,
+      "body": {
+        "status": "ok",
+        "message-type": "work-list",
+        "message": {
+          "items": [],
+          "total-results": 0
+        }
+      }
+    }
+  },
+  "search": {
+    "dietary sodium and blood pressure in community cohorts": [
+      {
+        "DOI": "10.5555/saltlog.001",
+        "URL": "https://doi.org/10.5555/saltlog.001",
+        "type": "journal-article",
+        "title": [
+          "Dietary sodium and blood pressure in community cohorts"
+        ],
+        "container-title": [
+          "Journal of Invented Nutrition"
+        ],
+        "author": [
+          {
+            "family": "Okafor",
+            "given": "Adaeze",
+            "sequence": "first"
+          }
+        ],
+        "issued": {
+          "date-parts": [
+            [
+              2019
+            ]
+          ]
+        },
+        "volume": "14",
+        "issue": "3",
+        "page": "211-224"
+      }
+    ],
+    "meal-by-meal sodium logging in adults: a feasibility study": [
+      {
+        "DOI": "10.5555/saltlog.002",
+        "URL": "https://doi.org/10.5555/saltlog.002",
+        "type": "journal-article",
+        "title": [
+          "Meal-by-meal sodium logging in adults: a feasibility study"
+        ],
+        "container-title": [
+          "Cinder Bay Clinical Letters"
+        ],
+        "author": [
+          {
+            "family": "Marlowe",
+            "given": "Tessa",
+            "sequence": "first"
+          },
+          {
+            "family": "Idris",
+            "given": "Karim",
+            "sequence": "additional"
+          }
+        ],
+        "issued": {
+          "date-parts": [
+            [
+              2021
+            ]
+          ]
+        },
+        "volume": "8",
+        "issue": "2",
+        "page": "101-113"
+      }
+    ],
+    "smartphone food diaries and reporting accuracy": [
+      {
+        "DOI": "10.5555/saltlog.003",
+        "URL": "https://doi.org/10.5555/saltlog.003",
+        "type": "journal-article",
+        "title": [
+          "Smartphone food diaries and reporting accuracy"
+        ],
+        "container-title": [
+          "Journal of Invented Nutrition"
+        ],
+        "author": [
+          {
+            "family": "Lindqvist",
+            "given": "Sofia",
+            "sequence": "first"
+          },
+          {
+            "family": "Tran",
+            "given": "Minh",
+            "sequence": "additional"
+          }
+        ],
+        "issued": {
+          "date-parts": [
+            [
+              2022
+            ]
+          ]
+        },
+        "volume": "17",
+        "issue": "1",
+        "page": "45-58"
+      }
+    ]
+  }
+}

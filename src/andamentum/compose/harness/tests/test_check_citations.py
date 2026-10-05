@@ -321,3 +321,45 @@ async def test_a_failed_retraction_lookup_is_a_warning_not_a_clean_report(monkey
     (d,) = [d for d in found if d.data["kind"] == "lookup_failed"]
     assert d.severity == "warning"
     assert "Retraction status" in d.message
+
+
+def _typed(surname: str, year: int) -> object:
+    return field(
+        "citation",
+        data={"works": [{"surname": surname, "year": year}]},
+        display=f"{surname} ({year})",
+    )
+
+
+async def test_a_plain_citation_with_no_reference_list_is_a_warning():
+    view = make_view(
+        ("As Marlowe (2021) showed, logging helps.", None),
+        fields=[_typed("Marlowe", 2021)],  # type: ignore[list-item]
+    )
+    (d,) = await run(view)
+    assert d.severity == "warning" and d.data["kind"] == "unlisted"
+    assert "no reference list" in d.message and d.paragraph_id == "p0"
+
+
+async def test_a_plain_citation_is_quiet_when_an_entry_names_its_author():
+    message = FIXTURES.crossref.works[VALID].body["message"]  # type: ignore[index, union-attr]
+    surname = message["author"][0]["family"]
+    year = message["issued"]["date-parts"][0][0]
+    view = make_view(
+        (f"As {surname} ({year}) showed, logging helps.", None),
+        ("References", 1),
+        (_entry(VALID), None),
+        fields=[_typed(surname, year)],  # type: ignore[list-item]
+    )
+    assert await run(view) == []
+
+
+async def test_a_plain_citation_no_entry_names_is_a_warning():
+    view = make_view(
+        ("As Marlowe (2021) showed, logging helps.", None),
+        ("References", 1),
+        (_entry(VALID), None),
+        fields=[_typed("Marlowe", 2021)],  # type: ignore[list-item]
+    )
+    (d,) = await run(view)
+    assert d.data["kind"] == "unlisted" and "no entry" in d.message

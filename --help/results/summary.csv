@@ -1,0 +1,10 @@
+metric,value
+enrolled,55
+completed,48
+completion_rate_pct,87.3
+sodium_week0_mg,3310
+sodium_week4_mg,2898
+mean_reduction_mg,412
+paired_t,3.12
+degrees_of_freedom,47
+p_value,0.003

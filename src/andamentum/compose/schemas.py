@@ -126,3 +126,14 @@ class ComposeResult(BaseModel):
     open_questions: list[str]
     brief: Brief
     usage: dict[str, int]  # tokens per role
+
+    def summary_lines(self) -> list[str]:
+        """What the CLI prints after a bundle run."""
+        lines = [
+            f"bundle: {self.bundle}",
+            f"goal met: {'yes' if self.goal_met else 'no'} ({self.stop_reason})",
+        ]
+        lines += [f"output: {path}" for path in self.outputs]
+        lines.append(f"report: {self.bundle / 'report.md'}")
+        lines += [f"open: {question}" for question in self.open_questions]
+        return lines

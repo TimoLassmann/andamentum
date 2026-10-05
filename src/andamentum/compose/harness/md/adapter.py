@@ -7,8 +7,8 @@ Ids are stable for one bundle across re-opens; an edit that inserts a block
 renumbers the blocks after it in the output, as the ids follow position.
 
 Supported ops: Insert, Replace, Delete, InsertParagraph. Markdown has no
-comments or content controls, so CommentOp, Reply, Bind, Move and Unbind raise
-NotImplementedError. Each op reads the text as left by the ops before it, so
+comments, content controls or citation fields, so CommentOp, Reply, Bind,
+InsertCitation, UpdateBibliography, Move and Unbind raise NotImplementedError. Each op reads the text as left by the ops before it, so
 two ops on one paragraph must use offsets that are still valid; a stale
 ``expect`` refuses the op. Limits: a block never contains a blank line (a
 fenced code block with one is split), and a section whose blocks are edited
@@ -28,18 +28,28 @@ from ..kernel.ops import (
     CommentOp,
     Delete,
     Insert,
+    InsertCitation,
     InsertParagraph,
     Move,
     Replace,
     Reply,
     Transaction,
     Unbind,
+    UpdateBibliography,
 )
 from ...bundle import Bundle
 from ..kernel.view import DocumentView, Paragraph
 
 _BLANK_LINE = re.compile(r"\n[ \t]*\n")
-_UNSUPPORTED = (CommentOp, Reply, Bind, Move, Unbind)
+_UNSUPPORTED = (
+    CommentOp,
+    Reply,
+    Bind,
+    InsertCitation,
+    UpdateBibliography,
+    Move,
+    Unbind,
+)
 
 
 def _blocks(body: str) -> list[str]:

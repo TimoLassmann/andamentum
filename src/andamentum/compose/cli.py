@@ -1,7 +1,12 @@
 """``andamentum-compose``: a task in, a finished document out. Never sends anything.
 
-Exit codes for ``write`` and ``run``: 0 goal met, 4 goal not met (outputs are
-still written), 3 crash. A missing role model or a bad argument exits 2.
+Exit codes for ``write`` and ``run``: 0 goal met (``write`` into Word: no check
+error left), 4 goal not met or open issues (outputs are still written), 3 crash.
+A missing role model or a bad argument exits 2.
+
+``write`` is a harness verb (``harness/draft/verb.py``): ``--out FILE.docx`` or
+``--into`` drafts into Word as tracked changes; any other ``--out`` is a bundle
+folder (the compose pipeline).
 
 ``check FILE.docx`` is the harness verb (see ``harness/check.py``: commented copy
 and report, exit 0/1/2/3); ``check-bundle DIR`` is the bundle's own one-pass check.
@@ -65,51 +70,41 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="andamentum-compose",
         description="A task in, a finished document out. Never sends anything.",
+        epilog="example: andamentum-compose check collaborator.docx --results results",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
-    write = sub.add_parser("write", help="write a document from a task")
-    write.add_argument("task", help="what to write, in your own words")
-    write.add_argument("--out", required=True, type=Path, help="new bundle folder")
-    write.add_argument("--genre", help="pack name or path to a genre .yaml")
-    write.add_argument(
-        "--source",
-        action="append",
-        default=[],
-        dest="sources",
-        help="a file or URL to draw on (repeatable)",
+    run = sub.add_parser(
+        "run",
+        help="continue an existing bundle",
+        epilog="example: andamentum-compose run memo --model anthropic:claude-haiku-4-5",
     )
-    write.add_argument("--max-rounds", type=int, default=4)
-    write.add_argument(
-        "--research",
-        action="store_true",
-        help="run web research once and add its report as a source (needs SearxNG)",
-    )
-    write.add_argument(
-        "--confirm-own-sources",
-        action="store_true",
-        help="proceed although a source looks confidential",
-    )
-    _add_models(write)
-    _add_output(write)
-
-    run = sub.add_parser("run", help="continue an existing bundle")
     run.add_argument("bundle", type=Path)
     run.add_argument("--max-rounds", type=int, default=4)
     run.add_argument("--confirm-own-sources", action="store_true")
     _add_models(run)
     _add_output(run)
 
-    status = sub.add_parser("status", help="show where a bundle stands")
+    status = sub.add_parser(
+        "status",
+        help="show where a bundle stands",
+        epilog="example: andamentum-compose status memo",
+    )
     status.add_argument("bundle", type=Path)
 
     check = sub.add_parser(
-        "check-bundle", help="run a bundle's checks once, without revising"
+        "check-bundle",
+        help="run a bundle's checks once, without revising",
+        epilog="example: andamentum-compose check-bundle memo --model anthropic:claude-haiku-4-5",
     )
     check.add_argument("bundle", type=Path)
     _add_models(check)
 
-    render = sub.add_parser("render", help="render a bundle's text to out/ again")
+    render = sub.add_parser(
+        "render",
+        help="render a bundle's text to out/ again",
+        epilog="example: andamentum-compose render memo --format docx",
+    )
     render.add_argument("bundle", type=Path)
     render.add_argument(
         "--model", help="producing model for provenance (default: recorded)"
@@ -123,19 +118,35 @@ def build_parser() -> argparse.ArgumentParser:
     render.add_argument("--out", type=Path, help="output file (with --raw)")
     _add_output(render)
 
-    new = sub.add_parser("new", help="create an empty bundle (no model)")
+    new = sub.add_parser(
+        "new",
+        help="create an empty bundle (no model)",
+        epilog='example: andamentum-compose new paper --title "SaltLog pilot" --scaffold article',
+    )
     new.add_argument("bundle", type=Path)
     new.add_argument("--title", required=True)
     new.add_argument("--scaffold", default=None, choices=sorted(SCAFFOLDS))
 
-    sections = sub.add_parser("sections", help="list a bundle's sections")
+    sections = sub.add_parser(
+        "sections",
+        help="list a bundle's sections",
+        epilog="example: andamentum-compose sections paper",
+    )
     sections.add_argument("bundle", type=Path)
 
-    show = sub.add_parser("show", help="print one section")
+    show = sub.add_parser(
+        "show",
+        help="print one section",
+        epilog="example: andamentum-compose show paper s01",
+    )
     show.add_argument("bundle", type=Path)
     show.add_argument("section_id")
 
-    edit = sub.add_parser("edit", help="replace a section's body")
+    edit = sub.add_parser(
+        "edit",
+        help="replace a section's body",
+        epilog="example: andamentum-compose edit paper s01 --from new-body.md --revision 1",
+    )
     edit.add_argument("bundle", type=Path)
     edit.add_argument("section_id")
     edit.add_argument(
@@ -145,18 +156,32 @@ def build_parser() -> argparse.ArgumentParser:
         "--revision", type=int, required=True, help="the revision you read"
     )
 
-    add = sub.add_parser("add", help="add a section")
+    add = sub.add_parser(
+        "add",
+        help="add a section",
+        epilog='example: andamentum-compose add paper --title "Limitations" --after s03',
+    )
     add.add_argument("bundle", type=Path)
     add.add_argument("--title", required=True)
     add.add_argument("--after", default=None, help="section id to insert after")
 
-    validate = sub.add_parser("validate", help="run the structural checks")
+    validate = sub.add_parser(
+        "validate",
+        help="run the structural checks",
+        epilog="example: andamentum-compose validate paper",
+    )
     validate.add_argument("bundle", type=Path)
 
-    sub.add_parser("genres", help="list the genre packs")
+    sub.add_parser(
+        "genres",
+        help="list the genre packs",
+        epilog="example: andamentum-compose genres",
+    )
 
     ev = sub.add_parser(
-        "eval", help="compose against a single-call baseline on the synthetic tasks"
+        "eval",
+        help="compose against a single-call baseline on the synthetic tasks",
+        epilog="example: andamentum-compose eval --genre memo --out eval-out --model anthropic:claude-haiku-4-5",
     )
     ev.add_argument(
         "--genre",
@@ -197,61 +222,21 @@ def resolve_roles(
     return Roles(**chosen)
 
 
-def _print_result(
-    result_bundle: Path,
-    *,
-    goal_met: bool,
-    stop: str,
-    outputs: list[Path],
-    open_questions: list[str],
-) -> None:
-    print(f"bundle: {result_bundle}")
-    print(f"goal met: {'yes' if goal_met else 'no'} ({stop})")
-    for path in outputs:
-        print(f"output: {path}")
-    print(f"report: {result_bundle / 'report.md'}")
-    for question in open_questions:
-        print(f"open: {question}")
+async def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    from .api import compose_bundle, recorded_roles
 
-
-async def _write_or_run(
-    args: argparse.Namespace, parser: argparse.ArgumentParser
-) -> int:
-    from .api import compose_bundle, recorded_roles, write_document
-
-    if args.command == "write":
-        roles = resolve_roles(args, parser)
-        result = await write_document(
-            args.task,
-            out=args.out,
-            roles=roles,
-            genre=args.genre,
-            sources=args.sources,
-            max_rounds=args.max_rounds,
-            research=args.research,
-            confirm_own_sources=args.confirm_own_sources,
-            provenance=not args.no_provenance,
-            formats=args.formats,
-            progress=_progress,
-        )
-    else:
-        roles = resolve_roles(args, parser, fallback=recorded_roles(args.bundle))
-        result = await compose_bundle(
-            args.bundle,
-            roles=roles,
-            max_rounds=args.max_rounds,
-            confirm_own_sources=args.confirm_own_sources,
-            provenance=not args.no_provenance,
-            formats=args.formats,
-            progress=_progress,
-        )
-    _print_result(
-        result.bundle,
-        goal_met=result.goal_met,
-        stop=result.stop_reason,
-        outputs=result.outputs,
-        open_questions=result.open_questions,
+    roles = resolve_roles(args, parser, fallback=recorded_roles(args.bundle))
+    result = await compose_bundle(
+        args.bundle,
+        roles=roles,
+        max_rounds=args.max_rounds,
+        confirm_own_sources=args.confirm_own_sources,
+        provenance=not args.no_provenance,
+        formats=args.formats,
+        progress=_progress,
     )
+    for line in result.summary_lines():
+        print(line)
     return EXIT_OK if result.goal_met else EXIT_NOT_MET
 
 
@@ -356,8 +341,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if getattr(args, "verb", None) is not None:
             return dispatch_verb(args)
-        if args.command in ("write", "run"):
-            return asyncio.run(_write_or_run(args, parser))
+        if args.command == "run":
+            return asyncio.run(_run(args, parser))
         if args.command == "check-bundle":
             return asyncio.run(_check(args, parser))
         if args.command == "eval":

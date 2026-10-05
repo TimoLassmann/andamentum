@@ -97,6 +97,25 @@ async def test_matched_claims_are_silent(monkeypatch, results):
     assert stub.calls == [PARAGRAPH]
 
 
+async def test_a_unit_after_the_number_does_not_hide_a_match(monkeypatch, results):
+    """The live model returned ``3,310 mg`` for a cell holding 3310."""
+    text = "Mean intake was 1,590 mg and 159 people took part, with 23.4 % lower."
+    (results / "units.csv").write_text("metric,value\nintake,1590\n", "utf-8")
+    install(
+        monkeypatch,
+        StubModel(
+            {
+                text: [
+                    claim("1,590 mg", sentence=text),
+                    claim("159 people", sentence=text),
+                    claim("23.4 %", sentence=text),
+                ]
+            }
+        ),
+    )
+    assert await NumbersCheck().run(make_view((text, None)), ctx(results)) == []
+
+
 async def test_percent_matches_a_fraction_at_the_written_precision(
     monkeypatch, results
 ):

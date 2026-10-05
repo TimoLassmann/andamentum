@@ -29,7 +29,7 @@ Four roles name the model for each job: `drafter`, `critic`, `judge`, `reader`. 
 - **Grant is generic.** No funder-shaped template. Funder specifics enter only through the call text the user passes as a source; the brief compiler puts it in `brief.guidelines`, and the planner may rename, add or drop sections to follow it. `provenance_required` is on, so `--no-provenance` is refused before any model call.
 - **One code path.** Genres are data (`genres.py`); nothing branches on a genre name. The email txt format is chosen by `brief.email_subject` being set, not by name. A genre can be loaded from a YAML path (`genre_for("x.yaml")`; stored absolute in the bundle metadata).
 - **Sequential model calls only.** Never `asyncio.gather` over model calls (local Ollama serialises them anyway).
-- **Why no MCP server.** The CLI and `write_document` already give a coding agent one call that returns a finished document and a report. An MCP wrapper would only repeat that call behind a protocol, so it is out of scope until something needs it.
+- **MCP server.** `andamentum-compose mcp` serves the harness verbs and a few native tools (open a document, show a section, apply edits through the safe writer) to Claude Code and Claude for Word. Every tool writes a copy and hashes its input files before and after; `apply_edits` cannot write citations, which go through the verifying `insert_citation`. The bundle pipeline (`write_document`) is reached through `write` with a non-`.docx` `--out`. See `harness/CLAUDE.md`.
 
 ## Layering
 

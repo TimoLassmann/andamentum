@@ -145,6 +145,9 @@ the full flag reference.
 
 ## Documentation
 
+Writing into Word (`andamentum-compose`: write, check, refresh, respond,
+MCP): [`docs/compose.md`](./docs/compose.md).
+
 See [`docs/`](./docs/) for module-level documentation and
 [`examples/`](./examples/) for runnable code demonstrating common workflows.
 

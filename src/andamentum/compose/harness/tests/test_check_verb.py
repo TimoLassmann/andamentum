@@ -224,7 +224,9 @@ async def test_a_fixed_field_payload_is_not_served_from_the_cache(tmp_path: Path
     path = tmp_path / "cite.docx"
     _field_document(path, "{not json")
     first = await run(path, offline=True, checks=["crossrefs"])
-    assert any(d.data.get("kind") == "unparseable_field" for d in first.report.diagnostics)
+    assert any(
+        d.data.get("kind") == "unparseable_field" for d in first.report.diagnostics
+    )
 
     # The display text is unchanged; only the field's payload is repaired.
     _field_document(path, json.dumps({"citationItems": [{"id": "x"}]}))
@@ -253,8 +255,8 @@ async def test_a_calibration_record_for_another_model_is_refused(tmp_path: Path)
     folder = tmp_path / "cite.harness" / "calibration"
     folder.mkdir(parents=True)
     pairs = [(0.9, True)] * 10 + [(0.1, False)] * 10
-    calibrate(
-        pairs, model="ollama:a", digest="d", task="needs_citation"
-    ).save(folder / "needs_citation.json")
+    calibrate(pairs, model="ollama:a", digest="d", task="needs_citation").save(
+        folder / "needs_citation.json"
+    )
     with pytest.raises(CheckUsageError, match="measured on 'ollama:a'"):
         await run(path, offline=True, decision_model="ollama:b")

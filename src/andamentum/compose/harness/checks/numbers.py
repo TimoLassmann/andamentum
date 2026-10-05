@@ -54,7 +54,7 @@ MAX_CANDIDATES = 3
 _NAMESPACE = "numbers"
 _SUFFIXES = {".csv": ",", ".tsv": "\t", ".json": None}
 _REFERENCE_HEADINGS = {"references", "bibliography", "works cited", "reference list"}
-_NUMBER = re.compile(r"[-−]?\d[\d,]*\.?\d*|[-−]?\.\d+")
+_NUMBER = re.compile(r"[-−]?\d+(?:,\d{3})*(?:\.\d+)?|[-−]?\.\d+")
 
 _INSTRUCTIONS = (
     "You read one paragraph of a research manuscript. List each numeric claim "
@@ -142,12 +142,26 @@ def load_results(directory: Path) -> tuple[list[ResultNumber], list[str]]:
     return results, digests
 
 
+def _numeric_part(written: str) -> str:
+    """The number of a value as the model extracted it, without a trailing unit.
+
+    The model is told to give the number as written but often adds the unit
+    (``3,310 mg``); code compares the number alone, keeping a ``%`` sign.
+    """
+    found = _NUMBER.search(written)
+    if found is None:
+        return written
+    number = found.group(0)
+    return number + "%" if written[found.end() :].lstrip().startswith("%") else number
+
+
 def _decimals(written: str) -> int:
     text = written.strip().rstrip("%")
     return len(text.split(".")[1]) if "." in text else 0
 
 
 def _matches(written: str, results: list[ResultNumber]) -> list[ResultNumber]:
+    written = _numeric_part(written)
     claimed = _to_float(written)
     if claimed is None:
         return []
@@ -162,6 +176,7 @@ def _matches(written: str, results: list[ResultNumber]) -> list[ResultNumber]:
 
 
 def _nearest(written: str, results: list[ResultNumber]) -> list[ResultNumber]:
+    written = _numeric_part(written)
     claimed = _to_float(written)
     if claimed is None:
         return []

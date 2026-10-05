@@ -107,6 +107,55 @@ class Bind(_Ranged):
         return self
 
 
+class CitationItem(BaseModel):
+    """One work in a citation: its CSL JSON and how this citation points at it.
+
+    ``uri`` is set only when the work came from Zotero (its item URI); the
+    writer puts it in the field's ``uris`` and never invents one.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    csl: dict[str, object]
+    locator: str | None = None
+    prefix: str | None = None
+    suffix: str | None = None
+    uri: str | None = None
+
+
+class InsertCitation(_Op):
+    """A citation of one or more works at ``at`` in the paragraph text.
+
+    The docx writer writes a Zotero field when the document already uses
+    Zotero fields (or an item has a ``uri``) and plain formatted text
+    otherwise; either way as a tracked insertion in the document's own style.
+    """
+
+    op: Literal["insert_citation"] = "insert_citation"
+    paragraph_id: str
+    at: int
+    items: list[CitationItem]
+
+    @model_validator(mode="after")
+    def _check(self) -> InsertCitation:
+        if self.at < 0:
+            raise ValueError(f"citation position {self.at} is negative")
+        if not self.items:
+            raise ValueError("a citation needs at least one item")
+        return self
+
+
+class UpdateBibliography(_Op):
+    """Document-level: list every cited work the reference list is missing.
+
+    Works are those of the ``InsertCitation`` ops in the same transaction and
+    of the Zotero fields already in the document. Entries are added as tracked
+    changes; existing entries are never rewritten.
+    """
+
+    op: Literal["update_bibliography"] = "update_bibliography"
+
+
 class Move(_Op):
     """Declared in the kernel; the docx writer raises NotImplementedError for it."""
 
@@ -130,6 +179,8 @@ Operation = Annotated[
     | CommentOp
     | Reply
     | Bind
+    | InsertCitation
+    | UpdateBibliography
     | Move
     | Unbind,
     Field(discriminator="op"),

@@ -412,7 +412,7 @@ def test_a_text_box_written_twice_is_read_once(tmp_path: Path):
     body = paragraph(
         run("Host ")
         + "<mc:AlternateContent>"
-        + f"<mc:Choice Requires=\"wps\">{box}</mc:Choice>"
+        + f'<mc:Choice Requires="wps">{box}</mc:Choice>'
         + f"<mc:Fallback>{box}</mc:Fallback>"
         + "</mc:AlternateContent>"
         + run(" text.")

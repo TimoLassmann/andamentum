@@ -69,6 +69,7 @@ dependencies = [
     # v2 unbundled the bedrock provider; core.models imports it, hence the extra.
     "pydantic-ai[bedrock]>=2.22,<3",  # whetstone / epistemic / deep-research
     "pydantic-graph>=2.22,<3",       # graph state machines (whetstone, deep-research)
+    "mcp>=1.27,<2",                  # compose: the stdio MCP server (already in the lock via pydantic-ai)
     "python-dotenv>=1.0.0,<2",       # epistemic / deep-research demos
     "rich>=13.0.0,<16",              # epistemic / whetstone CLI rendering
     "markdown>=3.5.0,<4",            # typeset

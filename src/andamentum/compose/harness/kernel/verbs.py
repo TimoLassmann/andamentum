@@ -169,7 +169,15 @@ def dispatch_verb(args: argparse.Namespace) -> int:
 # Modules that define verbs. Each exposes ``VERBS: tuple[Verb, ...]``; the
 # loader registers the ones not yet registered, so it is safe to call twice
 # (and after a test cleared the registry).
-VERB_MODULES: tuple[str, ...] = ("andamentum.compose.harness.check",)
+VERB_MODULES: tuple[str, ...] = (
+    "andamentum.compose.harness.check",
+    "andamentum.compose.harness.bindings.bind",
+    "andamentum.compose.harness.bindings.refresh",
+    "andamentum.compose.harness.respond.run",
+    "andamentum.compose.harness.literature.verbs",
+    "andamentum.compose.harness.draft.verb",
+    "andamentum.compose.harness.mcp_server",
+)
 
 
 def load_builtin_verbs() -> None:

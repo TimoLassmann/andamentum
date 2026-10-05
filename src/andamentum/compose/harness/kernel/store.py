@@ -15,7 +15,9 @@ import json
 import os
 import subprocess
 import tempfile
+import time
 import uuid
+from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -25,6 +27,8 @@ from pydantic import BaseModel, ConfigDict
 from .view import DocumentView
 
 SCHEMA_VERSION = 1
+# How long a Crossref answer stays good: a work can be retracted after it was checked.
+ANSWER_MAX_AGE = 7 * 24 * 3600.0
 GIT_AUTHOR_NAME = "andamentum harness"
 GIT_AUTHOR_EMAIL = "harness@localhost"
 
@@ -44,6 +48,9 @@ class CachedResponse(BaseModel):
     status: int
     body: str
     content_type: str | None = None
+    fetched: float = (
+        0.0  # epoch seconds; 0 (unknown) counts as stale for a ProjectCache
+    )
 
 
 def _atomic_write(path: Path, text: str) -> None:
@@ -90,6 +97,46 @@ class HttpCache:
 
     def put(self, key: str, response: CachedResponse) -> None:
         _atomic_write(self.directory / f"{key}.json", response.model_dump_json())
+
+
+class ProjectCache:
+    """The project's HTTP cache seen as the bytes cache ``ReferenceHttp`` takes.
+
+    The project cache outlives sessions, so an answer older than *max_age*
+    seconds is fetched again: a work checked once may be retracted later.
+    """
+
+    def __init__(
+        self,
+        cache: HttpCache,
+        *,
+        max_age: float,
+        clock: Callable[[], float] = time.time,
+    ) -> None:
+        self._cache = cache
+        self._max_age = max_age
+        self._clock = clock
+
+    def get(self, key: str) -> bytes | None:
+        found = self._cache.get(HttpCache.key("GET", key))
+        if found is None:
+            return None
+        if self._clock() - found.fetched > self._max_age:
+            self._cache.hits -= 1
+            self._cache.misses += 1
+            return None
+        return found.body.encode("utf-8")
+
+    def put(self, key: str, value: bytes) -> None:
+        self._cache.put(
+            HttpCache.key("GET", key),
+            CachedResponse(
+                url=key,
+                status=200,
+                body=value.decode("utf-8"),
+                fetched=self._clock(),
+            ),
+        )
 
 
 class ProjectStore:

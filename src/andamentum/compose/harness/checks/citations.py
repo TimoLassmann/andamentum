@@ -26,7 +26,8 @@ usually a robot block.
 
 Coverage limits: a URL stored only as a hyperlink target (the display text
 being something else) is not read, because the view carries no link targets;
-a plain-text citation outside a reference list is not looked up; the existence
+a plain-text citation outside a reference list is not looked up (only reported
+when no entry of the document's reference list names its first author); the existence
 check cannot tell a missing record from a Crossref gap, which is why it warns.
 Lookups run one after another.
 """
@@ -45,7 +46,9 @@ from andamentum.references import (
     resolve_cited_work,
     resolve_entry,
 )
+from andamentum.references.models import CitedWork
 from andamentum.references.parse import find_reference_list, split_entries
+from andamentum.references.resolve import resolve_work
 
 from ..kernel import (
     CheckContext,
@@ -228,7 +231,7 @@ def _urls(view: DocumentView) -> list[tuple[str, str, int, int]]:
 
 class CitationsCheck:
     spec = CheckSpec(id="citations", tier=0, scope="document", needs=["network"])
-    version = "1"
+    version = "2"
 
     async def run(self, view: DocumentView, ctx: CheckContext) -> list[Diagnostic]:
         if ctx.http is None:
@@ -256,7 +259,48 @@ class CitationsCheck:
                     data={"kind": "lookup_failed"},
                 )
             )
+        out.extend(self._unlisted(view))
         out.extend(await self._url_diagnostics(view, http))
+        return out
+
+    def _unlisted(self, view: DocumentView) -> list[Diagnostic]:
+        """Plain-text author-year citations no reference-list entry answers.
+
+        Such a citation names a work nothing in the document lets a reader (or
+        the existence check) find, so it stands unverified.
+        """
+        entries = [w.entry for w in _entry_works(view) if w.entry is not None]
+        out: list[Diagnostic] = []
+        for token in view.fields:
+            if token.kind != "citation" or token.manager != "none":
+                continue
+            works = token.data.get("works")
+            if not isinstance(works, list):
+                continue
+            for raw in works:
+                if not isinstance(raw, dict):
+                    continue
+                work = CitedWork.model_validate(raw)
+                if resolve_work(work, entries).status != "missing":
+                    continue
+                reason = (
+                    "no entry of the reference list names it"
+                    if entries
+                    else "the document has no reference list"
+                )
+                out.append(
+                    Diagnostic(
+                        check=self.spec.id,
+                        tier=self.spec.tier,
+                        severity="warning",
+                        paragraph_id=token.paragraph_id,
+                        start=token.start,
+                        end=token.end,
+                        message=f"Could not verify the citation {token.display!r}: {reason}.",
+                        evidence=[token.display],
+                        data={"kind": "unlisted", "surname": work.surname},
+                    )
+                )
         return out
 
     # ------------------------------------------------------------ works
