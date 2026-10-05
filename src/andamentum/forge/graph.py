@@ -22,6 +22,8 @@ from pathlib import Path
 
 from pydantic_graph import BaseNode, End, EndMarker, GraphBuilder, GraphRunContext
 
+from andamentum.core.agents import llm_concurrency
+
 from .agents import MODEL_OUTPUT_ERRORS, AgentSink, CoreAgentSink
 from .audit import audit_system
 from .build import build_system
@@ -164,6 +166,7 @@ class Decompose(BaseNode[ForgeState, ForgeDeps, ForgeResult]):
             sink=ctx.deps.sink,
             max_jobs_per_area=ctx.deps.max_jobs_per_area,
             max_nodes=ctx.deps.max_nodes,
+            concurrency=llm_concurrency(ctx.deps.model),
         )
         ctx.state.plan = plan
         ctx.state.design_report = design_report

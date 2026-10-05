@@ -1,4 +1,4 @@
-"""Tests for core.decisions: wire shape (stubbed HTTP) and calibration maths."""
+"""Tests for core.decisions: the wire shape, limits and the one-shot helpers (stubbed HTTP)."""
 
 from __future__ import annotations
 
@@ -9,12 +9,15 @@ import pytest
 
 from andamentum.core import decisions
 from andamentum.core.decisions import (
-    CalibrationRecord,
+    DecisionModelUnavailable,
     DecisionQuestion,
-    calibrate,
+    DecisionRequestRejected,
+    DecisionRequestTooLarge,
+    Question,
     decide,
     model_digest,
-    threshold_for,
+    model_name,
+    question_hash,
 )
 
 
@@ -103,11 +106,23 @@ async def test_decide_rejects_empty_questions() -> None:
         await decide("s", {}, model="ollama:nimble", transport=_transport(RESPONSE))
 
 
-async def test_decide_http_error_raises() -> None:
-    with pytest.raises(httpx.HTTPStatusError):
+async def test_decide_http_errors_are_decision_errors() -> None:
+    with pytest.raises(DecisionModelUnavailable, match="ollama pull"):
         await decide(
             "s", QUESTIONS, model="ollama:nimble", transport=_transport({}, status=404)
         )
+    with pytest.raises(DecisionModelUnavailable, match="500"):
+        await decide(
+            "s", QUESTIONS, model="ollama:nimble", transport=_transport({}, status=500)
+        )
+    with pytest.raises(DecisionRequestRejected) as rejected:
+        await decide(
+            "s",
+            QUESTIONS,
+            model="ollama:nimble",
+            transport=_transport({"error": "input too long"}, status=400),
+        )
+    assert rejected.value.status == 400 and "too long" in str(rejected.value)
 
 
 @pytest.mark.parametrize(
@@ -139,82 +154,91 @@ def test_question_validation() -> None:
         DecisionQuestion(type="choice", instructions="q", options=["a", "a"])
 
 
+def test_question_options_descriptions_and_criteria() -> None:
+    described = Question(
+        type="choice", instructions="q", options={"a": "the first", "b": "the second"}
+    )
+    assert described.wire()["criteria"] == {"a": "the first", "b": "the second"}
+    assert Question(type="choice", instructions="q", options=["a", "b"]).wire()[
+        "criteria"
+    ] == {"a": "a", "b": "b"}
+    noul = Question(
+        type="noul", instructions="q", criteria={"true": "it holds", "false": "no"}
+    )
+    assert noul.wire()["criteria"] == {"true": "it holds", "false": "no"}
+    with pytest.raises(ValueError, match="'true' and 'false'"):
+        Question(type="noul", instructions="q", criteria={"maybe": "x"})
+    with pytest.raises(ValueError, match="takes options"):
+        Question(type="choice", instructions="q", options=["a", "b"], criteria={})
+    with pytest.raises(ValueError, match="2 to 26"):
+        Question(type="choice", instructions="q", options=["only"])
+    with pytest.raises(ValueError, match="2 to 26"):
+        Question(type="choice", instructions="q", options=[str(i) for i in range(27)])
+    with pytest.raises(ValueError, match="a list"):
+        Question(type="score", instructions="q", options={"a": "x", "b": "y"})
+    assert DecisionQuestion is Question
+
+
+def test_question_hash_follows_what_the_question_asks() -> None:
+    base = Question(type="choice", instructions="q", options={"a": "x", "b": "y"})
+    same = Question(type="choice", instructions="q", options={"b": "y", "a": "x"})
+    assert question_hash(base) == question_hash(same)  # option order is irrelevant
+    for changed in (
+        Question(type="choice", instructions="other", options={"a": "x", "b": "y"}),
+        Question(type="choice", instructions="q", options={"a": "x", "b": "z"}),
+        Question(type="choice", instructions="q", options={"a": "x", "c": "y"}),
+    ):
+        assert question_hash(changed) != question_hash(base)
+
+
+def test_model_name_accepts_both_forms_and_refuses_other_providers() -> None:
+    assert model_name("ollama:nimble:9b") == "nimble:9b"
+    assert model_name("nimble:9b") == "nimble:9b"
+    assert model_name("ollama:tev1") == "tev1"
+    for bad in ("openai:gpt-5", "anthropic:claude", "ollama:", ""):
+        with pytest.raises(ValueError, match="ollama:<name>"):
+            model_name(bad)
+
+
+async def test_noul_answers_carry_p_true() -> None:
+    q = {"claim": QUESTIONS["claim"]}
+    resp = {"answers": {"claim": {"type": "noul", "noul": 0.9}}}
+    out = await decide("s", q, model="ollama:nimble", transport=_transport(resp))
+    assert out["claim"].p_true == 0.9
+
+
+async def test_the_request_limits_are_checked_before_sending() -> None:
+    seen: list[httpx.Request] = []
+    many = {f"q{i}": QUESTIONS["claim"] for i in range(65)}
+    with pytest.raises(DecisionRequestTooLarge, match="65 questions"):
+        await decide("s", many, model="nimble", transport=_transport(RESPONSE, seen))
+    with pytest.raises(DecisionRequestTooLarge, match="bytes"):
+        await decide(
+            "x" * 70_000,
+            {"claim": QUESTIONS["claim"]},
+            model="nimble",
+            transport=_transport(RESPONSE, seen),
+        )
+    assert seen == []
+
+
 async def test_model_digest() -> None:
     seen: list[httpx.Request] = []
     listing = {
         "models": [
             {"name": "other:1b", "digest": "zzz"},
             {"name": "nimble:9b", "digest": "abc"},
+            {"name": "tev1:latest", "digest": "lat"},
         ]
     }
     digest = await model_digest("ollama:nimble:9b", transport=_transport(listing, seen))
     assert digest == "abc"
     assert seen[0].url.path == "/api/tags"
+    assert await model_digest("tev1", transport=_transport(listing)) == "lat"
     with pytest.raises(ValueError, match="no digest"):
         await model_digest("ollama:missing", transport=_transport(listing))
     with pytest.raises(ValueError, match="no digest"):
         await model_digest("ollama:nimble:9b", transport=_transport({}))
-
-
-# --- calibration -----------------------------------------------------------
-
-PAIRS = [(0.9, True)] * 8 + [(0.9, False)] * 2 + [(0.1, False)] * 8 + [(0.1, True)] * 2
-
-
-def test_calibrate_ece_and_bins() -> None:
-    rec = calibrate(PAIRS, model="ollama:m", digest="d", task="t")
-    assert rec.n == 20 and rec.base_rate == 0.5
-    assert rec.ece == pytest.approx(0.1)
-    top, low = rec.bins[9], rec.bins[1]
-    assert (
-        top.count == 10 and top.fraction_positive == 0.8 and top.mean_probability == 0.9
-    )
-    assert low.count == 10 and low.fraction_positive == 0.2
-    assert rec.bins[5].count == 0 and rec.bins[5].mean_probability is None
-
-
-def test_perfectly_calibrated_has_zero_ece() -> None:
-    pairs = [(1.0, True)] * 5 + [(0.0, False)] * 5
-    assert calibrate(pairs, model="m", digest="d", task="t").ece == 0.0
-
-
-def test_probability_one_lands_in_last_bin() -> None:
-    rec = calibrate([(1.0, True)], model="m", digest="d", task="t")
-    assert rec.bins[-1].count == 1
-
-
-def test_precision_recall_at_thresholds() -> None:
-    rec = calibrate(PAIRS, model="m", digest="d", task="t")
-    at_half = next(t for t in rec.thresholds if t.threshold == 0.5)
-    assert (
-        at_half.predicted == 10 and at_half.precision == 0.8 and at_half.recall == 0.8
-    )
-    assert rec.stats_at(0.95).precision is None
-
-
-def test_threshold_for() -> None:
-    pairs = [(0.2, False)] * 5 + [(0.6, False), (0.6, True)] * 3 + [(0.9, True)] * 6
-    assert threshold_for(pairs, precision=0.95) == 0.9
-    assert threshold_for(pairs, precision=0.5) == 0.2
-    assert threshold_for(pairs, precision=1.0, min_support=7) is None
-    with pytest.raises(ValueError):
-        threshold_for(pairs, precision=0.0)
-
-
-def test_calibrate_validates() -> None:
-    with pytest.raises(ValueError):
-        calibrate([], model="m", digest="d", task="t")
-    with pytest.raises(ValueError):
-        calibrate([(1.2, True)], model="m", digest="d", task="t")
-
-
-def test_record_roundtrip(tmp_path) -> None:
-    rec = calibrate(PAIRS, model="ollama:m", digest="sha256:x", task="needs_citation")
-    path = tmp_path / "rec.json"
-    rec.save(path)
-    again = CalibrationRecord.load(path)
-    assert again == rec and again.digest == "sha256:x"
-    assert again.threshold_for(precision=0.8) == rec.threshold_for(precision=0.8)
 
 
 def test_public_exports() -> None:
@@ -224,8 +248,9 @@ def test_public_exports() -> None:
         "decide",
         "DecisionQuestion",
         "DecisionAnswer",
-        "calibrate",
-        "CalibrationRecord",
+        "DecisionModel",
+        "Question",
+        "Answer",
     ):
         assert name in core.__all__
     assert core.decide is decisions.decide

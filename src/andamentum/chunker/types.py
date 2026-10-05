@@ -49,6 +49,8 @@ class ChunkingResult(BaseModel):
     model_calls: int
     retries_used: int
     windows_processed: int
+    # Cuts a decision model decided without an LLM call (0 without one).
+    decision_calls: int = 0
 
     @property
     def extracted_chars(self) -> int:

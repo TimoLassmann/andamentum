@@ -40,6 +40,8 @@ from collections.abc import Sequence
 
 import httpx
 
+from andamentum.core.decisions import DecisionModel
+
 from .check import check_citations
 from .cited import resolve_cited_work, resolve_entry
 from .decide import decide_style, judge_candidates
@@ -97,6 +99,7 @@ async def check_references(
     lookup: bool = True,
     mailto: str | None = None,
     client: httpx.AsyncClient | None = None,
+    decision_model: DecisionModel | None = None,
 ) -> ReferenceReport:
     """Check the references of *text*.
 
@@ -108,6 +111,10 @@ async def check_references(
     the evidence is mixed; ``None`` means such cases are reported as
     undecided. *mailto* joins Crossref's polite pool; *client* lets a caller
     (or a test) supply the HTTP client.
+
+    *decision_model* — an opened ``core.decisions.DecisionModel`` — answers
+    the candidates the rules leave open instead of *model* (yes when
+    ``p >= 0.5``). ``None`` (the default) changes nothing. See :mod:`.gate`.
     """
     span = find_reference_list(text, sections=sections)
     has_notes = any(h.kind == "note" for h in hints or []) or bool(
@@ -147,6 +154,7 @@ async def check_references(
             style=report.style.style,
             model=model,
             author_block_end=author_block_end,
+            decision_model=decision_model,
         )
         report.problems = check_citations(
             entries,

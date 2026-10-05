@@ -22,6 +22,7 @@ from andamentum.compose.harness.check import (
 )
 from andamentum.compose.harness.docx.reader import open_docx
 from andamentum.compose.harness.kernel import ProjectStore
+from andamentum.core.decisions.testing import StubDecisions, noul_answer
 
 
 @pytest.fixture(scope="module")
@@ -49,11 +50,12 @@ def sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-async def run(path: Path, **kw):
+async def run(path: Path, *, decision_handle=None, **kw):
     return await run_check(
         CheckParams(file=path, **kw),
         transport=fixture_transport(),
         url_check=scheme_only_url_check,
+        decision_handle=decision_handle,
     )
 
 
@@ -138,24 +140,21 @@ async def test_choosing_checks(manuscript: Path):
     assert {s.id for s in result.report.skipped} >= {"citations", "numbers"}
 
 
-async def test_model_judged_diagnostics_are_advisory_without_a_record(
-    manuscript: Path, monkeypatch: pytest.MonkeyPatch
+def always_yes() -> StubDecisions:
+    return StubDecisions(
+        lambda state, questions: {k: noul_answer(0.99) for k in questions}
+    )
+
+
+async def test_model_judged_diagnostics_are_advisory(
+    manuscript: Path,
 ):
-    from andamentum.compose.harness.checks import needs_citation
-    from andamentum.core.decisions import DecisionAnswer
-
-    async def always_yes(state, questions, *, model, **_kw):
-        return {
-            "needs_citation": DecisionAnswer(
-                choice="yes", probabilities={"yes": 0.99, "no": 0.01}, confidence=0.99
-            )
-        }
-
-    monkeypatch.setattr(needs_citation, "decide", always_yes)
-    result = await run(manuscript, decision_model="ollama:nimble:9b")
+    stub = always_yes()
+    result = await run(manuscript, decision_handle=stub.model())
     gate = [d for d in result.report.diagnostics if d.check == "needs_citation"]
     assert gate and all(d.severity == "info" and d.tier == 2 for d in gate)
     assert result.report.model_calls > 0
+    assert result.report.input_tokens > 0
     assert "needs_citation" in result.report.checks_run
 
 
@@ -247,16 +246,3 @@ async def test_the_project_checks_yaml_holds_the_structure_limits(tmp_path: Path
     assert [d.check for d in result.report.diagnostics] == ["structure"]
 
 
-async def test_a_calibration_record_for_another_model_is_refused(tmp_path: Path):
-    from andamentum.core.decisions import calibrate
-
-    path = tmp_path / "cite.docx"
-    _field_document(path, json.dumps({"citationItems": [{"id": "x"}]}))
-    folder = tmp_path / "cite.harness" / "calibration"
-    folder.mkdir(parents=True)
-    pairs = [(0.9, True)] * 10 + [(0.1, False)] * 10
-    calibrate(pairs, model="ollama:a", digest="d", task="needs_citation").save(
-        folder / "needs_citation.json"
-    )
-    with pytest.raises(CheckUsageError, match="measured on 'ollama:a'"):
-        await run(path, offline=True, decision_model="ollama:b")

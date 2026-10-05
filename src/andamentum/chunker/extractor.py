@@ -9,7 +9,8 @@ Three stages, in order, each cheaper and more reliable than the next:
      embeddings.
   3. JUDGE   — optional. For each cut whose semantic-drop percentile is in
      the grey zone (60–90th), ask a small LLM `keep | merge`. Cuts the
-     judge says to merge are removed.
+     judge says to merge are removed. With ``decision_model`` a decision model
+     answers instead of the LLM.
 
 Public entry point: ``extract_units``. The output is a ``ChunkingResult``
 with ``Unit`` objects whose ``text`` is byte-identical to a source span —
@@ -23,8 +24,10 @@ from typing import Awaitable, Callable
 
 from andamentum.core.embeddings import infer_input_budget_chars
 
+from andamentum.core.decisions import DecisionModel
+
 from .embeddings import EmbeddingFn, make_ollama_embedder
-from .judge import judge_cut
+from .judge import judge_cut, judge_cut_decided
 from .prompts import TARGET_MAX_CHARS, TARGET_MIN_CHARS
 from .semantic_split import semantic_split_section
 from .structural import build_section_tree, find_headings, split_section_recursively
@@ -50,6 +53,7 @@ async def extract_units(
     judge_executor: ExecutorFn | None = None,
     judge_low_pct: float = 0.60,
     judge_high_pct: float = 0.90,
+    decision_model: DecisionModel | None = None,
     domain: str = "general",
     # ----- Backward-compat aliases (ignored or remapped) -------------------
     primary_executor: ExecutorFn | None = None,
@@ -87,6 +91,11 @@ async def extract_units(
     judge_low_pct / judge_high_pct:
         The grey-zone band (cosine-drop percentile range) for which the
         judge is consulted. Defaults: 60–90th percentile.
+    decision_model:
+        Optional, an opened ``core.decisions.DecisionModel``. Stage 3 then asks
+        it "do LEFT and RIGHT continue the same topic?" instead of calling
+        ``judge_executor`` (``p >= 0.5`` merges). None (the default) is stage 3
+        exactly as before.
     domain:
         Currently unused — accepted for API compatibility with the old
         chunker. Future hook for domain-specific rules.
@@ -94,8 +103,9 @@ async def extract_units(
     Returns
     -------
     A ``ChunkingResult`` whose units' ``text`` is byte-identical to a
-    contiguous span of ``source``. ``model_calls`` is the count of judge
-    calls (0 if no judge_executor was provided).
+    contiguous span of ``source``. ``model_calls`` is the count of LLM judge
+    calls (0 if no judge_executor was provided); ``decision_calls`` counts the
+    cuts a decision model decided.
     """
     # --- Backward-compat: silently accept legacy params -----------------
     _ = (
@@ -107,10 +117,8 @@ async def extract_units(
         lookahead,
         domain,
     )
-    # If no explicit judge_executor but a primary_executor was passed in
-    # (legacy callers), use it as the judge — they already wired up an LLM.
-    if judge_executor is None and primary_executor is not None:
-        judge_executor = primary_executor
+    # Stage 3 runs only when ``judge_executor`` is given explicitly: a legacy
+    # ``primary_executor`` is ignored, never promoted to the judge.
 
     if not source.strip():
         return ChunkingResult(
@@ -145,6 +153,7 @@ async def extract_units(
 
     # ===== Stage 2: semantic split for over-budget pieces =================
     judge_calls = 0
+    decision_calls = 0
     candidate_grey_zone_cuts: list[tuple[int, float, float]] = []
     # Lazy-init embedder only if we have over-budget pieces.
     embedder: EmbeddingFn | None = None
@@ -185,17 +194,24 @@ async def extract_units(
         refined_pieces.extend(sub_spans)
 
     # ===== Stage 3: LLM judge on grey-zone cuts ==========================
-    if judge_executor is not None and candidate_grey_zone_cuts:
+    if (
+        judge_executor is not None or decision_model is not None
+    ) and candidate_grey_zone_cuts:
         # Sort by offset so we process spans in order
         cuts_to_judge = sorted({c[0] for c in candidate_grey_zone_cuts})
         cuts_to_remove: set[int] = set()
         for cut in cuts_to_judge:
-            verdict = await judge_cut(
-                executor=judge_executor,
-                source=source,
-                cut_offset=cut,
-            )
-            judge_calls += 1
+            if decision_model is not None:
+                verdict = await judge_cut_decided(
+                    decision_model=decision_model, source=source, cut_offset=cut
+                )
+                decision_calls += 1
+            else:
+                assert judge_executor is not None
+                verdict = await judge_cut(
+                    executor=judge_executor, source=source, cut_offset=cut
+                )
+                judge_calls += 1
             if verdict.decision == "merge":
                 cuts_to_remove.add(cut)
         if cuts_to_remove:
@@ -249,6 +265,7 @@ async def extract_units(
         gaps=gaps,
         total_chars=len(source),
         model_calls=judge_calls,
+        decision_calls=decision_calls,
         retries_used=0,
         windows_processed=len(refined_pieces),
     )

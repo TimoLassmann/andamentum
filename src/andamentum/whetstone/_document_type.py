@@ -17,7 +17,12 @@ misconfigured, out of credit) propagates: it is not a statement about
 the document, and every call after this one is about to fail the same
 way.
 
-Public API: ``classify(model, sections, markdown) -> DocumentType``.
+An opt-in decision model (``decision_model=``, an opened ``core.decisions``
+handle) answers a six-way ``choice`` question instead of the LLM call: its top
+choice is the type. Without it the classifier above runs, unchanged.
+
+Public API: ``classify(model=..., section_titles=..., markdown=...,
+decision_model=None) -> DocumentType``.
 """
 
 from __future__ import annotations
@@ -26,6 +31,8 @@ import logging
 from typing import Literal
 
 from pydantic import BaseModel, Field, ValidationError
+
+from andamentum.core.decisions import DecisionModel, Question
 
 logger = logging.getLogger("andamentum.whetstone")
 
@@ -52,26 +59,54 @@ DOCUMENT_TYPES: tuple[DocumentType, ...] = (
 _BODY_SAMPLE_CHARS: int = 1500
 
 
+# What each type means. One text, read twice: it is the classifier schema's
+# field description (`_TYPE_GUIDE`, unchanged from before the decision model
+# existed) and the option descriptions of the decision question.
+_TYPE_DESCRIPTIONS: dict[DocumentType, str] = {
+    "academic": (
+        "manuscripts, theses, conference papers, white papers — scholarly "
+        "writing intended for academic publication."
+    ),
+    "external_communication": (
+        "blog posts, LinkedIn articles, emails, op-eds, press releases — "
+        "text written for a broad non-academic audience."
+    ),
+    "essay": (
+        "personal essays, narrative essays, opinion essays — first-person "
+        "argument from observation or experience."
+    ),
+    "tutorial": (
+        "how-tos, technical walkthroughs, cookbooks — reader is trying to "
+        "accomplish a task."
+    ),
+    "creative": (
+        "short fiction, memoir, narrative non-fiction — story craft is the substance."
+    ),
+    "general": (
+        "notes, drafts, technical documentation, internal writeups — "
+        "anything that fits none of the above."
+    ),
+}
+_TYPE_GUIDE = " ".join(f"{t}: {d}" for t, d in _TYPE_DESCRIPTIONS.items())
+
+
 class DocumentTypeDecision(BaseModel):
     """Classifier output. Same shape as brain's RouterClassification."""
 
-    document_type: DocumentType = Field(
-        description=(
-            "academic: manuscripts, theses, conference papers, white "
-            "papers — scholarly writing intended for academic "
-            "publication. external_communication: blog posts, LinkedIn "
-            "articles, emails, op-eds, press releases — text written for "
-            "a broad non-academic audience. essay: personal essays, "
-            "narrative essays, opinion essays — first-person argument "
-            "from observation or experience. tutorial: how-tos, "
-            "technical walkthroughs, cookbooks — reader is trying to "
-            "accomplish a task. creative: short fiction, memoir, "
-            "narrative non-fiction — story craft is the substance. "
-            "general: notes, drafts, technical documentation, internal "
-            "writeups — anything that fits none of the above."
-        )
-    )
+    document_type: DocumentType = Field(description=_TYPE_GUIDE)
     reasoning: str = Field(description="One short sentence explaining the choice.")
+
+
+# The question put to a decision model; its options are the six types with the
+# same descriptions the classifier schema carries.
+QUESTION = Question(
+    type="choice",
+    instructions=(
+        "Which kind of document is this? Judge from the section titles and "
+        "the body sample, which is the first part of the document."
+    ),
+    options={name: text for name, text in _TYPE_DESCRIPTIONS.items()},
+)
 
 
 def _build_prompt(section_titles: list[str], body_sample: str) -> str:
@@ -94,7 +129,7 @@ def _build_prompt(section_titles: list[str], body_sample: str) -> str:
     )
 
 
-async def classify(
+async def _classify_with_llm(
     *,
     model: str | None,
     section_titles: list[str],
@@ -163,3 +198,31 @@ async def classify(
         decision.reasoning,
     )
     return decision.document_type
+
+
+async def classify(
+    *,
+    model: str | None,
+    section_titles: list[str],
+    markdown: str,
+    decision_model: DecisionModel | None = None,
+) -> DocumentType:
+    """The document type.
+
+    With *decision_model* the decision model's top choice is the answer and
+    no LLM call is made (a server failure raises ``DecisionError``). Without
+    it, :func:`_classify_with_llm` runs; see it for the failure rules.
+    """
+    if decision_model is None:
+        return await _classify_with_llm(
+            model=model, section_titles=section_titles, markdown=markdown
+        )
+    state = {
+        "section_titles": [t for t in section_titles if t.strip()],
+        "body": markdown[:_BODY_SAMPLE_CHARS],
+    }
+    answer = (await decision_model.decide(state, {"type": QUESTION}))["type"]
+    for name in DOCUMENT_TYPES:
+        if answer.choice == name:
+            return name
+    raise ValueError(f"decision model chose {answer.choice!r}, not a document type")

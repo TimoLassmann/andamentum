@@ -1,5 +1,5 @@
 """Model registry: which model fills which role or decision, with its digest
-and calibration record. Entries come from code or from ``checks.yaml``."""
+Entries come from code or from ``checks.yaml``."""
 
 from __future__ import annotations
 
@@ -7,6 +7,8 @@ from collections.abc import Mapping
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
+
+from andamentum.core.decisions import DecisionModel
 
 
 class ModelEntry(BaseModel):
@@ -16,9 +18,6 @@ class ModelEntry(BaseModel):
     kind: Literal["llm", "decision"] = "llm"
     id: str  # "provider:name", as everywhere in andamentum
     digest: str | None = None  # content digest of local weights, when known
-    calibration: str | None = (
-        None  # path of the calibration record, relative to the project
-    )
 
 
 class ModelRegistry:
@@ -49,7 +48,7 @@ class ModelRegistry:
         """Build from the ``models:`` mapping of ``checks.yaml``.
 
         Each key is a role; the value is a model id string or a mapping with
-        ``id`` and the optional ``kind``, ``digest``, ``calibration``.
+        ``id`` and the optional ``kind``, ``digest``.
         """
         registry = cls()
         raw = config.get("models", {})
@@ -65,3 +64,19 @@ class ModelRegistry:
                     f"model entry for {role!r} must be a string or mapping"
                 )
         return registry
+
+
+async def open_decision_model(
+    name: str | None, *, injected: DecisionModel | None = None
+) -> tuple[DecisionModel | None, bool]:
+    """The run's decision-model handle and whether the caller must close it.
+
+    ``injected`` (tests, library callers) is used as given; otherwise ``name``
+    (``--decision-model``) is opened and checked against the local Ollama
+    server. Raises ``DecisionModelUnavailable`` when it cannot be.
+    """
+    if injected is not None:
+        return injected, False
+    if not name:
+        return None, False
+    return await DecisionModel.open(name), True

@@ -6,6 +6,10 @@ on each side of the proposed cut and answers `keep | merge | move_left | move_ri
 
 Per the project rule "schemas FLAT and SIMPLE because small local models
 fill them", the output is a single enum-ish field with a 1-line reason.
+
+With a decision model (``judge_cut_decided``) the typed question
+``MERGE_QUESTION`` is asked about the same two windows instead of the LLM;
+p >= 0.5 merges.
 """
 
 from __future__ import annotations
@@ -13,6 +17,8 @@ from __future__ import annotations
 from typing import Awaitable, Callable, Literal
 
 from pydantic import BaseModel, Field
+
+from andamentum.core.decisions import DecisionModel, Question
 
 # An executor with the same signature the rest of the codebase uses, so
 # callers can re-use whatever they already wired up for AgentRunner.
@@ -31,6 +37,17 @@ Rules:
 - Default to "keep" when uncertain — over-segmentation is preferred to
   silently merging two distinct topics.
 """
+
+
+# The decision-model form of the same question. "true" means merge.
+MERGE_QUESTION = Question(
+    type="noul",
+    instructions=(
+        "LEFT and RIGHT are two adjacent blocks of one document, with a "
+        "chunk boundary proposed between them. Do LEFT and RIGHT continue the "
+        "same topic, so that the boundary should be removed?"
+    ),
+)
 
 
 class JudgeVerdict(BaseModel):
@@ -66,6 +83,17 @@ def _build_judge_prompt(left: str, right: str, *, ctx_chars: int = 400) -> str:
 Decision: keep or merge?"""
 
 
+def judge_state(left: str, right: str, *, ctx_chars: int = 400) -> dict[str, object]:
+    """The state the decision model sees: the same bounded windows as the prompt."""
+    return {"left": left[-ctx_chars:], "right": right[:ctx_chars]}
+
+
+def _windows(source: str, cut_offset: int, ctx_chars: int) -> tuple[str, str]:
+    left = source[max(0, cut_offset - ctx_chars * 2) : cut_offset]
+    right = source[cut_offset : cut_offset + ctx_chars * 2]
+    return left, right
+
+
 async def judge_cut(
     *,
     executor: ExecutorFn,
@@ -81,8 +109,7 @@ async def judge_cut(
     user-affecting errors, but a judge call is purely advisory — failing
     it shouldn't crash the whole chunking run).
     """
-    left = source[max(0, cut_offset - ctx_chars * 2) : cut_offset]
-    right = source[cut_offset : cut_offset + ctx_chars * 2]
+    left, right = _windows(source, cut_offset, ctx_chars)
     prompt = _build_judge_prompt(left, right, ctx_chars=ctx_chars)
 
     try:
@@ -100,3 +127,31 @@ async def judge_cut(
         # Default to keeping the cut when the judge fails. The caller can
         # inspect the reason field to flag this for telemetry.
         return JudgeVerdict(decision="keep", reason=f"judge unavailable: {exc}")
+
+
+async def judge_cut_decided(
+    *,
+    decision_model: DecisionModel,
+    source: str,
+    cut_offset: int,
+    ctx_chars: int = 400,
+) -> JudgeVerdict:
+    """Judge one cut with the decision model instead of the LLM.
+
+    ``p >= 0.5`` is "merge". A failed call keeps the cut, as ``judge_cut`` does.
+    """
+    left, right = _windows(source, cut_offset, ctx_chars)
+    try:
+        answers = await decision_model.decide(
+            judge_state(left, right, ctx_chars=ctx_chars), {"merge": MERGE_QUESTION}
+        )
+        p_true = answers["merge"].p_true
+        if p_true is None:
+            raise ValueError("decision model returned no probability")
+    except Exception as exc:
+        return JudgeVerdict(
+            decision="keep", reason=f"decision model unavailable: {exc}"
+        )
+    if p_true >= 0.5:
+        return JudgeVerdict(decision="merge", reason="decision model: same topic")
+    return JudgeVerdict(decision="keep", reason="decision model: different topics")

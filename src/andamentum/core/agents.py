@@ -23,11 +23,13 @@ import asyncio
 import logging
 import os
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any, Awaitable, Callable, Iterable, TypeVar
 
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
+
+T = TypeVar("T")
 
 
 # Global concurrency caps for in-flight LLM calls per AgentRunner.
@@ -43,6 +45,61 @@ logger = logging.getLogger(__name__)
 _DEFAULT_LOCAL_CONCURRENCY = 1
 _DEFAULT_CLOUD_CONCURRENCY = 8
 _CONCURRENCY_ENV_VAR = "ANDAMENTUM_LLM_CONCURRENCY"
+
+
+def is_local_model(model: Any) -> bool:
+    """True if ``model`` (an ``ollama:`` id or a resolved model object) runs locally.
+
+    Currently identifies Ollama models.
+    """
+    # String form: "ollama:llama3" etc.
+    if isinstance(model, str):
+        return model.startswith("ollama:")
+    # Resolved-object form: check the class name to avoid hard-importing
+    # pydantic-ai's optional Ollama provider.
+    return type(model).__name__.lower().startswith("ollama")
+
+
+def llm_concurrency(model: Any) -> int:
+    """Maximum in-flight LLM calls for ``model``: 1 if local, else 8.
+
+    The one place the rule lives. ``AgentRunner`` sizes its semaphore with it,
+    and code that fans out over LLM calls itself (``deep_research``, ``forge``)
+    bounds its fan-out with it via :func:`gather_llm`. ``$ANDAMENTUM_LLM_CONCURRENCY``
+    overrides it.
+    """
+    default = (
+        _DEFAULT_LOCAL_CONCURRENCY
+        if is_local_model(model)
+        else _DEFAULT_CLOUD_CONCURRENCY
+    )
+    env_override = os.environ.get(_CONCURRENCY_ENV_VAR)
+    if env_override is None:
+        return default
+    try:
+        return max(1, int(env_override))
+    except ValueError:
+        logger.warning(
+            "Invalid %s=%r; falling back to auto-detected default",
+            _CONCURRENCY_ENV_VAR,
+            env_override,
+        )
+        return default
+
+
+async def gather_llm(calls: Iterable[Awaitable[T]], *, concurrency: int) -> list[T]:
+    """``asyncio.gather`` with at most ``concurrency`` of ``calls`` in flight.
+
+    Results keep the order of ``calls``. ``concurrency=1`` runs them strictly one
+    after another. A call that raises propagates, as with ``asyncio.gather``.
+    """
+    semaphore = asyncio.Semaphore(max(1, concurrency))
+
+    async def bounded(call: Awaitable[T]) -> T:
+        async with semaphore:
+            return await call
+
+    return list(await asyncio.gather(*(bounded(c) for c in calls)))
 
 
 @dataclass(frozen=True)
@@ -81,33 +138,9 @@ class AgentRunner:
         self.model = resolve_model(model) if isinstance(model, str) else model
         self._cache: dict[str, Any] = {}
 
-        # Global semaphore bounding in-flight LLM calls. Auto-sized
-        # based on whether the model is local (Ollama) or cloud:
-        # local defaults to 1 (strict serial — Ollama serialises
-        # inference anyway), cloud defaults to 8 (sustainable for most
-        # cloud tiers). Override with $ANDAMENTUM_LLM_CONCURRENCY for
-        # specific limits.
-        env_override = os.environ.get(_CONCURRENCY_ENV_VAR)
-        if env_override is not None:
-            try:
-                concurrency = max(1, int(env_override))
-            except ValueError:
-                logger.warning(
-                    "Invalid %s=%r; falling back to auto-detected default",
-                    _CONCURRENCY_ENV_VAR,
-                    env_override,
-                )
-                concurrency = (
-                    _DEFAULT_LOCAL_CONCURRENCY
-                    if self.is_local
-                    else _DEFAULT_CLOUD_CONCURRENCY
-                )
-        else:
-            concurrency = (
-                _DEFAULT_LOCAL_CONCURRENCY
-                if self.is_local
-                else _DEFAULT_CLOUD_CONCURRENCY
-            )
+        # Global semaphore bounding in-flight LLM calls, sized by
+        # ``llm_concurrency`` (local 1, cloud 8, env override).
+        concurrency = llm_concurrency(model)
         self._concurrency = concurrency
         self._semaphore = asyncio.Semaphore(concurrency)
         logger.info(
@@ -131,12 +164,7 @@ class AgentRunner:
         them — so callers should run their agent fan-outs sequentially
         to avoid timeout cascades.
         """
-        # String form: "ollama:llama3" etc.
-        if isinstance(self._model_input, str):
-            return self._model_input.startswith("ollama:")
-        # Resolved-object form: check the class name to avoid hard-importing
-        # pydantic-ai's optional Ollama provider.
-        return type(self._model_input).__name__.lower().startswith("ollama")
+        return is_local_model(self._model_input)
 
     async def run(
         self,

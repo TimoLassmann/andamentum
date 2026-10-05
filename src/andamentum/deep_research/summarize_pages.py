@@ -1,4 +1,5 @@
-"""Worker: summarize every fetched page in parallel via ``page_summarizer``.
+"""Worker: summarize every fetched page via ``page_summarizer``, in parallel for cloud
+models and strictly one at a time for a local (Ollama) model.
 
 Engine-free (L2). Per-page summarization failure is the one allowed soft
 failure (L7): the page gets a zero-relevance placeholder summary and the
@@ -7,11 +8,12 @@ run continues.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import Any
 
 from pydantic_ai.usage import UsageLimits
+
+from andamentum.core.agents import gather_llm, llm_concurrency
 
 from .build_agent import AgentOverrides, build_agent
 from .models import FetchedPage, PageSummary
@@ -31,7 +33,7 @@ async def summarize_pages(
     overrides: AgentOverrides | None = None,
     reporter: SearchReporter = NOOP_REPORTER,
 ) -> list[PageSummary]:
-    """Summarize ``pages`` concurrently; returns summaries sorted by relevance.
+    """Summarize ``pages``; returns summaries sorted by relevance.
 
     Keeps ALL summaries, sorted by relevance descending. Relevance is a
     *sort key* (higher first), not a *gate* (drop low). Synthesis frames
@@ -78,7 +80,9 @@ then derive a relevance score from the scale."""
             )
 
     reporter.summarize_starting(n_pages=len(pages))
-    summaries = await asyncio.gather(*[summarize(p) for p in pages])
+    summaries = await gather_llm(
+        [summarize(p) for p in pages], concurrency=llm_concurrency(model)
+    )
 
     sorted_summaries = sorted(summaries, key=lambda s: s.relevance_score, reverse=True)
     for s in sorted_summaries:

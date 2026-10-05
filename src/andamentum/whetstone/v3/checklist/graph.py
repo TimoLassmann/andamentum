@@ -75,6 +75,8 @@ from .run_probes import run_probes
 from .verify import verify_probe_findings
 
 if TYPE_CHECKING:
+    from andamentum.core.decisions import DecisionModel
+
     from ...reviewed_document import ReviewedDocument
     from ..reviewers import ReviewerProfile
 
@@ -328,6 +330,7 @@ async def run_checklist_v3(
     confirm_own_draft: bool = False,
     reviewer: "ReviewerProfile | None" = None,
     patch_author: str | None = None,
+    decision_model: "DecisionModel | None" = None,
 ) -> ReviewResult:
     """Run the checklist bank over already-harvested markdown.
 
@@ -377,6 +380,11 @@ async def run_checklist_v3(
         The tracked-change author the caller will render with, recorded in the
         reviewer header so the report names the same author the ``.docx`` will
         carry. It configures nothing else.
+    decision_model:
+        An opened ``core.decisions.DecisionModel`` that may answer the
+        document-type question under ``document_type="auto"`` before the LLM
+        classifier is asked, instead of the LLM classifier. ``None`` leaves the run
+        as it was.
     confirm_own_draft:
         Bypasses the confidentiality-marker tripwire. Checklist mode gets the
         same gate review mode has and for the same reason — the tool is for
@@ -413,12 +421,16 @@ async def run_checklist_v3(
         # graph's first node is cheap (no LLM).
         titles = [s.title for s in (sections or sectionize(markdown))]
         document_type = await classify(
-            model=model, section_titles=titles, markdown=markdown
+            model=model,
+            section_titles=titles,
+            markdown=markdown,
+            decision_model=decision_model,
         )
         # classify() is one LLM call and does not touch the metrics module
         # itself (that would couple _document_type.py to v3 internals), so
-        # it is counted here.
-        increment_llm_calls(1)
+        # it is counted here. A decision model makes no LLM call.
+        if decision_model is None:
+            increment_llm_calls(1)
 
     resolved = resolve(
         profile=profile,
@@ -450,6 +462,7 @@ async def checklist_document_v3(
     confirm_own_draft: bool = False,
     reviewer: "ReviewerProfile | None" = None,
     patch_author: str | None = None,
+    decision_model: "DecisionModel | None" = None,
 ) -> ReviewResult:
     """Checklist entry from a path / URL / markdown blob, or an open document.
 
@@ -476,6 +489,7 @@ async def checklist_document_v3(
             confirm_own_draft=confirm_own_draft,
             reviewer=reviewer,
             patch_author=patch_author,
+            decision_model=decision_model,
         )
     finally:
         if owned:

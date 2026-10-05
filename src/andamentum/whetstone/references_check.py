@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING
 from .schemas import Finding, Quote, ReviewResult, SectionCard
 
 if TYPE_CHECKING:
+    from andamentum.core.decisions import DecisionModel
     from andamentum.references import ReferenceReport
 
     from .reviewed_document import ReviewedDocument
@@ -46,23 +47,42 @@ async def check_document_references(
     lookup: bool = True,
     mailto: str | None = None,
     confirm_own_draft: bool = False,
+    decision_model: str | None = None,
 ) -> tuple[ReviewResult, "ReviewedDocument"]:
     """Check *source*'s references; return the result and the document read.
 
     The confidentiality tripwire runs first, as in every other mode: a
     reference check of someone else's manuscript still sends its reference
     list to a public service.
+
+    *decision_model* names a local Ollama decision model (``nimble:9b``); it
+    is opened and checked here, and a server or model that is not there raises
+    ``DecisionModelUnavailable`` before anything is read.
     """
+    from andamentum.core.decisions import DecisionModel
+
     from .reviewed_document import open_source
 
-    document = await open_source(str(source))
-    result = await check_open_document(
-        document,
-        model=model,
-        lookup=lookup,
-        mailto=mailto,
-        confirm_own_draft=confirm_own_draft,
-    )
+    if decision_model is None:
+        document = await open_source(str(source))
+        result = await check_open_document(
+            document,
+            model=model,
+            lookup=lookup,
+            mailto=mailto,
+            confirm_own_draft=confirm_own_draft,
+        )
+        return result, document
+    async with await DecisionModel.open(decision_model) as handle:
+        document = await open_source(str(source))
+        result = await check_open_document(
+            document,
+            model=model,
+            lookup=lookup,
+            mailto=mailto,
+            confirm_own_draft=confirm_own_draft,
+            decision_model=handle,
+        )
     return result, document
 
 
@@ -73,6 +93,7 @@ async def check_open_document(
     lookup: bool,
     mailto: str | None = None,
     confirm_own_draft: bool = False,
+    decision_model: "DecisionModel | None" = None,
 ) -> ReviewResult:
     """Check the references of a document the caller already opened.
 
@@ -100,6 +121,7 @@ async def check_open_document(
         model=model,
         lookup=lookup,
         mailto=mailto,
+        decision_model=decision_model,
     )
     return to_review_result(report, document=document)
 

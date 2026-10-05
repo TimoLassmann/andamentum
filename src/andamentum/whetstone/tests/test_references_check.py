@@ -67,3 +67,31 @@ def test_an_output_with_an_unknown_extension_is_refused(tmp_path: Path) -> None:
     with pytest.raises(SystemExit) as exit_info:
         cli_mod.main(["references", str(source), "--out", str(tmp_path / "x.txt")])
     assert exit_info.value.code == 1
+
+
+def test_an_unavailable_decision_model_stops_the_run_before_reading(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from andamentum.core.decisions import DecisionModel, DecisionModelUnavailable
+
+    async def unavailable(*_args: object, **_kwargs: object) -> DecisionModel:
+        raise DecisionModelUnavailable("run: ollama pull nimble:9b")
+
+    monkeypatch.setattr(DecisionModel, "open", unavailable)
+    source = tmp_path / "draft.docx"
+    _draft(source)
+    out = tmp_path / "x.md"
+    with pytest.raises(SystemExit) as exit_info:
+        cli_mod.main(
+            [
+                "references",
+                str(source),
+                "--no-lookup",
+                "--out",
+                str(out),
+                "--decision-model",
+                "nimble:9b",
+            ]
+        )
+    assert exit_info.value.code == 1
+    assert not out.exists()

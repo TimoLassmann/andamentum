@@ -100,12 +100,12 @@ def test_model_registry_from_config() -> None:
         {
             "models": {
                 "a": "m1",
-                "b": {"id": "m2", "kind": "decision", "calibration": "cal.json"},
+                "b": {"id": "m2", "kind": "decision"},
             }
         }
     )
     assert [e.id for e in registry.entries()] == ["m1", "m2"]
-    assert registry.get("b").calibration == "cal.json"
+    assert registry.get("b").kind == "decision"
     assert ModelRegistry.from_config({}).entries() == []
     with pytest.raises(ValueError):
         ModelRegistry.from_config({"models": ["x"]})

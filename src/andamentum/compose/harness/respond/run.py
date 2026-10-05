@@ -6,9 +6,10 @@ modifies FILE. It
 1. collects the items: every unresolved comment thread not started by the
    harness, and every point of the reviews file (split by a model, each point
    verified by quoting);
-2. triages each item into ``edit``, ``answer``, ``author`` or ``done`` (a
-   decision model decides when its calibration record makes it trustworthy,
-   otherwise the language model does and the decision model is advisory);
+2. triages each item into ``edit``, ``answer``, ``author`` or ``done`` (the
+   decision model's top category when ``--decision-model`` is given, and then a
+   ``done`` or ``author`` item needs no language-model call; otherwise the
+   language model);
 3. for ``edit``, has the paragraph rewritten, turns the rewrite into word-level
    span operations, applies them to a staged copy and runs ``check`` on it: an
    edit that introduces an error in the paragraph it changed is not written;
@@ -37,7 +38,7 @@ import httpx
 from pydantic import BaseModel, ConfigDict, Field
 
 from andamentum.compose.log import ActionLog
-from andamentum.core.decisions import CalibrationRecord
+from andamentum.core.decisions import DecisionModel, DecisionModelUnavailable
 
 from ..check import CheckParams, CheckUsageError, run_check
 from ..docx.reader import DocxReadError
@@ -54,6 +55,7 @@ from ..kernel import (
     Transaction,
     Verb,
 )
+from ..kernel.models import open_decision_model
 from ..project import project_dir, write_copy
 from .collab import changed_paragraph_ids, previous_texts
 from .edits import EditRefused, SpanOp, span_ops
@@ -61,15 +63,12 @@ from .items import Item, comment_items, read_reviews, review_items
 from .letter import LetterEntry, existing_letters, write_letter
 from .quotes import find_in_paragraph, find_in_view
 from .triage import (
-    CALIBRATION_NAME,
     CATEGORIES,
     Category,
     DecisionRecord,
-    decision_choice,
     propose_answer,
     propose_edit,
-    triage_item,
-    trusted_threshold,
+    triage_with_decision,
     verified_quotes,
 )
 
@@ -94,7 +93,7 @@ class RespondParams(BaseModel):
     )
     decision_model: str | None = Field(
         default=None,
-        description="ollama decision model for triage (advisory unless calibrated)",
+        description="ollama decision model that triages instead of the language model",
     )
     out: Path | None = Field(
         default=None, description="the copy to write (default: <stem>.responded.docx)"
@@ -374,11 +373,37 @@ async def run_respond(
     *,
     transport: httpx.AsyncBaseTransport | None = None,
     url_check: Callable[[str], tuple[bool, str]] | None = None,
+    decision_handle: DecisionModel | None = None,
 ) -> RespondRun:
-    """Run the respond verb. ``transport`` and ``url_check`` serve recorded
-    answers to the gate's check run in tests; production leaves them unset."""
-    started = time.monotonic()
+    """Run the respond verb. ``transport``, ``url_check`` and ``decision_handle``
+    serve recorded answers in tests; production leaves them unset
+    (``--decision-model`` is opened and checked)."""
+    if decision_handle is not None and not params.decision_model:
+        params = params.model_copy(update={"decision_model": decision_handle.id})
     _validate(params)
+    try:
+        decision, owned = await open_decision_model(
+            params.decision_model, injected=decision_handle
+        )
+    except DecisionModelUnavailable as exc:
+        raise RespondUsageError(str(exc)) from exc
+    try:
+        return await _respond(
+            params, transport=transport, url_check=url_check, decision=decision
+        )
+    finally:
+        if owned and decision is not None:
+            await decision.aclose()
+
+
+async def _respond(
+    params: RespondParams,
+    *,
+    transport: httpx.AsyncBaseTransport | None,
+    url_check: Callable[[str], tuple[bool, str]] | None,
+    decision: DecisionModel | None,
+) -> RespondRun:
+    started = time.monotonic()
     out, report_md = _outputs(params)
     if params.reviews is not None:
         kept = existing_letters(out.parent)
@@ -395,11 +420,6 @@ async def run_respond(
     store = ProjectStore(project_dir(params.file, view, params.project))
     try:
         meta = store.init(params.file, project_id=view.project_id)
-    except ValueError as exc:
-        raise RespondUsageError(str(exc)) from exc
-    record = _calibration(store)
-    try:
-        threshold = trusted_threshold(record, decision_model=params.decision_model)
     except ValueError as exc:
         raise RespondUsageError(str(exc)) from exc
 
@@ -434,7 +454,7 @@ async def run_respond(
             item,
             view,
             params=params,
-            threshold=threshold,
+            decision=decision,
             log=log,
             sections=sections,
             paragraphs=paragraphs,
@@ -595,17 +615,12 @@ def _tokens(record: dict[str, object], key: str) -> int:
     return value if isinstance(value, int) else 0
 
 
-def _calibration(store: ProjectStore) -> CalibrationRecord | None:
-    path = store.path / "calibration" / f"{CALIBRATION_NAME}.json"
-    return CalibrationRecord.load(path) if path.is_file() else None
-
-
 async def _work_item(
     item: Item,
     view: DocumentView,
     *,
     params: RespondParams,
-    threshold: float | None,
+    decision: DecisionModel | None,
     log: ActionLog,
     sections: dict[str, str],
     paragraphs: dict[str, Paragraph],
@@ -615,33 +630,20 @@ async def _work_item(
     model = params.model
     assert model is not None  # checked before any item is worked
     anchored = paragraphs.get(item.paragraph_id or "")
-    decided: Category | None = None
-    record: DecisionRecord | None = None
-    if params.decision_model:
-        answer = await decision_choice(
-            item, anchored, decision_model=params.decision_model
-        )
-        probability = answer.probabilities.get(answer.choice or "", 0.0)
-        used = (
-            threshold is not None
-            and answer.choice in CATEGORIES
-            and probability >= threshold
-        )
-        record = DecisionRecord(
-            choice=answer.choice,
-            probability=probability,
-            calibrated_threshold=threshold,
-            used=used,
-        )
-        if used:
-            decided = next(c for c in CATEGORIES if c == answer.choice)
-    triage = await triage_item(item, view, model=model, log=log, decided=decided)
+    triage, decision_record = await triage_with_decision(
+        item,
+        anchored,
+        view,
+        model=model,
+        log=log,
+        decision=decision,
+    )
     outcome = Outcome(
         item=item,
         proposed=triage.category,
         category=triage.category,
         reason=triage.reason,
-        decision=record,
+        decision=decision_record,
     )
     target = anchored
     span: tuple[int, int] | None = None
@@ -816,14 +818,13 @@ def _markdown(report: RespondReport) -> str:
             )
         )
         if outcome.decision is not None:
+            decided = outcome.decision
             kind = (
-                "decision model (used)"
-                if outcome.decision.used
-                else "decision model (advisory)"
+                "decision model (no language-model triage call)"
+                if decided.saved_llm_call
+                else "decision model"
             )
-            lines.append(
-                f"  - {kind}: {outcome.decision.choice} at {outcome.decision.probability:.2f}"
-            )
+            lines.append(f"  - {kind}: {decided.choice} at {decided.probability:.2f}")
         if outcome.reply:
             lines.append(f"  - reply: {outcome.reply}")
     if report.skipped_threads:

@@ -38,7 +38,7 @@ from pathlib import Path
 import httpx
 from pydantic import BaseModel, Field
 
-from andamentum.core.decisions import CalibrationRecord
+from andamentum.core.decisions import DecisionModel, DecisionModelUnavailable
 from andamentum.references import ReferenceHttp
 
 from .docx.reader import DocxReadError
@@ -63,7 +63,7 @@ from .kernel.checks import (
     load_precisions,
     save_cached,
 )
-from .kernel.models import ModelRegistry
+from .kernel.models import open_decision_model
 from .kernel.store import ANSWER_MAX_AGE, ProjectCache
 from .project import project_dir, write_copy
 
@@ -221,42 +221,8 @@ def _select(params: CheckParams) -> tuple[list[Check], list[SkippedCheck]]:
 # ------------------------------------------------------------------- the run
 
 
-def _calibrations(
-    store: ProjectStore, *, decision_model: str | None
-) -> dict[str, CalibrationRecord]:
-    records: dict[str, CalibrationRecord] = {}
-    registry = ModelRegistry.from_config(store.config())
-    for entry in registry.entries():
-        if entry.calibration is not None:
-            path = store.path / entry.calibration
-            if not path.is_file():
-                raise CheckUsageError(f"calibration record not found: {path}")
-            records[entry.role] = CalibrationRecord.load(path)
-    conventional = store.path / "calibration" / f"{needs_citation.CHECK_ID}.json"
-    if needs_citation.CHECK_ID not in records and conventional.is_file():
-        records[needs_citation.CHECK_ID] = CalibrationRecord.load(conventional)
-    record = records.get(needs_citation.CHECK_ID)
-    if record is not None and record.model != decision_model:
-        # A threshold measured on one model says nothing about another, and a
-        # record must never lift a different model's check out of advisory.
-        raise CheckUsageError(
-            f"the {needs_citation.CHECK_ID} calibration record was measured on "
-            f"{record.model!r}, but --decision-model is {decision_model!r}; "
-            "pass the calibrated model or remove the record"
-        )
-    return records
-
-
-def _precisions(
-    store: ProjectStore, calibrations: dict[str, CalibrationRecord]
-) -> dict[str, float]:
-    found = load_precisions(store.path / _PRECISION_FILE)
-    measured = needs_citation.measured_precision(
-        calibrations.get(needs_citation.CHECK_ID)
-    )
-    if needs_citation.CHECK_ID not in found and measured is not None:
-        found[needs_citation.CHECK_ID] = measured
-    return found
+def _precisions(store: ProjectStore) -> dict[str, float]:
+    return load_precisions(store.path / _PRECISION_FILE)
 
 
 def _comment_text(diagnostic: Diagnostic) -> str:
@@ -335,10 +301,14 @@ async def run_check(
     *,
     transport: httpx.AsyncBaseTransport | None = None,
     url_check: Callable[[str], tuple[bool, str]] | None = None,
+    decision_handle: DecisionModel | None = None,
 ) -> CheckRun:
-    """Run the check verb. ``transport`` and ``url_check`` let the benchmark and
-    tests serve recorded answers; production leaves both at their defaults."""
+    """Run the check verb. ``transport``, ``url_check`` and ``decision_handle``
+    let the benchmark and tests serve recorded answers; production leaves all
+    three at their defaults (``--decision-model`` is opened and checked)."""
     started = time.monotonic()
+    if decision_handle is not None and not params.decision_model:
+        params = params.model_copy(update={"decision_model": decision_handle.id})
     if not params.file.is_file() or params.file.suffix.lower() != ".docx":
         raise CheckUsageError(f"{params.file} is not a .docx file")
     if params.results is not None and not params.results.is_dir():
@@ -357,8 +327,13 @@ async def run_check(
     except ValueError as exc:
         raise CheckUsageError(str(exc)) from exc
 
-    calibrations = _calibrations(store, decision_model=params.decision_model)
-    precisions = _precisions(store, calibrations)
+    try:
+        decision, owned = await open_decision_model(
+            params.decision_model, injected=decision_handle
+        )
+    except DecisionModelUnavailable as exc:
+        raise CheckUsageError(str(exc)) from exc
+    precisions = _precisions(store)
     stats = RunStats()
     models = {
         role: value
@@ -393,7 +368,7 @@ async def run_check(
         models=models,
         results_dir=params.results,
         http=http,
-        calibrations=calibrations,
+        decision_model=decision,
         stats=stats,
     )
 
@@ -412,6 +387,8 @@ async def run_check(
     finally:
         if http is not None:
             await http.client.aclose()
+        if owned and decision is not None:
+            await decision.aclose()
 
     ordered = _ordered(view, diagnostics)
     transaction = Transaction(

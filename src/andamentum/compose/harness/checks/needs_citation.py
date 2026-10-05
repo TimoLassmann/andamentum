@@ -6,11 +6,10 @@ claim that needs a citation?", as a probability. A sentence at or above the
 threshold that overlaps no citation field is an *info* diagnostic. It is a
 pointer for the author, never a finding of fact.
 
-The threshold comes from the model's calibration record
-(``CheckContext.calibrations["needs_citation"]``): the lowest probability at
-which the measured precision reaches ``PROMOTE_AT``. With no record, or when
-no threshold reaches that precision, ``ADVISORY_THRESHOLD`` is used and the
-check stays advisory (tier 2, through the kernel's promotion policy). Sentences
+A sentence counts when the decision model's probability of "yes" is at least
+``THRESHOLD`` (0.5, the model's own yes). The check is model-judged, so the
+kernel's promotion policy reports it at tier 2 (advisory) unless a measured
+precision is on record in ``precision.json``. Sentences
 are asked one at a time, sequentially. Headings, captions, reference-list
 paragraphs and sentences under six words are not asked, and at most
 ``MAX_SENTENCES`` sentences are asked per run (an info diagnostic says how many
@@ -27,10 +26,9 @@ from __future__ import annotations
 
 import re
 
-from andamentum.core.decisions import CalibrationRecord, DecisionQuestion, decide
+from andamentum.core.decisions import DecisionModel, Question, question_hash
 
 from ..kernel import (
-    PROMOTE_AT,
     CheckContext,
     CheckSpec,
     Diagnostic,
@@ -40,13 +38,13 @@ from ..kernel import (
 )
 from ..kernel.checks import cache_key
 
-ADVISORY_THRESHOLD = 0.8
+THRESHOLD = 0.5
 MAX_SENTENCES = 400
 MIN_WORDS = 6
 CHECK_ID = "needs_citation"
 _SENTENCE = re.compile(r"(?<=[.!?])\s+(?=[A-Z\"])")
 _REFERENCE_HEADINGS = {"references", "bibliography", "works cited", "reference list"}
-_QUESTION = DecisionQuestion(
+QUESTION = Question(
     type="noul",
     instructions=(
         "Does this sentence state a factual claim that needs a citation? "
@@ -55,23 +53,6 @@ _QUESTION = DecisionQuestion(
         "transitions."
     ),
 )
-
-
-def threshold_for_run(record: CalibrationRecord | None) -> tuple[float, bool]:
-    """``(threshold, calibrated)``: the record's threshold at ``PROMOTE_AT``, or the advisory default."""
-    if record is not None:
-        found = record.threshold_for(precision=PROMOTE_AT)
-        if found is not None:
-            return found, True
-    return ADVISORY_THRESHOLD, False
-
-
-def measured_precision(record: CalibrationRecord | None) -> float | None:
-    """The precision the record measured at the threshold the check will use."""
-    if record is None:
-        return None
-    threshold, calibrated = threshold_for_run(record)
-    return record.stats_at(threshold).precision if calibrated else None
 
 
 def _sentences(paragraph: Paragraph) -> list[tuple[str, int, int]]:
@@ -100,10 +81,9 @@ class NeedsCitationCheck:
     version = "1"
 
     async def run(self, view: DocumentView, ctx: CheckContext) -> list[Diagnostic]:
-        model = ctx.models.get("decision_model")
+        model = ctx.decision_model
         if model is None:
             raise ValueError("the needs_citation check needs --decision-model")
-        threshold, calibrated = threshold_for_run(ctx.calibrations.get(CHECK_ID))
         cited = _cited_spans(view)
         todo: list[tuple[Paragraph, str, int, int]] = []
         for paragraph in view.paragraphs:
@@ -123,7 +103,7 @@ class NeedsCitationCheck:
         out: list[Diagnostic] = []
         for paragraph, sentence, start, end in asked:
             p_yes = await self._probability(sentence, model, ctx)
-            if p_yes >= threshold:
+            if p_yes >= THRESHOLD:
                 out.append(
                     Diagnostic(
                         check=self.spec.id,
@@ -137,11 +117,7 @@ class NeedsCitationCheck:
                             f"citation (probability {p_yes:.2f})."
                         ),
                         evidence=[sentence],
-                        data={
-                            "probability": p_yes,
-                            "threshold": threshold,
-                            "calibrated": calibrated,
-                        },
+                        data={"probability": p_yes, "threshold": THRESHOLD},
                     )
                 )
         if left:
@@ -162,15 +138,26 @@ class NeedsCitationCheck:
             )
         return out
 
-    async def _probability(self, sentence: str, model: str, ctx: CheckContext) -> float:
-        key = cache_key(self, version=f"{self.version}:{model}", inputs=[sentence])
+    async def _probability(
+        self, sentence: str, model: DecisionModel, ctx: CheckContext
+    ) -> float:
+        # Keyed by the weights and the question, not the model's name.
+        key = cache_key(
+            self,
+            version=f"{self.version}:{model.digest}:{question_hash(QUESTION)}",
+            inputs=[sentence],
+        )
         if ctx.store is not None:
             cached = ctx.store.cache_get(CHECK_ID, key)
             if isinstance(cached, float):
                 return cached
-        answers = await decide(sentence, {CHECK_ID: _QUESTION}, model=model)
-        p_yes = answers[CHECK_ID].probabilities["yes"]
-        ctx.stats.model_calls += 1
+        result = await model.decide_with_usage(sentence, {CHECK_ID: QUESTION})
+        p_yes = result.answers[CHECK_ID].p_true
+        assert p_yes is not None
+        ctx.stats.add_usage(
+            input_tokens=result.usage.input_tokens,
+            output_tokens=result.usage.output_tokens,
+        )
         if ctx.store is not None:
             ctx.store.cache_put(CHECK_ID, key, p_yes)
         return p_yes

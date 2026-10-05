@@ -42,12 +42,15 @@ import sys
 import tempfile
 import time
 from pathlib import Path
-from typing import Any, NoReturn, Sequence
+from typing import TYPE_CHECKING, Any, NoReturn, Sequence
 
 from rich.console import Console
 from rich.logging import RichHandler
 from rich.panel import Panel
 from rich.table import Table
+
+if TYPE_CHECKING:
+    from andamentum.core.decisions import DecisionModel
 
 _LOGGER_NAME = "andamentum.whetstone"
 
@@ -286,6 +289,16 @@ def _build_parser() -> argparse.ArgumentParser:
             "run is expected to do, while the Python API "
             "(run_checklist_v3) defaults to 'general' so its default path "
             "stays classifier-free. Pass an explicit type to match the API."
+        ),
+    )
+    parser.add_argument(
+        "--decision-model",
+        default=None,
+        metavar="NAME",
+        help=(
+            "A local Ollama decision model (e.g. nimble:9b) that answers the "
+            "document-type question under --document-type auto instead of "
+            "the LLM classifier. Review and checklist. Off by default."
         ),
     )
     # Shared by review and checklist for the same reason --document-type is:
@@ -638,6 +651,7 @@ def _validate_args(args: argparse.Namespace) -> None:
     # fetched. The parsed list is kept so the run does not parse it twice.
     args.reviewers = _parse_reviewers(args.reviewer)
     args.final_editor = _split_off_the_final_editor(args)
+    _validate_decision_args(args)
     if args.mode == "checklist":
         _reject_review_only_flags(args)
         _reject_the_line_editor_under_checklist(args)
@@ -719,10 +733,32 @@ def _reject_review_only_flags(args: argparse.Namespace) -> None:
                 f"{flag} is a review-mode flag and has no effect under "
                 "`checklist`, so the run is refused rather than run without "
                 "it. Checklist mode takes only --model, --document-type, "
-                "--out and the author flags: the probe bank is fixed, which "
+                "--decision-model, --out and the author flags: the probe bank is fixed, which "
                 "is what keeps two runs comparable. Drop the flag, or use "
                 "`andamentum-whetstone review` instead.",
             )
+
+
+def _validate_decision_args(args: argparse.Namespace) -> None:
+    """Refuse a decision-model flag that would be ignored, naming it.
+
+    The decision model answers only the document-type question, which only
+    review and checklist ask, and only under ``--document-type auto``.
+    """
+    if args.decision_model is None:
+        return
+    if args.mode == "panel":
+        _die(
+            1,
+            "--decision-model has no effect under `panel`, which asks no "
+            "document-type question. It applies to review and checklist.",
+        )
+    if args.document_type != "auto":
+        _die(
+            1,
+            "--decision-model answers the document-type question, which "
+            f"--document-type {args.document_type} already settles. Drop one.",
+        )
 
 
 def _default_reviewer_name() -> str:
@@ -1411,16 +1447,35 @@ async def _run(args: argparse.Namespace, console: Console) -> None:
     # A non-.docx source left a generated baseline on disk, and it is this
     # function's to remove — including when the review crashes, which is when
     # the file is least likely to be noticed.
+    from andamentum.core.decisions import DecisionModel, DecisionModelUnavailable
+
+    decision_model = None
+    if args.decision_model:
+        try:
+            decision_model = await DecisionModel.open(args.decision_model)
+        except DecisionModelUnavailable as exc:
+            document.cleanup()
+            _die(1, str(exc))
     try:
-        await _review_and_write(args, console, document)
+        await _review_and_write(args, console, document, decision_model=decision_model)
     finally:
         document.cleanup()
+        if decision_model is not None:
+            await decision_model.aclose()
 
 
 async def _review_and_write(
-    args: argparse.Namespace, console: Console, document
+    args: argparse.Namespace,
+    console: Console,
+    document,
+    *,
+    decision_model: DecisionModel | None = None,
 ) -> None:
-    """Run the requested pipeline over *document* and write every output."""
+    """Run the requested pipeline over *document* and write every output.
+
+    *decision_model* is the opened ``--decision-model`` handle (the caller
+    closes it), or None.
+    """
     from .renderers import render_docx, render_html, render_markdown
     from .v3 import Criterion, review_document_v3
     from .v3.checklist import checklist_document_v3
@@ -1489,6 +1544,7 @@ async def _review_and_write(
                     (getattr(args, "reviewers", None) or [args.reviewer])[0]
                 ],
                 patch_author=args.patch_author,
+                decision_model=decision_model,
             )
         else:
             # Default review path — Phase C unified criteria/guidelines
@@ -1535,6 +1591,7 @@ async def _review_and_write(
                     novelty_search_depth=args.novelty_search_depth,
                     patch_author=args.patch_author,
                     workdir=interim_dir,
+                    decision_model=decision_model,
                 )
                 result = goal_run_result.final_review
                 document = goal_run_result.final_document
@@ -1619,6 +1676,7 @@ async def _review_and_write(
                             if references is not None and single
                             else None
                         ),
+                        decision_model=decision_model,
                     )
                     reviews.append((profile.identity, result))
                 result = reviews[-1][1]
@@ -2068,6 +2126,7 @@ def _run_references_subcommand(argv: list[str]) -> int:
     Usage:
         andamentum-whetstone references INPUT --out OUT [--out OUT ...]
             [--no-lookup] [--lookup-email ADDRESS] [--confirm-own-draft]
+            [--decision-model NAME]
 
     No model. The citation numbers are checked against the reference list
     offline; each entry is then looked up in Crossref unless --no-lookup is
@@ -2112,6 +2171,16 @@ def _run_references_subcommand(argv: list[str]) -> int:
         ),
     )
     sub.add_argument(
+        "--decision-model",
+        default=None,
+        metavar="NAME",
+        help=(
+            "A local Ollama decision model (for example nimble:9b) that "
+            "answers each citation-candidate question instead of --model. The "
+            "server and the model are checked before the draft is read."
+        ),
+    )
+    sub.add_argument(
         "--lookup-email",
         default=None,
         help=(
@@ -2132,6 +2201,8 @@ def _run_references_subcommand(argv: list[str]) -> int:
     console = Console(stderr=True)
     _configure_logging(console, False)
 
+    from andamentum.core.decisions import DecisionError
+
     from ._confidentiality import ConfidentialityMarkerError
     from .references_check import REFERENCE_CHECKER_AUTHOR, check_document_references
     from .renderers import render_docx, render_html, render_markdown
@@ -2144,10 +2215,13 @@ def _run_references_subcommand(argv: list[str]) -> int:
                 lookup=not parsed.no_lookup,
                 mailto=parsed.lookup_email,
                 confirm_own_draft=parsed.confirm_own_draft,
+                decision_model=parsed.decision_model,
             )
         )
     except ConfidentialityMarkerError as exc:
         _die(1, str(exc))
+    except DecisionError as exc:
+        _die(1, f"--decision-model {parsed.decision_model}: {exc}")
     except (OSError, ValueError) as exc:
         _die(2, f"could not read {parsed.input!r}: {exc}")
 

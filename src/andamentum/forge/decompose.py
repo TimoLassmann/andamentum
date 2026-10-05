@@ -34,7 +34,7 @@ is bounded by ``MAX_DESIGN_ROUNDS``.
 
 from __future__ import annotations
 
-import asyncio
+from andamentum.core.agents import gather_llm
 
 from .agents import DECLARE_NODE, LIST_JOBS, SELECT_CONSUMES, AgentSink
 from .assemble import assemble
@@ -270,15 +270,19 @@ async def decompose(
     sink: AgentSink,
     max_jobs_per_area: int,
     max_nodes: int,
+    concurrency: int = 1,
 ) -> tuple[DesignPlan, DesignReport, list[str]]:
     """Return ``(plan, report, notes)`` — the typed node board, the (clean) structural
     diagnosis, and any advisory notes. Raises if the board cannot be made coherent within
-    ``MAX_DESIGN_ROUNDS`` (fail loud, never a half-wired design)."""
+    ``MAX_DESIGN_ROUNDS`` (fail loud, never a half-wired design). ``concurrency`` bounds
+    the in-flight model calls of the two fan-outs; 1 (the default) is strictly serial,
+    which a local model needs."""
     notes: list[str] = []
 
     # Stage 1: list jobs per area (bounded fan-out over areas).
-    job_lists = await asyncio.gather(
-        *(sink.run(LIST_JOBS, area=a, purpose=why.purpose) for a in areas)
+    job_lists = await gather_llm(
+        [sink.run(LIST_JOBS, area=a, purpose=why.purpose) for a in areas],
+        concurrency=concurrency,
     )
 
     drafts: list[NodeDraft] = []
@@ -306,7 +310,9 @@ async def decompose(
         )
 
     # Stage 2a: DECLARE — each node's kind + its ONE produced name (no inputs yet).
-    await asyncio.gather(*(_declare_node(d, drafts, sink=sink) for d in drafts))
+    await gather_llm(
+        [_declare_node(d, drafts, sink=sink) for d in drafts], concurrency=concurrency
+    )
     # Deterministic dedupe → the produced set is globally unique BY CONSTRUCTION.
     unique = dedupe_names(
         [d.produces[0] if d.produces else "" for d in drafts],

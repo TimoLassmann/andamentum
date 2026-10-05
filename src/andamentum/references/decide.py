@@ -18,7 +18,8 @@ Two decisions, in order:
    than the list is not a citation, a raised number beside a name in the
    author block is an affiliation. What the rules leave open goes to the
    model in small batches. With no model given, those stay "not judged" and
-   are counted, never guessed.
+   are counted, never guessed. With a decision model, it answers each open
+   candidate instead of the language model (:mod:`.gate`).
 """
 
 from __future__ import annotations
@@ -26,7 +27,9 @@ from __future__ import annotations
 import logging
 import re
 
-from . import llm
+from andamentum.core.decisions import DecisionModel
+
+from . import gate, llm
 from .models import Candidate, Judged, ReferenceEntry, Style, StyleDecision
 from .resolve import numbered, resolve_work
 
@@ -346,6 +349,7 @@ async def judge_candidates(
     style: Style,
     model: str | None,
     author_block_end: int = 0,
+    decision_model: DecisionModel | None = None,
 ) -> list[Judged]:
     judged: list[Judged] = []
     open_: list[tuple[Candidate, str]] = []
@@ -388,7 +392,28 @@ async def judge_candidates(
             if verdict and c.numbers:
                 highest = max(highest, max(c.numbers))
 
-    if open_ and model is None:
+    if open_ and decision_model is not None:
+        # The decision model answers instead of the language-model call.
+        try:
+            judged += await gate.judge_open(
+                open_,
+                text=text,
+                entries=entries,
+                style=style,
+                list_line=_list_line(entries),
+                decision_model=decision_model,
+            )
+        except Exception as exc:
+            logger.warning("[references] decision model call failed: %s", exc)
+            judged += [
+                Judged(
+                    candidate=c,
+                    is_citation=False,
+                    reason=f"not judged: the decision model call failed ({type(exc).__name__})",
+                )
+                for c, _ in open_
+            ]
+    elif open_ and model is None:
         judged += [
             Judged(
                 candidate=c,

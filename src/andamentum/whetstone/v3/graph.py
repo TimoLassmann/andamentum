@@ -47,6 +47,7 @@ from .sectionize import sectionize
 from .synth import StructuredReview, critique_and_revise, synthesise, to_review_result
 
 if TYPE_CHECKING:
+    from andamentum.core.decisions import DecisionModel
     from andamentum.references import Hint
 
     from ..reviewed_document import ReviewedDocument
@@ -452,6 +453,7 @@ async def run_review_v3(
     patch_author: str | None = None,
     extra_findings: list[PublicFinding] | None = None,
     citation_hints: "list[Hint] | None" = None,
+    decision_model: DecisionModel | None = None,
 ) -> ReviewResult:
     """Run the v3 review over already-harvested markdown. Returns a
     `ReviewResult` the existing renderers consume unchanged.
@@ -491,6 +493,11 @@ async def run_review_v3(
     fields and note marks, for the citation line the ``citations``-facet
     criteria read. :func:`review_document_v3` reads them from the file it
     opened; a caller with text only leaves them out.
+
+    ``decision_model`` is an opened ``core.decisions.DecisionModel`` that may
+    answer the document-type question under ``document_type="auto"`` instead of
+    the LLM classifier (its top choice is the type). ``None`` (the default)
+    leaves the run exactly as it was: the LLM classifier decides.
 
     ``reviewer`` is the reviewer profile whose stance, criteria and editor
     criteria this run uses (see :mod:`.reviewers`). ``None`` means the default
@@ -562,12 +569,16 @@ async def run_review_v3(
         # the graph's first node is cheap (no LLM).
         titles = [s.title for s in (sections or sectionize(markdown))]
         document_type = await classify(
-            model=model, section_titles=titles, markdown=markdown
+            model=model,
+            section_titles=titles,
+            markdown=markdown,
+            decision_model=decision_model,
         )
         # Classifier is one LLM call; count it (classify() doesn't
         # touch the metrics module itself to keep _document_type.py
-        # decoupled from v3 internals).
-        increment_llm_calls(1)
+        # decoupled from v3 internals). A decision model makes no LLM call.
+        if decision_model is None:
+            increment_llm_calls(1)
 
     resolved = resolve(
         profile=profile,
@@ -635,6 +646,7 @@ async def review_document_v3(
     reviewer: "ReviewerProfile | None" = None,
     patch_author: str | None = None,
     extra_findings: list[PublicFinding] | None = None,
+    decision_model: DecisionModel | None = None,
 ) -> ReviewResult:
     """v3 entry from a source path / URL / markdown blob, or an open document.
 

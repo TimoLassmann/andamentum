@@ -3,6 +3,7 @@
 Usage::
 
     andamentum-research "What is quantum computing?" [--model MODEL] [--max-iterations N] [--verbose]
+                        [--decision-model NAME]
     andamentum-research agents
 """
 
@@ -69,6 +70,16 @@ def _build_parser() -> argparse.ArgumentParser:
             "Hostname for which you attest to holding a text-and-data-mining "
             "licence. Disarms the paywalled-publisher tripwire for this host. "
             "Repeatable. Example: --tdm-host nature.com --tdm-host sciencedirect.com"
+        ),
+    )
+    parser.add_argument(
+        "--decision-model",
+        default=None,
+        metavar="NAME",
+        help=(
+            "Local Ollama decision model (e.g. nimble:9b) that judges "
+            "candidate queries instead of the LLM verifier. Default: the LLM "
+            "verifier judges every query"
         ),
     )
     return parser
@@ -162,17 +173,27 @@ async def _run(args: argparse.Namespace) -> None:
 
     tdm_hosts = frozenset(h.strip().lower() for h in args.tdm_host if h.strip())
 
-    result = await run_research(
-        args.query,
-        model=model,
-        max_iterations=args.max_iterations,
-        searxng_url=args.searxng_url,
-        max_results=args.max_results,
-        max_pages=args.max_pages,
-        verbose=args.verbose,
-        reporter=reporter,
-        tdm_allowed_hosts=tdm_hosts,
-    )
+    decision_model = None
+    if args.decision_model:
+        from andamentum.core.decisions import DecisionModel
+
+        decision_model = await DecisionModel.open(args.decision_model)
+    try:
+        result = await run_research(
+            args.query,
+            model=model,
+            max_iterations=args.max_iterations,
+            searxng_url=args.searxng_url,
+            max_results=args.max_results,
+            max_pages=args.max_pages,
+            verbose=args.verbose,
+            reporter=reporter,
+            tdm_allowed_hosts=tdm_hosts,
+            decision_model=decision_model,
+        )
+    finally:
+        if decision_model is not None:
+            await decision_model.aclose()
 
     if args.json_output:
         print(result.model_dump_json(indent=2))

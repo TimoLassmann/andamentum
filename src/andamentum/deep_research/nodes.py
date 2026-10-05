@@ -25,6 +25,8 @@ from typing import Any, Union
 
 from pydantic_graph import BaseNode, End, GraphRunContext
 
+from andamentum.core.decisions import DecisionModel
+
 from .analyze_gaps import analyze_gaps
 from .backends import SearchBackend
 from .build_agent import AgentOverrides
@@ -95,6 +97,10 @@ class NodeDeps:
     # so nodes and workers can call methods unconditionally; the CLI
     # installs a RichReporter when ``--verbose`` is set.
     reporter: SearchReporter = field(default_factory=_default_reporter)
+    # Optional decision model for ``Verify`` (see ``verify_query``): when set
+    # it answers instead of the ``topic_verifier`` agent. None (the default)
+    # is the plain agent call.
+    decision_model: DecisionModel | None = None
 
 
 # ── PlanResearch ───────────────────────────────────────────────────────
@@ -215,6 +221,7 @@ class Verify(BaseNode[ResearchState, NodeDeps, EvidenceReport]):
             goal=ctx.state.query,
             model=ctx.deps.model,
             overrides=ctx.deps.agent_overrides,
+            decision_model=ctx.deps.decision_model,
         )
         c = ctx.state.cycle
 

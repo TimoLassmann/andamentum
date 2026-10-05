@@ -17,12 +17,15 @@ from andamentum.compose.harness.respond import (
     RespondUsageError,
     run_respond,
 )
-from andamentum.compose.harness.respond import triage as triage_module
 from andamentum.compose.harness.respond.items import ReviewPoint, ReviewPoints
+from andamentum.compose.harness.respond.items import Item
 from andamentum.compose.harness.respond.triage import (
+    AUTHOR_REASON,
+    CATEGORIES,
     AnswerProposal,
     EditProposal,
     Triage,
+    templated_triage,
 )
 from andamentum.compose.harness.spike.make import (
     build_docx,
@@ -31,9 +34,10 @@ from andamentum.compose.harness.spike.make import (
     paragraph,
     run,
 )
-from andamentum.core.decisions import DecisionAnswer, calibrate
+from andamentum.core.decisions.testing import StubDecisions, choice_answer
 
 from ...tests._stub import USAGE
+from ._helpers import make_view
 
 APP = "Participants logged every meal for four weeks using the SaltLog app."
 PAPER = "Participants logged every meal for four weeks using a paper diary."
@@ -195,10 +199,12 @@ def sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-async def respond(doc: Path, **kw):
+async def respond(doc: Path, *, decision_handle=None, **kw):
     kw.setdefault("model", "test:model")
     kw.setdefault("offline", True)
-    return await run_respond(RespondParams(file=doc, **kw))
+    return await run_respond(
+        RespondParams(file=doc, **kw), decision_handle=decision_handle
+    )
 
 
 async def test_every_category_is_handled_and_nothing_human_is_resolved(
@@ -609,81 +615,90 @@ async def test_collaborators_edits_since_the_last_look_are_checked(tmp_path: Pat
 # ------------------------------------------------------------ decision model
 
 
-def record_for(model: str, *, good: bool):
-    pairs = [(0.95, True)] * 8 + [(0.9, True)] * 4 if good else [(0.9, False)] * 8
-    return calibrate(pairs, model=model, digest="d", task="respond triage")
+BY_COMMENT = {
+    "Please say it was an app": "edit",
+    "How large was the fall": "answer",
+    "justify causality": "author",
+    "number of clinics": "done",
+}
 
 
-def stub_decide(monkeypatch: pytest.MonkeyPatch, choice: str, p: float) -> list[str]:
-    asked: list[str] = []
+def decision_server(
+    p: float, *, force: str | None = None, name: str = "nimble:9b"
+) -> StubDecisions:
+    """A decision model that picks the category by what the comment says."""
 
-    async def fake(state, questions, *, model, **_kw):
-        asked.append(str(state))
-        others = {c: (1 - p) / 3 for c in questions["triage"].options or []}
-        others[choice] = p
-        return {
-            "triage": DecisionAnswer(choice=choice, probabilities=others, confidence=p)
-        }
+    def respond(state, questions):
+        text = str(state)
+        picked = force or next(c for k, c in BY_COMMENT.items() if k in text)
+        return {k: choice_answer(list(CATEGORIES), picked, p) for k in questions}
 
-    monkeypatch.setattr(triage_module, "decide", fake)
-    return asked
+    return StubDecisions(respond, name=name)
 
 
-async def test_decision_model_is_advisory_without_a_calibration_record(
-    doc: Path, script: Scripted, monkeypatch: pytest.MonkeyPatch
+async def test_the_decision_model_saves_the_language_model_call_for_done_and_author(
+    doc: Path, script: Scripted
 ):
-    asked = stub_decide(
-        monkeypatch, "author", 0.99
-    )  # disagrees with the language model
-    result = await respond(doc, decision_model="ollama:nimble:9b")
-    assert len(asked) == 4
-    assert result.report.counts == {"edit": 1, "answer": 1, "author": 1, "done": 1}
-    first = result.report.outcomes[0]
-    assert first.decision is not None and not first.decision.used
-    assert first.decision.choice == "author" and first.category == "edit"
-    assert "decision model (advisory)" in result.report_md.read_text()
+    stub = decision_server(0.99)
+    result = await respond(doc, decision_handle=stub.model())
+    assert all(o.decision is not None for o in result.report.outcomes)
+    # edit and answer still need the language model for the quote and the text
+    assert script.kinds().count("Triage") == 2
+    assert "EditProposal" in script.kinds() and "AnswerProposal" in script.kinds()
+    saved = [
+        o for o in result.report.outcomes if o.decision and o.decision.saved_llm_call
+    ]
+    assert {o.proposed for o in saved} == {"author", "done"}
+    assert result.report.counts["edit"] == 1 and result.report.counts["answer"] == 1
+    author = next(o for o in saved if o.proposed == "author")
+    assert AUTHOR_REASON.rstrip(".") in (author.reply or "")
+    assert author.decision is not None
+    assert author.decision.choice == "author"
+    assert "no language-model triage call" in result.report_md.read_text()
 
 
-async def test_calibrated_decision_model_decides_the_category(
-    doc: Path, script: Scripted, monkeypatch: pytest.MonkeyPatch
+async def test_every_item_decided_as_author_makes_no_language_model_call(
+    doc: Path, script: Scripted
 ):
-    store = ProjectStore(doc.with_name("paper.harness"))
-    folder = store.path / "calibration"
-    folder.mkdir(parents=True)
-    record_for("ollama:nimble:9b", good=True).save(folder / "respond_triage.json")
-    stub_decide(monkeypatch, "author", 0.99)
-    result = await respond(doc, decision_model="ollama:nimble:9b")
+    stub = decision_server(0.99, force="author")
+    result = await respond(doc, decision_handle=stub.model())
     assert result.report.counts == {"edit": 0, "answer": 0, "author": 4, "done": 0}
-    assert all(
-        o.decision is not None and o.decision.used for o in result.report.outcomes
+    assert script.calls == []  # nothing was sent to a language model
+    assert result.report.model_calls == 0
+
+
+async def test_a_done_with_no_matching_passage_becomes_author(
+    doc: Path, script: Scripted
+):
+    stub = decision_server(0.99, force="done")
+    result = await respond(doc, decision_handle=stub.model())
+    assert script.calls == []
+    by_label = {o.item.text: o for o in result.report.outcomes}
+    # "Please add the number of clinics" shares one word with the document,
+    # not enough to point to a passage: demoted, as for any unquotable done
+    clinics = next(o for t, o in by_label.items() if "number of clinics" in t)
+    assert clinics.category == "author" and "no passage" in clinics.demoted
+
+
+def test_templated_triage_points_at_the_best_matching_sentence():
+    view = make_view(
+        ("Methods", 1),
+        ("We enrolled adults. Sodium intake was measured with a food diary.", None),
     )
-    assert (
-        "EditProposal" not in script.kinds()
-    )  # the decision replaced the triage choice
-
-
-async def test_decision_below_the_threshold_falls_back_to_the_language_model(
-    doc: Path, script: Scripted, monkeypatch: pytest.MonkeyPatch
-):
-    store = ProjectStore(doc.with_name("paper.harness"))
-    folder = store.path / "calibration"
-    folder.mkdir(parents=True)
-    record_for("ollama:nimble:9b", good=True).save(folder / "respond_triage.json")
-    stub_decide(monkeypatch, "author", 0.4)
-    result = await respond(doc, decision_model="ollama:nimble:9b")
-    assert result.report.counts["edit"] == 1
-
-
-async def test_a_record_for_another_model_is_a_usage_error(
-    doc: Path, script: Scripted, monkeypatch: pytest.MonkeyPatch
-):
-    store = ProjectStore(doc.with_name("paper.harness"))
-    folder = store.path / "calibration"
-    folder.mkdir(parents=True)
-    record_for("ollama:other:7b", good=True).save(folder / "respond_triage.json")
-    stub_decide(monkeypatch, "edit", 0.99)
-    with pytest.raises(RespondUsageError, match="calibration record"):
-        await respond(doc, decision_model="ollama:nimble:9b")
+    item = Item(
+        id="i",
+        source="comment",
+        label="Comment",
+        text="How was sodium intake measured?",
+    )
+    done = templated_triage("done", item, view)
+    assert done.category == "done"
+    assert done.evidence_quote == "Sodium intake was measured with a food diary."
+    unrelated = Item(id="j", source="comment", label="Comment", text="Add a figure.")
+    assert templated_triage("done", unrelated, view).evidence_quote == ""
+    assert templated_triage("author", item, view).reason == AUTHOR_REASON
+    with pytest.raises(ValueError, match="cannot be templated"):
+        templated_triage("edit", item, view)
 
 
 # ----------------------------------------------------------------- the verb

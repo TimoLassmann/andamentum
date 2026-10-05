@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict
 
-from andamentum.core.decisions import CalibrationRecord
+from andamentum.core.decisions import DecisionModel
 
 from .diagnostics import Diagnostic, Tier
 from .store import ProjectStore
@@ -57,8 +57,8 @@ class CheckContext:
     # The one HTTP client of the run (cached through the project store); None
     # when offline. Network checks raise when they need it and it is absent.
     http: ReferenceHttp | None = None
-    # Decision-model calibration records by check id, when the project has them.
-    calibrations: dict[str, CalibrationRecord] = field(default_factory=dict)
+    # The checked decision-model handle of the run (``--decision-model``).
+    decision_model: DecisionModel | None = None
     stats: RunStats = field(default_factory=RunStats)
 
 

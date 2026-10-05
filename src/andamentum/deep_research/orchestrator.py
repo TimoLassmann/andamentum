@@ -16,6 +16,8 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
+from andamentum.core.decisions import DecisionModel
+
 from .models import ResearchResult, ResearchErrors
 
 
@@ -31,6 +33,7 @@ async def run_research(
     verbose: bool = False,
     reporter: Any = None,  # SearchReporter — typed loosely to avoid mandatory import
     tdm_allowed_hosts: frozenset[str] = frozenset(),
+    decision_model: DecisionModel | None = None,
 ) -> "ResearchResult":
     """Run a complete research session.
 
@@ -47,6 +50,9 @@ async def run_research(
         tdm_allowed_hosts: Hostnames the caller attests they hold a TDM licence
             for. Disarms the paywalled-publisher tripwire for those hosts. Default
             empty: tripwire fully active. Only consulted when ``backend`` is None.
+        decision_model: Optional opened local decision model
+            (``DecisionModel.open``) that judges candidate queries instead of
+            the ``topic_verifier`` agent. Default None: the agent judges.
 
     Returns:
         ResearchResult with output, iterations, searches, pages_fetched, verification, errors
@@ -113,6 +119,7 @@ async def run_research(
         max_pages_to_fetch=max_pages,
         max_results_per_search=max_results,
         reporter=reporter if reporter is not None else NoopReporter(),
+        decision_model=decision_model,
     )
 
     try:

@@ -4,7 +4,8 @@ Provides:
 - Model resolution (ollama, bedrock, passthrough)
 - Agent execution with PromptedOutput fallback
 - Embedding client (Ollama HTTP, cosine similarity, chunked-doc embeds)
-- Decision models (Ollama /v1/systemone) and calibration tooling
+- Decision models (local Ollama /v1/systemone): a checked model handle that
+  answers typed questions (``core.decisions``)
 
 Sub-modules (epistemic, deep_research, document_store, chunker, ...)
 import from here instead of maintaining independent implementations.
@@ -18,11 +19,15 @@ from .agents import (
     run_agent_with_usage,
 )
 from .decisions import (
-    CalibrationRecord,
+    Answer,
     DecisionAnswer,
+    DecisionError,
+    DecisionModel,
+    DecisionModelUnavailable,
     DecisionQuestion,
-    calibrate,
+    Question,
     decide,
+    make_decision_model,
     model_digest,
 )
 from .embeddings import (
@@ -50,11 +55,15 @@ __all__ = [
     "run_agent_with_fallback",
     "run_agent_with_usage",
     # Decision models
-    "CalibrationRecord",
+    "Answer",
     "DecisionAnswer",
+    "DecisionError",
+    "DecisionModel",
+    "DecisionModelUnavailable",
     "DecisionQuestion",
-    "calibrate",
+    "Question",
     "decide",
+    "make_decision_model",
     "model_digest",
     # Models
     "resolve_model",

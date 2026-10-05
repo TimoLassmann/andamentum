@@ -43,6 +43,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from andamentum.core.decisions import DecisionModel
+
 from ..reviewed_document import ReviewedDocument, carry_forward_edits
 from ..schemas import AuthorQuestion, ReviewResult
 from ..v3.criteria import Criterion
@@ -220,6 +222,7 @@ async def run_goal_loop(
     judge_model: str | None = None,
     patch_author: str | None = None,
     workdir: Path | None = None,
+    decision_model: DecisionModel | None = None,
 ) -> GoalRunResult:
     """Review, edit, and re-review *document* until *goal* holds.
 
@@ -233,6 +236,10 @@ async def run_goal_loop(
     reuses *model*. It is deliberately a separate parameter, not implicitly
     the same call, so a caller can hand the arbiter a different model from
     the one drafting the edits.
+
+    *decision_model* is handed to every round's review, where it may answer
+    the document-type question instead of the LLM classifier
+    (see :func:`~..v3.graph.run_review_v3`); ``None`` changes nothing.
 
     See :mod:`.loop`'s module docstring for the stop conditions.
     """
@@ -253,6 +260,7 @@ async def run_goal_loop(
                 judge_model=judge_model,
                 patch_author=patch_author,
                 workdir=Path(tmp),
+                decision_model=decision_model,
             )
     return await _run_goal_loop(
         document,
@@ -269,6 +277,7 @@ async def run_goal_loop(
         judge_model=judge_model,
         patch_author=patch_author,
         workdir=workdir,
+        decision_model=decision_model,
     )
 
 
@@ -288,6 +297,7 @@ async def _run_goal_loop(
     judge_model: str | None,
     patch_author: str | None,
     workdir: Path,
+    decision_model: DecisionModel | None,
 ) -> GoalRunResult:
     resolved_judge_model = judge_model or model
     profile = reviewer if reviewer is not None else DEFAULT_PROFILE
@@ -346,6 +356,7 @@ async def _run_goal_loop(
             novelty_search_depth=novelty_search_depth,
             patch_author=patch_author,
             extra_findings=references.findings if references is not None else None,
+            decision_model=decision_model,
         )
         verdict = await _compute_verdict(
             goal,

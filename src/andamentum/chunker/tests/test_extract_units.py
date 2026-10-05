@@ -136,3 +136,30 @@ async def test_extract_units_accepts_legacy_kwargs():
         domain="academic",
     )
     assert len(result.units) == 2
+
+
+async def test_legacy_primary_executor_is_not_promoted_to_judge():
+    """Regression: stage 3 ran whenever a legacy ``primary_executor`` was passed."""
+    calls = []
+
+    async def fake_embed(texts):
+        return [[1.0, 0.0] if i == 0 else [0.0, 1.0] for i, _ in enumerate(texts)]
+
+    async def executor(*, instructions, user_message, output_type, validators):
+        calls.append(user_message)
+        return output_type(decision="merge")
+
+    src = "## Section\n\n" + "Filler text " * 200 + "\n\n" + "More filler " * 200
+    result = await extract_units(
+        src,
+        target_min_chars=500,
+        target_max_chars=2_000,
+        embedding_fn=fake_embed,
+        judge_low_pct=0.0,
+        judge_high_pct=1.0,
+        primary_executor=executor,
+    )
+
+    assert calls == []
+    assert result.model_calls == 0
+    assert len(result.units) >= 2

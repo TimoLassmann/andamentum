@@ -210,3 +210,38 @@ async def test_semaphore_allows_concurrency_when_above_one() -> None:
         f"Four calls with concurrency=4 should run concurrently; "
         f"took {elapsed:.3f}s. The semaphore is forcing serialisation."
     )
+
+
+# ── Shared helpers for code that fans out over LLM calls itself ───────
+
+
+def test_llm_concurrency_follows_the_runner_rule() -> None:
+    from andamentum.core.agents import is_local_model, llm_concurrency
+
+    with patch.dict(os.environ, {}, clear=False):
+        os.environ.pop("ANDAMENTUM_LLM_CONCURRENCY", None)
+        assert llm_concurrency("ollama:gemma2:2b") == 1
+        assert llm_concurrency("openai:gpt-5.4-nano") == 8
+    assert is_local_model("ollama:x") and not is_local_model("openai:x")
+    with patch.dict(os.environ, {"ANDAMENTUM_LLM_CONCURRENCY": "3"}):
+        assert llm_concurrency("ollama:x") == 3
+
+
+async def test_gather_llm_bounds_in_flight_and_keeps_order() -> None:
+    from andamentum.core.agents import gather_llm
+
+    in_flight = 0
+    peak = 0
+
+    async def call(i: int) -> int:
+        nonlocal in_flight, peak
+        in_flight += 1
+        peak = max(peak, in_flight)
+        await asyncio.sleep(0.01)
+        in_flight -= 1
+        return i
+
+    assert await gather_llm([call(i) for i in range(6)], concurrency=2) == list(
+        range(6)
+    )
+    assert peak == 2
