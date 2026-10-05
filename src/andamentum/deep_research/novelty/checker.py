@@ -66,13 +66,16 @@ async def run_novelty_check(
 
     async def research_fn(
         *, query: str, max_iterations: int, verbose: bool
-    ) -> EvidenceReport:
+    ) -> EvidenceReport | None:
         result = await run_research(
             query=query,
             max_iterations=max_iterations,
             model=model,
             verbose=verbose,
         )
+        if not result.page_summaries:
+            # The report is then only a placeholder; no page was read.
+            return None
         return result.output
 
     async def assess_fn(
@@ -183,32 +186,34 @@ async def _check_novelty_with_deps(
         assessment_data = await assess_fn(
             claim, evidence_summary, key_findings, sources
         )
-    except Exception:
-        # If assessment fails, provide a report based on research results
-        has_sources = len(sources) > 0
-        has_findings = len(key_findings) > 0
-
-        if has_sources or has_findings:
-            is_novel = False
-            confidence = 0.6 if has_findings else 0.5
-            assessment_text = (
-                f"Research found {len(sources)} relevant sources and {len(key_findings)} key findings. "
-                f"This suggests prior work exists on this topic. "
-                f"Evidence summary: {evidence_summary[:300]}..."
-            )
-        else:
-            is_novel = True
-            confidence = 0.3
-            assessment_text = (
-                "No prior work found in web search, but this may be due to search limitations. "
-                "Manual verification recommended."
-            )
-
+    except Exception as e:
+        # No verdict is better than a guessed one: the sources and findings
+        # that were found do not say whether the claim is novel.
         return NoveltyReport(
             claim=claim,
-            is_novel=is_novel,
-            confidence=confidence,
-            assessment=assessment_text,
+            is_novel=None,
+            confidence=0.0,
+            assessment=f"The novelty assessment failed: {e}. "
+            f"Research found {len(sources)} sources and {len(key_findings)} "
+            "key findings but they were not assessed. "
+            "Novelty is UNDETERMINED — manual verification required.",
+            similar_work=[],
+            sources=sources,
+            search_queries_used=search_queries,
+        )
+
+    # "Nothing found" is only a finding when the search was healthy. A
+    # degraded run (most searches, fetches or summaries failed) cannot
+    # support the claim that no prior work exists.
+    if assessment_data.is_novel and output.degraded:
+        return NoveltyReport(
+            claim=claim,
+            is_novel=None,
+            confidence=0.0,
+            assessment="The search for prior work was degraded "
+            f"({output.degraded_reason}) so the absence of prior work "
+            "cannot be concluded. "
+            "Novelty is UNDETERMINED — manual verification required.",
             similar_work=[],
             sources=sources,
             search_queries_used=search_queries,

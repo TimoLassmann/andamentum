@@ -28,6 +28,11 @@ from andamentum.core.url_safety import SsrfBlocked, is_safe_url
 from .lookup import CROSSREF_API, _get, _user_agent
 
 
+def _safe_url(url: str) -> tuple[bool, str]:
+    """``is_safe_url``, looked up when called (not when a client is built)."""
+    return is_safe_url(url)
+
+
 class Cache(Protocol):
     """Bytes in, bytes out. ``get`` returns None on a miss."""
 
@@ -71,13 +76,13 @@ class ReferenceHttp:
         cache: Cache | None = None,
         mailto: str | None = None,
         timeout: float = 20.0,
-        url_check: Callable[[str], tuple[bool, str]] = is_safe_url,
+        url_check: Callable[[str], tuple[bool, str]] | None = None,
     ) -> None:
         self._owns_client = client is None
         self.client = client or httpx.AsyncClient(timeout=timeout)
         self.cache = cache
         self.mailto = mailto
-        self.url_check = url_check
+        self.url_check = url_check or _safe_url
 
     async def aclose(self) -> None:
         if self._owns_client:

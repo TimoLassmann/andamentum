@@ -63,8 +63,25 @@ from .models import (
 from .parse import DOI, find_reference_list, split_entries
 from .retraction import NoticeKind, RetractionStatus, UpdateNotice, lookup_retraction
 from .scan import pandoc_notes, scan
+from .works import (
+    LICENCE_NO_REDISTRIBUTE,
+    Work,
+    WorkAccess,
+    WorkRetraction,
+    canonical_url,
+    merge_works,
+    normalise_arxiv_id,
+    normalise_doi,
+    normalise_openalex_id,
+    normalise_pmcid,
+    normalise_pmid,
+    normalise_s2_id,
+    title_key,
+    works_compatible,
+)
 
 __all__ = [
+    "LICENCE_NO_REDISTRIBUTE",
     "LOOKUP_KINDS",
     "Cache",
     "NoticeKind",
@@ -86,7 +103,20 @@ __all__ = [
     "ReferenceEntry",
     "ReferenceReport",
     "StyleDecision",
+    "Work",
+    "WorkAccess",
+    "WorkRetraction",
+    "canonical_url",
     "check_references",
+    "merge_works",
+    "normalise_arxiv_id",
+    "normalise_doi",
+    "normalise_openalex_id",
+    "normalise_pmcid",
+    "normalise_pmid",
+    "normalise_s2_id",
+    "title_key",
+    "works_compatible",
 ]
 
 

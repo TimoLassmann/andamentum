@@ -148,7 +148,7 @@ class TestCheckNovelty:
 
     @pytest.mark.asyncio
     async def test_assessment_failure_with_sources(self):
-        """Assessment fails but research found sources — heuristic fallback."""
+        """Assessment fails but research found sources — still no verdict."""
         output = _report(
             evidence_summary="Found some evidence",
             key_findings=["finding 1", "finding 2"],
@@ -162,13 +162,15 @@ class TestCheckNovelty:
             raise RuntimeError("LLM error")
 
         report = await _check_novelty_with_deps("test claim", research_fn, assess_fn)
-        assert report.is_novel is False
-        assert report.confidence == 0.6
-        assert "prior work exists" in report.assessment.lower()
+        assert report.is_novel is None
+        assert report.confidence == 0.0
+        assert "UNDETERMINED" in report.assessment
+        assert "LLM error" in report.assessment
+        assert report.sources == ["https://example.com"]
 
     @pytest.mark.asyncio
     async def test_assessment_failure_without_sources(self):
-        """Assessment fails and no sources found — novel with low confidence."""
+        """Assessment fails and no sources found — never guessed as novel."""
         output = _report(
             evidence_summary="Nothing found",
             key_findings=[],
@@ -182,8 +184,8 @@ class TestCheckNovelty:
             raise RuntimeError("LLM error")
 
         report = await _check_novelty_with_deps("test claim", research_fn, assess_fn)
-        assert report.is_novel is True
-        assert report.confidence == 0.3
+        assert report.is_novel is None
+        assert report.confidence == 0.0
 
     @pytest.mark.asyncio
     async def test_confidence_clamped(self):
@@ -240,3 +242,86 @@ class TestCheckNovelty:
         report = await _check_novelty_with_deps("my claim", research_fn, assess_fn)
         assert len(report.search_queries_used) == 3
         assert any("my claim" in q for q in report.search_queries_used)
+
+    @pytest.mark.asyncio
+    async def test_novel_verdict_on_degraded_search_is_undetermined(self):
+        """ "No prior work found" from a degraded search is absence of
+        evidence, not evidence of absence — it must not stand as a verdict."""
+        output = _report(
+            evidence_summary="Little came back",
+            key_findings=["one weak finding"],
+            sources=["https://example.com"],
+        )
+        output.degraded = True
+        output.degraded_reason = "3/3 searches failed"
+
+        async def research_fn(**kwargs):
+            return output
+
+        async def assess_fn(claim, evidence_summary, key_findings, sources):
+            return NoveltyAssessment(
+                is_novel=True, confidence=0.9, assessment="novel", similar_works=[]
+            )
+
+        report = await _check_novelty_with_deps("c", research_fn, assess_fn)
+        assert report.is_novel is None
+        assert report.confidence == 0.0
+        assert "3/3 searches failed" in report.assessment
+
+    @pytest.mark.asyncio
+    async def test_not_novel_verdict_on_degraded_search_still_stands(self):
+        """Finding prior work is positive evidence even when the run was
+        degraded, so a 'not novel' verdict is kept."""
+        output = _report(
+            evidence_summary="Found it",
+            key_findings=["f"],
+            sources=["https://example.com"],
+        )
+        output.degraded = True
+        output.degraded_reason = "2/3 page fetches failed"
+
+        async def research_fn(**kwargs):
+            return output
+
+        async def assess_fn(claim, evidence_summary, key_findings, sources):
+            return NoveltyAssessment(
+                is_novel=False, confidence=0.8, assessment="exists", similar_works=[]
+            )
+
+        report = await _check_novelty_with_deps("c", research_fn, assess_fn)
+        assert report.is_novel is False
+
+
+@pytest.mark.asyncio
+async def test_run_novelty_check_without_summarised_pages_never_assesses(monkeypatch):
+    """run_research returned a placeholder report because no page could be
+    read: the assessor must not be asked, and the verdict is undetermined."""
+    from .. import orchestrator
+    from ..models import ResearchErrors, ResearchResult
+    from ..novelty.checker import run_novelty_check
+
+    placeholder = EvidenceReport(
+        evidence_summary="could not gather evidence",
+        key_findings=["No evidence: no pages were fetched"],
+        sources=["No sources"],
+        total_searches_performed=3,
+        total_pages_fetched=0,
+        iterations_required=1,
+    )
+
+    async def fake_run_research(*args, **kwargs):
+        return ResearchResult.model_construct(
+            output=placeholder,
+            page_summaries=[],
+            fetched_pages=[],
+            iterations=1,
+            searches=3,
+            pages_fetched=0,
+            verification={},
+            errors=ResearchErrors(search_errors=3, fetch_errors=0),
+        )
+
+    monkeypatch.setattr(orchestrator, "run_research", fake_run_research)
+    report = await run_novelty_check("some claim", model="test")
+    assert report.is_novel is None
+    assert report.confidence == 0.0

@@ -19,7 +19,7 @@ from .novelty import run_novelty_check
 from .orchestrator import run_research
 
 # === Internal infrastructure (advanced use) ===
-from .circuit_breaker import CircuitBreaker, get_searxng_breaker
+from .circuit_breaker import CircuitBreaker
 from .content_extractor import extract_content, extract_html, extract_pdf
 from .searxng import HealthCheck, SearxngManager, check_health as check_searxng_health
 from .verification import verify_sources
@@ -67,7 +67,6 @@ __all__ = [
     "extract_content",
     "extract_html",
     "extract_pdf",
-    "get_searxng_breaker",
     "verify_sources",
     # Data types
     "AGENT_REGISTRY",

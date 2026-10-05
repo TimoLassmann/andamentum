@@ -17,11 +17,20 @@ from andamentum.core.fetch_gate import (
     user_agent_for,
 )
 
+from .circuit_breaker import CircuitBreaker, CircuitOpenError
 from .models import SearchResult, FetchedPage
 
 logger = logging.getLogger(__name__)
 
 _USER_AGENT = user_agent_for("research")
+
+
+class SearchBackendError(RuntimeError):
+    """A search could not be completed (transport, HTTP or malformed reply).
+
+    Raised instead of returning ``[]`` so the caller can tell "the search
+    failed" from "the search found nothing" and record it.
+    """
 
 
 # ── Protocol ────────────────────────────────────────────────────────────
@@ -36,7 +45,10 @@ class SearchBackend(Protocol):
     """
 
     async def search(self, query: str, max_results: int = 10) -> list[SearchResult]:
-        """Execute a web search and return structured results."""
+        """Execute a web search and return structured results.
+
+        Raises on failure; an empty list means the search ran and found nothing.
+        """
         ...
 
     async def fetch_page(self, url: str) -> FetchedPage:
@@ -61,8 +73,12 @@ class HttpxSearchBackend:
         http_client: httpx.AsyncClient | None = None,
         *,
         tdm_allowed_hosts: frozenset[str] = frozenset(),
+        breaker: CircuitBreaker | None = None,
     ):
         self.searxng_url = searxng_url
+        # One breaker per backend instance; ``run_research`` builds a backend
+        # per run, so a failure streak never leaks into the next run.
+        self._breaker = breaker or CircuitBreaker(name="searxng")
         self._owns_client = http_client is None
         # follow_redirects is off at the client level: page fetches drive the
         # redirect chain through fetch_with_safe_redirects so each hop is
@@ -76,15 +92,14 @@ class HttpxSearchBackend:
         self._tdm_allowed_hosts = tdm_allowed_hosts
 
     async def search(self, query: str, max_results: int = 10) -> list[SearchResult]:
-        """Search via SearXNG JSON API."""
-        from .circuit_breaker import get_searxng_breaker
+        """Search via SearXNG JSON API.
 
-        breaker = get_searxng_breaker()
-        if not breaker.allow_request():
-            logger.warning(
-                f"Circuit breaker open, skipping search for '{query[:50]}...'"
-            )
-            return []
+        Raises :class:`SearchBackendError` on a transport or HTTP failure or
+        an unreadable reply, and :class:`CircuitOpenError` while this
+        backend's breaker is open. Never returns ``[]`` for an error.
+        """
+        if not self._breaker.allow_request():
+            raise CircuitOpenError(self._breaker.name)
 
         try:
             resp = await self._http.get(
@@ -93,12 +108,16 @@ class HttpxSearchBackend:
             )
             resp.raise_for_status()
             data = resp.json()
+            if not isinstance(data, dict):
+                raise ValueError("SearXNG reply is not a JSON object")
         except Exception as e:
-            breaker.record_failure()
+            self._breaker.record_failure()
             logger.error(f"Search failed for '{query[:50]}...': {e}")
-            return []
+            raise SearchBackendError(
+                f"search failed for {query[:50]!r}: {type(e).__name__}: {e}"
+            ) from e
 
-        breaker.record_success()
+        self._breaker.record_success()
 
         raw = data.get("results", [])
         results: list[SearchResult] = []

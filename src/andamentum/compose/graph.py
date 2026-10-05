@@ -1,6 +1,7 @@
 """The compose orchestrator: a pydantic-graph state machine over a bundle.
 
-    Ingest -> CompileBrief -> Evidence -> Plan -> Draft -> Check
+    Ingest -> CompileBrief -> Research -> Evidence -> Plan -> Draft -> Check
+        Research -> Evidence      skipped unless the run was started with --research
         Check -> Finish           goal met twice running, or the round cap
         Check -> Check            goal met once: re-check the same text
         Check -> Revise -> Check  revise the sections the checks named
@@ -23,6 +24,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from pydantic_graph import BaseNode, End, GraphBuilder, GraphRunContext
 
@@ -38,6 +40,15 @@ from .genres import Genre, genre_for
 from .log import ActionLog
 from .plan import MAX_OUTLINE_AMENDMENTS, amend_outline, make_outline
 from .render import ProvenanceRequired, render_outputs
+from .research import (
+    RESEARCH_DB,
+    ResearchSetup,
+    ResearchSetupError,
+    degraded_notes,
+    research_facts,
+    research_sources,
+    run_research_v2,
+)
 from .revise import revise_section
 from .schemas import (
     Brief,
@@ -61,10 +72,11 @@ from .steps import (
 )
 from .write import draft_section
 
+if TYPE_CHECKING:
+    from andamentum.deep_research.v2 import ResearchResult
+
 DEFAULT_MAX_ROUNDS = 4
 GOAL_STREAK = 2  # consecutive passing check passes the goal needs
-RESEARCH_REPORT = "evidence/research-report.md"
-MAX_LABEL_URLS = 5
 
 
 @dataclass(frozen=True)
@@ -79,7 +91,8 @@ class ComposeDeps:
     log: ActionLog
     progress: Callable[[str], None]
     max_rounds: int = DEFAULT_MAX_ROUNDS
-    research: bool = False
+    research: ResearchSetup | None = None
+    research_requested: bool = False  # the bundle was started with --research
     confirm_own_sources: bool = False
     provenance: bool = True
     formats: tuple[str, ...] | None = None
@@ -93,6 +106,7 @@ class ComposeState:
     genre: Genre | None = None
     sources: list[Source] = field(default_factory=list)
     facts: list[Fact] = field(default_factory=list)
+    research: ResearchResult | None = None
     outline: Outline | None = None
     rounds: list[RoundRecord] = field(default_factory=list)
     first_round: int = 0  # rounds already on disk when this run started
@@ -135,28 +149,6 @@ def _need(state: ComposeState) -> tuple[Brief, Genre]:
     return state.brief, state.genre
 
 
-async def _research_source(deps: ComposeDeps) -> tuple[str, str]:
-    """Run web research once; keep its report as a file to ingest.
-
-    Returns the report's path and the label a reader sees for it.
-    """
-    from andamentum.deep_research import run_research
-
-    deps.progress("Ingest: running web research")
-    result = await run_research(deps.task, model=deps.roles.drafter)
-    report = result.output
-    lines = [f"# Research report: {deps.task}", "", report.evidence_summary, ""]
-    lines += ["## Key findings", ""] + [f"- {f}" for f in report.key_findings]
-    lines += ["", "## Sources", ""] + [f"- {s}" for s in report.sources]
-    path = deps.bundle_dir / RESEARCH_REPORT
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    label = "Web research report"
-    if report.sources:
-        label += f" ({', '.join(report.sources[:MAX_LABEL_URLS])})"
-    return str(path), label
-
-
 @dataclass
 class Ingest(BaseNode[ComposeState, ComposeDeps, ComposeResult]):
     """Harvest every source into the bundle (skipped when already done)."""
@@ -167,19 +159,12 @@ class Ingest(BaseNode[ComposeState, ComposeDeps, ComposeResult]):
             state.sources = store.load_sources(deps.bundle_dir)
             return CompileBrief()
         paths = list(deps.source_paths)
-        research = await _research_source(deps) if deps.research else None
-        if research is not None:
-            paths.append(research[0])
         deps.progress(f"Ingest: {len(paths)} source(s)")
         sources = await ingest_sources(
             paths,
             bundle_dir=deps.bundle_dir,
             confirm_own_sources=deps.confirm_own_sources,
         )
-        if research is not None and sources:
-            sources[-1] = sources[-1].model_copy(
-                update={"kind": "research", "label": research[1]}
-            )
         state.sources = sources
         store.save_sources(deps.bundle_dir, sources)
         return CompileBrief()
@@ -189,7 +174,7 @@ class Ingest(BaseNode[ComposeState, ComposeDeps, ComposeResult]):
 class CompileBrief(BaseNode[ComposeState, ComposeDeps, ComposeResult]):
     """Compile the task into the frozen brief (skipped when brief.json exists)."""
 
-    async def run(self, ctx: Ctx) -> Evidence:
+    async def run(self, ctx: Ctx) -> Research:
         deps, state = ctx.deps, ctx.state
         bundle = Bundle.open(deps.bundle_dir)
         if store.has(deps.bundle_dir, store.BRIEF):
@@ -216,6 +201,74 @@ class CompileBrief(BaseNode[ComposeState, ComposeDeps, ComposeResult]):
         if bundle.metadata.get("genre") != spec:
             bundle.set_metadata(genre=spec)
         require_provenance(state.genre, provenance=deps.provenance)
+        return Research()
+
+
+@dataclass
+class Research(BaseNode[ComposeState, ComposeDeps, ComposeResult]):
+    """Run research once, in the genre's mode, and add its works as sources.
+
+    Skipped unless the bundle was started with ``--research``. The research
+    result is saved whole (``evidence/research.json``), so a resumed run reuses
+    it; each work with a finding becomes a source whose text is the passages
+    the findings quote (see ``research.py``).
+    """
+
+    async def run(self, ctx: Ctx) -> Evidence:
+        deps, state = ctx.deps, ctx.state
+        if not deps.research_requested:
+            return Evidence()
+        _brief, genre = _need(state)
+        if store.has(deps.bundle_dir, store.RESEARCH):
+            result = store.load_research(deps.bundle_dir)
+        else:
+            if deps.research is None:
+                raise ResearchSetupError(
+                    "this bundle was started with --research and the research did "
+                    "not finish; give the research settings again to continue"
+                )
+            result = await run_research_v2(
+                deps.task,
+                genre=genre,
+                setup=deps.research,
+                model=deps.roles.drafter,
+                database=deps.bundle_dir / RESEARCH_DB,
+                progress=deps.progress,
+            )
+            store.save_research(deps.bundle_dir, result)
+            deps.log.call(
+                node="Research",
+                role="drafter",
+                model=deps.roles.drafter,
+                prompt="deep_research v2",
+                input_text=deps.task,
+                output_text=result.run_id,
+                input_tokens=result.stats.input_tokens,
+                output_tokens=result.stats.output_tokens,
+            )
+            deps.log.event(
+                node="Research",
+                event="research",
+                run_id=result.run_id,
+                mode=result.mode,
+                works=len(result.works),
+                findings=len(result.findings),
+                stop_reason=result.stop_reason,
+                degraded=len(result.degraded),
+                decision_calls=result.stats.decision_calls,
+            )
+        state.research = result
+        for note in degraded_notes(result):
+            _note(state, note)
+        if not any(s.kind == "research" and s.work_id for s in state.sources):
+            added = research_sources(
+                result,
+                bundle_dir=deps.bundle_dir,
+                first_number=len(state.sources) + 1,
+            )
+            state.sources = [*state.sources, *added]
+            store.save_sources(deps.bundle_dir, state.sources)
+            deps.progress(f"Research: {len(added)} source(s) with findings")
         return Evidence()
 
 
@@ -235,6 +288,20 @@ class Evidence(BaseNode[ComposeState, ComposeDeps, ComposeResult]):
                 text = stored_source_path(deps.bundle_dir, source).read_text(
                     encoding="utf-8"
                 )
+                if source.kind == "research" and source.work_id:
+                    assert state.research is not None  # Research saved the sources
+                    found, dropped = research_facts(
+                        state.research,
+                        source,
+                        text,
+                        first_number=len(facts) + 1,
+                    )
+                    for note in dropped:
+                        deps.log.event(
+                            node="evidence", event="finding_dropped", note=note
+                        )
+                    facts += found
+                    continue
                 facts += await extract_facts(
                     source,
                     text,
@@ -522,6 +589,7 @@ _builder.add(
     _builder.edge_from(_builder.start_node).to(Ingest),
     _builder.node(Ingest),
     _builder.node(CompileBrief),
+    _builder.node(Research),
     _builder.node(Evidence),
     _builder.node(Plan),
     _builder.node(Draft),

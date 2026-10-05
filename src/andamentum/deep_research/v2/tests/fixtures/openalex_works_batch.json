@@ -1,0 +1,1139 @@
+{
+ "meta": {
+  "count": 3
+ },
+ "results": [
+  {
+   "id": "https://openalex.org/W2955341903",
+   "doi": "https://doi.org/10.1093/bib/bbz069",
+   "title": "Data imbalance in CRISPR off-target prediction",
+   "publication_year": 2019,
+   "abstract_inverted_index": {
+    "For": [
+     0
+    ],
+    "genome-wide": [
+     1
+    ],
+    "CRISPR": [
+     2,
+     82,
+     93,
+     106,
+     147,
+     164
+    ],
+    "off-target": [
+     3,
+     21,
+     83,
+     107,
+     148,
+     165
+    ],
+    "cleavage": [
+     4
+    ],
+    "sites": [
+     5
+    ],
+    "(OTS)": [
+     6
+    ],
+    "prediction,": [
+     7
+    ],
+    "an": [
+     8
+    ],
+    "important": [
+     9
+    ],
+    "issue": [
+     10,
+     80,
+     141,
+     162
+    ],
+    "is": [
+     11,
+     24
+    ],
+    "data": [
+     12,
+     78,
+     118,
+     131,
+     139,
+     160
+    ],
+    "imbalance-the": [
+     13
+    ],
+    "number": [
+     14
+    ],
+    "of": [
+     15,
+     29,
+     38,
+     105,
+     123,
+     146,
+     171
+    ],
+    "true": [
+     16
+    ],
+    "OTS": [
+     17,
+     49
+    ],
+    "recognized": [
+     18
+    ],
+    "by": [
+     19,
+     116
+    ],
+    "whole-genome": [
+     20
+    ],
+    "detection": [
+     22
+    ],
+    "techniques": [
+     23,
+     126
+    ],
+    "much": [
+     25
+    ],
+    "smaller": [
+     26
+    ],
+    "than": [
+     27
+    ],
+    "that": [
+     28,
+     101
+    ],
+    "all": [
+     30
+    ],
+    "possible": [
+     31
+    ],
+    "nucleotide": [
+     32
+    ],
+    "mismatch": [
+     33
+    ],
+    "loci,": [
+     34
+    ],
+    "making": [
+     35
+    ],
+    "the": [
+     36,
+     77,
+     103,
+     138,
+     144,
+     159
+    ],
+    "training": [
+     37
+    ],
+    "machine": [
+     39
+    ],
+    "learning": [
+     40,
+     129
+    ],
+    "model": [
+     41
+    ],
+    "very": [
+     42
+    ],
+    "challenging.": [
+     43
+    ],
+    "Therefore,": [
+     44
+    ],
+    "computational": [
+     45,
+     125
+    ],
+    "models": [
+     46
+    ],
+    "proposed": [
+     47
+    ],
+    "for": [
+     48,
+     91,
+     154
+    ],
+    "prediction": [
+     50,
+     84,
+     108,
+     166
+    ],
+    "and": [
+     51,
+     57,
+     89,
+     113,
+     130,
+     142
+    ],
+    "scoring": [
+     52
+    ],
+    "should": [
+     53,
+     109
+    ],
+    "be": [
+     54,
+     110
+    ],
+    "carefully": [
+     55
+    ],
+    "designed": [
+     56
+    ],
+    "properly": [
+     58,
+     111
+    ],
+    "evaluated": [
+     59,
+     112
+    ],
+    "in": [
+     60,
+     81,
+     163
+    ],
+    "order": [
+     61
+    ],
+    "to": [
+     62,
+     74,
+     85,
+     99,
+     136,
+     157,
+     167
+    ],
+    "avoid": [
+     63
+    ],
+    "bias.": [
+     64
+    ],
+    "In": [
+     65
+    ],
+    "our": [
+     66
+    ],
+    "study,": [
+     67
+    ],
+    "two": [
+     68
+    ],
+    "tools": [
+     69
+    ],
+    "are": [
+     70
+    ],
+    "taken": [
+     71
+    ],
+    "as": [
+     72
+    ],
+    "examples": [
+     73
+    ],
+    "further": [
+     75
+    ],
+    "emphasize": [
+     76
+    ],
+    "imbalance": [
+     79,
+     119,
+     140,
+     161
+    ],
+    "achieve": [
+     86
+    ],
+    "better": [
+     87
+    ],
+    "sensitivity": [
+     88
+    ],
+    "specificity": [
+     90
+    ],
+    "optimized": [
+     92
+    ],
+    "gene": [
+     94,
+     173
+    ],
+    "editing.": [
+     95
+    ],
+    "We": [
+     96
+    ],
+    "would": [
+     97
+    ],
+    "like": [
+     98
+    ],
+    "indicate": [
+     100
+    ],
+    "(1)": [
+     102
+    ],
+    "benchmark": [
+     104
+    ],
+    "not": [
+     114
+    ],
+    "overestimated": [
+     115
+    ],
+    "considering": [
+     117
+    ],
+    "issue;": [
+     120
+    ],
+    "(2)": [
+     121
+    ],
+    "incorporation": [
+     122
+    ],
+    "efficient": [
+     124
+    ],
+    "(including": [
+     127
+    ],
+    "ensemble": [
+     128
+    ],
+    "synthesis": [
+     132
+    ],
+    "techniques)": [
+     133
+    ],
+    "can": [
+     134
+    ],
+    "help": [
+     135
+    ],
+    "address": [
+     137,
+     158
+    ],
+    "improve": [
+     143
+    ],
+    "performance": [
+     145
+    ],
+    "prediction.": [
+     149
+    ],
+    "Taking": [
+     150
+    ],
+    "together,": [
+     151
+    ],
+    "we": [
+     152
+    ],
+    "call": [
+     153
+    ],
+    "more": [
+     155
+    ],
+    "efforts": [
+     156
+    ],
+    "facilitate": [
+     168
+    ],
+    "clinical": [
+     169
+    ],
+    "utility": [
+     170
+    ],
+    "CRISPR-based": [
+     172
+    ],
+    "editing": [
+     174
+    ],
+    "techniques.": [
+     175
+    ]
+   },
+   "primary_location": {
+    "id": "doi:10.1093/bib/bbz069",
+    "is_oa": false,
+    "landing_page_url": "https://doi.org/10.1093/bib/bbz069",
+    "pdf_url": null,
+    "source": {
+     "id": "https://openalex.org/S91767247",
+     "display_name": "Briefings in Bioinformatics"
+    },
+    "license": null,
+    "license_id": null,
+    "version": "publishedVersion",
+    "is_accepted": true,
+    "is_published": true,
+    "raw_source_name": "Briefings in Bioinformatics",
+    "raw_type": "journal-article"
+   },
+   "open_access": {
+    "is_oa": false,
+    "oa_status": "closed",
+    "oa_url": null,
+    "any_repository_has_fulltext": false
+   },
+   "referenced_works": [
+    "https://openalex.org/W1879165674",
+    "https://openalex.org/W1990149668",
+    "https://openalex.org/W1997281938"
+   ],
+   "type": "article",
+   "authorships": [
+    {
+     "author_position": "first",
+     "author": {
+      "id": "https://openalex.org/A5059163580",
+      "display_name": "Yuli Gao",
+      "orcid": null,
+      "observed_orcids": []
+     },
+     "institutions": [
+      {
+       "id": "https://openalex.org/I116953780",
+       "display_name": "Tongji University",
+       "ror": "https://ror.org/03rc6as71",
+       "country_code": "CN",
+       "type": "education",
+       "lineage": [
+        "https://openalex.org/I116953780"
+       ]
+      },
+      {
+       "id": "https://openalex.org/I4210132741",
+       "display_name": "Shanghai Tenth People's Hospital",
+       "ror": "https://ror.org/03vjkf643",
+       "country_code": "CN",
+       "type": "healthcare",
+       "lineage": [
+        "https://openalex.org/I4210132741"
+       ]
+      }
+     ],
+     "countries": [
+      "CN"
+     ],
+     "is_corresponding": false,
+     "raw_author_name": "Yuli Gao",
+     "raw_affiliation_strings": [
+      "Department of Endocrinology & Metabolism, Shanghai Tenth People’s Hospital; Bioinformatics Department, School of Life Sciences and Technology, Tongji University, Shanghai, 20009, China",
+      "Department of Endocrinology & Metabolism, Shanghai Tenth People's Hospital"
+     ],
+     "raw_orcid": null,
+     "affiliations": [
+      {
+       "raw_affiliation_string": "Department of Endocrinology & Metabolism, Shanghai Tenth People’s Hospital; Bioinformatics Department, School of Life Sciences and Technology, Tongji University, Shanghai, 20009, China",
+       "institution_ids": [
+        "https://openalex.org/I116953780",
+        "https://openalex.org/I4210132741"
+       ]
+      },
+      {
+       "raw_affiliation_string": "Department of Endocrinology & Metabolism, Shanghai Tenth People's Hospital",
+       "institution_ids": [
+        "https://openalex.org/I4210132741"
+       ]
+      }
+     ]
+    },
+    {
+     "author_position": "middle",
+     "author": {
+      "id": "https://openalex.org/A5032083590",
+      "display_name": "Guohui Chuai",
+      "orcid": "https://orcid.org/0000-0003-2423-8411",
+      "observed_orcids": [
+       "https://orcid.org/0000-0003-2423-8411"
+      ]
+     },
+     "institutions": [
+      {
+       "id": "https://openalex.org/I116953780",
+       "display_name": "Tongji University",
+       "ror": "https://ror.org/03rc6as71",
+       "country_code": "CN",
+       "type": "education",
+       "lineage": [
+        "https://openalex.org/I116953780"
+       ]
+      },
+      {
+       "id": "https://openalex.org/I4210132741",
+       "display_name": "Shanghai Tenth People's Hospital",
+       "ror": "https://ror.org/03vjkf643",
+       "country_code": "CN",
+       "type": "healthcare",
+       "lineage": [
+        "https://openalex.org/I4210132741"
+       ]
+      }
+     ],
+     "countries": [
+      "CN"
+     ],
+     "is_corresponding": false,
+     "raw_author_name": "Guohui Chuai",
+     "raw_affiliation_strings": [
+      "Department of Endocrinology & Metabolism, Shanghai Tenth People’s Hospital; Bioinformatics Department, School of Life Sciences and Technology, Tongji University, Shanghai, 20009, China",
+      "Department of Endocrinology & Metabolism, Shanghai Tenth People's Hospital"
+     ],
+     "raw_orcid": null,
+     "affiliations": [
+      {
+       "raw_affiliation_string": "Department of Endocrinology & Metabolism, Shanghai Tenth People’s Hospital; Bioinformatics Department, School of Life Sciences and Technology, Tongji University, Shanghai, 20009, China",
+       "institution_ids": [
+        "https://openalex.org/I116953780",
+        "https://openalex.org/I4210132741"
+       ]
+      },
+      {
+       "raw_affiliation_string": "Department of Endocrinology & Metabolism, Shanghai Tenth People's Hospital",
+       "institution_ids": [
+        "https://openalex.org/I4210132741"
+       ]
+      }
+     ]
+    },
+    {
+     "author_position": "middle",
+     "author": {
+      "id": "https://openalex.org/A5078798099",
+      "display_name": "Weichuan Yu",
+      "orcid": "https://orcid.org/0000-0002-5510-6916",
+      "observed_orcids": [
+       "https://orcid.org/0000-0002-5510-6916"
+      ]
+     },
+     "institutions": [
+      {
+       "id": "https://openalex.org/I200769079",
+       "display_name": "Hong Kong University of Science and Technology",
+       "ror": "https://ror.org/00q4vv597",
+       "country_code": "HK",
+       "type": "education",
+       "lineage": [
+        "https://openalex.org/I200769079"
+       ]
+      }
+     ],
+     "countries": [
+      "HK"
+     ],
+     "is_corresponding": false,
+     "raw_author_name": "Weichuan Yu",
+     "raw_affiliation_strings": [
+      "Department of Electronic and Computer Engineering, The Hong Kong University of Science and Technology, Clear Water Bay, Kowloon, Hong Kong, China"
+     ],
+     "raw_orcid": null,
+     "affiliations": [
+      {
+       "raw_affiliation_string": "Department of Electronic and Computer Engineering, The Hong Kong University of Science and Technology, Clear Water Bay, Kowloon, Hong Kong, China",
+       "institution_ids": [
+        "https://openalex.org/I200769079"
+       ]
+      }
+     ]
+    },
+    {
+     "author_position": "middle",
+     "author": {
+      "id": "https://openalex.org/A5027522098",
+      "display_name": "Shen Qu",
+      "orcid": "https://orcid.org/0000-0003-0811-7070",
+      "observed_orcids": [
+       "https://orcid.org/0000-0003-0811-7070"
+      ]
+     },
+     "institutions": [
+      {
+       "id": "https://openalex.org/I116953780",
+       "display_name": "Tongji University",
+       "ror": "https://ror.org/03rc6as71",
+       "country_code": "CN",
+       "type": "education",
+       "lineage": [
+        "https://openalex.org/I116953780"
+       ]
+      },
+      {
+       "id": "https://openalex.org/I4210132741",
+       "display_name": "Shanghai Tenth People's Hospital",
+       "ror": "https://ror.org/03vjkf643",
+       "country_code": "CN",
+       "type": "healthcare",
+       "lineage": [
+        "https://openalex.org/I4210132741"
+       ]
+      }
+     ],
+     "countries": [
+      "CN"
+     ],
+     "is_corresponding": true,
+     "raw_author_name": "Shen Qu",
+     "raw_affiliation_strings": [
+      "Department of Endocrinology & Metabolism, Shanghai Tenth People’s Hospital; Bioinformatics Department, School of Life Sciences and Technology, Tongji University, Shanghai, 20009, China",
+      "Department of Endocrinology & Metabolism, Shanghai Tenth People's Hospital"
+     ],
+     "raw_orcid": null,
+     "affiliations": [
+      {
+       "raw_affiliation_string": "Department of Endocrinology & Metabolism, Shanghai Tenth People’s Hospital; Bioinformatics Department, School of Life Sciences and Technology, Tongji University, Shanghai, 20009, China",
+       "institution_ids": [
+        "https://openalex.org/I116953780",
+        "https://openalex.org/I4210132741"
+       ]
+      },
+      {
+       "raw_affiliation_string": "Department of Endocrinology & Metabolism, Shanghai Tenth People's Hospital",
+       "institution_ids": [
+        "https://openalex.org/I4210132741"
+       ]
+      }
+     ]
+    },
+    {
+     "author_position": "last",
+     "author": {
+      "id": "https://openalex.org/A5100453248",
+      "display_name": "Qi Liu",
+      "orcid": "https://orcid.org/0000-0003-2578-1221",
+      "observed_orcids": [
+       "https://orcid.org/0000-0003-2578-1221"
+      ]
+     },
+     "institutions": [
+      {
+       "id": "https://openalex.org/I116953780",
+       "display_name": "Tongji University",
+       "ror": "https://ror.org/03rc6as71",
+       "country_code": "CN",
+       "type": "education",
+       "lineage": [
+        "https://openalex.org/I116953780"
+       ]
+      },
+      {
+       "id": "https://openalex.org/I4210132741",
+       "display_name": "Shanghai Tenth People's Hospital",
+       "ror": "https://ror.org/03vjkf643",
+       "country_code": "CN",
+       "type": "healthcare",
+       "lineage": [
+        "https://openalex.org/I4210132741"
+       ]
+      },
+      {
+       "id": "https://openalex.org/I4210138433",
+       "display_name": "Ninghai County First Hospital",
+       "ror": "https://ror.org/03h0b2y74",
+       "country_code": "CN",
+       "type": "healthcare",
+       "lineage": [
+        "https://openalex.org/I4210138433"
+       ]
+      }
+     ],
+     "countries": [
+      "CN"
+     ],
+     "is_corresponding": true,
+     "raw_author_name": "Qi Liu",
+     "raw_affiliation_strings": [
+      "Department of Endocrinology & Metabolism, Shanghai Tenth People’s Hospital; Bioinformatics Department, School of Life Sciences and Technology, Tongji University, Shanghai, 20009, China",
+      "Department of Ophthalmology, Ninghai First Hospital, Ninghai, Zhejiang, China",
+      "Department of Endocrinology & Metabolism, Shanghai Tenth People's Hospital"
+     ],
+     "raw_orcid": null,
+     "affiliations": [
+      {
+       "raw_affiliation_string": "Department of Endocrinology & Metabolism, Shanghai Tenth People’s Hospital; Bioinformatics Department, School of Life Sciences and Technology, Tongji University, Shanghai, 20009, China",
+       "institution_ids": [
+        "https://openalex.org/I116953780",
+        "https://openalex.org/I4210132741"
+       ]
+      },
+      {
+       "raw_affiliation_string": "Department of Ophthalmology, Ninghai First Hospital, Ninghai, Zhejiang, China",
+       "institution_ids": [
+        "https://openalex.org/I4210138433"
+       ]
+      },
+      {
+       "raw_affiliation_string": "Department of Endocrinology & Metabolism, Shanghai Tenth People's Hospital",
+       "institution_ids": [
+        "https://openalex.org/I4210132741"
+       ]
+      }
+     ]
+    }
+   ],
+   "ids": {
+    "openalex": "https://openalex.org/W2955341903",
+    "doi": "https://doi.org/10.1093/bib/bbz069",
+    "mag": "2955341903",
+    "pmid": "https://pubmed.ncbi.nlm.nih.gov/31267129"
+   },
+   "cited_by_count": 37,
+   "is_retracted": false
+  },
+  {
+   "id": "https://openalex.org/W3016428216",
+   "doi": "https://doi.org/10.1038/s41596-020-0309-5",
+   "title": "CRISPR off-target detection with DISCOVER-seq",
+   "publication_year": 2020,
+   "abstract_inverted_index": null,
+   "primary_location": {
+    "id": "doi:10.1038/s41596-020-0309-5",
+    "is_oa": false,
+    "landing_page_url": "https://doi.org/10.1038/s41596-020-0309-5",
+    "pdf_url": null,
+    "source": {
+     "id": "https://openalex.org/S109387254",
+     "display_name": "Nature Protocols"
+    },
+    "license": null,
+    "license_id": null,
+    "version": "publishedVersion",
+    "is_accepted": true,
+    "is_published": true,
+    "raw_source_name": "Nature Protocols",
+    "raw_type": "journal-article"
+   },
+   "open_access": {
+    "is_oa": true,
+    "oa_status": "green",
+    "oa_url": "https://www.ncbi.nlm.nih.gov/pmc/articles/7305837",
+    "any_repository_has_fulltext": true
+   },
+   "referenced_works": [
+    "https://openalex.org/W1971419576",
+    "https://openalex.org/W1980636468",
+    "https://openalex.org/W1997281938"
+   ],
+   "type": "article",
+   "authorships": [
+    {
+     "author_position": "first",
+     "author": {
+      "id": "https://openalex.org/A5079703986",
+      "display_name": "Beeke Wienert",
+      "orcid": "https://orcid.org/0000-0002-9867-0795",
+      "observed_orcids": [
+       "https://orcid.org/0000-0002-9867-0795"
+      ]
+     },
+     "institutions": [
+      {
+       "id": "https://openalex.org/I1321430492",
+       "display_name": "Gladstone Institutes",
+       "ror": "https://ror.org/038321296",
+       "country_code": "US",
+       "type": "nonprofit",
+       "lineage": [
+        "https://openalex.org/I1321430492"
+       ]
+      },
+      {
+       "id": "https://openalex.org/I4210109258",
+       "display_name": "Innovative Genomics Institute",
+       "ror": "https://ror.org/01r4tcq81",
+       "country_code": "US",
+       "type": "education",
+       "lineage": [
+        "https://openalex.org/I180670191",
+        "https://openalex.org/I4210109258",
+        "https://openalex.org/I95457486"
+       ]
+      },
+      {
+       "id": "https://openalex.org/I95457486",
+       "display_name": "University of California, Berkeley",
+       "ror": "https://ror.org/01an7q238",
+       "country_code": "US",
+       "type": "education",
+       "lineage": [
+        "https://openalex.org/I95457486"
+       ]
+      }
+     ],
+     "countries": [
+      "US"
+     ],
+     "is_corresponding": true,
+     "raw_author_name": "Beeke Wienert",
+     "raw_affiliation_strings": [
+      "Innovative Genomics Institute, University of California, Berkeley, Berkeley, California, USA. beeke.wienert@gladstone.ucsf.edu",
+      "Institute of Data Science and Biotechnology, Gladstone Institutes, San Francisco, California, USA. beeke.wienert@gladstone.ucsf.edu",
+      "Innovative Genomics Institute, University of California, Berkeley, Berkeley, California, USA"
+     ],
+     "raw_orcid": "https://orcid.org/0000-0002-9867-0795",
+     "affiliations": [
+      {
+       "raw_affiliation_string": "Innovative Genomics Institute, University of California, Berkeley, Berkeley, California, USA. beeke.wienert@gladstone.ucsf.edu",
+       "institution_ids": [
+        "https://openalex.org/I4210109258",
+        "https://openalex.org/I95457486"
+       ]
+      },
+      {
+       "raw_affiliation_string": "Institute of Data Science and Biotechnology, Gladstone Institutes, San Francisco, California, USA. beeke.wienert@gladstone.ucsf.edu",
+       "institution_ids": [
+        "https://openalex.org/I1321430492"
+       ]
+      },
+      {
+       "raw_affiliation_string": "Innovative Genomics Institute, University of California, Berkeley, Berkeley, California, USA",
+       "institution_ids": [
+        "https://openalex.org/I4210109258",
+        "https://openalex.org/I95457486"
+       ]
+      }
+     ]
+    },
+    {
+     "author_position": "middle",
+     "author": {
+      "id": "https://openalex.org/A5034519888",
+      "display_name": "Stacia K. Wyman",
+      "orcid": "https://orcid.org/0000-0002-8937-8397",
+      "observed_orcids": [
+       "https://orcid.org/0000-0002-8937-8397"
+      ]
+     },
+     "institutions": [
+      {
+       "id": "https://openalex.org/I4210109258",
+       "display_name": "Innovative Genomics Institute",
+       "ror": "https://ror.org/01r4tcq81",
+       "country_code": "US",
+       "type": "education",
+       "lineage": [
+        "https://openalex.org/I180670191",
+        "https://openalex.org/I4210109258",
+        "https://openalex.org/I95457486"
+       ]
+      },
+      {
+       "id": "https://openalex.org/I95457486",
+       "display_name": "University of California, Berkeley",
+       "ror": "https://ror.org/01an7q238",
+       "country_code": "US",
+       "type": "education",
+       "lineage": [
+        "https://openalex.org/I95457486"
+       ]
+      }
+     ],
+     "countries": [
+      "US"
+     ],
+     "is_corresponding": false,
+     "raw_author_name": "Stacia K. Wyman",
+     "raw_affiliation_strings": [
+      "Innovative Genomics Institute, University of California, Berkeley, Berkeley, California, USA"
+     ],
+     "raw_orcid": "https://orcid.org/0000-0002-8937-8397",
+     "affiliations": [
+      {
+       "raw_affiliation_string": "Innovative Genomics Institute, University of California, Berkeley, Berkeley, California, USA",
+       "institution_ids": [
+        "https://openalex.org/I4210109258",
+        "https://openalex.org/I95457486"
+       ]
+      }
+     ]
+    },
+    {
+     "author_position": "middle",
+     "author": {
+      "id": "https://openalex.org/A5080393455",
+      "display_name": "Charles D. Yeh",
+      "orcid": "https://orcid.org/0000-0002-2707-6035",
+      "observed_orcids": [
+       "https://orcid.org/0000-0002-2707-6035"
+      ]
+     },
+     "institutions": [
+      {
+       "id": "https://openalex.org/I35440088",
+       "display_name": "ETH Zurich",
+       "ror": "https://ror.org/05a28rw58",
+       "country_code": "CH",
+       "type": "education",
+       "lineage": [
+        "https://openalex.org/I2799323385",
+        "https://openalex.org/I35440088"
+       ]
+      }
+     ],
+     "countries": [
+      "CH"
+     ],
+     "is_corresponding": false,
+     "raw_author_name": "Charles D. Yeh",
+     "raw_affiliation_strings": [
+      "Department of Biology, ETH Zurich, Zurich, Switzerland"
+     ],
+     "raw_orcid": "https://orcid.org/0000-0002-2707-6035",
+     "affiliations": [
+      {
+       "raw_affiliation_string": "Department of Biology, ETH Zurich, Zurich, Switzerland",
+       "institution_ids": [
+        "https://openalex.org/I35440088"
+       ]
+      }
+     ]
+    },
+    {
+     "author_position": "middle",
+     "author": {
+      "id": "https://openalex.org/A5051428406",
+      "display_name": "Bruce R. Conklin",
+      "orcid": "https://orcid.org/0000-0003-1463-6061",
+      "observed_orcids": [
+       "https://orcid.org/0000-0003-1463-6061"
+      ]
+     },
+     "institutions": [
+      {
+       "id": "https://openalex.org/I1321430492",
+       "display_name": "Gladstone Institutes",
+       "ror": "https://ror.org/038321296",
+       "country_code": "US",
+       "type": "nonprofit",
+       "lineage": [
+        "https://openalex.org/I1321430492"
+       ]
+      },
+      {
+       "id": "https://openalex.org/I180670191",
+       "display_name": "University of California, San Francisco",
+       "ror": "https://ror.org/043mz5j54",
+       "country_code": "US",
+       "type": "education",
+       "lineage": [
+        "https://openalex.org/I180670191"
+       ]
+      },
+      {
+       "id": "https://openalex.org/I4210109258",
+       "display_name": "Innovative Genomics Institute",
+       "ror": "https://ror.org/01r4tcq81",
+       "country_code": "US",
+       "type": "education",
+       "lineage": [
+        "https://openalex.org/I180670191",
+        "https://openalex.org/I4210109258",
+        "https://openalex.org/I95457486"
+       ]
+      },
+      {
+       "id": "https://openalex.org/I95457486",
+       "display_name": "University of California, Berkeley",
+       "ror": "https://ror.org/01an7q238",
+       "country_code": "US",
+       "type": "education",
+       "lineage": [
+        "https://openalex.org/I95457486"
+       ]
+      }
+     ],
+     "countries": [
+      "US"
+     ],
+     "is_corresponding": false,
+     "raw_author_name": "Bruce R. Conklin",
+     "raw_affiliation_strings": [
+      "Departments of Medicine, Ophthalmology & Pharmacology, University of California, San Francisco, San Francisco, California, USA",
+      "Innovative Genomics Institute, University of California, Berkeley, Berkeley, California, USA",
+      "Institute of Data Science and Biotechnology, Gladstone Institutes, San Francisco, California, USA"
+     ],
+     "raw_orcid": "https://orcid.org/0000-0003-1463-6061",
+     "affiliations": [
+      {
+       "raw_affiliation_string": "Departments of Medicine, Ophthalmology & Pharmacology, University of California, San Francisco, San Francisco, California, USA",
+       "institution_ids": [
+        "https://openalex.org/I180670191"
+       ]
+      },
+      {
+       "raw_affiliation_string": "Innovative Genomics Institute, University of California, Berkeley, Berkeley, California, USA",
+       "institution_ids": [
+        "https://openalex.org/I4210109258",
+        "https://openalex.org/I95457486"
+       ]
+      },
+      {
+       "raw_affiliation_string": "Institute of Data Science and Biotechnology, Gladstone Institutes, San Francisco, California, USA",
+       "institution_ids": [
+        "https://openalex.org/I1321430492"
+       ]
+      }
+     ]
+    },
+    {
+     "author_position": "last",
+     "author": {
+      "id": "https://openalex.org/A5073502390",
+      "display_name": "Jacob E. Corn",
+      "orcid": "https://orcid.org/0000-0002-7798-5309",
+      "observed_orcids": [
+       "https://orcid.org/0000-0002-7798-5309"
+      ]
+     },
+     "institutions": [
+      {
+       "id": "https://openalex.org/I35440088",
+       "display_name": "ETH Zurich",
+       "ror": "https://ror.org/05a28rw58",
+       "country_code": "CH",
+       "type": "education",
+       "lineage": [
+        "https://openalex.org/I2799323385",
+        "https://openalex.org/I35440088"
+       ]
+      }
+     ],
+     "countries": [
+      "CH"
+     ],
+     "is_corresponding": true,
+     "raw_author_name": "Jacob E. Corn",
+     "raw_affiliation_strings": [
+      "Department of Biology, ETH Zurich, Zurich, Switzerland. jacob.corn@biol.ethz.ch",
+      "Department of Biology, ETH Zurich, Zurich, Switzerland"
+     ],
+     "raw_orcid": "https://orcid.org/0000-0002-7798-5309",
+     "affiliations": [
+      {
+       "raw_affiliation_string": "Department of Biology, ETH Zurich, Zurich, Switzerland. jacob.corn@biol.ethz.ch",
+       "institution_ids": [
+        "https://openalex.org/I35440088"
+       ]
+      },
+      {
+       "raw_affiliation_string": "Department of Biology, ETH Zurich, Zurich, Switzerland",
+       "institution_ids": [
+        "https://openalex.org/I35440088"
+       ]
+      }
+     ]
+    }
+   ],
+   "ids": {
+    "openalex": "https://openalex.org/W3016428216",
+    "doi": "https://doi.org/10.1038/s41596-020-0309-5",
+    "mag": "3016428216",
+    "pmid": "https://pubmed.ncbi.nlm.nih.gov/32313254"
+   },
+   "cited_by_count": 92,
+   "is_retracted": false
+  },
+  {
+   "id": "https://openalex.org/W3106735065",
+   "doi": "https://doi.org/10.3389/fpls.2020.574959",
+   "title": "Which Factors Affect the Occurrence of Off-Target Effects Caused by the Use of CRISPR/Cas: A Systematic Review in Plants",
+   "publication_year": 2020,
+   "primary_location": {
+    "id": "doi:10.3389/fpls.2020.574959",
+    "is_oa": true,
+    "landing_page_url": "https://doi.org/10.3389/fpls.2020.574959",
+    "pdf_url": "https://www.frontiersin.org/articles/10.3389/fpls.2020.574959/pdf",
+    "source": {
+     "id": "https://openalex.org/S2493613807",
+     "display_name": "Frontiers in Plant Science"
+    },
+    "license": "cc-by",
+    "license_id": "https://openalex.org/licenses/cc-by",
+    "version": "publishedVersion",
+    "is_accepted": true,
+    "is_published": true,
+    "raw_source_name": "Frontiers in Plant Science",
+    "raw_type": "journal-article"
+   },
+   "open_access": {
+    "is_oa": true,
+    "oa_status": "gold",
+    "oa_url": "https://www.frontiersin.org/articles/10.3389/fpls.2020.574959/pdf",
+    "any_repository_has_fulltext": true
+   },
+   "type": "review",
+   "ids": {
+    "openalex": "https://openalex.org/W3106735065",
+    "doi": "https://doi.org/10.3389/fpls.2020.574959",
+    "mag": "3106735065",
+    "pmid": "https://pubmed.ncbi.nlm.nih.gov/33329634"
+   },
+   "is_retracted": false,
+   "referenced_works": [
+    "https://openalex.org/W1787401975",
+    "https://openalex.org/W1892406518",
+    "https://openalex.org/W1980201684"
+   ],
+   "cited_by_count": 156
+  }
+ ]
+}

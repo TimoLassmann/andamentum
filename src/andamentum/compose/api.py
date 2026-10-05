@@ -22,6 +22,7 @@ from .graph import (
 )
 from .log import ActionLog
 from .render import render_outputs
+from .research import ResearchSetup
 from .schemas import ComposeResult, Roles
 
 VALID_FORMATS = ("docx", "md", "html", "txt")
@@ -68,6 +69,7 @@ def _deps(
     provenance: bool,
     formats: tuple[str, ...] | None,
     progress: Callable[[str], None],
+    research: ResearchSetup | None,
 ) -> ComposeDeps:
     meta = bundle.metadata
     genre = meta.get("genre")
@@ -83,7 +85,8 @@ def _deps(
         log=ActionLog(bundle.path),
         progress=progress,
         max_rounds=max_rounds,
-        research=bool(meta.get("research", False)),
+        research=research,
+        research_requested=bool(meta.get("research", False)),
         confirm_own_sources=confirm_own_sources,
         provenance=provenance,
         formats=formats,
@@ -98,7 +101,7 @@ async def write_document(
     genre: str | None = None,
     sources: Sequence[str] = (),
     max_rounds: int = DEFAULT_MAX_ROUNDS,
-    research: bool = False,
+    research: ResearchSetup | None = None,
     confirm_own_sources: bool = False,
     provenance: bool = True,
     formats: Sequence[str] | None = None,
@@ -110,6 +113,11 @@ async def write_document(
     inspected afterwards. *out* must not exist or must be empty; use
     ``compose_bundle`` to continue an existing bundle. *genre* is a pack name or
     a YAML path; ``None`` lets the brief compiler choose.
+
+    *research* turns on research: ``deep_research.v2`` runs once, in the mode
+    the genre names, over ``<out>/research.db``, and its findings (claims with
+    verbatim quotes from real passages) become sources and facts. ``None``
+    runs no research. See ``compose.research``.
     """
     if not task.strip():
         raise ValueError("task is empty")
@@ -124,7 +132,7 @@ async def write_document(
             "task": task,
             "genre": _genre_ref(genre) if genre else None,
             "sources": [_source_ref(s) for s in sources],
-            "research": research,
+            "research": research is not None,
             "models": roles.model_dump(),
         },
     )
@@ -137,6 +145,7 @@ async def write_document(
             provenance=provenance,
             formats=wanted,
             progress=progress or _quiet,
+            research=research,
         )
     )
 
@@ -150,10 +159,13 @@ async def compose_bundle(
     provenance: bool = True,
     formats: Sequence[str] | None = None,
     progress: Callable[[str], None] | None = None,
+    research: ResearchSetup | None = None,
 ) -> ComposeResult:
     """Continue an existing bundle: finished steps are skipped, checks resume.
 
     *max_rounds* counts the check rounds of this run, not of earlier runs.
+    *research* is needed only when the bundle was started with research and it
+    did not finish; a finished research result is reused as it is.
     """
     _check_rounds(max_rounds)
     opened = Bundle.open(bundle)
@@ -167,6 +179,7 @@ async def compose_bundle(
             provenance=provenance,
             formats=_check_formats(formats),
             progress=progress or _quiet,
+            research=research,
         )
     )
 

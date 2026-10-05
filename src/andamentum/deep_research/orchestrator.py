@@ -57,14 +57,6 @@ async def run_research(
     Returns:
         ResearchResult with output, iterations, searches, pages_fetched, verification, errors
     """
-    # Load .env from CWD so importing repos get their API keys
-    try:
-        from dotenv import load_dotenv
-
-        load_dotenv()
-    except ImportError:
-        pass
-
     from .backends import HttpxSearchBackend
     from .graph import research_graph
     from .nodes import NodeDeps
@@ -72,28 +64,6 @@ async def run_research(
     from .runner import _resolve_model
     from .state import ResearchState
     from .verification import verify_sources
-
-    # Auto-start SearXNG if using localhost and no backend provided
-    if backend is None and searxng_url.startswith(
-        ("http://127.0.0.1:", "http://localhost:")
-    ):
-        try:
-            from .searxng import SearxngManager
-
-            import re as _re
-
-            port_match = _re.search(r":(\d+)", searxng_url)
-            port = int(port_match.group(1)) if port_match else 4070
-            manager = SearxngManager(host_port=port)
-            if not manager.is_running():
-                if verbose:
-                    print(f"Starting SearXNG on port {port}...")
-                manager.ensure_running()
-                if verbose:
-                    print(f"SearXNG started at {searxng_url}")
-        except Exception as e:
-            if verbose:
-                print(f"Could not auto-start SearXNG: {e}")
 
     # Set up backend
     owns_backend = backend is None
@@ -151,5 +121,6 @@ async def run_research(
         errors=ResearchErrors(
             search_errors=len(state.search_errors),
             fetch_errors=len(state.fetch_errors),
+            summary_errors=len(state.summary_errors),
         ),
     )

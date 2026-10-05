@@ -1,0 +1,27 @@
+{
+ "version": "6.9",
+ "hitCount": 1,
+ "request": {
+  "id": "25887618",
+  "source": "MED",
+  "offSet": 0,
+  "pageSize": 2
+ },
+ "citationList": {
+  "citation": [
+   {
+    "source": "MED",
+    "id": "33333524",
+    "citationType": "journal article",
+    "title": "Thromboembolic Events in Patients with Testicular Germ Cell Tumours Are Predominantly Triggered by Advanced Disease and by Central Venous Access Systems.",
+    "authorString": "Dieckmann KP, Marghawal D, Pichlmeier U, Wülfing C.",
+    "journalAbbreviation": "Urol Int",
+    "pubYear": 2021,
+    "volume": "105",
+    "issue": "3-4",
+    "pageInfo": "257-263",
+    "citedByCount": 9
+   }
+  ]
+ }
+}

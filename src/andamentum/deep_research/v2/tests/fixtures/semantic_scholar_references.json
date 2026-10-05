@@ -1,0 +1,7 @@
+{
+  "offset": 0,
+  "data": [
+    {"citedPaper": {"paperId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "externalIds": {"DOI": "10.1000/apollo.ref1"}, "title": "A cited Apollo method", "abstract": null, "year": 2018, "venue": "Invented Methods", "authors": [{"name": "Jane Doe"}]}},
+    {"citedPaper": {"paperId": null, "title": "A reference Semantic Scholar could not match"}}
+  ]
+}

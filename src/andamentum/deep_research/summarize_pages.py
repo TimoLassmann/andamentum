@@ -1,9 +1,11 @@
-"""Worker: summarize every fetched page via ``page_summarizer``, in parallel for cloud
+"""Worker: summarize the given pages via ``page_summarizer``, in parallel for cloud
 models and strictly one at a time for a local (Ollama) model.
 
-Engine-free (L2). Per-page summarization failure is the one allowed soft
-failure (L7): the page gets a zero-relevance placeholder summary and the
-run continues.
+Engine-free (L2). A per-page summarization failure is a soft failure (L7)
+that is recorded, not disguised: the page comes back as a
+:class:`SummaryError` in the outcome and contributes no summary, so no
+placeholder text is ever read downstream as evidence. The caller passes
+only pages it has not summarised yet.
 """
 
 from __future__ import annotations
@@ -11,18 +13,26 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from pydantic import BaseModel, Field
 from pydantic_ai.usage import UsageLimits
 
 from andamentum.core.agents import gather_llm, llm_concurrency
 
 from .build_agent import AgentOverrides, build_agent
-from .models import FetchedPage, PageSummary
+from .models import FetchedPage, PageSummary, SummaryError
 from .reporter import NOOP_REPORTER, SearchReporter
 
 logger = logging.getLogger(__name__)
 
 # In-agent (client-level) retry ceiling per page-summary call.
 SUMMARIZER_REQUEST_LIMIT = 10
+
+
+class SummarizeOutcome(BaseModel):
+    """What one ``summarize_pages`` call produced."""
+
+    summaries: list[PageSummary] = Field(default_factory=list)
+    errors: list[SummaryError] = Field(default_factory=list)
 
 
 async def summarize_pages(
@@ -32,8 +42,8 @@ async def summarize_pages(
     model: Any,
     overrides: AgentOverrides | None = None,
     reporter: SearchReporter = NOOP_REPORTER,
-) -> list[PageSummary]:
-    """Summarize ``pages``; returns summaries sorted by relevance.
+) -> SummarizeOutcome:
+    """Summarize ``pages``; summaries come back sorted by relevance.
 
     Keeps ALL summaries, sorted by relevance descending. Relevance is a
     *sort key* (higher first), not a *gate* (drop low). Synthesis frames
@@ -44,11 +54,11 @@ async def summarize_pages(
     data.
     """
     if not pages:
-        return []
+        return SummarizeOutcome()
 
     agent = build_agent("page_summarizer", model, overrides)
 
-    async def summarize(page: FetchedPage) -> PageSummary:
+    async def summarize(page: FetchedPage) -> PageSummary | SummaryError:
         truncation_note = (
             f"\n[NOTE: Page was {page.original_length:,} chars; showing first 50,000 (truncated).]"
             if page.truncated
@@ -71,22 +81,18 @@ then derive a relevance score from the scale."""
             return summary
         except Exception as e:
             logger.warning(f"Failed to summarize {page.title[:50]}...: {e}")
-            return PageSummary(
-                url=page.url,
-                title=page.title,
-                summary=f"Failed to summarize: {e}",
-                key_points=["Summarization failed"],
-                relevance_score=0.0,
-            )
+            return SummaryError(url=page.url, error=f"{type(e).__name__}: {e}")
 
     reporter.summarize_starting(n_pages=len(pages))
-    summaries = await gather_llm(
+    results = await gather_llm(
         [summarize(p) for p in pages], concurrency=llm_concurrency(model)
     )
 
+    summaries = [r for r in results if isinstance(r, PageSummary)]
+    errors = [r for r in results if isinstance(r, SummaryError)]
     sorted_summaries = sorted(summaries, key=lambda s: s.relevance_score, reverse=True)
     for s in sorted_summaries:
         reporter.page_summarized(
             url=s.url, relevance=s.relevance_score, summary=s.summary
         )
-    return sorted_summaries
+    return SummarizeOutcome(summaries=sorted_summaries, errors=errors)

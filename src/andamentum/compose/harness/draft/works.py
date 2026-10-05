@@ -17,15 +17,20 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from andamentum.compose.evidence import stored_source_path
+from andamentum.compose.genres import Genre
 from andamentum.compose.schemas import Brief, Source
 
 from ..kernel.csl import doi_of, title_of, work_key
+
+if TYPE_CHECKING:
+    from andamentum.deep_research.v2 import ResearchResult
 
 QUERIES_PER_DRAFT = 6  # one per key message, never more
 WORKS_PER_QUERY = 4
@@ -61,6 +66,34 @@ class LiteratureFinding(BaseModel):
 
 class LiteratureSearch(Protocol):
     def __call__(self, query: str, *, limit: int) -> Awaitable[LiteratureFinding]: ...
+
+
+@dataclass
+class ResearchFinding:
+    """What a research run gives the draft: the result and which of its works
+    may be cited.
+
+    ``works`` maps a research-store work id to its verified :class:`CitableWork`;
+    a work missing from it is never cited. ``unverified`` is one author
+    question per work that failed verification, ``notes`` the works left out
+    for another reason.
+    """
+
+    result: ResearchResult
+    works: dict[str, CitableWork] = field(default_factory=dict)
+    unverified: list[str] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
+    decision_model: str | None = None  # the model that screened, for the AI statement
+
+
+class ResearchRun(Protocol):
+    """Research the task in the genre's mode over the store at *database*, and
+    verify the works with findings. Like :class:`LiteratureSearch`, the draft
+    holds no search or verification of its own."""
+
+    def __call__(
+        self, task: str, *, genre: Genre, database: Path
+    ) -> Awaitable[ResearchFinding]: ...
 
 
 class WorkSet(BaseModel):

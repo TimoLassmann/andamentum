@@ -62,6 +62,8 @@ def _stamp_degradation(
     search_failures: int,
     fetch_attempts: int,
     fetch_failures: int,
+    summary_attempts: int,
+    summary_failures: int,
     threshold: float,
 ) -> EvidenceReport:
     """L7 aggregate loudness: flip the report to degraded when the
@@ -71,6 +73,8 @@ def _stamp_degradation(
         reasons.append(f"{search_failures}/{search_attempts} searches failed")
     if fetch_attempts > 0 and fetch_failures / fetch_attempts >= threshold:
         reasons.append(f"{fetch_failures}/{fetch_attempts} page fetches failed")
+    if summary_attempts > 0 and summary_failures / summary_attempts >= threshold:
+        reasons.append(f"{summary_failures}/{summary_attempts} page summaries failed")
     if reasons:
         report.degraded = True
         report.degraded_reason = (
@@ -88,6 +92,7 @@ async def synthesize_report(
     total_pages_fetched: int,
     n_search_errors: int,
     n_fetch_errors: int,
+    n_summary_errors: int = 0,
     soft_failure_threshold: float,
     model: Any,
     overrides: AgentOverrides | None = None,
@@ -95,8 +100,8 @@ async def synthesize_report(
 ) -> EvidenceReport:
     """Synthesize the final report from the ranked page summaries.
 
-    ``summaries`` is empty only when zero pages were fetched at all
-    (search/fetch failures across the whole run). After the
+    ``summaries`` is empty only when no page produced a summary
+    (search, fetch or summarisation failures across the whole run). After the
     SummarizePages filter-removal change, low-relevance summaries are NO
     LONGER discarded — they're ranked and surfaced via the
     limited-evidence framing below.
@@ -108,14 +113,20 @@ async def synthesize_report(
     )
 
     if not summaries:
+        no_evidence = (
+            "no page could be summarised"
+            if n_summary_errors
+            else "no pages were fetched"
+        )
         report = EvidenceReport(
             evidence_summary=(
                 f"Research on '{goal}' could not gather "
-                f"evidence — no pages were fetched. "
+                f"evidence — {no_evidence}. "
                 f"Searches performed: {total_searches}; "
-                f"fetch failures: {n_fetch_errors}."
+                f"fetch failures: {n_fetch_errors}; "
+                f"summary failures: {n_summary_errors}."
             ),
-            key_findings=["No pages were fetched"],
+            key_findings=[f"No evidence: {no_evidence}"],
             sources=["No sources"],
             total_searches_performed=total_searches,
             total_pages_fetched=total_pages_fetched,
@@ -127,6 +138,8 @@ async def synthesize_report(
             search_failures=n_search_errors,
             fetch_attempts=total_pages_fetched + n_fetch_errors,
             fetch_failures=n_fetch_errors,
+            summary_attempts=len(summaries) + n_summary_errors,
+            summary_failures=n_summary_errors,
             threshold=soft_failure_threshold,
         )
 
@@ -232,5 +245,7 @@ several summaries, list it once."""
         search_failures=n_search_errors,
         fetch_attempts=total_pages_fetched + n_fetch_errors,
         fetch_failures=n_fetch_errors,
+        summary_attempts=len(summaries) + n_summary_errors,
+        summary_failures=n_summary_errors,
         threshold=soft_failure_threshold,
     )

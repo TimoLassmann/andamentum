@@ -8,10 +8,11 @@ Claude Code loads this file when it reads files in this directory.
 
 Pipeline (one pydantic-graph graph, `graph.py`):
 
-    Ingest -> CompileBrief -> Evidence -> Plan -> Draft -> Check -> (Revise -> Check)* -> Finish
+    Ingest -> CompileBrief -> Research -> Evidence -> Plan -> Draft -> Check -> (Revise -> Check)* -> Finish
 
-- **Ingest** harvests sources into `evidence/sources/` (confidentiality gate first; `--confirm-own-sources` overrides). `--research` runs `deep_research.run_research` once and adds the report as a source of kind `research`.
-- **Evidence** extracts facts per source (sequential); a fact whose quote is not in the source text is dropped and logged. The drafter marks fact use as `[[f12]]`.
+- **Ingest** harvests sources into `evidence/sources/` (confidentiality gate first; `--confirm-own-sources` overrides).
+- **Research** (only with `--research`, after the brief because the genre picks the mode) runs `deep_research.v2.research` once and adds each work that has a finding as a source of kind `research`. See "Research" below.
+- **Evidence** extracts facts per source (sequential); a fact whose quote is not in the source text is dropped and logged. A research source needs no extraction: its facts are its findings. The drafter marks fact use as `[[f12]]`.
 - **Plan** makes the outline (one retry on failed outline checks, then proceeds with warnings) and lays out empty sections in the bundle.
 - **Draft** writes section by section, each call seeing the first two sentences of the earlier sections (deterministic, no model).
 - **Check** (`assess.py`) runs the deterministic checks, grounding (one judge call per changed section), the reader test and the critic (whetstone), then routes findings to per-section work items.
@@ -31,13 +32,26 @@ Four roles name the model for each job: `drafter`, `critic`, `judge`, `reader`. 
 - **Sequential model calls only.** Never `asyncio.gather` over model calls (local Ollama serialises them anyway).
 - **MCP server.** `andamentum-compose mcp` serves the harness verbs and a few native tools (open a document, show a section, apply edits through the safe writer) to Claude Code and Claude for Word. Every tool writes a copy and hashes its input files before and after; `apply_edits` cannot write citations, which go through the verifying `insert_citation`. The bundle pipeline (`write_document`) is reached through `write` with a non-`.docx` `--out`. See `harness/CLAUDE.md`.
 
+## Research (`research.py`)
+
+`--research` consumes `deep_research.v2` findings and passages, never the engine's report prose.
+
+- **Mode per genre**, as data: `Genre.research_mode` (`web`, `scholarly`, `both`; unset means `both` for a genre that cites and `web` otherwise). The packs: `article`, `grant`, `report` scholarly; `memo`, `email`, `howto` web; `proposal` both. `ResearchSetup.mode` (CLI `--research-mode`) overrides it. The reading of "both where the genre cites" is `proposal`, the one cited genre that is not an academic one. Web and both need `ResearchSetup.sources.searxng_url`; without one `ResearchSetupError` is raised before any search.
+- **The question is the user's task text.** Nothing derived from a source file (the brief, a fact, a source's text) is sent to a search engine, because a source can be an unpublished draft. The engine plans its own sub-questions from the task. A model-written query from the brief would be better targeted; it would also leak, so it is not done.
+- **The store is `<bundle>/research.db`** (with `blobs/` beside it), opened and closed by `research()`; one project, one store, so a resumed or repeated run reuses pages, works and answers. The whole `ResearchResult` is also saved as `evidence/research.json`, which is what makes the node idempotent: a resumed run loads it and never searches again, with no settings needed. A run that was started with research and crashed inside it has no `research.json`; `compose_bundle` then needs the research settings again and raises `ResearchSetupError` naming `--research` if it has none. `meta["research"]` records that research was asked for.
+- **A source per work with a finding** (`research_sources`): kind `research`, `Source.work_id` the store id, text = title plus the passages the findings point into (verbatim, in the order they stand in the work), `label` = authors, year, title, venue and DOI or URL (`citation_label`), `path` = a link, never a machine path. The Sources list prints the label.
+- **A fact per finding** (`research_facts`): the engine's quote is located again in the source text (`evidence.find_quote`) so `start`/`end` index the file the grounding check reads; a quote that cannot be placed is dropped and logged (`finding_dropped`; a bug signal, since the engine checked it). The statement is the claim written as another work's (`attribute`: "Another published work (T) reports, not this study: ..."), because the drafter sees only statements and would otherwise write a published result up as the author's. The harness's literature facts use the same function.
+- **Old bundles**: a source of kind `research` with no `work_id` is the legacy report text; it is extracted by the model like any file.
+- **Cost accounting**: the engine's token counts are logged as one `Research` call under the drafter role (so `ComposeResult.usage` includes them); the decision model reports no tokens. Degraded runs and empty runs become open questions in the report.
+- `deep_research` is imported only inside `run_research_v2` and `store.load_research` (conformance test); `ResearchSetup` is on the public surface (`from andamentum.compose import ResearchSetup`).
+
 ## Layering
 
-compose depends on `core`, `compose.bundle`, `whetstone` (public API), `proofread`, `llm_judge`, `harvest`, `figures`; `deep_research` only behind `--research` (deferred import). Nothing depends on compose except `figures.bundle_glue`, which imports the model-free `compose.bundle` only. It MUST NOT depend on `epistemic` or `document_store`. Only `graph.py` imports `pydantic_graph`; workers are plain async functions with a keyword-only `model=`. `tests/test_dialect_conformance.py` enforces this and runs the dialect check in strict mode.
+compose depends on `core`, `compose.bundle`, `whetstone` (public API), `proofread`, `llm_judge`, `harvest`, `figures`; `deep_research` only behind `--research` (deferred import; v2 only, no use of the legacy `run_research`). Nothing depends on compose except `figures.bundle_glue`, which imports the model-free `compose.bundle` only. It MUST NOT depend on `epistemic` or `document_store`. Only `graph.py` imports `pydantic_graph`; workers are plain async functions with a keyword-only `model=`. `tests/test_dialect_conformance.py` enforces this and runs the dialect check in strict mode.
 
 The writing harness (`harness/`: a format-neutral kernel, `.docx` and markdown adapters, deterministic and model-assisted checks, the `check FILE.docx` verb and the planted-defect benchmark) is documented in `harness/CLAUDE.md`; the CLI's `check-bundle DIR` is the bundle's own one-pass check, `check FILE.docx` is the harness verb. Nothing outside compose imports `compose.harness`.
 
-Files: `schemas.py`, `genres.py`, `brief.py`, `evidence.py`, `plan.py`, `write.py`, `revise.py` (workers); `assess.py` (one check pass, shared by the Check node, `check-bundle` and `eval`); `checks/` (deterministic, grounding, reader, critic); `route.py`; `render.py`; `steps.py` (deterministic bundle helpers and `report.md`); `store.py` (JSON artefacts); `log.py` and `_call.py` (action log and the one model-call seam); `graph.py`; `api.py`; `cli.py`; `evals/`; `bundle/` (see below).
+Files: `schemas.py`, `genres.py`, `brief.py`, `evidence.py`, `plan.py`, `write.py`, `revise.py` (workers); `assess.py` (one check pass, shared by the Check node, `check-bundle` and `eval`); `checks/` (deterministic, grounding, reader, critic); `route.py`; `render.py`; `steps.py` (deterministic bundle helpers and `report.md`); `store.py` (JSON artefacts); `log.py` and `_call.py` (action log and the one model-call seam); `research.py` (research sources, facts and the setup); `graph.py`; `api.py`; `cli.py`; `evals/`; `bundle/` (see below).
 
 ## bundle
 

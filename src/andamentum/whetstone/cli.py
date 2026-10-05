@@ -44,6 +44,7 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, NoReturn, Sequence
 
+from dotenv import load_dotenv
 from rich.console import Console
 from rich.logging import RichHandler
 from rich.panel import Panel
@@ -51,6 +52,7 @@ from rich.table import Table
 
 if TYPE_CHECKING:
     from andamentum.core.decisions import DecisionModel
+    from andamentum.deep_research.v2 import NoveltyResearch
 
 _LOGGER_NAME = "andamentum.whetstone"
 
@@ -227,6 +229,8 @@ _REVIEW_ONLY_FLAGS: tuple[tuple[str, str, object], ...] = (
     ("editor_criteria", "--editor-criteria", None),
     ("check_novelty", "--check-novelty", False),
     ("novelty_search_depth", "--novelty-search-depth", _DEFAULT_NOVELTY_SEARCH_DEPTH),
+    ("novelty_engine", "--novelty-engine", "web"),
+    ("novelty_store", "--novelty-store", None),
     ("rounds", "--rounds", _DEFAULT_ROUNDS),
 )
 
@@ -298,7 +302,8 @@ def _build_parser() -> argparse.ArgumentParser:
         help=(
             "A local Ollama decision model (e.g. nimble:9b) that answers the "
             "document-type question under --document-type auto instead of "
-            "the LLM classifier. Review and checklist. Off by default."
+            "the LLM classifier, and judges the passages under "
+            "--novelty-engine v2. Review and checklist. Off by default."
         ),
     )
     # Shared by review and checklist for the same reason --document-type is:
@@ -487,7 +492,30 @@ def _build_parser() -> argparse.ArgumentParser:
         default=_DEFAULT_NOVELTY_SEARCH_DEPTH,
         metavar="N",
         help="Search depth for --check-novelty (1=quick, 2=balanced, "
-        "3=thorough). Default: 2.",
+        "3=thorough). With --novelty-engine v2 it is the number of search "
+        "rounds. Default: 2.",
+    )
+    review_grp.add_argument(
+        "--novelty-engine",
+        choices=("web", "v2"),
+        default="web",
+        help="What --check-novelty searches with. web (default): the legacy "
+        "web-search pipeline, judged by the language model. v2: the "
+        "scholarly sources (OpenAlex, Europe PMC, arXiv), every passage read "
+        "judged by the local decision model (needs --decision-model); a "
+        "claim the search cannot settle is reported as not assessed, never "
+        "guessed. The sources get the same claim sentences the web engine "
+        "would send.",
+    )
+    review_grp.add_argument(
+        "--novelty-store",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="With --novelty-engine v2: a research store file (SQLite) that "
+        "keeps the works, passages and answers between runs, so a second "
+        "review of the same draft re-reads nothing. Default: in memory, "
+        "nothing is kept. No default location is used.",
     )
     review_grp.add_argument(
         "--rounds",
@@ -652,6 +680,7 @@ def _validate_args(args: argparse.Namespace) -> None:
     args.reviewers = _parse_reviewers(args.reviewer)
     args.final_editor = _split_off_the_final_editor(args)
     _validate_decision_args(args)
+    _validate_novelty_args(args)
     if args.mode == "checklist":
         _reject_review_only_flags(args)
         _reject_the_line_editor_under_checklist(args)
@@ -753,11 +782,35 @@ def _validate_decision_args(args: argparse.Namespace) -> None:
             "--decision-model has no effect under `panel`, which asks no "
             "document-type question. It applies to review and checklist.",
         )
-    if args.document_type != "auto":
+    if args.document_type != "auto" and getattr(args, "novelty_engine", "web") != "v2":
         _die(
             1,
             "--decision-model answers the document-type question, which "
             f"--document-type {args.document_type} already settles. Drop one.",
+        )
+
+
+def _validate_novelty_args(args: argparse.Namespace) -> None:
+    """Refuse the v2 novelty flags that would be ignored or cannot run, naming them."""
+    engine = getattr(args, "novelty_engine", "web")
+    store = getattr(args, "novelty_store", None)
+    if engine != "v2":
+        if store is not None:
+            _die(1, "--novelty-store needs --novelty-engine v2.")
+        return
+    if args.mode == "panel":
+        _die(1, "--novelty-engine v2 has no effect under `panel`.")
+    if not args.check_novelty:
+        _die(
+            1,
+            "--novelty-engine v2 chooses how --check-novelty searches; "
+            "pass --check-novelty too, or drop it.",
+        )
+    if args.decision_model is None:
+        _die(
+            1,
+            "--novelty-engine v2 needs --decision-model: the passages are "
+            "judged by the local decision model, and no other judge stands in.",
         )
 
 
@@ -1464,6 +1517,30 @@ async def _run(args: argparse.Namespace, console: Console) -> None:
             await decision_model.aclose()
 
 
+def _novelty_research(
+    args: argparse.Namespace, decision_model: DecisionModel | None
+) -> NoveltyResearch | None:
+    """The v2 novelty setup for ``--novelty-engine v2``, else None.
+
+    Credentials for the scholarly sources come from the environment (loaded
+    from .env in ``main``); they are never flags.
+    """
+    if getattr(args, "novelty_engine", "web") != "v2":
+        return None
+    assert decision_model is not None  # _validate_novelty_args
+    from andamentum.deep_research.v2 import NoveltyResearch, SourceConfig
+
+    return NoveltyResearch(
+        decision_model=decision_model,
+        sources=SourceConfig(
+            mailto=os.environ.get("OPENALEX_EMAIL") or None,
+            openalex_api_key=os.environ.get("OPENALEX_API_KEY") or None,
+            semantic_scholar_api_key=os.environ.get("SEMANTIC_SCHOLAR_API_KEY") or None,
+        ),
+        store=getattr(args, "novelty_store", None),
+    )
+
+
 async def _review_and_write(
     args: argparse.Namespace,
     console: Console,
@@ -1476,6 +1553,7 @@ async def _review_and_write(
     *decision_model* is the opened ``--decision-model`` handle (the caller
     closes it), or None.
     """
+    novelty_research = _novelty_research(args, decision_model)
     from .renderers import render_docx, render_html, render_markdown
     from .v3 import Criterion, review_document_v3
     from .v3.checklist import checklist_document_v3
@@ -1589,6 +1667,7 @@ async def _review_and_write(
                     editor_criteria=editor_criteria,
                     check_novelty=args.check_novelty,
                     novelty_search_depth=args.novelty_search_depth,
+                    novelty_research=novelty_research,
                     patch_author=args.patch_author,
                     workdir=interim_dir,
                     decision_model=decision_model,
@@ -1664,6 +1743,7 @@ async def _review_and_write(
                         check_novelty=args.check_novelty and index == 0,
                         flag_novelty=index == 0,
                         novelty_search_depth=args.novelty_search_depth,
+                        novelty_research=novelty_research if index == 0 else None,
                         # The profile is resolved inside the pipeline, not
                         # here: the document type it resolves against is
                         # only known once the classifier has run, and
@@ -2258,6 +2338,9 @@ def main(argv: Sequence[str] | None = None) -> None:
     ``... proofread draft.md`` / ``... apply-patches draft.docx --patches
     p.json --out r.docx`` / ``... verify-provenance reviewed.docx`` /
     ``... references draft.docx --out r.docx``)."""
+    # Secrets only (API keys), here in the CLI and never in the library; the
+    # novelty check used to get them from deep_research.run_research.
+    load_dotenv()
     raw = list(sys.argv[1:] if argv is None else argv)
     if raw and raw[0] == "proofread":
         # proofread short-circuits the whetstone pipeline entirely

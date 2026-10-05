@@ -63,6 +63,14 @@ Without `--into` it creates a new `.docx` (from `--template journal.dotx` when g
 
 The works in the example `refs.json` have invented DOIs, so a live `write` finds them unverifiable and cites nothing; it lists each as a question. A library with real DOIs is cited. `--zotero` reads your library from the local Zotero API (`http://127.0.0.1:23119/api/`, read only); the tool never writes to Zotero. `--offline` makes no network call, so nothing can be verified and nothing is cited. `--confirm-own-sources` is needed when the text of `--into` or a source looks confidential. Only one model is needed for Word: `--model M` (or `--drafter` and `--judge`). A `--out` that does not end in `.docx` and has no `--into` writes a compose bundle folder instead (see `andamentum-compose write --help`). Exit 0 when nothing is left for you, 4 when the file is written but a check error, a refused operation, or a question remains (an unverified work, a `[TO FILL]` placeholder, an interpretation claim), 2 usage error. `--out` must not exist: the tool never overwrites a file.
 
+#### Research
+
+`--research` runs a literature or web search for the task (`deep_research` v2) and lets the draft cite what it finds. The genre picks where it looks: scholarly databases (OpenAlex, Europe PMC, arXiv) for `article`, `grant` and `report`; the web (your SearxNG, `--searxng-url`) for `memo`, `email` and `howto`; both for `proposal`. `--research-mode web|scholarly|both` overrides the genre. A local decision model (`--decision-model nimble:9b`) screens the works and judges the passages; without one the language model does.
+
+What the draft gets is not a summary. Every finding is a claim with a quote copied word for word from a passage of a real work, checked by code against the text that was fetched; the quote is looked up again in the source file the draft reads, so a `[[f12]]` marker leads to words on a page. Each work that has a finding becomes a source, and its citation is the label in the Sources list. In Word a work is cited only when it has a DOI that resolves in Crossref, matches its record and is not retracted (the same check as a `--library` work); a work with no DOI (a web page) is listed in the report notes and not cited. With `--research` the new works come from the search and not from a Crossref text search; `--library` and `--zotero` are still searched first. `--research` cannot be combined with `--offline`.
+
+The search sends your task text (what you typed, never text from your sources) to the sources, and keeps everything it learns in `research.db` in the project folder (`<name>.harness/research.db`, or `research.db` inside a bundle folder) with a `blobs/` folder beside it: repeat runs reuse pages and answers. Contact addresses and keys come from the environment (`OPENALEX_EMAIL`, `OPENALEX_API_KEY`, `SEMANTIC_SCHOLAR_API_KEY`, read from `.env`), `--mailto` sets the address. A keyless OpenAlex account has 1000 free credits a day and one scholarly run can use around half of them; a free key lifts the limit.
+
 ### refresh
 
 Bring the numbers in a document up to date after the results change.
@@ -145,11 +153,12 @@ The project folder uses its own git history; it never reads or writes your globa
 
 - **Model calls**, only for the commands and flags that take a model: the text of the paragraphs or comments being worked on goes to the model you name. Use a local (Ollama) model to keep it on the machine. `check` with no `--model` makes no model call.
 - **Crossref** (through `andamentum.references`): the titles, authors and DOIs of cited works, and DOIs for retraction notices. Your own text is not sent. A contact address goes only with `--mailto`. `--offline` turns this off. `write` also sends the key messages of the brief as search queries.
+- **Research** (`write --research` only): your task text goes to the search engine you name (SearxNG, which forwards it to public search engines) and to OpenAlex, Europe PMC and arXiv; the works found are fetched. Nothing from your sources or your draft is sent. Run it on a task you are willing to publish.
 - **URL probes**: the links already in your document, requested to see if they still work (private and internal addresses are refused). `--offline` turns this off.
 - **Zotero**: the local API on your own machine; nothing is sent out, and nothing is ever written to Zotero.
 - **MCP**: stdio only; the server listens on no network port.
 
-Answers from Crossref and the URL probes are cached in the project folder, so repeat runs make fewer requests.
+Answers from Crossref and the URL probes are cached in the project folder, and research keeps its own store there (`research.db`), so repeat runs make fewer requests.
 
 ## Limits
 
@@ -159,4 +168,5 @@ Answers from Crossref and the URL probes are cached in the project folder, so re
 - `numbers` and `bind-numbers` find a value only if it is stored in a `.csv`, `.tsv` or `.json` result file at the written precision; derived values (a difference the text computes) are not found. At most 80 paragraphs per run.
 - A citation check says the cited work exists and matches its record. It does not say the work supports the sentence; that stays your judgement.
 - `needs_citation` is advisory: it flags a sentence when the decision model's probability of "yes" is at least 0.5, and nobody has measured how often that is right.
+- Research has not been run against live sources and models in this build; its tests use an invented world. Findings are only as good as the passages the engine read: an abstract is a short passage, and a work whose full text is behind a paywall is read from its abstract.
 - Interpretation claims are never approved by the tool: they stay marked "needs author".

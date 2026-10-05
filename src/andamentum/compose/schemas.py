@@ -62,6 +62,8 @@ class Source(BaseModel):
     """What a reader of the finished document sees: the file name, the URL, or
     a description of the research report. ``path`` stays machine-specific
     (resume needs it) and never reaches a document."""
+    work_id: str = ""
+    """For a ``research`` source, the id of its work in the research store."""
 
 
 class Fact(BaseModel):

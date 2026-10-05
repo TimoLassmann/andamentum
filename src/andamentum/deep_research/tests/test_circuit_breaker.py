@@ -7,17 +7,7 @@ from ..circuit_breaker import (
     CircuitBreaker,
     CircuitOpenError,
     CircuitState,
-    get_searxng_breaker,
-    reset_searxng_breaker,
 )
-
-
-@pytest.fixture(autouse=True)
-def reset_globals():
-    """Reset global breakers between tests."""
-    reset_searxng_breaker()
-    yield
-    reset_searxng_breaker()
 
 
 class TestCircuitBreakerStates:
@@ -134,18 +124,3 @@ class TestCircuitOpenError:
     def test_is_exception(self):
         with pytest.raises(CircuitOpenError):
             raise CircuitOpenError("test")
-
-
-class TestGlobalBreakers:
-    def test_get_searxng_breaker_singleton(self):
-        b1 = get_searxng_breaker()
-        b2 = get_searxng_breaker()
-        assert b1 is b2
-        assert b1.name == "searxng"
-
-    def test_reset_searxng_breaker(self):
-        b = get_searxng_breaker()
-        b.record_failure()
-        assert b._failure_count == 1
-        reset_searxng_breaker()
-        assert b._failure_count == 0

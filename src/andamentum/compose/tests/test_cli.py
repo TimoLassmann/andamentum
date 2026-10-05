@@ -39,8 +39,8 @@ def test_flags_of_the_other_destination_are_refused(tmp_path, capsys):
     assert run([*bundle, "--library", "refs.json"]) == 2
     assert "--library" in capsys.readouterr().err
     word = ["write", "t", "--out", str(tmp_path / "p.docx"), "--model", "m"]
-    assert run([*word, "--research"]) == 2
-    assert "--research" in capsys.readouterr().err
+    assert run([*word, "--format", "md"]) == 2
+    assert "--format" in capsys.readouterr().err
     assert run([*word, "--offline", "--library", "refs.json"]) == 2
     assert "--offline" in capsys.readouterr().err
 
@@ -125,3 +125,27 @@ async def test_write_validates_arguments_before_creating_anything(tmp_path):
     with pytest.raises(ValueError, match="unknown genre"):
         await write_document("t", out=tmp_path / "a", roles=roles, genre="poem")
     assert not (tmp_path / "a").exists()
+
+
+def test_research_flags_need_research(tmp_path, capsys):
+    base = ["write", "t", "--out", str(tmp_path / "d"), "--model", "m"]
+    for flag, value in (
+        ("--research-mode", "web"),
+        ("--decision-model", "nimble:9b"),
+        ("--searxng-url", "http://searx.test"),
+    ):
+        assert run([*base, flag, value]) == 2
+        err = capsys.readouterr().err
+        assert flag in err and "need --research" in err
+
+
+def test_research_needs_the_network(tmp_path, capsys):
+    word = ["write", "t", "--out", str(tmp_path / "p.docx"), "--model", "m"]
+    assert run([*word, "--research", "--offline"]) == 2
+    assert "--offline" in capsys.readouterr().err
+
+
+def test_a_bundle_accepts_mailto_only_for_research(tmp_path, capsys):
+    base = ["write", "t", "--out", str(tmp_path / "d"), "--model", "m"]
+    assert run([*base, "--mailto", "jane@example.org"]) == 2
+    assert "--mailto" in capsys.readouterr().err

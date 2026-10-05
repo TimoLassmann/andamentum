@@ -4,14 +4,21 @@ Usage::
 
     andamentum-research "What is quantum computing?" [--model MODEL] [--max-iterations N] [--verbose]
                         [--decision-model NAME]
+                        [--start-searxng --searxng-state-dir DIR]
     andamentum-research agents
+    andamentum-research mcp [--store PATH] [--model MODEL] [--decision-model NAME]
+    andamentum-research v2 "QUESTION" --mode {web,scholarly,both} --model MODEL [...]
 """
 
 import argparse
 import asyncio
+import re
 import sys
 import traceback
+from pathlib import Path
 from typing import Any
+
+from dotenv import load_dotenv
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -42,6 +49,22 @@ def _build_parser() -> argparse.ArgumentParser:
         "--searxng-url",
         default="http://127.0.0.1:4070",
         help="SearXNG instance URL (default: http://127.0.0.1:4070)",
+    )
+    parser.add_argument(
+        "--start-searxng",
+        action="store_true",
+        help=(
+            "Start the local SearXNG container (podman) if it is not "
+            "running. Needs --searxng-state-dir. Without this flag nothing "
+            "is started and a search against a stopped SearXNG fails loudly"
+        ),
+    )
+    parser.add_argument(
+        "--searxng-state-dir",
+        type=Path,
+        default=None,
+        metavar="DIR",
+        help="Directory for the generated SearXNG settings (with --start-searxng)",
     )
     parser.add_argument(
         "--max-results",
@@ -89,6 +112,21 @@ def _resolve_model(args: argparse.Namespace) -> str:
     from andamentum.core.models import resolve_model_from_args
 
     return resolve_model_from_args(args.model)
+
+
+def _start_searxng(args: argparse.Namespace) -> None:
+    """Start the SearXNG container when asked to; raise when that fails."""
+    from .searxng import DEFAULT_HOST_PORT, SearxngManager
+
+    if args.searxng_state_dir is None:
+        raise SystemExit("--start-searxng needs --searxng-state-dir DIR")
+    port_match = re.search(r":(\d+)", args.searxng_url)
+    port = int(port_match.group(1)) if port_match else DEFAULT_HOST_PORT
+    manager = SearxngManager(state_dir=args.searxng_state_dir, host_port=port)
+    if not manager.is_running():
+        if args.verbose:
+            print(f"Starting SearXNG on port {port}...")
+        manager.ensure_running()
 
 
 def _list_agents() -> None:
@@ -157,6 +195,8 @@ async def _run(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     model = _resolve_model(args)
+    if args.start_searxng:
+        _start_searxng(args)
 
     reporter: Any = None
     if args.verbose:
@@ -206,7 +246,18 @@ def main() -> None:
     if len(sys.argv) > 1 and sys.argv[1] == "agents":
         _list_agents()
         return
+    if len(sys.argv) > 1 and sys.argv[1] == "mcp":
+        from .v2.mcp_server import main as mcp_main
 
+        mcp_main(sys.argv[2:])
+        return
+    if len(sys.argv) > 1 and sys.argv[1] == "v2":
+        from .v2.cli import main as v2_main
+
+        v2_main(sys.argv[2:])
+        return
+
+    load_dotenv()  # secrets only (API keys); configuration comes from flags
     parser = _build_parser()
     args = parser.parse_args()
     try:

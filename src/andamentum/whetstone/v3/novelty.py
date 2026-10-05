@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Literal, cast
+from typing import TYPE_CHECKING, Literal, cast
 
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
@@ -39,6 +39,9 @@ from andamentum.core.models import resolve_model
 
 from .model import Section
 from .review import Finding
+
+if TYPE_CHECKING:
+    from andamentum.deep_research.v2 import NoveltyResearch
 
 logger = logging.getLogger("andamentum.whetstone.v3")
 
@@ -218,7 +221,11 @@ async def _check_one_target(
             exc,
         )
         return NoveltyEvidence(target=target, error=str(exc))
+    return _evidence_from_report(target, report)
 
+
+def _evidence_from_report(target: NoveltyTarget, report: object) -> NoveltyEvidence:
+    """Normalise one novelty report (either engine's) into NoveltyEvidence."""
     # is_novel=None means deep_research could not determine novelty (search
     # failed / no evidence). Route that into the existing no-signal path so no
     # spurious "prior work" Finding is emitted — undetermined is not a verdict.
@@ -264,19 +271,78 @@ async def run_novelty_searches(
     *,
     agent_model: str,
     search_depth: int = _DEFAULT_SEARCH_DEPTH,
+    research: "NoveltyResearch | None" = None,
 ) -> list[NoveltyEvidence]:
-    """Parallel deep_research over targets, with per-target failure
-    isolation. Order of results matches the order of ``targets``."""
+    """deep_research over targets, with per-target failure isolation. Order of
+    results matches the order of ``targets``.
+
+    Without ``research`` the legacy web pipeline runs, in parallel. With it
+    the v2 scholarly check runs instead, one target after another (the
+    decision model is a local model and the research store has one writer),
+    over one store so works and passages found for one claim are reused for
+    the next; ``search_depth`` is the number of search rounds.
+    """
     if not targets:
         return []
-    return list(
-        await asyncio.gather(
-            *[
-                _check_one_target(t, agent_model=agent_model, search_depth=search_depth)
-                for t in targets
-            ]
+    if research is None:
+        return list(
+            await asyncio.gather(
+                *[
+                    _check_one_target(
+                        t, agent_model=agent_model, search_depth=search_depth
+                    )
+                    for t in targets
+                ]
+            )
         )
+    return await _run_v2(
+        targets, agent_model=agent_model, search_depth=search_depth, research=research
     )
+
+
+async def _run_v2(
+    targets: list[NoveltyTarget],
+    *,
+    agent_model: str,
+    search_depth: int,
+    research: "NoveltyResearch",
+) -> list[NoveltyEvidence]:
+    from andamentum.deep_research.v2 import ResearchStore, run_novelty_check_v2
+
+    given = research.store
+    store = (
+        given
+        if isinstance(given, ResearchStore)
+        else ResearchStore(given)
+        if given is not None
+        else ResearchStore.in_memory()
+    )
+    budget = research.budget.model_copy(update={"max_rounds": search_depth})
+    evidence: list[NoveltyEvidence] = []
+    try:
+        for target in targets:
+            try:
+                report = await run_novelty_check_v2(
+                    target.short_summary,
+                    model=agent_model,
+                    decision_model=research.decision_model,
+                    store=store,
+                    sources=research.sources,
+                    budget=budget,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "[v3.novelty] target '%s...' v2 check crashed: %s",
+                    target.short_summary[:60],
+                    exc,
+                )
+                evidence.append(NoveltyEvidence(target=target, error=str(exc)))
+                continue
+            evidence.append(_evidence_from_report(target, report))
+    finally:
+        if not isinstance(given, ResearchStore):
+            store.close()
+    return evidence
 
 
 # ── Node 3: judge + adapt ──────────────────────────────────────────────────

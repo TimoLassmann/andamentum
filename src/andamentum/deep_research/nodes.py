@@ -385,21 +385,38 @@ class FetchPhase(BaseNode[ResearchState, NodeDeps, EvidenceReport]):
 
 @dataclass
 class SummarizePages(BaseNode[ResearchState, NodeDeps, EvidenceReport]):
-    """Summarize each fetched page via the ``summarize_pages`` worker."""
+    """Summarize each newly fetched page via the ``summarize_pages`` worker.
+
+    Pages already summarised (or whose summary already failed) in an earlier
+    cycle are not sent again: re-summarising the whole pool every iteration
+    would cost quadratic LLM calls and could flip an earlier summary.
+    """
 
     async def run(self, ctx: GraphRunContext[ResearchState, NodeDeps]) -> "AnalyzeGaps":
         ctx.state.current_phase = "summarize"
 
-        if not ctx.state.fetched_pages:
+        done = {s.url for s in ctx.state.page_summaries}
+        done |= {e.url for e in ctx.state.summary_errors}
+        new_pages = [p for p in ctx.state.fetched_pages if p.url not in done]
+        if not new_pages:
             return AnalyzeGaps()
 
-        ctx.state.page_summaries = await summarize_pages(
-            ctx.state.fetched_pages,
+        outcome = await summarize_pages(
+            new_pages,
             goal=ctx.state.query,
             model=ctx.deps.model,
             overrides=ctx.deps.agent_overrides,
             reporter=ctx.deps.reporter,
         )
+
+        # Join — the sole State-write site for this fan-out (L3). Summaries
+        # stay ranked by relevance across cycles.
+        ctx.state.page_summaries = sorted(
+            [*ctx.state.page_summaries, *outcome.summaries],
+            key=lambda s: s.relevance_score,
+            reverse=True,
+        )
+        ctx.state.summary_errors.extend(outcome.errors)
         return AnalyzeGaps()
 
 
@@ -474,6 +491,7 @@ class Synthesize(BaseNode[ResearchState, NodeDeps, EvidenceReport]):
             total_pages_fetched=ctx.state.total_pages_fetched,
             n_search_errors=len(ctx.state.search_errors),
             n_fetch_errors=len(ctx.state.fetch_errors),
+            n_summary_errors=len(ctx.state.summary_errors),
             soft_failure_threshold=ctx.deps.soft_failure_threshold,
             model=ctx.deps.model,
             overrides=ctx.deps.agent_overrides,

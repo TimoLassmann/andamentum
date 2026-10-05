@@ -5,6 +5,9 @@ When SearXNG goes down, every search waits for timeout then fails.
 With 9 searches, that's 4.5 minutes of wasted time. Circuit breaker
 detects the pattern and fails fast.
 
+A breaker is owned by one backend instance, never shared process-wide: a
+run that saw SearXNG fail must not make the next run skip its searches.
+
 States:
 - CLOSED: Normal operation, requests pass through
 - OPEN: Failing fast, requests rejected immediately
@@ -99,7 +102,7 @@ class CircuitBreaker:
             )
 
     def reset(self) -> None:
-        """Reset circuit breaker to initial state (for testing)."""
+        """Reset circuit breaker to initial state."""
         self._state = CircuitState.CLOSED
         self._failure_count = 0
         self._last_failure_time = None
@@ -112,24 +115,3 @@ class CircuitOpenError(Exception):
     def __init__(self, breaker_name: str):
         super().__init__(f"Circuit breaker '{breaker_name}' is open")
         self.breaker_name = breaker_name
-
-
-# Global circuit breaker for SearXNG
-_searxng_breaker: Optional[CircuitBreaker] = None
-
-
-def get_searxng_breaker() -> CircuitBreaker:
-    """Get or create the SearXNG circuit breaker."""
-    global _searxng_breaker
-    if _searxng_breaker is None:
-        _searxng_breaker = CircuitBreaker(
-            name="searxng", failure_threshold=5, recovery_timeout=60.0
-        )
-    return _searxng_breaker
-
-
-def reset_searxng_breaker() -> None:
-    """Reset the global SearXNG breaker (for testing)."""
-    global _searxng_breaker
-    if _searxng_breaker is not None:
-        _searxng_breaker.reset()

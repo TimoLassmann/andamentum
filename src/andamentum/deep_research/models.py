@@ -199,6 +199,18 @@ class FetchSummary(BaseModel):
 
 
 # Summary phase models
+class SummaryError(BaseModel):
+    """One page whose summarisation failed.
+
+    The page contributes no evidence: a failure is recorded here, never
+    turned into a placeholder summary that downstream steps would read as
+    content.
+    """
+
+    url: str = Field(..., description="The page whose summary failed")
+    error: str = Field(..., description="Summarisation error message")
+
+
 class PageSummary(BaseModel):
     """Condensed summary of a fetched page's key points."""
 
@@ -295,6 +307,7 @@ class ResearchErrors(BaseModel):
 
     search_errors: int
     fetch_errors: int
+    summary_errors: int = 0
 
 
 class ResearchResult(BaseModel):

@@ -1,0 +1,289 @@
+"""The systems under test, behind one small interface.
+
+An answer arm takes a question and returns an :class:`ArmOutput`: the answer
+text, the claims with the evidence behind them, the links, the ranked works,
+and what the run cost. Two arms exist: the legacy ``run_research`` (web only)
+and v2's ``research()``. Both are mapped onto the same record, so every metric
+is computed by one piece of code from the same fields.
+
+The v2 arm calls ``research()`` with ``store=None`` by default, so nothing
+persists between questions and every question pays for its own searches.
+"""
+
+from __future__ import annotations
+
+import re
+import time
+from pathlib import Path
+from typing import Protocol
+
+from pydantic import BaseModel, Field
+from pydantic_ai.models import Model
+
+from andamentum.core.decisions import DecisionModel
+from andamentum.deep_research.models import ResearchResult as LegacyResult
+from andamentum.deep_research.orchestrator import run_research
+from andamentum.references import Work
+from andamentum.references.works import canonical_url
+
+from ..graph import research
+from ..sources.base import SourceClient, SourceConfig
+from ..store import ResearchStore
+from ..types import _FINDING_REFERENCE, Budget, Mode, ResearchResult
+from .judging import ClaimEvidence, best_window
+from .metrics import Cost, extract_urls
+
+MIN_SENTENCE_WORDS = 4
+_SENTENCE_BREAK = re.compile(r"(?<=[.!?])\s+(?=[A-Z\[\(])")
+_LIST_MARKER = re.compile(r"^(?:[-*]|\d+[.)])\s+")
+_CITATION = re.compile(r"\s*\[\s*F\d+(?:\s*[,;]\s*F\d+)*\s*\]")
+
+
+class ArmOutput(BaseModel):
+    """One answer, reduced to what the metrics read."""
+
+    answer_text: str
+    claims: list[ClaimEvidence] = Field(default_factory=list)
+    n_unsourced: int = Field(
+        default=0, description="Claims with nothing to check them against."
+    )
+    urls: list[str] = Field(default_factory=list)
+    works: list[Work] = Field(
+        default_factory=list, description="The kept works, in the arm's rank order."
+    )
+    degraded: list[str] = Field(default_factory=list)
+    stop_reason: str = ""
+    cost: Cost
+
+
+class AnswerArm(Protocol):
+    """A system that answers a question."""
+
+    name: str
+    # True when ``works`` are web pages (a page title wraps a paper's), not works.
+    returns_pages: bool
+
+    async def run(self, question: str) -> ArmOutput: ...
+
+
+# -- legacy -------------------------------------------------------------------------
+
+
+def _web_work(url: str, title: str) -> Work | None:
+    """A page as a ``Work``, or None for a URL that is not one."""
+    try:
+        return Work(url=url, title=title)
+    except ValueError:
+        return None
+
+
+def map_legacy(result: LegacyResult, *, wall_s: float) -> ArmOutput:
+    """The legacy result as an :class:`ArmOutput`.
+
+    A claim is an evidence item (else a key finding); its evidence is the window
+    of a fetched page that shares most with it. An evidence item whose source
+    page was never fetched has nothing to check against and is counted
+    ``unsourced``. The legacy pipeline counts no tokens or calls: those costs
+    are None.
+    """
+    output = result.output
+    pages = {(canonical_url(p.url) or p.url): p for p in result.fetched_pages}
+    claims: list[ClaimEvidence] = []
+    unsourced = 0
+    if output.evidence_items:
+        for item in output.evidence_items:
+            page = pages.get(canonical_url(item.source_url) or item.source_url)
+            if page is None:
+                unsourced += 1
+                continue
+            claims.append(
+                ClaimEvidence(
+                    claim=item.finding,
+                    evidence=best_window(item.finding, [page.content]),
+                )
+            )
+    else:
+        contents = [p.content for p in result.fetched_pages]
+        for finding in output.key_findings:
+            if not contents:
+                unsourced += 1
+                continue
+            claims.append(
+                ClaimEvidence(claim=finding, evidence=best_window(finding, contents))
+            )
+    answer = "\n".join([output.evidence_summary, *output.key_findings])
+    cited = [*output.sources, *(i.source_url for i in output.evidence_items)]
+    urls = list(dict.fromkeys([*cited, *extract_urls(answer)]))
+    titles = {key: p.title for key, p in pages.items()}
+    works: list[Work] = []
+    seen: set[str] = set()
+    for url in [*output.sources, *pages]:
+        key = canonical_url(url) or url
+        if key in seen:
+            continue
+        seen.add(key)
+        work = _web_work(url, titles.get(key, ""))
+        if work is not None:
+            works.append(work)
+    degraded = [output.degraded_reason] if output.degraded else []
+    return ArmOutput(
+        answer_text=answer,
+        claims=claims,
+        n_unsourced=unsourced,
+        urls=urls,
+        works=works,
+        degraded=degraded,
+        stop_reason=f"iterations:{result.iterations}",
+        cost=Cost(wall_s=wall_s),
+    )
+
+
+class LegacyArm:
+    """The legacy ``run_research`` pipeline, web only."""
+
+    name = "legacy"
+    returns_pages = True
+
+    def __init__(
+        self,
+        *,
+        model: str,
+        searxng_url: str,
+        decision_model: DecisionModel | None = None,
+        max_iterations: int = 3,
+        max_results: int = 10,
+        max_pages: int = 5,
+    ) -> None:
+        self.model = model
+        self.searxng_url = searxng_url
+        self.decision_model = decision_model
+        self.max_iterations = max_iterations
+        self.max_results = max_results
+        self.max_pages = max_pages
+
+    async def run(self, question: str) -> ArmOutput:
+        started = time.monotonic()
+        result = await run_research(
+            question,
+            model=self.model,
+            searxng_url=self.searxng_url,
+            max_iterations=self.max_iterations,
+            max_results=self.max_results,
+            max_pages=self.max_pages,
+            decision_model=self.decision_model,
+        )
+        return map_legacy(result, wall_s=time.monotonic() - started)
+
+
+# -- v2 -----------------------------------------------------------------------------
+
+
+def report_claims(result: ResearchResult) -> tuple[list[ClaimEvidence], int]:
+    """Each cited sentence of the report with the quotes of the findings it cites.
+
+    Returns ``(claims, n_unsourced)``. A sentence that cites no finding, or a
+    finding that does not exist, has nothing to check against and is counted
+    unsourced; headings, table rows and fragments of fewer than
+    ``MIN_SENTENCE_WORDS`` words are not claims.
+    """
+    quotes = {f.finding_id: f.quote for f in result.findings}
+    claims: list[ClaimEvidence] = []
+    unsourced = 0
+    for line in result.report_markdown.splitlines():
+        text = _LIST_MARKER.sub("", line.strip())
+        if not text or text.startswith(("#", "|", ">")):
+            continue
+        for sentence in _SENTENCE_BREAK.split(text):
+            plain = _CITATION.sub("", sentence).strip()
+            if len(plain.split()) < MIN_SENTENCE_WORDS:
+                continue
+            ids = [
+                token
+                for group in _FINDING_REFERENCE.findall(sentence)
+                for token in re.findall(r"F\d+", group)
+            ]
+            if not ids or any(i not in quotes for i in ids):
+                unsourced += 1
+                continue
+            claims.append(
+                ClaimEvidence(claim=plain, evidence="\n".join(quotes[i] for i in ids))
+            )
+    return claims, unsourced
+
+
+def map_v2(result: ResearchResult) -> ArmOutput:
+    """The v2 result as an :class:`ArmOutput`."""
+    claims, unsourced = report_claims(result)
+    by_id = {w.work_id: w for w in result.works}
+    cited_links = [
+        f"https://doi.org/{w.doi}" if w.doi else w.url
+        for w in (by_id[i] for i in result.cited_work_ids() if i in by_id)
+        if w.doi or w.url
+    ]
+    urls = list(
+        dict.fromkeys(
+            [*extract_urls(result.report_markdown), *(u for u in cited_links if u)]
+        )
+    )
+    stats = result.stats
+    return ArmOutput(
+        answer_text=result.report_markdown,
+        claims=claims,
+        n_unsourced=unsourced,
+        urls=urls,
+        works=list(result.works),
+        degraded=list(result.degraded),
+        stop_reason=result.stop_reason,
+        cost=Cost(
+            wall_s=stats.wall_s,
+            llm_calls=stats.llm_calls,
+            input_tokens=stats.input_tokens,
+            output_tokens=stats.output_tokens,
+            decision_calls=stats.decision_calls,
+        ),
+    )
+
+
+class V2Arm:
+    """v2's ``research()`` in one mode.
+
+    ``decision_model`` is a name (opened and closed by each run) or an opened
+    handle (shared by every run). ``store`` defaults to ``None``: nothing
+    persists between questions. ``source_client`` is for offline tests (it
+    must belong to ``store``).
+    """
+
+    returns_pages = False
+
+    def __init__(
+        self,
+        *,
+        mode: Mode,
+        model: str | Model,
+        sources: SourceConfig,
+        decision_model: str | DecisionModel | None = None,
+        budget: Budget | None = None,
+        store: Path | ResearchStore | None = None,
+        source_client: SourceClient | None = None,
+    ) -> None:
+        self.name = f"v2-{mode}"
+        self.mode: Mode = mode
+        self.model = model
+        self.decision_model = decision_model
+        self.sources = sources
+        self.budget = budget or Budget()
+        self.store = store
+        self.source_client = source_client
+
+    async def run(self, question: str) -> ArmOutput:
+        result = await research(
+            question,
+            mode=self.mode,
+            model=self.model,
+            decision_model=self.decision_model,
+            store=self.store,
+            budget=self.budget,
+            sources=self.sources,
+            source_client=self.source_client,
+        )
+        return map_v2(result)

@@ -1,0 +1,46 @@
+{
+ "version": "6.9",
+ "hitCount": 28,
+ "request": {
+  "id": "42261185",
+  "source": "MED",
+  "offSet": 1,
+  "pageSize": 2
+ },
+ "referenceList": {
+  "reference": [
+   {
+    "source": "MED",
+    "id": "27380939",
+    "citationType": "JOURNAL ARTICLE",
+    "title": "Evaluation of off-target and on-target scoring algorithms and integration into the guide RNA selection tool CRISPOR.",
+    "authorString": "Haeussler M, Schonig K, Eckert H, Eschstruth A, Mianne J, Renaud JB, Schneider-Maunoury S, Shkumatava A, Teboul L, Kent J, Joly JS, Concordet JP.",
+    "journalAbbreviation": "Genome Biol",
+    "issue": "1",
+    "pubYear": 2016,
+    "volume": "17",
+    "pageInfo": "148",
+    "citedOrder": 1,
+    "match": "Y",
+    "essn": "1474-760X",
+    "issn": "1474-7596"
+   },
+   {
+    "source": "MED",
+    "id": "40282347",
+    "citationType": "JOURNAL ARTICLE",
+    "title": "CRISPR-MFH: A Lightweight Hybrid Deep Learning Framework with Multi-Feature Encoding for Improved CRISPR-Cas9 Off-Target Prediction.",
+    "authorString": "Zheng Y, Zou Q, Li J, Yang Y.",
+    "journalAbbreviation": "Genes (Basel)",
+    "issue": "4",
+    "pubYear": 2025,
+    "volume": "16",
+    "pageInfo": "387",
+    "citedOrder": 2,
+    "match": "Y",
+    "essn": "2073-4425",
+    "issn": "2073-4425"
+   }
+  ]
+ }
+}

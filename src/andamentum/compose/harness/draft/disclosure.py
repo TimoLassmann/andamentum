@@ -14,6 +14,11 @@ from collections.abc import Sequence
 
 HEADING = "Statement on the use of AI"
 SETUP_STEPS = ("brief", "evidence", "outline")
+SEARCHED = {
+    "web": "the web",
+    "scholarly": "scholarly databases",
+    "both": "the web and scholarly databases",
+}
 
 
 def _listing(items: Sequence[str]) -> str:
@@ -74,6 +79,10 @@ def ai_use_statement(events: Sequence[dict[str, object]]) -> str:
             if e.get("step") == "revise"
         ]
     )
+    researched = [e for e in steps if e.get("step") == "research"]
+    screened = [
+        _text(e.get("model")) for e in steps if e.get("step") == "research_screen"
+    ]
     checks = _check_ids(events)
     runs = [e for e in events if e.get("type") == "draft_run"]
     citations = sum(_count(e.get("citations")) for e in runs)
@@ -87,6 +96,21 @@ def ai_use_statement(events: Sequence[dict[str, object]]) -> str:
             "The brief, the extraction of facts from the supplied sources and the "
             f"outline were produced by {_listing(setup_models)}."
         )
+    if researched:
+        where = _listing(
+            [SEARCHED.get(_text(e.get("detail")), "its sources") for e in researched]
+        )
+        models = _listing([_text(e.get("model")) for e in researched])
+        sentences.append(
+            f"Further evidence was found by searching {where}: {models} planned "
+            "the search and read the works it found, and only passages quoted "
+            "word for word from those works were used."
+        )
+        if screened:
+            sentences.append(
+                f"{_listing(screened)} screened the works found and judged the "
+                "passages."
+            )
     for model, titles in drafted.items():
         sentences.append(
             f"{_sections(titles)} {'was' if len(titles) == 1 else 'were'} drafted by {model}."

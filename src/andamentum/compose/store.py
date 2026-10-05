@@ -10,16 +10,21 @@ from __future__ import annotations
 import os
 import tempfile
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from pydantic import TypeAdapter
 
 from .schemas import Brief, Fact, Outline, RoundRecord, Source
+
+if TYPE_CHECKING:
+    from andamentum.deep_research.v2 import ResearchResult
 
 BRIEF = "brief.json"
 OUTLINE = "outline.json"
 SOURCES = "evidence/sources.json"
 FACTS = "evidence/facts.json"
 ROUNDS = "rounds.json"
+RESEARCH = "evidence/research.json"
 
 _SOURCES = TypeAdapter(list[Source])
 _FACTS = TypeAdapter(list[Fact])
@@ -86,3 +91,14 @@ def load_rounds(bundle_dir: str | Path) -> list[RoundRecord]:
     if not has(bundle_dir, ROUNDS):
         return []
     return _ROUNDS.validate_json(_read(bundle_dir, ROUNDS))
+
+
+def save_research(bundle_dir: str | Path, result: ResearchResult) -> None:
+    """The whole research result, so a resumed run never searches again."""
+    _write(Path(bundle_dir) / RESEARCH, result.model_dump_json(indent=2))
+
+
+def load_research(bundle_dir: str | Path) -> ResearchResult:
+    from andamentum.deep_research.v2 import ResearchResult
+
+    return ResearchResult.model_validate_json(_read(bundle_dir, RESEARCH))

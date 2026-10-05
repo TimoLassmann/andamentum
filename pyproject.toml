@@ -263,7 +263,8 @@ markers = [
     "vlm: harvest test that imports docling (~1 GB of torch) and/or runs a local vision-language model for mode='accurate'. Deselected so the default suite stays runnable while other models hold the machine's memory",
     "rerank: document_store test that downloads and runs a real cross-encoder (~2 GB of weights, needs the `rerank` extra). Deselected for the same reason as `vlm`; every other rerank test stubs the model",
     "compose_eval: compose test that calls real models (costs tokens or local compute). Deselected like `cloud`; run with `uv run pytest -m compose_eval`",
+    "research_eval: deep_research v2 benchmark test that needs the network, a downloaded dataset or a real model. Deselected like `compose_eval`; run with `uv run pytest -m research_eval`",
 ]
 # Exclude gated tests from default runs. Explicitly selecting a marker
 # overrides this.
-addopts = "-m 'not ollama and not benchmark and not cloud and not live_provider and not vlm and not rerank and not compose_eval'"
+addopts = "-m 'not ollama and not benchmark and not cloud and not live_provider and not vlm and not rerank and not compose_eval and not research_eval'"

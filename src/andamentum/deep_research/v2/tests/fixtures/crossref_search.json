@@ -1,0 +1,26 @@
+{
+  "status": "ok",
+  "message-type": "work-list",
+  "message": {
+    "total-results": 2,
+    "items": [
+      {
+        "DOI": "10.1000/Apollo.Crossref.1",
+        "type": "journal-article",
+        "title": ["Apollo lattice sampling in practice"],
+        "author": [{"given": "Jane", "family": "Doe"}, {"name": "The Apollo Consortium"}],
+        "issued": {"date-parts": [[2022, 5]]},
+        "container-title": ["Journal of Invented Results"],
+        "abstract": "<jats:title>Abstract</jats:title><jats:p>Sparse sampling of the Apollo lattice works.</jats:p>",
+        "URL": "https://doi.org/10.1000/apollo.crossref.1"
+      },
+      {
+        "DOI": "10.1000/apollo.crossref.2",
+        "type": "journal-article",
+        "title": ["A record without an abstract or a year"],
+        "container-title": []
+      },
+      {"DOI": "10.1000/apollo.crossref.3", "title": []}
+    ]
+  }
+}

@@ -14,21 +14,25 @@ and the MCP server turn an uncaught exception into 3 and a tool error).
 from __future__ import annotations
 
 import asyncio
+import os
 import sys
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
+from typing import Literal
 
 import httpx
 from pydantic import BaseModel, Field
 
 from andamentum.compose.api import VALID_FORMATS, write_document
+from andamentum.compose.research import ResearchSetup
 from andamentum.compose.schemas import ROLE_NAMES, Roles
 
 from ..kernel import Verb
 from ..literature.access import open_literature
 from .run import DraftResult, DraftUsageError, draft_document
-from .search import literature_search
-from .works import LiteratureSearch
+from .search import literature_search, research_literature
+from .works import LiteratureSearch, ResearchRun
 
 EXIT_OK, EXIT_USAGE, EXIT_OPEN = 0, 2, 4
 HARNESS_ROUNDS, BUNDLE_ROUNDS = 2, 4
@@ -85,11 +89,27 @@ class WriteParams(BaseModel):
         default=False, description="proceed although a source looks confidential"
     )
     mailto: str | None = Field(
-        default=None, description="your email, for Crossref's polite pool"
+        default=None,
+        description="your email, for Crossref's and OpenAlex's polite pools",
     )
     research: bool = Field(
         default=False,
-        description="bundle only: run web research once and add it as a source",
+        description="research the task once (deep_research v2) and cite what it "
+        "finds: claims quoted from real passages; the genre picks the sources",
+    )
+    research_mode: Literal["web", "scholarly", "both"] | None = Field(
+        default=None,
+        description="with --research: search the web, scholarly databases or "
+        "both, instead of the genre's choice",
+    )
+    decision_model: str | None = Field(
+        default=None,
+        description="with --research: a local Ollama decision model (for "
+        "example nimble:9b) that screens the works and judges the passages",
+    )
+    searxng_url: str | None = Field(
+        default=None,
+        description="with --research: your SearxNG address (web search needs one)",
     )
     format: list[str] = Field(
         default=[], description="bundle only: output format (repeatable)"
@@ -129,12 +149,59 @@ def _roles(params: WriteParams, *, needed: tuple[str, ...] = ROLE_NAMES) -> Role
     return Roles(**chosen)
 
 
+def research_setup(
+    *,
+    mailto: str | None,
+    searxng_url: str | None,
+    decision_model: str | None,
+    mode: Literal["web", "scholarly", "both"] | None,
+) -> ResearchSetup:
+    """The research settings from CLI flags; credentials come from the
+    environment (``.env`` is loaded by the CLI), never from flags."""
+    from andamentum.deep_research.v2 import SourceConfig
+
+    return ResearchSetup(
+        sources=SourceConfig(
+            mailto=mailto or os.environ.get("OPENALEX_EMAIL") or None,
+            openalex_api_key=os.environ.get("OPENALEX_API_KEY") or None,
+            semantic_scholar_api_key=os.environ.get("SEMANTIC_SCHOLAR_API_KEY") or None,
+            searxng_url=searxng_url,
+        ),
+        decision_model=decision_model,
+        mode=mode,
+    )
+
+
+def _research_setup(params: WriteParams) -> ResearchSetup | None:
+    if not params.research:
+        return None
+    return research_setup(
+        mailto=params.mailto,
+        searxng_url=params.searxng_url,
+        decision_model=params.decision_model,
+        mode=params.research_mode,
+    )
+
+
 def _refuse_foreign_flags(params: WriteParams, *, word: bool) -> None:
+    if not params.research:
+        idle = [
+            flag
+            for flag, on in (
+                ("--research-mode", params.research_mode is not None),
+                ("--decision-model", params.decision_model is not None),
+                ("--searxng-url", params.searxng_url is not None),
+            )
+            if on
+        ]
+        if idle:
+            raise DraftUsageError(f"{', '.join(idle)} need --research")
+    if params.research and params.offline:
+        raise DraftUsageError("--research searches the network; drop --offline")
     if word:
         used = [
             flag
             for flag, on in (
-                ("--research", params.research),
                 ("--format", bool(params.format)),
                 ("--no-provenance", params.no_provenance),
             )
@@ -158,7 +225,7 @@ def _refuse_foreign_flags(params: WriteParams, *, word: bool) -> None:
             ("--zotero", params.zotero),
             ("--template", params.template is not None),
             ("--offline", params.offline),
-            ("--mailto", params.mailto is not None),
+            ("--mailto", params.mailto is not None and not params.research),
         )
         if on
     ]
@@ -179,7 +246,9 @@ async def run_write(
     roles = _roles(params, needed=WORD_ROLES)
     project = params.out.with_name(f"{params.out.stem}.harness")
 
-    async def draft(literature: LiteratureSearch | None) -> DraftResult:
+    async def draft(
+        literature: LiteratureSearch | None, research: ResearchRun | None = None
+    ) -> DraftResult:
         return await draft_document(
             params.task,
             out=params.out,
@@ -189,6 +258,7 @@ async def run_write(
             sources=params.source,
             results=params.results,
             literature=literature,
+            research=research,
             template=params.template,
             max_rounds=_rounds(params, HARNESS_ROUNDS),
             offline=params.offline,
@@ -209,7 +279,20 @@ async def run_write(
         transport=transport,
         url_check=url_check,
     ) as (sources, http):
-        return await draft(literature_search(sources=sources, http=http))
+        setup = _research_setup(params)
+        if setup is None:
+            return await draft(literature_search(sources=sources, http=http))
+        # Research replaces Crossref as the place new works are found; the
+        # user's library and Zotero are still searched, and every work, found
+        # either way, is verified through the same Crossref lookup.
+        discovery = replace(sources, crossref=None)
+        own = discovery.library is not None or discovery.zotero is not None
+        return await draft(
+            literature_search(sources=discovery, http=http) if own else None,
+            research_literature(
+                setup=setup, model=roles.drafter, http=http, progress=_progress
+            ),
+        )
 
 
 def _rounds(params: WriteParams, default: int) -> int:
@@ -247,7 +330,7 @@ async def _write_bundle(params: WriteParams) -> int:
         genre=params.genre,
         sources=params.source,
         max_rounds=_rounds(params, BUNDLE_ROUNDS),
-        research=params.research,
+        research=_research_setup(params),
         confirm_own_sources=params.confirm_own_sources,
         provenance=not params.no_provenance,
         formats=formats or None,

@@ -4,11 +4,18 @@ Manages the lifecycle of a Podman-based SearXNG container for web search.
 Handles Podman machine startup on macOS/Windows, container creation,
 health checks, and graceful shutdown.
 
+Nothing here reads the environment or writes outside a directory the caller
+names: ``SearxngManager`` takes an explicit ``state_dir``, and starting a
+container is something a caller (the CLI's ``--start-searxng``) asks for. The
+research library itself never starts one.
+
 Usage::
+
+    from pathlib import Path
 
     from andamentum.deep_research.searxng import SearxngManager, check_health
 
-    manager = SearxngManager()
+    manager = SearxngManager(state_dir=Path("searxng-state"))
     manager.ensure_running()
 
     health = await check_health("http://127.0.0.1:4070")
@@ -31,10 +38,10 @@ from pydantic import BaseModel
 
 # ── Defaults ─────────────────────────────────────────────────────────────────
 
-DEFAULT_HOST_PORT = int(os.getenv("SEARXNG_HOST_PORT", "4070"))
-DEFAULT_SEARXNG_URL = os.getenv("SEARXNG_URL", f"http://127.0.0.1:{DEFAULT_HOST_PORT}")
-CONTAINER_NAME = os.getenv("SEARXNG_CONTAINER", "mcp-searxng")
-SEARXNG_IMAGE = os.getenv("SEARXNG_IMAGE", "docker.io/searxng/searxng:latest")
+DEFAULT_HOST_PORT = 4070
+DEFAULT_SEARXNG_URL = f"http://127.0.0.1:{DEFAULT_HOST_PORT}"
+CONTAINER_NAME = "mcp-searxng"
+SEARXNG_IMAGE = "docker.io/searxng/searxng:latest"
 INTERNAL_PORT = 8080
 
 
@@ -61,6 +68,8 @@ class SearxngManager:
     container creation, health checking, and shutdown.
 
     Args:
+        state_dir: Directory for the generated ``settings.yml``. Required and
+            created on first use; there is no home-directory default.
         container: Container name.
         image: SearXNG image to use.
         host_port: Port to expose on the host.
@@ -70,6 +79,8 @@ class SearxngManager:
 
     def __init__(
         self,
+        *,
+        state_dir: Path,
         container: str = CONTAINER_NAME,
         image: str = SEARXNG_IMAGE,
         host_port: int = DEFAULT_HOST_PORT,
@@ -85,15 +96,8 @@ class SearxngManager:
         # it is NOT an open relay — gvproxy still publishes the port on the
         # host's 127.0.0.1, so the container is not reachable from the network.
         default_bind = "" if sys.platform == "darwin" else "127.0.0.1"
-        self.bind_host = (
-            bind_host
-            if bind_host is not None
-            else os.getenv("SEARXNG_BIND_HOST", default_bind)
-        )
-        self.state_dir = Path(
-            os.getenv("SEARXNG_STATE_DIR", Path.home() / ".cache" / "mcp-searxng")
-        )
-        self.state_dir.mkdir(parents=True, exist_ok=True)
+        self.bind_host = bind_host if bind_host is not None else default_bind
+        self.state_dir = Path(state_dir)
         self.settings_path = self.state_dir / "settings.yml"
 
     # ── Low-level helpers ────────────────────────────────────────────────
@@ -157,6 +161,7 @@ class SearxngManager:
 
     def write_minimal_settings(self) -> None:
         """Write a minimal SearXNG settings.yml to the state directory."""
+        self.state_dir.mkdir(parents=True, exist_ok=True)
         secret = os.urandom(32).hex()
         content = (
             "use_default_settings: true\n"
@@ -307,7 +312,7 @@ async def check_health(url: str | None = None, timeout: float = 5.0) -> HealthCh
     """Async health check for a SearXNG instance.
 
     Args:
-        url: SearXNG URL (defaults to SEARXNG_URL env or localhost:4070).
+        url: SearXNG URL (defaults to ``DEFAULT_SEARXNG_URL``).
         timeout: Request timeout in seconds.
 
     Returns:

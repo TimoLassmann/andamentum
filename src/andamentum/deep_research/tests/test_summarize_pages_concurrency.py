@@ -59,13 +59,13 @@ def _pages(n: int) -> list[FetchedPage]:
 
 async def test_local_model_summarises_one_page_at_a_time() -> None:
     agent = _CountingAgent()
-    summaries = await summarize_pages(
+    outcome = await summarize_pages(
         _pages(5),
         goal="g",
         model=OllamaModel(),
         overrides={"page_summarizer": agent},
     )
-    assert len(summaries) == 5
+    assert len(outcome.summaries) == 5
     assert agent.peak == 1
 
 
