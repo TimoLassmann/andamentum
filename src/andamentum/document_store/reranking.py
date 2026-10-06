@@ -82,6 +82,30 @@ def _reranker(model_name: str) -> CrossEncoder:
     return _model
 
 
+def _release_gpu_cache() -> None:
+    """Hand the GPU memory PyTorch cached for the last batch back to the system.
+
+    On Apple silicon the MPS allocator otherwise keeps every buffer it ever
+    allocated. Each batch has a different shape (pairs are padded to the
+    longest in the batch), so a long run grows without bound: measured, one
+    process grew to 47 GB in another project, and a benchmark run here failed
+    at the 88 GB MPS limit. Emptying the cache after each call holds a process
+    near 10 GB.
+    """
+    import torch
+
+    if torch.backends.mps.is_available():
+        torch.mps.empty_cache()
+
+
+def _predict(model: CrossEncoder, pairs: list[tuple[str, str]]) -> list[float]:
+    try:
+        scores = model.predict(pairs, show_progress_bar=False)
+    finally:
+        _release_gpu_cache()
+    return [float(score) for score in scores]
+
+
 def reset_reranker_cache() -> None:
     """Drop the cached model, releasing its memory.
 
@@ -123,8 +147,7 @@ async def rerank(
     pairs = [(query, text) for text in texts]
     # predict() is compute-bound, not I/O-bound. Off the event loop thread so
     # it does not block whatever else the process is running concurrently.
-    scores = await asyncio.to_thread(model.predict, pairs, show_progress_bar=False)
-    return [float(score) for score in scores]
+    return await asyncio.to_thread(_predict, model, pairs)
 
 
 # A starting point, not a default: no function here reads it. BAAI/bge-reranker-v2-m3

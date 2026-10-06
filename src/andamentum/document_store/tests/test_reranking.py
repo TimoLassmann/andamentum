@@ -236,6 +236,29 @@ async def test_rerank_and_select_compose(stub_model):
     assert kept[0] in {"mitochondrial dna repair", "dna repair mechanism"}
 
 
+async def test_rerank_releases_the_gpu_cache_after_every_call(stub_model, monkeypatch):
+    """Regression: without this the MPS allocator kept every batch's buffers
+    and a benchmark run failed at the 88 GB limit."""
+    released: list[int] = []
+    monkeypatch.setattr(rerank_module, "_release_gpu_cache", lambda: released.append(1))
+    await rerank("q", ["a", "b"], reranker_model="stub")
+    await rerank("q", ["c"], reranker_model="stub")
+    assert len(released) == 2
+
+
+async def test_rerank_releases_the_gpu_cache_even_when_predict_fails(monkeypatch):
+    class Broken:
+        def predict(self, pairs, show_progress_bar=False):
+            raise RuntimeError("MPS backend out of memory")
+
+    released: list[int] = []
+    monkeypatch.setattr(rerank_module, "_reranker", lambda _name: Broken())
+    monkeypatch.setattr(rerank_module, "_release_gpu_cache", lambda: released.append(1))
+    with pytest.raises(RuntimeError, match="out of memory"):
+        await rerank("q", ["a"], reranker_model="stub")
+    assert released == [1]
+
+
 def test_missing_extra_raises_an_error_that_names_the_extra(
     monkeypatch: pytest.MonkeyPatch,
 ):
