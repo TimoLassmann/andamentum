@@ -36,13 +36,15 @@ from andamentum.core.decisions import DecisionModel
 from andamentum.references import ReferenceHttp
 
 from ..sources.base import SourceConfig
+from ..sources.extraction import PDF_EXTRACTIONS, PdfExtraction
 from ..types import Mode
 from .arms import AnswerArm, LegacyArm, V2Arm
 from .download import DatasetMissing, Downloader, write_atomic
 from .experiment import Experiment, load_experiment
 from .experiment_report import report_from_registry
 from .experiment_run import DataDirs, InfrastructureDown, Services, run_experiment
-from .freeze import SnapshotMissing, freeze_set
+from .concurrency import MAX_CLOUD_CONCURRENCY
+from .freeze import PREFETCH_TOP_K, SnapshotMissing, freeze_set, rewarm_set
 from .health import SearxDown, require_searxng
 from .judging import ClaimJudge, UrlChecker
 from .litsearch import DEFAULT_SEED, DEFAULT_SUBSET, download_litsearch, load_litsearch
@@ -74,6 +76,8 @@ SCREENING_ARMS = (
 DEFAULT_SEARXNG_URL = "http://127.0.0.1:4070"
 VERIFY_PAUSE_S = 1.0
 EXIT_ITEM_FAILED = 2
+# The bench reads PDFs from their text layer (fast); the library default is docling.
+BENCH_PDF_EXTRACTION: PdfExtraction = "fast"
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -117,6 +121,26 @@ def build_parser() -> argparse.ArgumentParser:
             "--check-links",
             action="store_true",
             help="probe each answer's links over the network (URL integrity)",
+        )
+
+    def concurrency_flag(sub: argparse.ArgumentParser) -> None:
+        sub.add_argument(
+            "--concurrency",
+            type=int,
+            default=1,
+            help=f"items processed at once, 1 to {MAX_CLOUD_CONCURRENCY}; more than 1 "
+            "only when every language model is an Ollama '-cloud' model (a local "
+            "model answers one request at a time). Decision-model requests stay "
+            "one at a time either way",
+        )
+
+    def pdf_flag(sub: argparse.ArgumentParser) -> None:
+        sub.add_argument(
+            "--pdf-extraction",
+            choices=PDF_EXTRACTIONS,
+            default=BENCH_PDF_EXTRACTION,
+            help="how a fetched PDF becomes text: 'fast' (the PDF's text layer, "
+            "no OCR; the bench default) or 'docling' (layout-aware, slow)",
         )
 
     web = commands.add_parser("web", help="the synthetic web question set")
@@ -166,12 +190,22 @@ def build_parser() -> argparse.ArgumentParser:
     freeze.add_argument("--seed", type=int, default=DEFAULT_SEED)
     freeze.add_argument("--searxng-url", default=DEFAULT_SEARXNG_URL)
     freeze.add_argument(
-        "--prefetch-cap",
+        "--prefetch-top-k",
         type=int,
-        default=None,
-        help="cache the text of only the first N candidates of each sub-question "
-        "(default: every candidate; a cap is recorded in meta.json)",
+        default=PREFETCH_TOP_K,
+        help="fetch full text only for the best N candidates of each sub-question "
+        f"by source search rank (default {PREFETCH_TOP_K}); the rest stay "
+        "abstract-level, for every arm alike. Recorded in meta.json",
     )
+    freeze.add_argument(
+        "--rewarm",
+        action="store_true",
+        help="do not freeze: complete the snapshots that exist (citation hops and "
+        "texts that failed, e.g. rate limited) into their own stores; frozen.json "
+        "and its digest stay as they are",
+    )
+    concurrency_flag(freeze)
+    pdf_flag(freeze)
 
     experiment = commands.add_parser("experiment", help="pre-registered comparisons")
     actions = experiment.add_subparsers(dest="experiment_command", required=True)
@@ -194,6 +228,8 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="probe each answer's links over the network (URL integrity)",
     )
+    concurrency_flag(run)
+    pdf_flag(run)
     summary = actions.add_parser("report", help="the experiment's markdown report")
     summary.add_argument("file", type=Path)
     summary.add_argument("--out-dir", type=Path, required=True)
@@ -201,9 +237,12 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _source_config(searxng_url: str | None) -> SourceConfig:
+def _source_config(
+    searxng_url: str | None, pdf_extraction: PdfExtraction = BENCH_PDF_EXTRACTION
+) -> SourceConfig:
     return SourceConfig(
         searxng_url=searxng_url,
+        pdf_extraction=pdf_extraction,
         mailto=os.environ.get("OPENALEX_EMAIL"),
         openalex_api_key=os.environ.get("OPENALEX_API_KEY"),
         semantic_scholar_api_key=os.environ.get("SEMANTIC_SCHOLAR_API_KEY"),
@@ -460,6 +499,22 @@ async def _cmd_report(args: argparse.Namespace) -> int:
 
 
 async def _cmd_freeze(args: argparse.Namespace) -> int:
+    if args.rewarm:
+        rewarmed = await rewarm_set(
+            args.set,
+            snapshots=args.snapshots,
+            data_dir=args.dir,
+            model=args.model,
+            n=args.n,
+            seed=args.seed,
+            source_config=_source_config(args.searxng_url, args.pdf_extraction),
+            progress=lambda line: print(line, file=sys.stderr),
+            prefetch_top_k=args.prefetch_top_k,
+            concurrency=args.concurrency,
+        )
+        for line in rewarmed.lines():
+            print(line)
+        return EXIT_ITEM_FAILED if rewarmed.failed or rewarmed.incomplete else 0
     async with AsyncExitStack() as stack:
         decision = await _open_decision(stack, args.decision_model)
         frozen = await freeze_set(
@@ -471,13 +526,14 @@ async def _cmd_freeze(args: argparse.Namespace) -> int:
             decision_label=args.decision_model,
             n=args.n,
             seed=args.seed,
-            source_config=_source_config(args.searxng_url),
+            source_config=_source_config(args.searxng_url, args.pdf_extraction),
             progress=lambda line: print(line, file=sys.stderr),
-            prefetch_per_subquestion=args.prefetch_cap,
+            prefetch_top_k=args.prefetch_top_k,
+            concurrency=args.concurrency,
         )
     for line in frozen.lines():
         print(line)
-    return EXIT_ITEM_FAILED if frozen.failed else 0
+    return EXIT_ITEM_FAILED if frozen.failed or frozen.incomplete else 0
 
 
 def _live_web(exp: Experiment, only_sets: Sequence[str] | None = None) -> bool:
@@ -515,7 +571,7 @@ async def _cmd_experiment_run(args: argparse.Namespace) -> int:
         checker = await _url_checker(args, stack)
         services = Services(
             decisions=opened,
-            source_config=_source_config(args.searxng_url),
+            source_config=_source_config(args.searxng_url, args.pdf_extraction),
             judge=judge,
             judge_label=judge_label,
             judge_digest=judge_digest,
@@ -533,11 +589,12 @@ async def _cmd_experiment_run(args: argparse.Namespace) -> int:
             services=services,
             progress=lambda line: print(line, file=sys.stderr),
             only_sets=args.only_sets,
+            concurrency=args.concurrency,
         )
     failed = [r for r in written if r.error]
     print(
         f"{len(written)} runs recorded in {args.out_dir / 'experiments.jsonl'}, "
-        f"{len(failed)} failed",
+        f"{len(failed)} failed (concurrency {args.concurrency})",
         file=sys.stderr,
     )
     for record in failed:

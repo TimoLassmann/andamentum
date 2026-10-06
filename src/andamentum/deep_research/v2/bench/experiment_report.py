@@ -598,6 +598,16 @@ def build_report(exp: Experiment, records: Sequence[StartRecord | RunRecord]) ->
         f"{len(runs)} run records, {sum(1 for r in runs if r.error)} with errors "
         "(an errored run counts as a miss on the outcome metrics, never as absent).",
     ]
+    used = sorted({s.concurrency for s in starts}) or [1]
+    lines += [
+        "",
+        "Concurrency used: "
+        + ", ".join(str(n) for n in used)
+        + " cell(s) of one arm at a time"
+        + (" (across invocations)" if len(used) > 1 else "")
+        + "; decision-model requests are always one at a time. Wall times are "
+        "measured under that load.",
+    ]
     note = _live_note(exp)
     if note:
         lines += ["", note]

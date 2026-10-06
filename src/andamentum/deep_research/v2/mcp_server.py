@@ -216,7 +216,9 @@ class ResearchTools:
         self.store = store
         self.model = model
         self.config = sources or SourceConfig()
-        self.client = client or SourceClient(store)
+        self.client = client or SourceClient(
+            store, pdf_extraction=self.config.pdf_extraction
+        )
         self._owns_client = client is None
         self._decision_name = (
             decision_model if isinstance(decision_model, str) else None

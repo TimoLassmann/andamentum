@@ -37,6 +37,7 @@ from ._util import (
 )
 from .base import (
     DEFAULT_RESULTS_PER_QUERY,
+    FROZEN_TEXT_REASON,
     FetchedText,
     SearchFilters,
     SourceClient,
@@ -176,6 +177,10 @@ class EuropePmcSource:
         except SourceError as exc:
             if exc.status in (404, 403):  # not open access, or withheld
                 return None
+            if exc.kind == "offline":  # the same reason whichever source holds the text
+                raise SourceError(
+                    NAME, FROZEN_TEXT_REASON, kind="offline", url=url
+                ) from exc
             raise
         try:
             text = jats_to_text(result.body)
@@ -184,6 +189,7 @@ class EuropePmcSource:
                 NAME, f"unreadable full text: {exc}", kind="parse", url=url
             ) from exc
         ensure_text(NAME, url, text)
+        self._client.extractions[url] = "jats"
         return FetchedText(
             source=NAME, url=url, text=text, content_type="application/xml"
         )

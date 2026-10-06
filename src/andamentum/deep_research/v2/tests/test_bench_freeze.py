@@ -86,7 +86,7 @@ async def freeze_world(
         decision_label="stub",
         source_config=SOURCES,
         progress=lambda _line: None,
-        prefetch_per_subquestion=None,
+        prefetch_top_k=None,
         health_client=health_client(world),
         client_factory=world.client,
         clock=lambda: 1000.0,
@@ -158,7 +158,7 @@ async def test_a_degraded_capture_is_a_failed_item_and_writes_no_snapshot(
         decision_label="stub",
         source_config=SOURCES,
         progress=lambda _line: None,
-        prefetch_per_subquestion=None,
+        prefetch_top_k=None,
         health_client=health_client(World()),
         client_factory=broken_client,
         clock=lambda: 1000.0,
@@ -182,21 +182,19 @@ async def test_missing_snapshot_is_named(tmp_path: Path) -> None:
         load_frozen(tmp_path / "nowhere")
 
 
-async def test_prefetch_targets_default_to_every_candidate_in_admission_order(
+async def test_prefetch_targets_with_no_limit_are_every_candidate(
     tmp_path: Path,
 ) -> None:
     await freeze_world(tmp_path, World())
     frozen = load_frozen(snapshot_dir(tmp_path, "web", "W01"))
-    everything = prefetch_targets(frozen, per_subquestion=None)
-    one = prefetch_targets(frozen, per_subquestion=1)
+    everything = prefetch_targets(frozen, top_k=None)
+    one = prefetch_targets(frozen, top_k=1)
     assert len(one) <= len(frozen.subquestions) <= len(everything)
     urls = [c.work.url or c.work.title for c in everything]
     assert len(urls) == len(set(urls))  # each work once
     assert {c.work.work_id for c in everything} == {
         c.work.work_id for c in frozen.candidates
     }
-    first = frozen.candidates_for(frozen.subquestions[0].id)[0]
-    assert one[0] == first  # admission order, not a rank sort
 
 
 async def test_freeze_records_the_rules_that_decide_what_is_cached(
@@ -223,7 +221,7 @@ async def test_citation_warming_makes_the_hops_a_frozen_run_asks_for(
         sources=SourceConfig(searxng_url=SEARXNG, scholarly=("openalex",)),
         source_client=world.client(store),
     )
-    targets = freeze.citation_targets(frozen, per_subquestion=25)
+    targets = freeze.citation_targets(frozen, top_k=25)
     assert targets and all(freeze.is_scholarly(c.work) for c in targets)
     client = world.client(store)
     sources = build_sources(

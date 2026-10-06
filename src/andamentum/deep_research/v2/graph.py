@@ -648,7 +648,9 @@ async def research(
         if store is not None
         else ResearchStore.in_memory()
     )
-    client = source_client or SourceClient(opened, offline=frozen is not None)
+    client = source_client or SourceClient(
+        opened, offline=frozen is not None, pdf_extraction=sources.pdf_extraction
+    )
     handle: DecisionModel | None = None
     try:
         handle = (

@@ -22,6 +22,7 @@ import weakref
 from collections import Counter, defaultdict
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from contextlib import asynccontextmanager
+from dataclasses import dataclass, field
 from typing import Literal, Protocol, runtime_checkable
 from urllib.parse import urlencode, urlparse
 
@@ -40,7 +41,6 @@ from andamentum.core.url_safety import (
 )
 from andamentum.deep_research.content_extractor import (
     ExtractionError,
-    extract_content,
 )
 from andamentum.references import Work
 
@@ -51,6 +51,13 @@ from ..store import (
     cache_key,
 )
 from ..types import Candidate
+from .extraction import (
+    DEFAULT_PDF_EXTRACTION,
+    PDF_EXTRACTIONS,
+    PdfExtraction,
+    extract_body,
+    extraction_method,
+)
 
 SourceName = Literal[
     "openalex", "europepmc", "arxiv", "semantic_scholar", "crossref", "web"
@@ -81,6 +88,10 @@ DEFAULT_INTERVAL_S: dict[str, float] = {
 # PDFs (the API host, export.arxiv.org, disallows everything to robots), so a
 # PDF fetch is spaced by this, a separate clock from the API's.
 ARXIV_PDF_INTERVAL_S = 15.0
+# Requests to one source that may be in flight together (their starts stay spaced
+# by the intervals above). A host fetched from the open web, and any source not
+# listed, takes one at a time. Crossref's polite pool and OpenAlex allow several.
+DEFAULT_INFLIGHT: dict[str, int] = {"crossref": 3, "openalex": 4, "europepmc": 2}
 FETCH_INTERVAL_S = 0.5  # between fetches of pages from the open web
 
 RETRY_STATUSES = frozenset({429, 500, 502, 503, 504})
@@ -122,7 +133,9 @@ class SourceConfig(BaseModel):
     among them because it verifies rather than discovers. ``searxng_url`` is
     required for web mode. ``openalex_search`` picks the OpenAlex endpoint:
     both cost credits (about ten per call), so ``keyword`` is the default and
-    ``semantic`` or ``both`` is a choice.
+    ``semantic`` or ``both`` is a choice. ``pdf_extraction`` picks how a fetched
+    PDF becomes text: ``docling`` (the default: layout-aware, slow) or ``fast``
+    (the PDF's own text layer, no OCR); see ``sources.extraction``.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -138,6 +151,7 @@ class SourceConfig(BaseModel):
     openalex_search: Literal["keyword", "semantic", "both"] = "keyword"
     results_per_query: int = Field(default=DEFAULT_RESULTS_PER_QUERY, ge=1, le=200)
     arxiv_pdf_interval_s: float = Field(default=ARXIV_PDF_INTERVAL_S, ge=0.0)
+    pdf_extraction: PdfExtraction = DEFAULT_PDF_EXTRACTION
 
 
 class SearchFilters(BaseModel):
@@ -237,6 +251,11 @@ class _OfflineTransport(httpx.AsyncBaseTransport):
 
 
 OFFLINE_REASON = "not in the snapshot (offline run); not fetched"
+# A page or paper text a frozen run asks for and the snapshot did not prefetch:
+# the same answer for every arm, and the reader falls back to the abstract.
+FROZEN_TEXT_REASON = (
+    "not available in the frozen set (abstract only); full text not prefetched"
+)
 
 
 def offline_url_check(_url: str) -> tuple[bool, str]:
@@ -248,6 +267,20 @@ def offline_url_check(_url: str) -> tuple[bool, str]:
     dead link that depends on the machine's DNS.
     """
     return True, ""
+
+
+@dataclass
+class SharedPacing:
+    """Per-source request locks and last-request times, shared by several clients.
+
+    Items frozen at the same time each have their own client (their own store
+    and cache); giving them one ``SharedPacing`` keeps the spacing between
+    requests to one source or host as if a single client made them all.
+    """
+
+    locks: dict[str, asyncio.Lock] = field(default_factory=dict)
+    last_request: dict[str, float] = field(default_factory=dict)
+    inflight: dict[str, asyncio.Semaphore] = field(default_factory=dict)
 
 
 class SourceClient:
@@ -277,10 +310,13 @@ class SourceClient:
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
         retries: int = DEFAULT_RETRIES,
         max_wait_s: float = MAX_RETRY_WAIT_S,
-        extractor: Extractor = extract_content,
+        extractor: Extractor | None = None,
+        pdf_extraction: PdfExtraction = DEFAULT_PDF_EXTRACTION,
         max_fetch_bytes: int | None = None,
         user_agent: str | None = None,
         offline: bool = False,
+        pacing: SharedPacing | None = None,
+        inflight: Mapping[str, int] | None = None,
     ) -> None:
         if offline and client is not None:
             raise ValueError("an offline SourceClient makes its own http client")
@@ -300,10 +336,21 @@ class SourceClient:
         self._sleep = sleep
         self._retries = retries
         self._max_wait_s = max_wait_s
-        self._extractor = extractor
+        if pdf_extraction not in PDF_EXTRACTIONS:
+            raise ValueError(
+                f"unknown pdf_extraction {pdf_extraction!r}; known: {list(PDF_EXTRACTIONS)}"
+            )
+        self.pdf_extraction: PdfExtraction = pdf_extraction
+        self._extractor = extractor or self._default_extractor
+        self._custom_extractor = extractor is not None
+        # url -> the extractor that produced its text (fetch_document records it)
+        self.extractions: dict[str, str] = {}
         self.max_fetch_bytes = max_fetch_bytes
-        self._locks: dict[str, asyncio.Lock] = {}
-        self._last_request: dict[str, float] = {}
+        shared = pacing or SharedPacing()
+        self._locks = shared.locks
+        self._last_request = shared.last_request
+        self._inflight_caps = {**DEFAULT_INFLIGHT, **(inflight or {})}
+        self._inflight_slots = shared.inflight
         self._exhausted_until: dict[str, float] = {}
         self.rate_info: dict[str, RateInfo] = {}
         self.requests: Counter[str] = Counter()
@@ -328,21 +375,25 @@ class SourceClient:
     async def paced(self, source: str) -> AsyncIterator[None]:
         """Hold *source*'s turn and wait out its spacing, for a caller that makes its
         own request (Crossref goes through ``references``' client)."""
-        async with self._lock(source):
+        async with self._inflight(source):
             await self._space(source)
             self.requests[source] += 1
-            try:
-                yield
-            finally:
-                self._last_request[source] = self._clock()
+            yield
 
     def reference_cache(self) -> ReferenceCache:
         """The store as the ``references`` cache, serving any age when offline."""
         return self.store.reference_cache(any_age=self.offline)
 
-    def _offline_miss(self, source: str, url: str) -> SourceError:
+    def _offline_miss(
+        self, source: str, url: str, *, reason: str = OFFLINE_REASON
+    ) -> SourceError:
         self.offline_misses[source] += 1
-        return SourceError(source, OFFLINE_REASON, kind="offline", url=url)
+        return SourceError(source, reason, kind="offline", url=url)
+
+    async def _default_extractor(self, data: bytes, content_type: str, url: str) -> str:
+        return await extract_body(
+            data, content_type, url, pdf_extraction=self.pdf_extraction
+        )
 
     def set_interval(self, name: str, seconds: float) -> None:
         """Set the smallest gap between network requests under spacing key *name*."""
@@ -388,7 +439,7 @@ class SourceClient:
         if self.offline:
             raise self._offline_miss(source, _audit_url(url, params))
         sent = {**(params or {}), **(auth_params or {})}
-        async with self._lock(source):
+        async with self._inflight(source):
             result = await self._request(
                 source, url, sent, {**(headers or {})}, interval=source
             )
@@ -454,13 +505,11 @@ class SourceClient:
                     url, params=dict(params), headers=dict(headers)
                 )
             except httpx.HTTPError as exc:
-                self._last_request[interval] = self._clock()
                 reason = f"{type(exc).__name__}: {exc}"
                 if attempt < self._retries:
                     await self._sleep(min(2.0**attempt, self._max_wait_s))
                     continue
                 raise SourceError(source, reason, kind="transport", url=url) from exc
-            self._last_request[interval] = self._clock()
             info = self._read_rate_headers(source, response)
             if response.status_code == 200:
                 self.fetched_bytes += len(response.content)
@@ -490,15 +539,31 @@ class SourceClient:
             self._locks[name] = asyncio.Lock()
         return self._locks[name]
 
+    def _inflight(self, name: str) -> asyncio.Semaphore:
+        """The turn-taking for spacing key *name*: at most ``DEFAULT_INFLIGHT``
+        requests are in flight at once (1 for a host fetched from the open web)."""
+        if name not in self._inflight_slots:
+            cap = self._inflight_caps.get(name, 1)
+            self._inflight_slots[name] = asyncio.Semaphore(cap)
+        return self._inflight_slots[name]
+
     async def _space(self, name: str) -> None:
+        """Wait for this request's slot under spacing key *name*.
+
+        The slot is reserved under a short lock (the next request starts at least
+        ``gap`` after the previous one started) and waited for outside it, so
+        requests to a source overlap in flight while their starts stay spaced.
+        """
         gap = self._intervals.get(
             name, FETCH_INTERVAL_S if name.startswith("fetch:") else 0.0
         )
-        last = self._last_request.get(name)
-        if gap > 0 and last is not None:
-            wait = last + gap - self._clock()
-            if wait > 0:
-                await self._sleep(wait)
+        async with self._lock(name):
+            now = self._clock()
+            last = self._last_request.get(name)
+            start = now if gap <= 0 or last is None else max(now, last + gap)
+            self._last_request[name] = start
+        if start > now:
+            await self._sleep(start - now)
 
     def _read_rate_headers(self, source: str, response: httpx.Response) -> RateInfo:
         h = response.headers
@@ -566,9 +631,9 @@ class SourceClient:
                 content_type="text/markdown",
             )
         if self.offline:
-            raise self._offline_miss(source, url)
+            raise self._offline_miss(source, url, reason=FROZEN_TEXT_REASON)
         gap = interval or f"fetch:{urlparse(url).netloc.lower()}"
-        async with self._lock(gap):
+        async with self._inflight(gap):
             try:
                 await check_fetch_allowed(
                     url,
@@ -597,8 +662,6 @@ class SourceClient:
                     kind="transport",
                     url=url,
                 ) from exc
-            finally:
-                self._last_request[gap] = self._clock()
         if response.status_code >= 400:
             raise SourceError(
                 source,
@@ -617,6 +680,11 @@ class SourceClient:
             raise SourceError(
                 source, f"text extraction failed: {exc}", kind="parse", url=url
             ) from exc
+        self.extractions[url] = (
+            "custom"
+            if self._custom_extractor
+            else extraction_method(content_type, pdf_extraction=self.pdf_extraction)
+        )
         return self.keep_text(source, url, text, content_type=content_type, ttl_s=ttl_s)
 
     def keep_text(

@@ -50,6 +50,9 @@ class StartRecord(BaseModel):
     judge: str | None = Field(default=None, description="Who judged claim support.")
     judge_digest: str | None = None
     notes: list[str] = Field(default_factory=list)
+    concurrency: int = Field(
+        default=1, ge=1, description="Cells of one arm in flight at once."
+    )
 
 
 class RunRecord(BaseModel):

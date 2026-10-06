@@ -173,6 +173,7 @@ async def test_full_text_is_read_from_the_jats_and_cached() -> None:
         "Sparse sampling recovered the lattice constant in 94 of 100 trials."
         in fetched.text
     )
+    assert kit.client.extractions[fetched.url] == "jats"
     await reader.fetch_text(work)
     assert len(kit.requests) == 1
 

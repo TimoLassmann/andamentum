@@ -29,6 +29,7 @@ Abstracts under a ``no_redistribute`` licence are written as ``""`` (the
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import time
@@ -139,13 +140,13 @@ async def capture(
     configuration. The capture is recorded as a run of the store with
     ``config.frozen_capture`` set. Failures are kept in ``degraded``, never
     hidden. ``retractions`` checks every candidate's DOI in Crossref once,
-    one after another, into the store's cache (a failed check is listed in
+    concurrently (within the client's per-source cap), into the store's cache (a failed check is listed in
     ``retraction_unchecked``, not ``degraded``: the snapshot is still fair).
     """
     if source_client is not None and source_client.store is not store:
         raise ValueError("source_client must belong to the store passed")
     say = progress or (lambda _line: None)
-    client = source_client or SourceClient(store)
+    client = source_client or SourceClient(store, pdf_extraction=sources.pdf_extraction)
     handle: DecisionModel | None = None
     try:
         handle = (
@@ -219,11 +220,21 @@ async def capture(
             if retractions:
                 dois = [c.work.doi for c in admitted.candidates.values() if c.work.doi]
                 say(f"Freeze: retraction status of {len(dois)} DOIs")
-                for doi in dois:
+
+                async def check(doi: str) -> str | None:
                     try:
                         await source_set.crossref.retraction_status(doi)
                     except SourceError as error:
-                        unchecked.append(f"{doi}: {error.reason}")
+                        return f"{doi}: {error.reason}"
+                    return None
+
+                # Concurrent calls; the client keeps Crossref's spacing and its
+                # in-flight cap, and the failures stay in DOI order.
+                unchecked = [
+                    line
+                    for line in await asyncio.gather(*(check(d) for d in dois))
+                    if line is not None
+                ]
         except BaseException as error:
             store.finish_run(
                 run_id,

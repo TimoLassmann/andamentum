@@ -2,8 +2,11 @@
 
 ``run_experiment`` walks arm by arm (a local model is loaded once per arm, not
 swapped per item), then set, item and repeat, and appends a registry line after
-each cell. Nothing here is concurrent: a local Ollama server answers one call
-at a time. A cell that raises is recorded with its error and counts against the
+each cell. Cells run one at a time unless ``concurrency`` is raised, which
+``concurrency.resolve_concurrency`` allows only when every language model is an
+Ollama ``-cloud`` model (at most 4 cells of one arm in flight; a local Ollama
+server answers one call at a time, and decision-model requests are serialised
+by ``core.decisions`` whatever the value). A cell that raises is recorded with its error and counts against the
 arm (outcome metrics are zero), never dropped. A cell already in the registry is
 skipped, so an interrupted run resumes where it stopped.
 
@@ -24,6 +27,7 @@ again once the outage is over.
 
 from __future__ import annotations
 
+import functools
 import shutil
 import time
 from collections.abc import Awaitable, Callable, Mapping, Sequence
@@ -38,6 +42,7 @@ from ..config import ResearchConfig, config_hash, preset
 from ..frozen import FrozenInputs
 from ..sources.base import SourceConfig
 from ..types import Mode
+from .concurrency import resolve_concurrency, run_bounded
 from .arms import ArmOutput, ExperimentArm, LegacyArm, V2Arm
 from .experiment import ArmSpec, Experiment, SetSpec
 from .freeze import (
@@ -517,13 +522,26 @@ async def run_experiment(
     progress: Callable[[str], None] = lambda _line: None,
     clock: Callable[[], float] = time.time,
     only_sets: Sequence[str] | None = None,
+    concurrency: int = 1,
 ) -> list[RunRecord]:
     """Run every cell not yet in the registry; returns the records written now.
 
     ``only_sets`` restricts this invocation to some of the file's sets (a set
     whose data or infrastructure is not available yet); the file, its hash and
     the registry are unchanged, so a later invocation runs the rest.
+
+    ``concurrency`` is how many cells of one arm are in flight at once (arms
+    still run one after another). It is 1 unless every language model of the
+    experiment (the arms' and the judge's) is an Ollama ``-cloud`` model
+    (``concurrency.resolve_concurrency`` refuses anything else); the
+    decision model's requests are serialised by ``core.decisions`` whatever the
+    value. It is recorded in the registry's ``start`` line, and a cell's wall
+    time is measured under that load.
     """
+    models = [a.model for a in exp.arms]
+    if exp.judge is not None:
+        models.append(exp.judge.model)
+    concurrency = resolve_concurrency(concurrency, models=models)
     if only_sets is not None:
         unknown = [n for n in only_sets if n not in {s.name for s in exp.sets}]
         if unknown:
@@ -554,6 +572,7 @@ async def run_experiment(
             judge=services.judge_label,
             judge_digest=services.judge_digest,
             notes=exp.notes,
+            concurrency=concurrency,
         ),
     )
     done = {r.cell for r in runs_of(path, experiment_hash=exp.config_hash())}
@@ -563,6 +582,7 @@ async def run_experiment(
         # one arm object per mode: a set's mode is part of what an arm is built for
         answer_arms: dict[Mode, ExperimentArm] = {}
         screening_arm: ScreeningArm | None = None
+        jobs: list[Callable[[], Awaitable[RunRecord]]] = []
         for set_spec in chosen:
             if not spec.runs_on(set_spec.name):
                 continue
@@ -582,76 +602,110 @@ async def run_experiment(
                         if mode not in answer_arms:
                             answer_arms[mode] = build_answer_arm(spec, mode, services)
                         arm = answer_arms[mode]
-                    live = spec.system == "legacy" or (
-                        spec.system == "v2" and not spec.is_frozen
+                    jobs.append(
+                        functools.partial(
+                            _run_cell,
+                            exp=exp,
+                            spec=spec,
+                            info=info,
+                            arm=arm,
+                            item=item,
+                            repeat=repeat,
+                            path=path,
+                            out_dir=out_dir,
+                            dirs=dirs,
+                            services=services,
+                            progress=progress,
+                            clock=clock,
+                        )
                     )
-                    if live and mode_is_web(set_spec.name):
-                        if services.check_searxng is not None:
-                            await services.check_searxng(
-                                services.source_config.searxng_url
-                            )
-                    progress(
-                        f"{spec.name} {item.set_name}/{item.item_id} repeat {repeat}"
-                    )
-                    record = RunRecord(
-                        experiment=exp.name,
-                        experiment_hash=exp.config_hash(),
-                        arm=spec.name,
-                        set=item.set_name,
-                        item_id=item.item_id,
-                        repeat=repeat,
-                        started_at=clock(),
-                        config_hash=info.config_hash,
-                        model=info.model,
-                        decision_model=info.decision_model,
-                        decision_digest=info.decision_digest,
-                        judge=services.judge_label,
-                        judge_digest=services.judge_digest,
-                        frozen=info.frozen,
-                    )
-                    store: Path | None = None
-                    try:
-                        if isinstance(arm, ScreeningArm):
-                            metrics, _unused, score = await _screening_cell(arm, item)
-                            record.screening = score
-                        else:
-                            frozen: FrozenInputs | None = None
-                            if spec.is_frozen:
-                                if dirs.snapshots is None:
-                                    raise SnapshotMissing(NO_SNAPSHOT)
-                                frozen = frozen_for(item, snapshots=dirs.snapshots)
-                                store = prepare_working_copy(
-                                    item,
-                                    out_dir=out_dir,
-                                    snapshots=dirs.snapshots,
-                                    arm=spec.name,
-                                    repeat=repeat,
-                                )
-                            metrics, output, outcome = await _answer_cell(
-                                arm,
-                                spec,
-                                item,
-                                services=services,
-                                frozen=frozen,
-                                store=store,
-                            )
-                            if live and (note := infrastructure_failure(output)):
-                                raise InfrastructureDown(
-                                    f"{spec.name} {item.set_name}/{item.item_id} "
-                                    f"#{repeat}: {note}. The cell is not recorded; "
-                                    "fix the outage and run the same command again"
-                                )
-                            record.output = output
-                            record.planted_outcome = outcome
-                        record.metrics = metrics
-                    except InfrastructureDown:
-                        raise
-                    except Exception as error:  # recorded and counted, never dropped
-                        record.error = _error_text(error)
-                        _zero_outcomes(item.set_name, record.metrics)
-                    finally:
-                        if store is not None:
-                            shutil.rmtree(store.parent, ignore_errors=True)
-                    append(path, record)
-                    written.append(record)
+        written += await run_bounded(jobs, concurrency=concurrency)
     return written
+
+
+async def _run_cell(
+    *,
+    exp: Experiment,
+    spec: ArmSpec,
+    info: ArmRecord,
+    arm: ExperimentArm | ScreeningArm,
+    item: Item,
+    repeat: int,
+    path: Path,
+    out_dir: Path,
+    dirs: DataDirs,
+    services: Services,
+    progress: Callable[[str], None],
+    clock: Callable[[], float],
+) -> RunRecord:
+    """One (arm, item, repeat) cell: run it, record it, append it to the registry.
+
+    A cell that raises is recorded with its error; an ``InfrastructureDown`` is
+    not recorded and propagates (the other cells in flight are cancelled).
+    """
+    live = spec.system == "legacy" or (spec.system == "v2" and not spec.is_frozen)
+    if live and mode_is_web(item.set_name):
+        if services.check_searxng is not None:
+            await services.check_searxng(services.source_config.searxng_url)
+    progress(f"{spec.name} {item.set_name}/{item.item_id} repeat {repeat}")
+    record = RunRecord(
+        experiment=exp.name,
+        experiment_hash=exp.config_hash(),
+        arm=spec.name,
+        set=item.set_name,
+        item_id=item.item_id,
+        repeat=repeat,
+        started_at=clock(),
+        config_hash=info.config_hash,
+        model=info.model,
+        decision_model=info.decision_model,
+        decision_digest=info.decision_digest,
+        judge=services.judge_label,
+        judge_digest=services.judge_digest,
+        frozen=info.frozen,
+    )
+    store: Path | None = None
+    try:
+        if isinstance(arm, ScreeningArm):
+            metrics, _unused, score = await _screening_cell(arm, item)
+            record.screening = score
+        else:
+            frozen: FrozenInputs | None = None
+            if spec.is_frozen:
+                if dirs.snapshots is None:
+                    raise SnapshotMissing(NO_SNAPSHOT)
+                frozen = frozen_for(item, snapshots=dirs.snapshots)
+                store = prepare_working_copy(
+                    item,
+                    out_dir=out_dir,
+                    snapshots=dirs.snapshots,
+                    arm=spec.name,
+                    repeat=repeat,
+                )
+            metrics, output, outcome = await _answer_cell(
+                arm,
+                spec,
+                item,
+                services=services,
+                frozen=frozen,
+                store=store,
+            )
+            if live and (note := infrastructure_failure(output)):
+                raise InfrastructureDown(
+                    f"{spec.name} {item.set_name}/{item.item_id} "
+                    f"#{repeat}: {note}. The cell is not recorded; "
+                    "fix the outage and run the same command again"
+                )
+            record.output = output
+            record.planted_outcome = outcome
+        record.metrics = metrics
+    except InfrastructureDown:
+        raise
+    except Exception as error:  # recorded and counted, never dropped
+        record.error = _error_text(error)
+        _zero_outcomes(item.set_name, record.metrics)
+    finally:
+        if store is not None:
+            shutil.rmtree(store.parent, ignore_errors=True)
+    append(path, record)
+    return record
