@@ -31,6 +31,13 @@ SUITES_DIR = Path(__file__).parent / "suites"
 #: ``standard`` sample, so a smoke run is a strict subset of a standard run.
 TIERS: dict[str, int] = {"smoke": 20, "standard": 200}
 
+#: The dev sample: drawn after, and disjoint from, the test questions above.
+#: Thresholds, fusion weights and other design choices are made on ``dev``;
+#: ``smoke`` / ``standard`` only report. No question that shapes the store
+#: also scores it.
+DEV_SIZE = 200
+RUN_TIERS = (*TIERS, "dev")
+
 _SEED = 17
 
 # HotpotQA distractor dev, served as JSON by the Hugging Face dataset viewer
@@ -288,17 +295,46 @@ def freeze(suite: str, *, workdir: Path) -> Path:
     return path
 
 
+def freeze_dev(suite: str, *, workdir: Path) -> Path:
+    """Draw the dev sample from the questions the test sample did not take."""
+    path = suite_file(suite)
+    spec = json.loads(path.read_text())
+    if "dev_ids" in spec:
+        raise FileExistsError(f"{path} already has a dev sample; it is never redrawn")
+    records = load_records(suite, workdir=workdir)
+    taken = set(spec["sample_ids"])
+    eligible = sorted(
+        qid for qid, (q, _) in records.items() if q.gold and qid not in taken
+    )
+    dev = random.Random(_SEED + 1).sample(eligible, DEV_SIZE)
+    corpus = pool(suite, "dev", records, dev)
+    spec["tiers"]["dev"] = {
+        "n_questions": DEV_SIZE,
+        "n_passages": len(corpus.passages),
+        "corpus_sha256": corpus.sha256,
+    }
+    spec["dev_ids"] = dev
+    path.write_text(json.dumps(spec, indent=1) + "\n")
+    return path
+
+
+def _tier_ids(spec: dict, tier: str) -> list[str]:
+    if tier == "dev":
+        return spec["dev_ids"]
+    return spec["sample_ids"][: spec["tiers"][tier]["n_questions"]]
+
+
 def load_corpus(suite: str, tier: str, *, workdir: Path) -> tuple[Corpus, dict]:
     """The frozen sample's pooled corpus for one tier, checked against its hash."""
     spec = json.loads(suite_file(suite).read_text())
-    n = spec["tiers"][tier]["n_questions"]
+    ids = _tier_ids(spec, tier)
     records = load_records(suite, workdir=workdir)
-    missing = [q for q in spec["sample_ids"][:n] if q not in records]
+    missing = [q for q in ids if q not in records]
     if missing:
         raise ValueError(
             f"{suite}: {len(missing)} frozen question ids not in the dataset"
         )
-    corpus = pool(suite, tier, records, spec["sample_ids"][:n])
+    corpus = pool(suite, tier, records, ids)
     expected = spec["tiers"][tier]["corpus_sha256"]
     if corpus.sha256 != expected:
         raise ValueError(

@@ -187,6 +187,24 @@ def test_freeze_never_redraws_and_load_detects_changed_data(tmp_path, monkeypatc
         data.load_corpus("musique", "smoke", workdir=tmp_path)
 
 
+def test_dev_sample_is_disjoint_from_test_and_never_redrawn(tmp_path, monkeypatch):
+    monkeypatch.setattr(data, "SUITES_DIR", tmp_path / "suites")
+    monkeypatch.setattr(data, "TIERS", {"smoke": 2, "standard": 4})
+    monkeypatch.setattr(data, "DEV_SIZE", 3)
+    _write_dataset(tmp_path, _musique_rows(9))
+    data.freeze("musique", workdir=tmp_path)
+    test_ids = json.loads(data.suite_file("musique").read_text())["sample_ids"]
+
+    data.freeze_dev("musique", workdir=tmp_path)
+    spec = json.loads(data.suite_file("musique").read_text())
+    assert spec["sample_ids"] == test_ids
+    assert not set(spec["dev_ids"]) & set(test_ids)
+    corpus, _ = data.load_corpus("musique", "dev", workdir=tmp_path)
+    assert [q.qid for q in corpus.questions] == spec["dev_ids"]
+    with pytest.raises(FileExistsError):
+        data.freeze_dev("musique", workdir=tmp_path)
+
+
 # ── metrics ──────────────────────────────────────────────────────────────
 
 
@@ -401,4 +419,6 @@ def test_frozen_suites_in_the_repo_are_well_formed():
         spec = json.loads(data.suite_file(suite).read_text())
         assert len(spec["sample_ids"]) == data.TIERS["standard"]
         assert len(set(spec["sample_ids"])) == len(spec["sample_ids"])
-        assert set(spec["tiers"]) == set(data.TIERS)
+        assert set(spec["tiers"]) == set(data.RUN_TIERS)
+        assert len(spec["dev_ids"]) == data.DEV_SIZE
+        assert not set(spec["dev_ids"]) & set(spec["sample_ids"])

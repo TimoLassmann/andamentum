@@ -1,7 +1,7 @@
 """``python -m andamentum.document_store.bench`` — the retrieval benchmark CLI.
 
     fetch    --workdir DIR [--suite S]          download raw dev sets once
-    freeze   --workdir DIR --suite S            draw and record the sample (once, ever)
+    freeze   --workdir DIR --suite S [--dev]    draw and record the sample (once, ever)
     run      --workdir DIR --suite S --arm A --tier T [--embedding-model M]
     show     RUN_DIR                            print a run's summary
     compare  RUN_A RUN_B                        paired-bootstrap B - A
@@ -19,7 +19,7 @@ import sys
 from pathlib import Path
 
 from .arms import ARMS
-from .data import SOURCES, TIERS, fetch, freeze
+from .data import RUN_TIERS, SOURCES, fetch, freeze, freeze_dev
 from .runner import compare, format_summary, run
 
 
@@ -34,12 +34,15 @@ def main(argv: list[str] | None = None) -> int:
     p_freeze = sub.add_parser("freeze")
     p_freeze.add_argument("--workdir", type=Path, required=True)
     p_freeze.add_argument("--suite", choices=sorted(SOURCES), required=True)
+    p_freeze.add_argument(
+        "--dev", action="store_true", help="draw the dev sample (disjoint from test)"
+    )
 
     p_run = sub.add_parser("run")
     p_run.add_argument("--workdir", type=Path, required=True)
     p_run.add_argument("--suite", choices=sorted(SOURCES), required=True)
     p_run.add_argument("--arm", choices=sorted(ARMS), required=True)
-    p_run.add_argument("--tier", choices=sorted(TIERS), required=True)
+    p_run.add_argument("--tier", choices=RUN_TIERS, required=True)
     p_run.add_argument(
         "--embedding-model", help="Ollama embedding model, e.g. embeddinggemma:latest"
     )
@@ -58,7 +61,8 @@ def main(argv: list[str] | None = None) -> int:
         for suite in args.suite or sorted(SOURCES):
             print(f"{suite}: {fetch(suite, workdir=args.workdir)}")
     elif args.cmd == "freeze":
-        print(freeze(args.suite, workdir=args.workdir))
+        fn = freeze_dev if args.dev else freeze
+        print(fn(args.suite, workdir=args.workdir))
     elif args.cmd == "run":
         run_dir = asyncio.run(
             run(

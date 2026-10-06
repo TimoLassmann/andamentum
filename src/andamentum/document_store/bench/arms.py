@@ -16,7 +16,7 @@ import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
 from andamentum.chunker import extract_units
 
@@ -25,6 +25,8 @@ from ..database import get_async_connection
 from ..chunker_adapter import Chunk, units_to_chunks
 from ..metadata_models import ChunkMetadataFields
 from ..search import search_fts5, search_unified
+from ..reranking import SUGGESTED_RERANKER_MODEL
+from ..v2 import Hit, SectionStore
 from .data import Corpus, Passage, Question
 from .embedding_cache import EmbeddingCache
 
@@ -117,10 +119,11 @@ async def build_current_store(
 
 class Arm(Protocol):
     name: str
+    store_kind: str  # "current" or "v2": which builder the runner uses
     needs_embeddings: bool
 
     async def rank(
-        self, built: BuiltStore, q: Question, emb: EmbeddingCache | None
+        self, built: Any, q: Question, emb: EmbeddingCache | None
     ) -> list[str]: ...
 
 
@@ -128,6 +131,7 @@ class Fts5Arm:
     """Signal 1 alone: BM25 over title + content in ``documents_fts``."""
 
     name = "fts5"
+    store_kind = "current"
     needs_embeddings = False
 
     async def rank(
@@ -147,6 +151,7 @@ class Bm25OrArm:
     """
 
     name = "bm25_or"
+    store_kind = "current"
     needs_embeddings = False
 
     async def rank(
@@ -169,6 +174,7 @@ class UnifiedArm:
     """The current store's full 4-signal RRF search, query embedded from the cache."""
 
     name = "unified"
+    store_kind = "current"
     needs_embeddings = True
 
     async def rank(
@@ -183,4 +189,122 @@ class UnifiedArm:
         return [built.doc_to_pid[r.doc_id] for r in results]
 
 
-ARMS: dict[str, Arm] = {a.name: a for a in (Fts5Arm(), Bm25OrArm(), UnifiedArm())}
+# ---------------------------------------------------------------------------
+# v2: the sections-first store (document_store.v2), round 0 of the plan
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class BuiltV2:
+    store: SectionStore
+
+
+async def build_v2_store(
+    corpus: Corpus, *, workdir: Path, emb: EmbeddingCache | None
+) -> BuiltV2:
+    """Build (or reopen) the v2 store; one document per passage, path = pid.
+
+    Documents hold the same markdown as in the current store, so a passage that
+    fits one section embeds the identical text and its vector comes from the
+    cache: the two stores are compared on the same embeddings.
+    """
+    tag = f"{emb.model.replace(':', '_').replace('/', '_')}" if emb else "noemb"
+    name = f"v2_{corpus.suite}_{corpus.tier}_{corpus.sha256[:12]}_{tag}"
+    path = workdir / "stores" / f"{name}.db"
+    done = path.with_suffix(".done")
+    dim = None
+    if emb is not None:
+        [probe] = await emb.get_or_compute([document_content(corpus.passages[0])])
+        dim = len(probe)
+    store = SectionStore(path, embedding_dim=dim)
+    if done.exists():
+        return BuiltV2(store)
+    path.unlink(missing_ok=True)  # a half-built store from an interrupted run
+    store.create()
+    embed_fn = emb.get_or_compute if emb is not None else None
+    for p in corpus.passages:
+        await store.add_document(
+            path=p.pid, title=p.title, text=document_content(p), embed_fn=embed_fn
+        )
+    done.touch()
+    return BuiltV2(store)
+
+
+def _passages_in_order(hits: list[Hit]) -> list[str]:
+    """Section hits -> passage ids, each at the rank of its best section."""
+    seen: list[str] = []
+    for h in hits:
+        if h.path not in seen:
+            seen.append(h.path)
+    return seen[:DEPTH]
+
+
+class V2Arm:
+    """Round 0 on the v2 store.
+
+    ``vector`` adds the vector leg, ``exact`` the identifier leg, ``vector_weight``
+    counts the vector ranking that many times in the fusion, ``reranker`` reorders
+    the fused top 50 with a cross-encoder.
+    """
+
+    store_kind = "v2"
+
+    def __init__(
+        self,
+        name: str,
+        *,
+        vector: bool,
+        exact: bool = True,
+        vector_weight: int = 1,
+        reranker: str | None = None,
+    ) -> None:
+        self.name = name
+        self.needs_embeddings = vector
+        self.exact = exact
+        self.vector_weight = vector_weight
+        self.reranker = reranker
+
+    async def rank(
+        self, built: BuiltV2, q: Question, emb: EmbeddingCache | None
+    ) -> list[str]:
+        qvec = None
+        if self.needs_embeddings:
+            if emb is None:
+                raise ValueError(f"the {self.name} arm needs an embedding cache")
+            [qvec] = await emb.get_or_compute([q.text])
+        hits = built.store.round0(
+            q.text,
+            query_embedding=qvec,
+            use_exact=self.exact,
+            vector_weight=self.vector_weight,
+        )
+        if self.reranker is not None:
+            hits = await built.store.rerank(q.text, hits, reranker_model=self.reranker)
+        return _passages_in_order(hits)
+
+
+def _v2_grid() -> list[V2Arm]:
+    """The plan as written, the dev-split grid, and each with the reranker."""
+    base = [
+        V2Arm("v2_lexical", vector=False),
+        V2Arm("v2_hybrid", vector=True),  # plan as written
+        V2Arm("v2_noexact", vector=True, exact=False),
+        V2Arm("v2_vec2", vector=True, vector_weight=2),
+        V2Arm("v2_noexact_vec2", vector=True, exact=False, vector_weight=2),
+    ]
+    reranked = [
+        V2Arm(
+            f"{a.name}_rerank",
+            vector=a.needs_embeddings,
+            exact=a.exact,
+            vector_weight=a.vector_weight,
+            reranker=SUGGESTED_RERANKER_MODEL,
+        )
+        for a in base[1:]
+    ]
+    return base + reranked
+
+
+ARMS: dict[str, Arm] = {
+    a.name: a for a in (Fts5Arm(), Bm25OrArm(), UnifiedArm(), *_v2_grid())
+}

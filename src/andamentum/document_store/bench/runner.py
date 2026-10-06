@@ -18,7 +18,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .arms import ARMS, DEPTH, build_current_store
+from .arms import ARMS, DEPTH, build_current_store, build_v2_store
 from .data import load_corpus
 from .embedding_cache import EmbeddingCache
 from .metrics import CUTOFFS, mean_metrics, paired_bootstrap, question_metrics
@@ -55,7 +55,8 @@ async def run(
     )
 
     t0 = time.perf_counter()
-    built = await build_current_store(corpus, workdir=workdir, emb=emb)
+    builder = build_v2_store if arm.store_kind == "v2" else build_current_store
+    built = await builder(corpus, workdir=workdir, emb=emb)
     build_seconds = time.perf_counter() - t0
 
     rows = []
@@ -97,7 +98,10 @@ async def run(
         ).hexdigest(),
         "corpus_sha256": corpus.sha256,
         "arm": arm_name,
-        "store": "current",
+        "store": arm.store_kind,
+        "reranker": getattr(arm, "reranker", None),
+        "v2_exact": getattr(arm, "exact", None),
+        "v2_vector_weight": getattr(arm, "vector_weight", None),
         "depth": DEPTH,
         "embedding_model": emb.model if emb else None,
         "embedding_digest": emb.digest if emb else None,
