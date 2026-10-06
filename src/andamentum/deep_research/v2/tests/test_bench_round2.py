@@ -617,8 +617,8 @@ async def test_the_failed_runs_table_counts_outages_apart_from_other_errors(
         r for r in read_records(registry_path(tmp_path)) if isinstance(r, RunRecord)
     ]
     assert [bool(r.outage) for r in runs][:2] == [True, False]
-    # the outage cell has no value; the errored one is a miss (zero) on outcomes
-    assert runs[0].metrics == {} and runs[1].metrics.get("correct") == 0.0
+    # a failed cell of a record arm has no value, an outage or not
+    assert runs[0].metrics == {} and runs[1].metrics == {}
 
 
 def test_a_group_is_accepted_only_when_every_rule_is() -> None:

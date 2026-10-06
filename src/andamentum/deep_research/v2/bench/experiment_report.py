@@ -773,8 +773,9 @@ def _failures_section(exp: Experiment, cells: Cells) -> str | None:
         table(["arm", "set", "runs", "failed", "search outage", "other errors"], rows)
         + "\n\nA run that met a search outage is recorded as failed with no metric "
         "values: it is not a zero (no recall is claimed or denied) and it drops out "
-        "of every paired comparison. Another error counts as a miss on the outcome "
-        "metrics."
+        "of every paired comparison. Another error of a record arm is handled the "
+        "same way; an arm that does not record failures counts an error as a miss "
+        "on the outcome metrics."
     )
 
 
