@@ -290,7 +290,9 @@ class V2Arm:
     must belong to ``store``). ``config`` is the strategy preset (the
     baseline unless one is given). A run may be given ``frozen`` inputs (Plan and Search
     from a snapshot) and the ``store`` path that holds the snapshot's cache;
-    both override the arm's own for that run.
+    both override the arm's own for that run. ``http_cache`` is a shared
+    read-through HTTP cache for the live runs (not for a frozen one, which
+    reads only its snapshot).
     """
 
     returns_pages = False
@@ -307,8 +309,10 @@ class V2Arm:
         source_client: SourceClient | None = None,
         config: ResearchConfig = PRESETS["baseline"],
         name: str | None = None,
+        http_cache: ResearchStore | None = None,
     ) -> None:
         self.name = name or f"v2-{mode}"
+        self.http_cache = http_cache
         self.mode: Mode = mode
         self.model = model
         self.decision_model = decision_model
@@ -325,16 +329,24 @@ class V2Arm:
         frozen: FrozenInputs | None = None,
         store: Path | None = None,
     ) -> ArmOutput:
+        use_store = store if store is not None else self.store
+        # a frozen run reads only its snapshot, and an open store brings its own cache
+        cache = (
+            self.http_cache
+            if frozen is None and not isinstance(use_store, ResearchStore)
+            else None
+        )
         result = await research(
             question,
             mode=self.mode,
             model=self.model,
             decision_model=self.decision_model,
-            store=store if store is not None else self.store,
+            store=use_store,
             budget=self.budget,
             sources=self.sources,
             config=self.config,
             frozen=frozen,
             source_client=self.source_client,
+            http_cache=cache,
         )
         return map_v2(result)

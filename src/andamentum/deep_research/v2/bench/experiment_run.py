@@ -41,6 +41,7 @@ from andamentum.references.works import canonical_url
 from ..config import ResearchConfig, config_hash, preset
 from ..frozen import FrozenInputs
 from ..sources.base import SourceConfig
+from ..store import ResearchStore
 from ..types import Mode
 from .concurrency import resolve_concurrency, run_bounded
 from .arms import ArmOutput, ExperimentArm, LegacyArm, V2Arm
@@ -285,6 +286,8 @@ class Services:
     judge_label: str | None = None
     url_checker: UrlChecker | None = None
     judge_digest: str | None = None
+    # a shared read-through HTTP cache for the live v2 arms (frozen arms are offline)
+    http_cache: ResearchStore | None = None
     # probes SearxNG before each live web cell (the CLI sets it; None: no probe)
     check_searxng: Callable[[str | None], Awaitable[SearxHealth]] | None = None
     # tests replace these to run stub arms; the defaults build the real ones
@@ -334,6 +337,7 @@ def build_answer_arm(spec: ArmSpec, mode: Mode, services: Services) -> Experimen
         sources=services.source_config,
         config=preset_of(spec),
         name=spec.name,
+        http_cache=services.http_cache,
     )
 
 

@@ -62,6 +62,7 @@ class CrossrefSource:
             cache=self._client.reference_cache(),
             mailto=mailto,
             url_check=offline_url_check if self._client.offline else None,
+            gate=lambda: self._client.paced(NAME),  # a network request only
         )
 
     async def search(
@@ -116,8 +117,7 @@ class CrossrefSource:
         clean = normalise_doi(doi)
         if clean is None:
             raise SourceError(NAME, f"not a DOI: {doi!r}", kind="config")
-        async with self._client.paced(NAME):
-            status = await lookup_retraction(clean, http=self._http)
+        status = await lookup_retraction(clean, http=self._http)
         if status.status == "service_error":
             raise SourceError(
                 NAME,
@@ -139,8 +139,7 @@ class CrossrefSource:
         self, path: str, params: dict[str, str] | None
     ) -> dict[str, JsonValue] | None:
         """One cached Crossref GET; None for a 404, which a lookup reads as "unknown"."""
-        async with self._client.paced(NAME):
-            result = await self._http.crossref(path, params)
+        result = await self._http.crossref(path, params)
         if isinstance(result, str):
             raise SourceError(
                 NAME,

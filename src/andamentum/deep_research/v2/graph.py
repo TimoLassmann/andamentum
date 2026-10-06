@@ -592,6 +592,7 @@ async def research(
     config: ResearchConfig = PRESETS["baseline"],
     frozen: FrozenInputs | None = None,
     source_client: SourceClient | None = None,
+    http_cache: ResearchStore | None = None,
     progress: Callable[[str], None] | None = None,
     clock: Callable[[], float] = time.monotonic,
 ) -> ResearchResult:
@@ -622,6 +623,14 @@ async def research(
     belong to the open store passed as ``store``). ``progress`` receives one
     line per step; ``clock`` is the clock ``budget.max_wall_s`` is measured on.
 
+    ``http_cache`` is a shared read-through HTTP cache (a ``ResearchStore``
+    kept apart from the run's own): every source request is answered from it
+    when it holds a live answer, else sent and written into it; the run's own
+    store receives a copy of each entry the run used. It applies to a store
+    this call opens, so it cannot be combined with an open ``store`` (open
+    that one with ``shared_cache=``) or with ``frozen`` (a frozen run reads
+    only its snapshot).
+
     A spent budget ends the search with ``stop_reason='budget:<name>'`` and
     still writes and verifies the report from what was found. A failing source
     or model is recorded in ``degraded``. Anything else raises: the run is
@@ -640,13 +649,20 @@ async def research(
                 "a frozen run needs an offline source client: "
                 "SourceClient(store, offline=True), or none"
             )
+    if http_cache is not None and (
+        frozen is not None or isinstance(store, ResearchStore)
+    ):
+        raise ValueError(
+            "http_cache goes to a store this call opens, and not to a frozen "
+            "run: open the store with shared_cache= instead"
+        )
     owns_store = not isinstance(store, ResearchStore)
     opened: ResearchStore = (
         store
         if isinstance(store, ResearchStore)
-        else ResearchStore(store)
+        else ResearchStore(store, shared_cache=http_cache)
         if store is not None
-        else ResearchStore.in_memory()
+        else ResearchStore.in_memory(shared_cache=http_cache)
     )
     client = source_client or SourceClient(
         opened, offline=frozen is not None, pdf_extraction=sources.pdf_extraction

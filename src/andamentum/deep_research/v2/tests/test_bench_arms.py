@@ -255,6 +255,7 @@ async def test_the_v2_arm_calls_research_with_the_spec_arguments(
         "config": PRESETS["baseline"],  # the arm names its preset, never implied
         "frozen": None,
         "source_client": None,
+        "http_cache": None,
     }
     assert out.cost.llm_calls == 7
     assert out.result is not None and out.result.passages == []  # slimmed

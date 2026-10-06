@@ -2,7 +2,7 @@
 
     andamentum-research v2 "QUESTION" --mode both --model M
         [--preset baseline|criteria]
-        [--decision-model NAME] [--store PATH] [--searxng-url URL]
+        [--decision-model NAME] [--store PATH] [--cache PATH] [--searxng-url URL]
         [--sources openalex,europepmc,arxiv] [--openalex-search keyword]
         [--tdm-host HOST ...] [--results-per-query N]
         [--max-rounds N ... every Budget field] [--json | --md] [--out FILE]
@@ -33,6 +33,7 @@ from dotenv import load_dotenv
 from .config import DEFAULT_PRESET, PRESETS
 from .graph import research
 from .sources import SourceConfig
+from .store import ResearchStore
 from .types import Budget, Mode, ResearchResult
 
 EXIT_DEGRADED = 4
@@ -83,6 +84,14 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="PATH",
         help="the research store (a SQLite file; blobs go beside it). Without "
         "it nothing persists",
+    )
+    parser.add_argument(
+        "--cache",
+        default=None,
+        metavar="PATH",
+        help="a shared HTTP cache (a SQLite file; blobs go beside it) every "
+        "source reads first and writes into, kept apart from --store; the "
+        "run's own store holds a copy of each entry the run used",
     )
     parser.add_argument(
         "--searxng-url", default=None, help="the SearxNG instance (web and both modes)"
@@ -175,17 +184,23 @@ async def _run(args: argparse.Namespace) -> ResearchResult:
         if not args.quiet:
             print(line, file=sys.stderr, flush=True)
 
-    return await research(
-        args.question,
-        mode=args.mode,
-        model=args.model,
-        decision_model=args.decision_model,
-        store=Path(args.store) if args.store else None,
-        budget=budget,
-        sources=_source_config(args),
-        config=PRESETS[args.preset],
-        progress=progress,
-    )
+    cache = ResearchStore(Path(args.cache)) if args.cache else None
+    try:
+        return await research(
+            args.question,
+            mode=args.mode,
+            model=args.model,
+            decision_model=args.decision_model,
+            store=Path(args.store) if args.store else None,
+            budget=budget,
+            sources=_source_config(args),
+            config=PRESETS[args.preset],
+            http_cache=cache,
+            progress=progress,
+        )
+    finally:
+        if cache is not None:
+            cache.close()
 
 
 def main(argv: list[str]) -> None:

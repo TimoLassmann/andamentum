@@ -16,7 +16,7 @@ interrupted freeze resumes and a second freeze never silently changes inputs.
 Within an item, capture and prefetch are strictly sequential; items may run
 concurrently (``concurrency``, at most 4, only for a ``-cloud`` model; see
 ``concurrency.py``), their requests to one source or host still spaced as one
-client's would be (``SharedPacing``) and their decision-model requests
+client's would be (``sources.process_pacing``: one limiter per source and host for the whole process) and their decision-model requests
 serialised by ``core.decisions``' per-server lock.
 
 What is cached (every rule is in ``meta.json``): the search results and the
@@ -29,6 +29,15 @@ snapshot (``FROZEN_TEXT_REASON``) and falls back to the abstract, the same for
 every arm. PDFs are read from their text layer when ``pdf_extraction`` is
 ``fast`` (``sources.extraction``); the extractor used per fetched URL is
 recorded.
+
+Shared cache (``http_cache``, ``--cache PATH``): one ``ResearchStore`` used as a
+read-through HTTP cache for every item and every freeze. A request any item (or an
+earlier freeze) already made is answered from it without touching the network; a
+request that goes out is written into it. Each snapshot's own ``store.db`` still
+receives a copy of exactly the entries that snapshot used, so it stays
+self-contained; ``no_redistribute`` entries are cached locally and never exported
+(``ResearchStore.iter_cache``). ``meta.json`` records the item's cache hits, misses,
+the share served from the shared cache and the network requests per source.
 
 A snapshot ages with its cache: search answers live 7 days, metadata 30, page
 texts 180 (``store.TTL_*``); frozen arms need only the page texts.
@@ -56,11 +65,11 @@ from andamentum.core.decisions import DecisionModel
 from ..config import PRESETS
 from ..frozen import FrozenInputs, capture
 from ..sources import (
-    SharedPacing,
     SourceClient,
     SourceConfig,
     SourceError,
     build_sources,
+    process_pacing,
 )
 from ..sources.base import ExpandingSource, TextSource
 from ..steps import EXPAND_PER_CALL, is_scholarly
@@ -303,12 +312,27 @@ def peak_rss_mb() -> float:
     return peak / (1024 * 1024) if sys.platform == "darwin" else peak / 1024
 
 
+class ItemStats(BaseModel):
+    """What one item's freeze asked of the network and of the caches."""
+
+    requests: dict[str, int] = {}  # network requests sent, by source
+    cache_hits: int = 0  # answers found (own store or the shared cache)
+    cache_misses: int = 0  # lookups that went to the network
+    shared_hits: int = 0  # of the hits, those served by the shared cache
+
+    @property
+    def hit_rate(self) -> float:
+        total = self.cache_hits + self.cache_misses
+        return self.cache_hits / total if total else 0.0
+
+
 @dataclass
 class FrozenItem:
     item_id: str
     status: str  # "frozen" | "kept" | "incomplete" | "failed"
     detail: str = ""
     wall_s: float = 0.0  # in flight, so it includes waiting for other items
+    stats: ItemStats | None = None
 
 
 @dataclass
@@ -324,6 +348,21 @@ class FreezeReport:
     @property
     def failed(self) -> bool:
         return any(i.status == "failed" for i in self.items)
+
+    def total_stats(self) -> ItemStats | None:
+        """The items' stats added up (None when no item was frozen here)."""
+        parts = [i.stats for i in self.items if i.stats is not None]
+        if not parts:
+            return None
+        requests: Counter[str] = Counter()
+        for part in parts:
+            requests.update(part.requests)
+        return ItemStats(
+            requests=dict(sorted(requests.items())),
+            cache_hits=sum(p.cache_hits for p in parts),
+            cache_misses=sum(p.cache_misses for p in parts),
+            shared_hits=sum(p.shared_hits for p in parts),
+        )
 
     @property
     def incomplete(self) -> bool:
@@ -343,6 +382,11 @@ class FreezeReport:
                 else ""
             )
             out.append(f"  {item.status:7s} {item.item_id}{timing}{tail}")
+            if item.stats is not None:
+                out.append(f"          {_stats_line(item.stats)}")
+        total = self.total_stats()
+        if total is not None:
+            out.append(f"  all items: {_stats_line(total)}")
         done = sum(1 for i in self.items if i.status in ("frozen", "kept"))
         if self.incomplete:
             out.append(
@@ -357,6 +401,15 @@ class FreezeReport:
             f"peak RSS {self.peak_rss_mb:.0f} MB, concurrency {self.concurrency}"
         )
         return out
+
+
+def _stats_line(stats: ItemStats) -> str:
+    calls = ", ".join(f"{name} {n}" for name, n in sorted(stats.requests.items()))
+    return (
+        f"network requests {sum(stats.requests.values())} ({calls or 'none'}); "
+        f"cache {stats.cache_hits} hits, {stats.cache_misses} misses "
+        f"({stats.hit_rate:.0%} hit rate, {stats.shared_hits} from the shared cache)"
+    )
 
 
 @dataclass(frozen=True)
@@ -407,6 +460,7 @@ async def freeze_set(
     health_client: httpx.AsyncClient | None = None,
     client_factory: Callable[[ResearchStore], SourceClient] | None = None,
     clock: Callable[[], float] = time.time,
+    http_cache: ResearchStore | None = None,
 ) -> FreezeReport:
     """Freeze every item of *set_name* that has no snapshot yet.
 
@@ -430,6 +484,7 @@ async def freeze_set(
         health_client=health_client,
         client_factory=client_factory,
         clock=clock,
+        http_cache=http_cache,
     )
 
 
@@ -448,6 +503,7 @@ async def freeze_items_of(
     client_factory: Callable[[ResearchStore], SourceClient] | None,
     clock: Callable[[], float],
     concurrency: int = 1,
+    http_cache: ResearchStore | None = None,
 ) -> FreezeReport:
     """Freeze the given *items* of a set: the part of ``freeze_set`` after the
     items are chosen. A snapshot that exists is kept; the others are frozen with
@@ -459,7 +515,7 @@ async def freeze_items_of(
         report.health = await require_searxng(
             source_config.searxng_url, client=health_client
         )
-    pacing = SharedPacing()
+    pacing = process_pacing()
     factory = client_factory or (
         lambda store: SourceClient(
             store, pdf_extraction=source_config.pdf_extraction, pacing=pacing
@@ -480,7 +536,7 @@ async def freeze_items_of(
         progress(f"freezing {set_name}/{item.item_id}")
         started = time.monotonic()
         try:
-            detail = await _freeze_one(
+            detail, stats = await _freeze_one(
                 item,
                 folder=folder,
                 mode=mode,
@@ -493,6 +549,7 @@ async def freeze_items_of(
                 progress=lambda line: progress(f"[{item.item_id}] {line}"),
                 client_factory=factory,
                 clock=clock,
+                http_cache=http_cache,
             )
         except Exception as error:  # reported as a failed item, never a missing one
             return FrozenItem(
@@ -506,6 +563,7 @@ async def freeze_items_of(
             "incomplete" if snapshot_incomplete(folder) else "frozen",
             detail,
             wall_s=time.monotonic() - started,
+            stats=stats,
         )
 
     started_wall = time.monotonic()
@@ -538,14 +596,15 @@ async def _freeze_one(
     progress: Callable[[str], None],
     client_factory: Callable[[ResearchStore], SourceClient],
     clock: Callable[[], float],
-) -> str:
+    http_cache: ResearchStore | None = None,
+) -> tuple[str, ItemStats]:
     partial = folder.with_name(folder.name + ".partial")
     if partial.exists():
         shutil.rmtree(partial)
     partial.mkdir(parents=True)
     started = time.monotonic()
     try:
-        with ResearchStore(partial / STORE_FILE) as store:
+        with ResearchStore(partial / STORE_FILE, shared_cache=http_cache) as store:
             client = client_factory(store)
             try:
                 frozen = await capture(
@@ -584,6 +643,12 @@ async def _freeze_one(
                     else _no_citations(),
                 )
                 extractions = dict(client.extractions)
+                stats = ItemStats(
+                    requests=dict(sorted(client.requests.items())),
+                    cache_hits=store.cache_hits,
+                    cache_misses=store.cache_misses,
+                    shared_hits=store.shared_hits,
+                )
             finally:
                 await client.aclose()
         frozen.save(partial / FROZEN_FILE)
@@ -629,6 +694,20 @@ async def _freeze_one(
                         "best-by-source-rank set); a work outside it that an arm "
                         "expands from is an offline miss for every arm"
                     ),
+                    "citation_lookups": {
+                        "top_k": prefetch_top_k,
+                        "candidates": len(frozen.candidates),
+                        "works_looked_up": warmed.works,
+                        "works_not_looked_up": len(frozen.candidates) - warmed.works,
+                    },
+                    "http_cache": {
+                        "shared_cache": http_cache is not None,
+                        "hits": stats.cache_hits,
+                        "misses": stats.cache_misses,
+                        "hit_rate": round(stats.hit_rate, 4),
+                        "served_by_shared_cache": stats.shared_hits,
+                        "network_requests": stats.requests,
+                    },
                     "incomplete": warmed.rate_limited > 0,
                     "incomplete_reason": (
                         f"{warmed.rate_limited} citation hops were refused as rate "
@@ -655,7 +734,7 @@ async def _freeze_one(
         f"{prefetch.fetched}/{prefetch.attempted} texts cached "
         f"({len(not_prefetched)} abstract-only), "
         f"{warmed.hops_cached} citation hops cached ({warmed.hops_failed} failed)"
-    )
+    ), stats
 
 
 # -- rewarming --------------------------------------------------------------------
@@ -674,6 +753,7 @@ async def rewarm_set(
     prefetch_top_k: int | None = PREFETCH_TOP_K,
     concurrency: int = 1,
     client_factory: Callable[[ResearchStore], SourceClient] | None = None,
+    http_cache: ResearchStore | None = None,
 ) -> FreezeReport:
     """Complete the snapshots of a set that exist: ask again for the citation hops
     and texts that failed, into each snapshot's own store.
@@ -693,6 +773,7 @@ async def rewarm_set(
         prefetch_top_k=prefetch_top_k,
         concurrency=concurrency,
         client_factory=client_factory,
+        http_cache=http_cache,
     )
 
 
@@ -707,11 +788,12 @@ async def rewarm_items_of(
     prefetch_top_k: int | None,
     concurrency: int,
     client_factory: Callable[[ResearchStore], SourceClient] | None,
+    http_cache: ResearchStore | None = None,
 ) -> FreezeReport:
     """:func:`rewarm_set` for the given *items*."""
     concurrency = resolve_concurrency(concurrency, models=[model])
     mode = _mode_of(set_name)
-    pacing = SharedPacing()
+    pacing = process_pacing()
     factory = client_factory or (
         lambda store: SourceClient(
             store, pdf_extraction=source_config.pdf_extraction, pacing=pacing
@@ -730,12 +812,13 @@ async def rewarm_items_of(
         progress(f"rewarming {set_name}/{item.item_id}")
         started = time.monotonic()
         try:
-            detail = await _rewarm_one(
+            detail, stats = await _rewarm_one(
                 folder,
                 mode=mode,
                 source_config=source_config,
                 prefetch_top_k=prefetch_top_k,
                 client_factory=factory,
+                http_cache=http_cache,
             )
         except Exception as error:
             return FrozenItem(
@@ -749,6 +832,7 @@ async def rewarm_items_of(
             "incomplete" if snapshot_incomplete(folder) else "frozen",
             detail,
             wall_s=time.monotonic() - started,
+            stats=stats,
         )
 
     started_wall = time.monotonic()
@@ -769,7 +853,8 @@ async def _rewarm_one(
     source_config: SourceConfig,
     prefetch_top_k: int | None,
     client_factory: Callable[[ResearchStore], SourceClient],
-) -> str:
+    http_cache: ResearchStore | None = None,
+) -> tuple[str, ItemStats]:
     frozen = load_frozen(folder)
     meta_path = folder / META_FILE
     meta = (
@@ -778,7 +863,7 @@ async def _rewarm_one(
     if meta.get("digest") not in (None, frozen.digest()):
         raise RuntimeError("frozen.json does not match the digest in meta.json")
     started = time.monotonic()
-    with ResearchStore(folder / STORE_FILE) as store:
+    with ResearchStore(folder / STORE_FILE, shared_cache=http_cache) as store:
         client = client_factory(store)
         try:
             source_set = build_sources(
@@ -795,6 +880,12 @@ async def _rewarm_one(
                 else _no_citations(),
             )
             extractions = {**meta.get("extractors", {}), **client.extractions}
+            stats = ItemStats(
+                requests=dict(sorted(client.requests.items())),
+                cache_hits=store.cache_hits,
+                cache_misses=store.cache_misses,
+                shared_hits=store.shared_hits,
+            )
         finally:
             await client.aclose()
     meta.update(
@@ -811,10 +902,18 @@ async def _rewarm_one(
                 else ""
             ),
             "rewarmed_wall_s": round(time.monotonic() - started, 1),
+            "rewarm_http_cache": {
+                "shared_cache": http_cache is not None,
+                "hits": stats.cache_hits,
+                "misses": stats.cache_misses,
+                "hit_rate": round(stats.hit_rate, 4),
+                "served_by_shared_cache": stats.shared_hits,
+                "network_requests": stats.requests,
+            },
         }
     )
     meta_path.write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
     return (
         f"rewarmed: {prefetch.fetched}/{prefetch.attempted} texts cached, "
         f"{warmed.hops_cached} citation hops cached ({warmed.hops_failed} failed)"
-    )
+    ), stats

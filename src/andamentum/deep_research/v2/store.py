@@ -194,6 +194,27 @@ class CachedResponse(BaseModel):
     licence: str = ""
 
 
+class CacheImportCounts(BaseModel):
+    """What happened to the rows of one source in :meth:`ResearchStore.import_cache`."""
+
+    imported: int = 0
+    expired: int = 0
+    kept_existing: int = 0
+    unreadable: int = 0
+
+
+class CacheImport(BaseModel):
+    """The outcome of importing one database file's HTTP cache."""
+
+    path: str
+    by_source: dict[str, CacheImportCounts] = {}
+    problem: str = ""
+
+    @property
+    def imported(self) -> int:
+        return sum(c.imported for c in self.by_source.values())
+
+
 class RunRecord(BaseModel):
     run_id: str
     question: str
@@ -243,24 +264,39 @@ class ResearchStore:
         path: Path,
         *,
         clock: Callable[[], float] = time.time,
+        shared_cache: ResearchStore | None = None,
     ) -> None:
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         self.path: Path | None = path
         self._blob_dir: Path | None = path.parent / "blobs"
-        self._open(str(path), clock)
+        self._open(str(path), clock, shared_cache)
 
     @classmethod
-    def in_memory(cls, *, clock: Callable[[], float] = time.time) -> ResearchStore:
+    def in_memory(
+        cls,
+        *,
+        clock: Callable[[], float] = time.time,
+        shared_cache: ResearchStore | None = None,
+    ) -> ResearchStore:
         """A store that lives and dies with the process."""
         store = cls.__new__(cls)
         store.path = None
         store._blob_dir = None
-        store._open(":memory:", clock)
+        store._open(":memory:", clock, shared_cache)
         return store
 
-    def _open(self, database: str, clock: Callable[[], float]) -> None:
+    def _open(
+        self,
+        database: str,
+        clock: Callable[[], float],
+        shared_cache: ResearchStore | None = None,
+    ) -> None:
+        if shared_cache is self:
+            raise ValueError("a store cannot be its own shared cache")
         self._clock = clock
+        self._shared = shared_cache
+        self.shared_hits = 0
         self._lock = threading.RLock()
         self._memory_blobs: dict[str, bytes] = {}
         self.cache_hits = 0
@@ -377,6 +413,13 @@ class ResearchStore:
 
         ``any_age`` returns an expired entry too: an offline run over a
         snapshot reads what the snapshot holds, however old.
+
+        With a shared cache (``shared_cache=``), an own miss reads through to
+        it: a live entry there is copied into this store (with the time it was
+        fetched, so its TTL keeps counting from then) and returned, so this
+        store ends up holding exactly the entries it was asked for. An
+        ``any_age`` read never consults the shared cache: an offline run sees
+        only its own snapshot.
         """
         with self._lock:
             row = self._conn.execute(
@@ -385,11 +428,46 @@ class ResearchStore:
             expired = (
                 row is not None and row["fetched_at"] + row["ttl_s"] <= self._clock()
             )
-            if row is None or (expired and not any_age):
-                self.cache_misses += 1
+            if row is not None and (any_age or not expired):
+                self.cache_hits += 1
+                return self._cached(row)
+            if self._shared is not None and not any_age:
+                shared = self._shared._live_entry(key)
+                if shared is not None:
+                    self._store_entry(shared)
+                    self.cache_hits += 1
+                    self.shared_hits += 1
+                    return shared
+            self.cache_misses += 1
+            return None
+
+    def _live_entry(self, key: str) -> CachedResponse | None:
+        """The unexpired entry for *key*, counted nowhere (a read-through peek)."""
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT * FROM http_cache WHERE key = ?", (key,)
+            ).fetchone()
+            if row is None or row["fetched_at"] + row["ttl_s"] <= self._clock():
                 return None
-            self.cache_hits += 1
             return self._cached(row)
+
+    def _store_entry(self, entry: CachedResponse) -> None:
+        """Write *entry* as it is, keeping its own ``fetched_at``."""
+        digest = self.put_blob(entry.body)
+        with self._lock:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO http_cache VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    entry.key,
+                    entry.source,
+                    entry.url,
+                    entry.status,
+                    digest,
+                    entry.fetched_at,
+                    entry.ttl_s,
+                    entry.licence,
+                ),
+            )
 
     def cache_put(
         self,
@@ -402,7 +480,8 @@ class ResearchStore:
         ttl_s: int,
         licence: str = "",
     ) -> None:
-        """Store a response, replacing any earlier entry for *key*."""
+        """Store a response, replacing any earlier entry for *key*; with a
+        shared cache it is written there too, so the next item finds it."""
         if ttl_s <= 0:
             raise ValueError(f"ttl_s must be positive, got {ttl_s}")
         digest = self.put_blob(body)
@@ -411,6 +490,80 @@ class ResearchStore:
                 "INSERT OR REPLACE INTO http_cache VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 (key, source, url, status, digest, self._clock(), ttl_s, licence),
             )
+        if self._shared is not None:
+            self._shared.cache_put(
+                key,
+                source=source,
+                url=url,
+                status=status,
+                body=body,
+                ttl_s=ttl_s,
+                licence=licence,
+            )
+
+    def import_cache(self, source_db: Path) -> CacheImport:
+        """Merge the ``http_cache`` rows (and their blobs) of another store's
+        database file into this store, keeping the freshest row per key.
+
+        The other file is opened read-only and never changed. A row whose TTL
+        has run out is not imported; a row older than the one already here is
+        not either. The licence tag travels with the row, so a
+        ``no_redistribute`` entry stays usable here and out of every export.
+        A file that holds no ``http_cache`` table (or is not a database)
+        reports ``problem``; a row whose blob is missing or does not match
+        its digest is counted ``unreadable`` and skipped. The counts are by
+        the row's ``source``.
+        """
+        report = CacheImport(path=str(source_db))
+        try:
+            src = sqlite3.connect(f"file:{source_db}?mode=ro", uri=True)
+        except sqlite3.Error as error:
+            report.problem = f"cannot open: {error}"
+            return report
+        src.row_factory = sqlite3.Row
+        try:
+            try:
+                rows = src.execute("SELECT * FROM http_cache").fetchall()
+            except sqlite3.Error as error:
+                report.problem = f"no http_cache table ({error})"
+                return report
+            now = self._clock()
+            with self._transaction():
+                for row in rows:
+                    counts = report.by_source.setdefault(
+                        row["source"], CacheImportCounts()
+                    )
+                    if row["fetched_at"] + row["ttl_s"] <= now:
+                        counts.expired += 1
+                        continue
+                    with self._lock:
+                        held = self._conn.execute(
+                            "SELECT fetched_at FROM http_cache WHERE key = ?",
+                            (row["key"],),
+                        ).fetchone()
+                    if held is not None and held["fetched_at"] >= row["fetched_at"]:
+                        counts.kept_existing += 1
+                        continue
+                    body = _read_foreign_blob(src, source_db, row["body_blob"])
+                    if body is None:
+                        counts.unreadable += 1
+                        continue
+                    self._store_entry(
+                        CachedResponse(
+                            key=row["key"],
+                            source=row["source"],
+                            url=row["url"],
+                            status=row["status"],
+                            body=body,
+                            fetched_at=row["fetched_at"],
+                            ttl_s=row["ttl_s"],
+                            licence=row["licence"],
+                        )
+                    )
+                    counts.imported += 1
+        finally:
+            src.close()
+        return report
 
     def purge_expired(self) -> int:
         """Delete the entries whose TTL has run out; the number removed."""
@@ -881,6 +1034,31 @@ class ReferenceCache:
             body=value,
             ttl_s=self._ttl_s,
         )
+
+
+def _read_foreign_blob(
+    conn: sqlite3.Connection, database: Path, digest: str
+) -> bytes | None:
+    """The bytes of blob *digest* in another store (inline table, else its
+    ``blobs/`` folder), or None when missing or not matching the digest."""
+    if not _DIGEST.fullmatch(digest):
+        return None
+    data: bytes | None = None
+    try:
+        row = conn.execute(
+            "SELECT data FROM blobs_inline WHERE sha256 = ?", (digest,)
+        ).fetchone()
+    except sqlite3.Error:
+        row = None
+    if row is not None:
+        data = bytes(row["data"])
+    else:
+        target = database.parent / "blobs" / digest[:2] / digest
+        if target.is_file():
+            data = target.read_bytes()
+    if data is None or hashlib.sha256(data).hexdigest() != digest:
+        return None
+    return data
 
 
 def _run_record(row: sqlite3.Row) -> RunRecord:

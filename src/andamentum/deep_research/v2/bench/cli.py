@@ -37,8 +37,10 @@ from andamentum.references import ReferenceHttp
 
 from ..sources.base import SourceConfig
 from ..sources.extraction import PDF_EXTRACTIONS, PdfExtraction
+from ..store import ResearchStore
 from ..types import Mode
 from .arms import AnswerArm, LegacyArm, V2Arm
+from .cache_import import cache_databases, import_stores
 from .download import DatasetMissing, Downloader, write_atomic
 from .experiment import Experiment, load_experiment
 from .experiment_report import report_from_registry
@@ -134,6 +136,19 @@ def build_parser() -> argparse.ArgumentParser:
             "one at a time either way",
         )
 
+    def cache_flag(sub: argparse.ArgumentParser) -> None:
+        sub.add_argument(
+            "--cache",
+            type=Path,
+            default=None,
+            metavar="PATH",
+            help="a shared HTTP cache (one research store file; blobs go beside "
+            "it) that every source reads first and writes into, so no item or run "
+            "downloads an answer another already holds. Each snapshot's own store "
+            "still receives a copy of the entries it used; no_redistribute entries "
+            "stay local",
+        )
+
     def pdf_flag(sub: argparse.ArgumentParser) -> None:
         sub.add_argument(
             "--pdf-extraction",
@@ -205,7 +220,25 @@ def build_parser() -> argparse.ArgumentParser:
         "and its digest stay as they are",
     )
     concurrency_flag(freeze)
+    cache_flag(freeze)
     pdf_flag(freeze)
+
+    cache = commands.add_parser("cache", help="the shared HTTP cache")
+    cache_actions = cache.add_subparsers(dest="cache_command", required=True)
+    merge = cache_actions.add_parser(
+        "import",
+        help="merge the HTTP cache of existing stores into the shared cache, "
+        "keeping the freshest row per key",
+    )
+    merge.add_argument("--cache", type=Path, required=True, metavar="PATH")
+    merge.add_argument(
+        "sources",
+        nargs="+",
+        type=Path,
+        metavar="SRC",
+        help="a store database file, or a folder searched for *.db files; the "
+        "cache itself is skipped",
+    )
 
     experiment = commands.add_parser("experiment", help="pre-registered comparisons")
     actions = experiment.add_subparsers(dest="experiment_command", required=True)
@@ -229,6 +262,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="probe each answer's links over the network (URL integrity)",
     )
     concurrency_flag(run)
+    cache_flag(run)
     pdf_flag(run)
     summary = actions.add_parser("report", help="the experiment's markdown report")
     summary.add_argument("file", type=Path)
@@ -498,7 +532,31 @@ async def _cmd_report(args: argparse.Namespace) -> int:
     return 0
 
 
+def _open_cache(path: Path | None) -> ResearchStore | None:
+    return ResearchStore(path) if path is not None else None
+
+
+async def _cmd_cache(args: argparse.Namespace) -> int:
+    databases = cache_databases(args.sources, exclude=args.cache)
+    if not databases:
+        raise ValueError("no *.db file found under the given sources")
+    with ResearchStore(args.cache) as shared:
+        report = import_stores(shared, databases)
+    for line in report.lines():
+        print(line)
+    return 0
+
+
 async def _cmd_freeze(args: argparse.Namespace) -> int:
+    cache = _open_cache(args.cache)
+    try:
+        return await _freeze(args, cache)
+    finally:
+        if cache is not None:
+            cache.close()
+
+
+async def _freeze(args: argparse.Namespace, cache: ResearchStore | None) -> int:
     if args.rewarm:
         rewarmed = await rewarm_set(
             args.set,
@@ -511,6 +569,7 @@ async def _cmd_freeze(args: argparse.Namespace) -> int:
             progress=lambda line: print(line, file=sys.stderr),
             prefetch_top_k=args.prefetch_top_k,
             concurrency=args.concurrency,
+            http_cache=cache,
         )
         for line in rewarmed.lines():
             print(line)
@@ -530,6 +589,7 @@ async def _cmd_freeze(args: argparse.Namespace) -> int:
             progress=lambda line: print(line, file=sys.stderr),
             prefetch_top_k=args.prefetch_top_k,
             concurrency=args.concurrency,
+            http_cache=cache,
         )
     for line in frozen.lines():
         print(line)
@@ -549,6 +609,15 @@ def _live_web(exp: Experiment, only_sets: Sequence[str] | None = None) -> bool:
 
 
 async def _cmd_experiment_run(args: argparse.Namespace) -> int:
+    cache = _open_cache(args.cache)
+    try:
+        return await _experiment_run(args, cache)
+    finally:
+        if cache is not None:
+            cache.close()
+
+
+async def _experiment_run(args: argparse.Namespace, cache: ResearchStore | None) -> int:
     exp = load_experiment(args.file)
     if _live_web(exp, args.only_sets):
         health = await require_searxng(args.searxng_url)
@@ -577,6 +646,7 @@ async def _cmd_experiment_run(args: argparse.Namespace) -> int:
             judge_digest=judge_digest,
             url_checker=checker,
             check_searxng=require_searxng,
+            http_cache=cache,
         )
         written = await run_experiment(
             exp,
@@ -622,6 +692,7 @@ async def _cmd_experiment(args: argparse.Namespace) -> int:
 
 _HANDLERS: dict[str, Callable[[argparse.Namespace], Coroutine[Any, Any, int]]] = {
     "freeze": _cmd_freeze,
+    "cache": _cmd_cache,
     "experiment": _cmd_experiment,
     "download": _cmd_download,
     "verify-web-set": _cmd_verify,

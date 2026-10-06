@@ -24,6 +24,7 @@ from .base import (
     SourceConfig,
     SourceError,
     TextSource,
+    process_pacing,
 )
 from .crossref import CrossrefSource
 from .europepmc import EuropePmcSource
@@ -43,6 +44,7 @@ __all__ = [
     "SearchFilters",
     "SemanticScholarSource",
     "SharedPacing",
+    "process_pacing",
     "Source",
     "SourceClient",
     "SourceConfig",

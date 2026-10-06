@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import socket
 from collections.abc import Callable
+from contextlib import AbstractAsyncContextManager, nullcontext
 from typing import Literal, Protocol
 from urllib.parse import urlencode
 
@@ -77,8 +78,12 @@ class ReferenceHttp:
         mailto: str | None = None,
         timeout: float = 20.0,
         url_check: Callable[[str], tuple[bool, str]] | None = None,
+        gate: Callable[[], AbstractAsyncContextManager[None]] | None = None,
     ) -> None:
         self._owns_client = client is None
+        # entered around each Crossref request that goes to the network (never a
+        # cached answer): a caller that rate-limits holds its turn in it
+        self.gate = gate or nullcontext
         self.client = client or httpx.AsyncClient(timeout=timeout)
         self.cache = cache
         self.mailto = mailto
@@ -110,12 +115,13 @@ class ReferenceHttp:
         cached = self._read(key)
         if cached is not None:
             return int(cached["status"]), cached["body"]
-        response = await _get(
-            self.client,
-            f"{CROSSREF_API}{path}",
-            params=params,
-            headers={"User-Agent": _user_agent(self.mailto)},
-        )
+        async with self.gate():
+            response = await _get(
+                self.client,
+                f"{CROSSREF_API}{path}",
+                params=params,
+                headers={"User-Agent": _user_agent(self.mailto)},
+            )
         if isinstance(response, str):
             return response
         body = {} if response.status_code == 404 else response.json()

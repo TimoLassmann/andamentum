@@ -281,6 +281,46 @@ class SharedPacing:
     locks: dict[str, asyncio.Lock] = field(default_factory=dict)
     last_request: dict[str, float] = field(default_factory=dict)
     inflight: dict[str, asyncio.Semaphore] = field(default_factory=dict)
+    # when a server said its budget is spent, until when it is not asked again
+    exhausted_until: dict[str, float] = field(default_factory=dict)
+
+
+_PROCESS_PACING: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, SharedPacing] = (
+    weakref.WeakKeyDictionary()
+)
+
+
+def process_pacing() -> SharedPacing:
+    """The one pacing every default client of the running event loop shares.
+
+    A source's rate limit belongs to the server, not to an item: however many
+    items run at once in a process, requests to arXiv start 3 s apart, to
+    Semantic Scholar 1 s apart, and so on (``DEFAULT_INTERVAL_S``), and a
+    source that said its budget is spent is not asked again by any of them.
+    The locks and semaphores belong to an event loop, hence one pacing per
+    loop. Raises ``RuntimeError`` outside a running loop.
+    """
+    loop = asyncio.get_running_loop()
+    pacing = _PROCESS_PACING.get(loop)
+    if pacing is None:
+        pacing = SharedPacing()
+        _PROCESS_PACING[loop] = pacing
+    return pacing
+
+
+def _default_pacing(
+    clock: Callable[[], float], sleep: Callable[[float], Awaitable[None]]
+) -> SharedPacing:
+    """The process's pacing for a client on the real clock inside a running
+    loop; a private one for a client with an injected clock or sleep (a test
+    double must not share request times with another clock) or built outside
+    a loop."""
+    if clock is not time.monotonic or sleep is not asyncio.sleep:
+        return SharedPacing()
+    try:
+        return process_pacing()
+    except RuntimeError:
+        return SharedPacing()
 
 
 class SourceClient:
@@ -346,12 +386,12 @@ class SourceClient:
         # url -> the extractor that produced its text (fetch_document records it)
         self.extractions: dict[str, str] = {}
         self.max_fetch_bytes = max_fetch_bytes
-        shared = pacing or SharedPacing()
+        shared = pacing or _default_pacing(clock, sleep)
         self._locks = shared.locks
         self._last_request = shared.last_request
         self._inflight_caps = {**DEFAULT_INFLIGHT, **(inflight or {})}
         self._inflight_slots = shared.inflight
-        self._exhausted_until: dict[str, float] = {}
+        self._exhausted_until = shared.exhausted_until
         self.rate_info: dict[str, RateInfo] = {}
         self.requests: Counter[str] = Counter()
         self.spent_usd: defaultdict[str, float] = defaultdict(float)
