@@ -51,8 +51,30 @@ class TestPrepareFtsQuery:
             == f'"pre-training" a model {word} guessing hidden words'
         )
 
-    def test_uppercase_boolean_still_passes_through(self):
-        assert prepare_fts_query("pre-training AND bert") == "pre-training AND bert"
+    def test_uppercase_boolean_kept_and_neighbours_made_safe(self):
+        # Regression: the whole query used to pass through raw, and FTS5 read
+        # "pre-training" as column "pre" minus "training".
+        assert prepare_fts_query("pre-training AND bert") == '"pre-training" AND bert'
+
+    @pytest.mark.parametrize(
+        "q, want",
+        [
+            ('Who starred in "Friends"?', 'Who starred in "Friends"'),
+            (
+                'the "CBS Evening News" for 19 years?',
+                'the "CBS Evening News" for 19 "years?"',
+            ),
+            (
+                "the Nazi's invasion, began \"Abuse",
+                'the "Nazi\'s" "invasion," began Abuse',
+            ),
+            ("NOT alpha", "alpha"),
+            ("alpha AND", "alpha"),
+            ("alpha OR OR beta", "alpha OR beta"),
+        ],
+    )
+    def test_questions_with_partial_syntax_are_made_safe(self, q, want):
+        assert prepare_fts_query(q) == want
 
     def test_pure_punctuation_falls_back(self):
         # Degenerate all-punctuation query: no worse than before, not crashing prep.

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -367,19 +368,30 @@ async def test_unified_arm_runs_on_cached_vectors(tmp_path):
 async def test_runner_records_a_rejected_store_query_instead_of_crashing(
     tmp_path, monkeypatch
 ):
+    class RejectingArm:
+        name = "rejecting"
+        store_kind = "current"
+        needs_embeddings = False
+
+        async def rank(self, built, q, emb):
+            if q.qid == "q2":
+                raise sqlite3.OperationalError('fts5: syntax error near "?"')
+            return ["p-salt"]
+
     monkeypatch.setattr(
         runner, "load_corpus", lambda *_a, **_kw: (_corpus(), {"version": 1})
     )
+    monkeypatch.setitem(runner.ARMS, "rejecting", RejectingArm())
     run_dir = await runner.run(
         suite="synthetic",
         tier="smoke",
-        arm_name="fts5",
+        arm_name="rejecting",
         workdir=tmp_path,
         embedding_model=None,
     )
     rows = [json.loads(line) for line in (run_dir / "questions.jsonl").open()]
     by_qid = {r["qid"]: r for r in rows}
-    # The quoted question is passed to FTS5 raw and rejected (a known store bug).
+    assert by_qid["q1"]["error"] is None
     assert by_qid["q2"]["error"].startswith("OperationalError")
     assert by_qid["q2"]["ranked"] == []
     manifest = json.loads((run_dir / "manifest.json").read_text())

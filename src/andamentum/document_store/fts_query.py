@@ -27,24 +27,38 @@ either crashes or under-discriminates.
 
 from __future__ import annotations
 
-_BOOL_OPERATORS = (" AND ", " OR ", " NOT ", " NEAR ")
+import re
+
+#: FTS5's binary operators. They are case-sensitive and need a term on both
+#: sides; ``NEAR`` without parentheses is an ordinary word, so it is not here.
+_BOOL_OPERATORS = ("AND", "OR", "NOT")
+_TOKEN = re.compile(r'"[^"]*"|[^\s"]+')
 
 
 def prepare_fts_query(query: str) -> str:
     """Return an FTS5-syntax-safe MATCH string for a raw user query.
 
+    The query is split into tokens and only valid FTS5 syntax is kept:
+
     - Clean prose (all-alphanumeric barewords) is returned unchanged, so keyword
       ranking on ordinary queries is identical to before.
-    - Deliberate FTS5 power-queries (containing ``"``, ``*``, or an **uppercase**
-      boolean operator) are returned unchanged — the caller opted into FTS5
-      syntax. Uppercase is the test because FTS5 only honours ``AND``/``OR``/
-      ``NOT``/``NEAR`` in upper case; lowercase ``and`` is a search term, and
-      treating it as an operator would leave ordinary prose unescaped.
-    - Otherwise each whitespace token that is not a plain alphanumeric bareword
-      is wrapped as a phrase (``"c.1234G>A"``). This is both syntax-safe and
-      makes punctuated identifiers match as atomic ordered token sequences.
+    - A balanced ``"phrase"`` stays a phrase. Unbalanced quote marks are
+      dropped, since FTS5 rejects them (``unterminated string``).
+    - An uppercase ``AND`` / ``OR`` / ``NOT`` stays an operator when it stands
+      between two terms, and is dropped otherwise. FTS5 only honours uppercase
+      operators; lowercase ``and`` is an ordinary search term.
+    - ``word*`` stays a prefix query.
+    - Any other token that is not a plain alphanumeric bareword is wrapped as a
+      phrase (``"c.1234G>A"``). This is both syntax-safe and makes punctuated
+      identifiers match as atomic ordered token sequences.
     - Pure-punctuation tokens (no alphanumeric character) are dropped, since an
       empty phrase is not useful and can be rejected by FTS5.
+
+    Deliberate FTS5 syntax used to pass through untouched as a whole. That
+    failed on ordinary questions: a quoted title in a question ending in ``?``,
+    or a hyphenated word next to ``AND`` (FTS5 reads ``co-founder`` as column
+    ``co`` minus ``founder``), reached FTS5 raw and was rejected. Each piece of
+    deliberate syntax is now kept on its own while the rest is made safe.
 
     Examples:
         >>> prepare_fts_query("how does mitosis divide")
@@ -53,34 +67,34 @@ def prepare_fts_query(query: str) -> str:
         '"c.1234G>A"'
         >>> prepare_fts_query("pathogenic variant c.1234G>A in BRCA1")
         'pathogenic variant "c.1234G>A" in BRCA1'
-        >>> prepare_fts_query('"neural networks"')  # power-query, untouched
+        >>> prepare_fts_query('"neural networks"')
         '"neural networks"'
+        >>> prepare_fts_query('Who starred in "Friends"?')
+        'Who starred in "Friends"'
     """
     stripped = query.strip()
     if not stripped:
         return stripped
-
-    # Respect deliberate FTS5 syntax — don't second-guess a power-user query.
-    if '"' in stripped or "*" in stripped:
-        return stripped
-    # FTS5's boolean keywords are CASE-SENSITIVE — only an uppercase AND/OR/NOT/
-    # NEAR is an operator; lowercase "and" is an ordinary search term. Matching
-    # case-insensitively here would classify ordinary prose ("...random words and
-    # asking the model...") as a deliberate power-query and return it unescaped,
-    # so a hyphenated word in that same query would reach FTS5 raw and be parsed
-    # as a column filter -> OperationalError("no such column: training").
-    padded = f" {stripped} "
-    if any(op in padded for op in _BOOL_OPERATORS):
-        return stripped
+    text = stripped if stripped.count('"') % 2 == 0 else stripped.replace('"', " ")
 
     terms: list[str] = []
-    for token in stripped.split():
-        if token.isalnum():
+    for token in _TOKEN.findall(text):
+        if token.startswith('"'):
+            # A balanced phrase; FTS5 tokenizes inside it, so any character
+            # but a quote is safe there.
+            if any(ch.isalnum() for ch in token):
+                terms.append(token)
+        elif token in _BOOL_OPERATORS:
+            if terms and terms[-1] not in _BOOL_OPERATORS:
+                terms.append(token)
+        elif token.isalnum() or (token.endswith("*") and token[:-1].isalnum()):
             terms.append(token)
         elif any(ch.isalnum() for ch in token):
-            # Punctuated token (identifier, hyphenated word, DOI, …). Phrase-quote
+            # Punctuated token (identifier, hyphenated word, DOI, ...). Phrase-quote
             # it so FTS5 treats it as an atomic ordered token sequence.
             terms.append('"' + token + '"')
-        # else: pure punctuation — drop it.
+        # else: pure punctuation; drop it.
+    while terms and terms[-1] in _BOOL_OPERATORS:
+        terms.pop()
 
     return " ".join(terms) if terms else stripped
