@@ -14,7 +14,14 @@ import hashlib
 import re
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    JsonValue,
+    field_serializer,
+    model_validator,
+)
 
 from andamentum.references import Work
 
@@ -111,6 +118,14 @@ class Candidate(BaseModel):
     # list it came from, by list name: a source's search results (``openalex``)
     # or a citation hop (``openalex:citations``). Read by rank fusion.
     source_ranks: dict[str, int] = Field(default_factory=dict)
+
+    @field_serializer("snippet")
+    def _licensed_snippet(self, value: str) -> str:
+        """Every dump follows the licence, as ``Work.abstract`` does: the snippet
+        is the first characters of the abstract, so a candidate of a
+        ``no_redistribute`` work never exports it. A frozen run reads the text
+        back from the snapshot store (``steps.restore_licensed_text``)."""
+        return value if self.work.redistributable else ""
 
 
 class CandidateScore(BaseModel):
@@ -264,6 +279,55 @@ class RunStats(BaseModel):
     decision_cache: str = "off"
     decision_cache_hits: int = Field(default=0, ge=0)
     decision_probe_calls: int = Field(default=0, ge=0)
+    # Of ``decision_cache_hits``, the answers a store shared between runs held
+    # (``research(shared_decisions=)``); the rest were the run's own.
+    decision_shared_hits: int = Field(default=0, ge=0)
+
+
+class ScreeningEntry(BaseModel):
+    """One (work, sub-question) pair a run held, and what became of it.
+
+    Compact on purpose: the identifiers, title and year are enough to decide
+    whether the work is a given one (``bench.metrics.work_matches`` through
+    :meth:`identity`); abstracts and passages are not kept. ``arrival`` is the
+    pair's place (0-based) in the order the run found its pairs. ``p`` is the
+    screen's score (``None``: the pair was never screened, it waited over a
+    cap or the run ended first), ``kept`` the screen's decision, ``rank`` the
+    work's 1-based place among the result's ``works`` when this pair was kept
+    and the work is there (``None`` otherwise).
+    """
+
+    work_id: str = Field(min_length=1)
+    subquestion_id: str = Field(min_length=1)
+    arrival: int = Field(ge=0)
+    source_ranks: dict[str, int] = Field(default_factory=dict)
+    p: float | None = None
+    kept: bool = False
+    rank: int | None = Field(default=None, ge=1)
+    title: str = ""
+    year: int | None = None
+    doi: str | None = None
+    arxiv_id: str | None = None
+    pmid: str | None = None
+    pmcid: str | None = None
+    openalex_id: str | None = None
+    s2_id: str | None = None
+    url: str | None = None
+
+    def identity(self) -> Work:
+        """The work as far as matching needs it (identifiers, title, year)."""
+        return Work(
+            work_id=self.work_id,
+            title=self.title,
+            year=self.year,
+            doi=self.doi,
+            arxiv_id=self.arxiv_id,
+            pmid=self.pmid,
+            pmcid=self.pmcid,
+            openalex_id=self.openalex_id,
+            s2_id=self.s2_id,
+            url=self.url,
+        )
 
 
 class ResearchResult(BaseModel):
@@ -307,6 +371,9 @@ class ResearchResult(BaseModel):
     skipped: list[str] = Field(default_factory=list)
     notes: list[str] = Field(default_factory=list)
     stats: RunStats = Field(default_factory=RunStats)
+    # Every (work, sub-question) pair the run held and what became of it, in
+    # the order the run found them (``ScreeningEntry``).
+    screening: list[ScreeningEntry] = Field(default_factory=list)
 
     def cited_work_ids(self) -> list[str]:
         """Work ids behind the findings the report cites, in order of first citation.

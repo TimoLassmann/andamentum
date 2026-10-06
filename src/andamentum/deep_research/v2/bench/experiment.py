@@ -2,7 +2,9 @@
 
 An experiment is a YAML file, committed with the code, that fixes before any
 run: the sets and their subset sizes and seeds, the arms, how often each arm is
-repeated, and the **pre-registered rules** that decide the verdict. A rule
+repeated, the **inputs profiles** (which sources a snapshot was searched on,
+whose queries it reuses, how deep its texts are prefetched) and the
+**pre-registered rules** that decide the verdict. A rule
 names its metric, the arm under test, the reference arm, the kind of test and
 the margin; ``verdicts.py`` applies it to the results and nothing else decides
 the outcome, so a threshold cannot be tuned after the numbers are seen (a
@@ -16,6 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Literal
 
@@ -24,7 +27,10 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 SetName = Literal["litsearch", "web", "web_planted", "synergy"]
 System = Literal["legacy", "v2", "screening"]
-Test = Literal["noninferior", "superior", "reduced_by", "at_least", "at_most"]
+Test = Literal[
+    "noninferior", "superior", "no_harm", "reduced_by", "at_least", "at_most"
+]
+ScholarlyName = Literal["openalex", "europepmc", "arxiv", "semantic_scholar"]
 Aggregate = Literal["mean", "median", "max"]
 Outage = Literal["stop", "record"]
 
@@ -38,6 +44,65 @@ DEFAULT_RESAMPLES = 10_000
 DEFAULT_BOOTSTRAP_SEED = 0
 
 
+class InputSources(BaseModel):
+    """The ``SourceConfig`` fields an inputs profile sets; a field left out keeps
+    the run's own value (the bench's SearxNG address, PDF extraction)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    scholarly: list[ScholarlyName] | None = Field(default=None, min_length=1)
+    arxiv_query: Literal["all_terms", "any_term"] | None = None
+    expand_with: list[ScholarlyName] | None = None
+    results_per_query: int | None = Field(default=None, ge=1, le=200)
+
+    def updates(self) -> dict[str, object]:
+        """The ``SourceConfig`` fields this profile sets, as ``model_copy`` updates."""
+        out: dict[str, object] = {}
+        for name in self.model_fields_set:
+            value = getattr(self, name)
+            if value is not None:
+                out[name] = tuple(value) if isinstance(value, list) else value
+        return out
+
+
+class InputsSpec(BaseModel):
+    """One inputs profile: how a family of snapshots is made.
+
+    ``sources`` sets the source options of the search and, for a frozen arm
+    run on the profile, of the run's own offline sources (its text sources and
+    its citation expansion therefore match its freeze); ``plan`` is ``live``
+    (the freeze plans and writes the queries) or another profile's name (that
+    profile's sub-questions and queries are reused, no model is called);
+    ``prefetch_top_k`` is how many candidates of each sub-question get their
+    text prefetched; ``patient`` names sources asked with the patient retry
+    schedule, whose failed searches are counted instead of ruining the
+    snapshot. ``existing: true`` marks snapshots that are used as they are
+    (taken by an earlier experiment): it takes no other field.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    sources: InputSources = Field(default_factory=InputSources)
+    plan: str = "live"
+    prefetch_top_k: int | None = Field(default=None, ge=1)
+    patient: list[ScholarlyName] = Field(default_factory=list)
+    existing: bool = False
+
+    @model_validator(mode="after")
+    def _existing_is_alone(self) -> InputsSpec:
+        if self.existing and (self.model_fields_set - {"existing"}):
+            raise ValueError("an existing profile takes no other field")
+        if self.patient and not set(self.patient) <= set(
+            self.sources.scholarly or self.patient
+        ):
+            raise ValueError("patient names a source the profile does not search")
+        return self
+
+    def profile_hash(self) -> str:
+        """sha256 of the profile's canonical JSON (what a snapshot records)."""
+        return canonical_hash(self.model_dump(mode="json"))
+
+
 class SetSpec(BaseModel):
     """One data set and the deterministic subset of it that is used."""
 
@@ -48,6 +113,14 @@ class SetSpec(BaseModel):
         default=None, ge=1, description="Items drawn (None: the whole set)."
     )
     seed: int = 0
+    skip: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "litsearch and web: the items are the seeded order's positions "
+            "skip+1 to skip+n (select_subset(ids, skip + n)[skip:])."
+        ),
+    )
     reviews: list[str] | None = Field(
         default=None, description="synergy only: the review keys."
     )
@@ -61,6 +134,12 @@ class SetSpec(BaseModel):
             raise ValueError(f"{self.name}: reviews and records belong to synergy")
         if self.name == "synergy" and self.n is not None:
             raise ValueError("synergy: give reviews and records, not n")
+        if self.skip and self.name not in ("litsearch", "web"):
+            raise ValueError(f"{self.name}: skip belongs to litsearch and web")
+        if self.skip and self.n is None:
+            raise ValueError(
+                f"{self.name}: skip needs n (the items after the first skip)"
+            )
         return self
 
 
@@ -83,6 +162,14 @@ class ArmSpec(BaseModel):
     frozen: bool = Field(
         default=True,
         description="v2 only: take Plan and Search from the snapshot (False: live).",
+    )
+    inputs: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "v2, frozen: per set, the inputs profile whose snapshots the arm runs "
+            "on (required for every set the arm runs when the experiment "
+            "declares profiles)."
+        ),
     )
     repeats: int | None = Field(default=None, ge=1)
     sets: list[SetName] | None = Field(
@@ -128,6 +215,10 @@ class ArmSpec(BaseModel):
             raise ValueError(f"arm {self.name}: screen belongs to screening arms")
         if self.system != "v2" and "frozen" in self.model_fields_set:
             raise ValueError(f"arm {self.name}: frozen belongs to v2 arms")
+        if self.inputs and not self.is_frozen:
+            raise ValueError(
+                f"arm {self.name}: inputs profiles belong to frozen v2 arms"
+            )
         if self.system != "screening" and not self.model:
             raise ValueError(f"arm {self.name}: {self.system} needs a model")
         allowed = SYSTEM_SETS[self.system]
@@ -156,6 +247,12 @@ class ArmSpec(BaseModel):
 class Rule(BaseModel):
     """One pre-registered acceptance rule.
 
+    ``no_harm``: a guard that catches harm and does not try to prove equality.
+    The paired difference (oriented by ``higher_is_better``) is **not
+    accepted** when its mean is below ``-margin`` or its whole interval is below
+    0, and **accepted** otherwise (there is no inconclusive: with 15 items an
+    interval is about +-0.08 wide, so a non-inferiority bar of 0.05 could not
+    be met whatever the truth is).
     ``noninferior``: *arm* is accepted when its paired difference from
     *reference* (arm minus reference, per item) is above ``-margin`` with the
     whole interval; ``superior``: above ``margin``. Both read the sign through
@@ -195,7 +292,7 @@ class Rule(BaseModel):
 
     @model_validator(mode="after")
     def _consistent(self) -> Rule:
-        shift = self.test in ("noninferior", "superior")
+        shift = self.test in ("noninferior", "superior", "no_harm")
         paired = shift or self.test == "reduced_by"
         if paired and not self.reference:
             raise ValueError(f"rule {self.id}: {self.test} needs a reference arm")
@@ -289,6 +386,17 @@ class Experiment(BaseModel):
     judge: JudgeSpec | None = Field(
         default=None, description="Judges claim support for the trust metrics."
     )
+    keyless: bool = Field(
+        default=False,
+        description=(
+            "No API key is read or used: the bench builds its source "
+            "configuration with none, whatever the environment holds."
+        ),
+    )
+    inputs: dict[str, InputsSpec] = Field(
+        default_factory=dict,
+        description="Named inputs profiles (how each family of snapshots is made).",
+    )
     sets: list[SetSpec] = Field(min_length=1)
     arms: list[ArmSpec] = Field(min_length=1)
     baselines: dict[str, str] = Field(
@@ -360,7 +468,51 @@ class Experiment(BaseModel):
         for arm in self.arms:
             if arm.system == "v2" and not any(arm.runs_on(s) for s in set_names):
                 raise ValueError(f"arm {arm.name} runs on none of the sets")
+        self._check_inputs(set_names)
         return self
+
+    def _check_inputs(self, set_names: Sequence[str]) -> None:
+        for name, profile in self.inputs.items():
+            if not name or "/" in name or name in (".", ".."):
+                raise ValueError(f"inputs profile {name!r} is not a folder name")
+            if profile.plan != "live" and profile.plan not in self.inputs:
+                raise ValueError(
+                    f"inputs {name}: plan {profile.plan!r} is not a profile"
+                )
+            if profile.plan != "live" and self.inputs[profile.plan].existing:
+                raise ValueError(
+                    f"inputs {name}: plan {profile.plan!r} is an existing profile"
+                )
+            seen = {name}
+            current = profile
+            while current.plan != "live":
+                if current.plan in seen:
+                    raise ValueError(f"inputs {name}: plan reuse is circular")
+                seen.add(current.plan)
+                current = self.inputs[current.plan]
+        for arm in self.arms:
+            if not self.inputs and arm.inputs:
+                raise ValueError(
+                    f"arm {arm.name}: the file declares no inputs profiles"
+                )
+            for set_name, profile_name in arm.inputs.items():
+                if profile_name not in self.inputs:
+                    raise ValueError(
+                        f"arm {arm.name}: {profile_name!r} is not an inputs profile"
+                    )
+                if set_name not in set_names or not arm.runs_on(set_name):
+                    raise ValueError(
+                        f"arm {arm.name}: inputs for {set_name}, which it does not run"
+                    )
+            if self.inputs and arm.is_frozen:
+                absent = [
+                    s for s in set_names if arm.runs_on(s) and s not in arm.inputs
+                ]
+                if absent:
+                    raise ValueError(
+                        f"arm {arm.name}: name its inputs profile for "
+                        f"{', '.join(absent)}"
+                    )
 
     def needs_judge(self) -> bool:
         """Does any rule or report metric need claims judged?"""
@@ -400,9 +552,28 @@ class Experiment(BaseModel):
     def set(self, name: str) -> SetSpec:
         return next(s for s in self.sets if s.name == name)
 
+    def profile_of(self, arm: ArmSpec, set_name: str) -> str | None:
+        """The inputs profile *arm* runs *set_name* on (``None``: the file has none)."""
+        return arm.inputs.get(set_name) if arm.is_frozen else None
+
     def config_hash(self) -> str:
-        """sha256 of the canonical JSON of the file: the experiment's identity."""
-        return canonical_hash(self.model_dump(mode="json"))
+        """sha256 of the canonical JSON of the file: the experiment's identity.
+
+        A field added after an experiment was registered is left out while it
+        holds its default, so a file that predates it keeps its hash (the
+        recorded registries keep their meaning)."""
+        data = self.model_dump(mode="json")
+        if not data["inputs"]:
+            del data["inputs"]
+        if not data["keyless"]:
+            del data["keyless"]
+        for entry in data["sets"]:
+            if not entry["skip"]:
+                del entry["skip"]
+        for entry in data["arms"]:
+            if not entry["inputs"]:
+                del entry["inputs"]
+        return canonical_hash(data)
 
 
 def canonical_hash(data: object) -> str:
@@ -423,6 +594,8 @@ __all__ = [
     "ArmSpec",
     "Experiment",
     "ExperimentDecision",
+    "InputSources",
+    "InputsSpec",
     "JUDGED_METRICS",
     "JudgeSpec",
     "Rule",

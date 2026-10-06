@@ -49,9 +49,17 @@ class DeterminismCheck(BaseModel):
 
 
 async def check_determinism(
-    decision_model: DecisionModel, *, store: ResearchStore
+    decision_model: DecisionModel,
+    *,
+    store: ResearchStore,
+    shared: ResearchStore | None = None,
 ) -> DeterminismCheck:
-    """Whether *decision_model* may have its answers cached in *store*."""
+    """Whether *decision_model* may have its answers cached in *store*.
+
+    With a *shared* store (``research(shared_decisions=)``) a verdict it holds
+    for the model's digest is read from there (and kept in *store* too), and a
+    verdict reached here is recorded in both, so the probe's two requests are
+    made once per model for every run that shares it."""
     digest = decision_model.digest or ""
     if not digest:
         return DeterminismCheck(
@@ -60,6 +68,10 @@ async def check_determinism(
             detail=f"{decision_model.id} has no digest to key answers by",
         )
     known = store.determinism_of(digest)
+    if known is None and shared is not None:
+        known = shared.determinism_of(digest)
+        if known is not None:
+            store.record_determinism(digest, deterministic=known[0], detail=known[1])
     if known is not None:
         deterministic, detail = known
         return DeterminismCheck(
@@ -90,7 +102,9 @@ async def check_determinism(
         if same
         else "two identical requests gave different answers"
     )
-    store.record_determinism(digest, deterministic=same, detail=detail)
+    for target in (store, shared):
+        if target is not None:
+            target.record_determinism(digest, deterministic=same, detail=detail)
     return DeterminismCheck(
         deterministic=same, enabled=same, detail=detail, probe_calls=calls
     )

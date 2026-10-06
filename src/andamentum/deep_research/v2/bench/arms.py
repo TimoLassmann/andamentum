@@ -292,7 +292,8 @@ class V2Arm:
     from a snapshot) and the ``store`` path that holds the snapshot's cache;
     both override the arm's own for that run. ``http_cache`` is a shared
     read-through HTTP cache for the live runs (not for a frozen one, which
-    reads only its snapshot).
+    reads only its snapshot). ``shared_decisions`` is a store the runs share
+    their decision answers through (``research(shared_decisions=)``).
     """
 
     returns_pages = False
@@ -310,9 +311,11 @@ class V2Arm:
         config: ResearchConfig = PRESETS["baseline"],
         name: str | None = None,
         http_cache: ResearchStore | None = None,
+        shared_decisions: ResearchStore | None = None,
     ) -> None:
         self.name = name or f"v2-{mode}"
         self.http_cache = http_cache
+        self.shared_decisions = shared_decisions
         self.mode: Mode = mode
         self.model = model
         self.decision_model = decision_model
@@ -348,5 +351,6 @@ class V2Arm:
             frozen=frozen,
             source_client=self.source_client,
             http_cache=cache,
+            shared_decisions=self.shared_decisions,
         )
         return map_v2(result)

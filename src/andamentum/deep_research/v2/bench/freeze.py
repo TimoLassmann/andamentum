@@ -23,7 +23,7 @@ What is cached (every rule is in ``meta.json``): the search results and the
 citation hops of the candidates are cached for every candidate (cheap API
 calls), but a candidate's full text is fetched and extracted only for the
 ``PREFETCH_TOP_K`` best of each sub-question by source search rank (reciprocal-
-rank fusion over the sources' lists, ``source_rank_score``). Every other
+rank fusion over the sources' lists, ``strategies.source_rank_score``). Every other
 candidate stays abstract-level: a frozen run that reads one finds no text in the
 snapshot (``FROZEN_TEXT_REASON``) and falls back to the abstract, the same for
 every arm. PDFs are read from their text layer when ``pdf_extraction`` is
@@ -38,6 +38,19 @@ receives a copy of exactly the entries that snapshot used, so it stays
 self-contained; ``no_redistribute`` entries are cached locally and never exported
 (``ResearchStore.iter_cache``). ``meta.json`` records the item's cache hits, misses,
 the share served from the shared cache and the network requests per source.
+
+Inputs profiles (``experiment.InputsSpec``): a freeze may take its source
+options, prefetch depth and patience from a profile of an experiment file
+(``bench freeze --experiment FILE --inputs PROFILE``). The snapshots of a profile
+live under ``<snapshots>/<profile>/<set>/<item>/``; a profile whose plan is
+another profile's (or ``--plan-from DIR``'s) reuses that snapshot's
+sub-questions and queries and makes no model call of any kind
+(``frozen.capture(plan=)``); ``search_only`` stops after the search (no
+retraction check, texts or hops) and marks ``meta.json`` so that
+``experiment run`` refuses the snapshot. ``meta.json`` records the profile and
+its hash, ``plan_from`` (profile and digest), the search accounting (searches
+and failures per source, results per query, seconds in the search) and
+``keyless``.
 
 A snapshot ages with its cache: search answers live 7 days, metadata 30, page
 texts 180 (``store.TTL_*``); frozen arms need only the page texts.
@@ -73,7 +86,7 @@ from ..sources import (
 )
 from ..sources.base import ExpandingSource, TextSource
 from ..steps import EXPAND_PER_CALL, is_scholarly
-from ..strategies import RRF_K
+from ..strategies import source_rank_score
 from ..sources.base import FROZEN_TEXT_REASON
 from ..store import TTL_FULL_TEXT_S, ResearchStore, cache_key
 from ..types import Candidate, Mode
@@ -104,6 +117,43 @@ PLANTED_SOURCE_RANK_KEY = "planted"
 
 class SnapshotMissing(RuntimeError):
     """A frozen arm needs a snapshot that has not been taken."""
+
+
+class SnapshotSearchOnly(SnapshotMissing):
+    """A frozen arm was pointed at a search-only snapshot (no texts, no hops, no
+    retraction check): it exists to compare candidate pools, not to be run on."""
+
+
+def snapshot_search_only(folder: Path) -> bool:
+    """Is the snapshot's ``meta.json`` marked ``search_only``?"""
+    path = folder / META_FILE
+    if not path.exists():
+        return False
+    try:
+        return bool(json.loads(path.read_text(encoding="utf-8")).get("search_only"))
+    except ValueError:
+        return False
+
+
+@dataclass(frozen=True)
+class InputsSetup:
+    """What an inputs profile adds to a freeze (everything defaults to a plain freeze).
+
+    ``plan`` is a folder holding ``<set>/<item>/frozen.json`` whose
+    sub-questions and queries are reused (``plan_profile`` names the profile it
+    is the folder of, for the record); ``patient`` the sources asked with the
+    patient retry schedule; ``search_only`` stops after the search; ``keyless``
+    is recorded in ``meta.json`` (the caller built the source configuration
+    without a key).
+    """
+
+    profile: str | None = None
+    profile_hash: str | None = None
+    plan: Path | None = None
+    plan_profile: str | None = None
+    patient: tuple[str, ...] = ()
+    search_only: bool = False
+    keyless: bool = False
 
 
 def snapshot_dir(root: Path, set_name: str, item_id: str) -> Path:
@@ -180,14 +230,6 @@ class PrefetchReport(BaseModel):
     none_held: int = 0
     failed: int = 0
     errors: list[str] = []
-
-
-def source_rank_score(candidate: Candidate) -> float:
-    """Reciprocal-rank fusion of the candidate's places in the sources' search
-    lists: the sum of ``1 / (RRF_K + rank)`` over ``source_ranks``. The search
-    rank only: no screening score is involved, so the rule is the same for
-    every arm."""
-    return sum(1.0 / (RRF_K + rank) for rank in candidate.source_ranks.values())
 
 
 def prefetch_targets(frozen: FrozenInputs, *, top_k: int | None) -> list[Candidate]:
@@ -419,20 +461,25 @@ class FreezeItem:
 
 
 def freeze_items(
-    set_name: str, *, data_dir: Path | None, n: int | None, seed: int
+    set_name: str, *, data_dir: Path | None, n: int | None, seed: int, skip: int = 0
 ) -> list[FreezeItem]:
-    """The items of a set to freeze, the same ones ``load_items`` gives an experiment."""
+    """The items of a set to freeze, the same ones ``load_items`` gives an
+    experiment (``skip``: the items after the first ``skip`` of the seeded order)."""
     if set_name == "litsearch":
         if data_dir is None:
             raise ValueError("freezing litsearch needs --dir (the download directory)")
-        data = load_litsearch(data_dir, n=n or DEFAULT_SUBSET, seed=seed)
+        data = load_litsearch(data_dir, n=n or DEFAULT_SUBSET, seed=seed, skip=skip)
         return [FreezeItem(i.query.query_id, i.query.query) for i in data.items]
     if set_name == "web":
-        if n is None or n >= len(WEB_QUESTIONS):
+        if skip == 0 and (n is None or n >= len(WEB_QUESTIONS)):
             questions = list(WEB_QUESTIONS)
         else:
             wanted = set(
-                select_subset([q.question_id for q in WEB_QUESTIONS], n, seed=seed)
+                select_subset(
+                    [q.question_id for q in WEB_QUESTIONS],
+                    skip + (n if n is not None else len(WEB_QUESTIONS)),
+                    seed=seed,
+                )[skip:]
             )
             questions = [q for q in WEB_QUESTIONS if q.question_id in wanted]
         return [FreezeItem(q.question_id, q.question) for q in questions]
@@ -448,11 +495,12 @@ async def freeze_set(
     *,
     snapshots: Path,
     data_dir: Path | None,
-    model: str | Model,
+    model: str | Model | None,
     decision_model: DecisionModel | None,
     decision_label: str | None,
     n: int | None,
     seed: int,
+    skip: int = 0,
     source_config: SourceConfig,
     progress: Callable[[str], None] = lambda _line: None,
     prefetch_top_k: int | None = PREFETCH_TOP_K,
@@ -461,6 +509,7 @@ async def freeze_set(
     client_factory: Callable[[ResearchStore], SourceClient] | None = None,
     clock: Callable[[], float] = time.time,
     http_cache: ResearchStore | None = None,
+    setup: InputsSetup = InputsSetup(),
 ) -> FreezeReport:
     """Freeze every item of *set_name* that has no snapshot yet.
 
@@ -469,10 +518,12 @@ async def freeze_set(
     model does not allow. ``client_factory`` builds the source client of each
     item's store (offline tests give it a mock transport); the default builds
     one with ``source_config.pdf_extraction`` and spacing shared across items.
+    ``setup`` carries what an inputs profile adds (``InputsSetup``); with a
+    ``plan`` folder no model is called and ``model`` may be ``None``.
     """
     return await freeze_items_of(
         set_name,
-        freeze_items(set_name, data_dir=data_dir, n=n, seed=seed),
+        freeze_items(set_name, data_dir=data_dir, n=n, seed=seed, skip=skip),
         snapshots=snapshots,
         model=model,
         decision_model=decision_model,
@@ -485,6 +536,7 @@ async def freeze_set(
         client_factory=client_factory,
         clock=clock,
         http_cache=http_cache,
+        setup=setup,
     )
 
 
@@ -493,7 +545,7 @@ async def freeze_items_of(
     items: Sequence[FreezeItem],
     *,
     snapshots: Path,
-    model: str | Model,
+    model: str | Model | None,
     decision_model: DecisionModel | None,
     decision_label: str | None,
     source_config: SourceConfig,
@@ -504,6 +556,7 @@ async def freeze_items_of(
     clock: Callable[[], float],
     concurrency: int = 1,
     http_cache: ResearchStore | None = None,
+    setup: InputsSetup = InputsSetup(),
 ) -> FreezeReport:
     """Freeze the given *items* of a set: the part of ``freeze_set`` after the
     items are chosen. A snapshot that exists is kept; the others are frozen with
@@ -518,7 +571,10 @@ async def freeze_items_of(
     pacing = process_pacing()
     factory = client_factory or (
         lambda store: SourceClient(
-            store, pdf_extraction=source_config.pdf_extraction, pacing=pacing
+            store,
+            pdf_extraction=source_config.pdf_extraction,
+            pacing=pacing,
+            patient=setup.patient,
         )
     )
 
@@ -539,6 +595,8 @@ async def freeze_items_of(
             detail, stats = await _freeze_one(
                 item,
                 folder=folder,
+                set_name=set_name,
+                setup=setup,
                 mode=mode,
                 model=model,
                 decision_model=decision_model,
@@ -586,8 +644,10 @@ async def _freeze_one(
     item: FreezeItem,
     *,
     folder: Path,
+    set_name: str,
+    setup: InputsSetup,
     mode: Mode,
-    model: str | Model,
+    model: str | Model | None,
     decision_model: DecisionModel | None,
     decision_label: str | None,
     source_config: SourceConfig,
@@ -598,6 +658,16 @@ async def _freeze_one(
     clock: Callable[[], float],
     http_cache: ResearchStore | None = None,
 ) -> tuple[str, ItemStats]:
+    plan_frozen: FrozenInputs | None = None
+    if setup.plan is not None:
+        plan_folder = snapshot_dir(setup.plan, set_name, item.item_id)
+        if not (plan_folder / FROZEN_FILE).exists():
+            raise RuntimeError(
+                f"no snapshot to take the plan from for {set_name}/{item.item_id}"
+            )
+        plan_frozen = FrozenInputs.load(plan_folder / FROZEN_FILE)
+    elif model is None:
+        raise ValueError("a freeze that plans live needs a model")
     partial = folder.with_name(folder.name + ".partial")
     if partial.exists():
         shutil.rmtree(partial)
@@ -618,6 +688,9 @@ async def _freeze_one(
                     source_client=client,
                     progress=progress,
                     clock=clock,
+                    retractions=not setup.search_only,
+                    plan=plan_frozen,
+                    tolerate_failures=setup.patient,
                 )
                 if frozen.degraded:
                     raise RuntimeError(
@@ -626,22 +699,25 @@ async def _freeze_one(
                     )
                 if not frozen.candidates:
                     raise RuntimeError("the search found no candidate")
-                source_set = build_sources(
-                    source_config, store=store, mode=mode, client=client
-                )
                 targets = prefetch_targets(frozen, top_k=prefetch_top_k)
-                # The texts and the citation hops go to different hosts, so they
-                # run together (the client spaces each source and caps its
-                # in-flight requests).
-                prefetch, warmed = await asyncio.gather(
-                    prefetch_texts(targets, text_sources=source_set.text),
-                    warm_citations(
-                        citation_targets(frozen, top_k=prefetch_top_k),
-                        sources=source_set.expand,
+                if setup.search_only:
+                    prefetch, warmed = PrefetchReport(), CitationWarmReport()
+                else:
+                    source_set = build_sources(
+                        source_config, store=store, mode=mode, client=client
                     )
-                    if mode != "web"
-                    else _no_citations(),
-                )
+                    # The texts and the citation hops go to different hosts, so
+                    # they run together (the client spaces each source and caps
+                    # its in-flight requests).
+                    prefetch, warmed = await asyncio.gather(
+                        prefetch_texts(targets, text_sources=source_set.text),
+                        warm_citations(
+                            citation_targets(frozen, top_k=prefetch_top_k),
+                            sources=source_set.expand,
+                        )
+                        if mode != "web"
+                        else _no_citations(),
+                    )
                 extractions = dict(client.extractions)
                 stats = ItemStats(
                     requests=dict(sorted(client.requests.items())),
@@ -662,22 +738,60 @@ async def _freeze_one(
             json.dumps(
                 {
                     "item_id": item.item_id,
-                    "model": model_label(model),
-                    "decision_model": decision_label,
+                    "model": None if model is None else model_label(model),
+                    "decision_model": None if plan_frozen else decision_label,
                     "digest": frozen.digest(),
+                    "inputs": (
+                        {"profile": setup.profile, "hash": setup.profile_hash}
+                        if setup.profile
+                        else None
+                    ),
+                    "plan_from": (
+                        {
+                            "profile": setup.plan_profile,
+                            "digest": plan_frozen.digest(),
+                        }
+                        if plan_frozen is not None
+                        else None
+                    ),
+                    "search_only": setup.search_only,
+                    "keyless": setup.keyless,
+                    "patient": list(setup.patient),
+                    "sources": source_config.model_dump(
+                        mode="json",
+                        include={
+                            "scholarly",
+                            "arxiv_query",
+                            "expand_with",
+                            "results_per_query",
+                        },
+                    ),
+                    "search": {
+                        "searches": frozen.searches,
+                        "search_failures": frozen.search_failures,
+                        "results_per_query": frozen.result_counts,
+                        "search_s": round(frozen.search_s, 1),
+                        "tolerated_failures": frozen.tolerated,
+                    },
                     "n_subquestions": len(frozen.subquestions),
                     "n_candidates": len(frozen.candidates),
                     "prefetch": prefetch.model_dump(mode="json"),
                     "prefetch_rule": (
-                        "every candidate"
+                        "none: a search-only snapshot"
+                        if setup.search_only
+                        else "every candidate"
                         if prefetch_top_k is None
                         else f"best {prefetch_top_k} per sub-question by source "
                         "search rank (reciprocal-rank fusion over the sources' "
                         "lists)"
                     ),
                     "prefetch_top_k": prefetch_top_k,
-                    "prefetched_works": prefetched,
-                    "not_prefetched_works": not_prefetched,
+                    "prefetched_works": [] if setup.search_only else prefetched,
+                    "not_prefetched_works": (
+                        [c.work.work_id or c.work.title for c in frozen.candidates]
+                        if setup.search_only
+                        else not_prefetched
+                    ),
                     "not_prefetched_reading": (
                         "abstract only: a frozen run that reads one of these "
                         f"finds '{FROZEN_TEXT_REASON}' (the same for every arm)"
@@ -731,9 +845,13 @@ async def _freeze_one(
         raise
     return (
         f"{len(frozen.subquestions)} sub-questions, {len(frozen.candidates)} candidates, "
-        f"{prefetch.fetched}/{prefetch.attempted} texts cached "
-        f"({len(not_prefetched)} abstract-only), "
-        f"{warmed.hops_cached} citation hops cached ({warmed.hops_failed} failed)"
+        + (
+            "search only"
+            if setup.search_only
+            else f"{prefetch.fetched}/{prefetch.attempted} texts cached "
+            f"({len(not_prefetched)} abstract-only), "
+            f"{warmed.hops_cached} citation hops cached ({warmed.hops_failed} failed)"
+        )
     ), stats
 
 
@@ -745,9 +863,10 @@ async def rewarm_set(
     *,
     snapshots: Path,
     data_dir: Path | None,
-    model: str | Model,
+    model: str | Model | None,
     n: int | None,
     seed: int,
+    skip: int = 0,
     source_config: SourceConfig,
     progress: Callable[[str], None] = lambda _line: None,
     prefetch_top_k: int | None = PREFETCH_TOP_K,
@@ -765,7 +884,7 @@ async def rewarm_set(
     """
     return await rewarm_items_of(
         set_name,
-        freeze_items(set_name, data_dir=data_dir, n=n, seed=seed),
+        freeze_items(set_name, data_dir=data_dir, n=n, seed=seed, skip=skip),
         snapshots=snapshots,
         model=model,
         source_config=source_config,
@@ -782,7 +901,7 @@ async def rewarm_items_of(
     items: Sequence[FreezeItem],
     *,
     snapshots: Path,
-    model: str | Model,
+    model: str | Model | None,
     source_config: SourceConfig,
     progress: Callable[[str], None],
     prefetch_top_k: int | None,
@@ -808,6 +927,12 @@ async def rewarm_items_of(
                 item.item_id,
                 "failed",
                 "no snapshot to rewarm: run `bench freeze` first",
+            )
+        if snapshot_search_only(folder):
+            return FrozenItem(
+                item.item_id,
+                "failed",
+                "a search-only snapshot holds no texts or hops and is not rewarmed",
             )
         progress(f"rewarming {set_name}/{item.item_id}")
         started = time.monotonic()

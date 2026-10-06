@@ -31,7 +31,7 @@ from __future__ import annotations
 
 import itertools
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -68,6 +68,7 @@ from .types import (
     Passage,
     ResearchResult,
     RunStats,
+    ScreeningEntry,
     SubQuestion,
     VerifyFlag,
 )
@@ -111,6 +112,8 @@ class ResearchState:
     round_targets: list[str] = field(default_factory=list)
     candidates: dict[str, Candidate] = field(default_factory=dict)
     pending: list[Pair] = field(default_factory=list)
+    # Every pair the run found, in the order it found them (the screening record).
+    arrivals: list[Pair] = field(default_factory=list)
     screened: set[Pair] = field(default_factory=set)
     scores: dict[Pair, CandidateScore] = field(default_factory=dict)
     round_new_kept: dict[str, set[str]] = field(default_factory=dict)
@@ -196,7 +199,9 @@ def _admit(ctx: Ctx, found: list[Candidate]) -> None:
     admitted = steps.admit(found, store=ctx.deps.store, known=state.candidates)
     state.candidates = admitted.candidates
     waiting = set(state.pending) | state.screened
-    state.pending += [p for p in admitted.pairs if p not in waiting]
+    fresh = [p for p in admitted.pairs if p not in waiting]
+    state.pending += fresh
+    state.arrivals += fresh
 
 
 @dataclass
@@ -254,7 +259,12 @@ class Search(BaseNode[ResearchState, ResearchDeps, ResearchResult]):
                 if state.round == 1:
                     deps.progress("Search: the frozen candidates")
                     state.queries_done += deps.frozen.all_queries()
-                    _admit(ctx, list(deps.frozen.candidates))
+                    _admit(
+                        ctx,
+                        steps.restore_licensed_text(
+                            deps.frozen.candidates, store=deps.store
+                        ),
+                    )
                 return Screen()
             deps.progress(f"Search: round {state.round}, {len(targets)} sub-questions")
             written = await steps.write_queries(
@@ -290,7 +300,11 @@ class Screen(BaseNode[ResearchState, ResearchDeps, ResearchResult]):
             if waiting and not _spent(ctx):
                 deps.progress(f"Screen: {len(waiting)} candidates waiting")
                 outcome = await steps.screen(
-                    waiting,
+                    # the queue strategy orders what a round's caps may take;
+                    # ``pending`` below stays in arrival order
+                    deps.config.queue_strategy.order(
+                        waiting, candidates=state.candidates
+                    ),
                     candidates=state.candidates,
                     subquestions=state.subquestions,
                     screen_one=screen_one(
@@ -552,8 +566,50 @@ class Finish(BaseNode[ResearchState, ResearchDeps, ResearchResult]):
                 "stats": deps.asker.stats,
             }
         )
+        result = result.model_copy(
+            update={"screening": _screening_record(state, result.works)}
+        )
         deps.progress(f"Finish: {state.stop_reason}")
         return End(result)
+
+
+def _screening_record(
+    state: ResearchState, works: Sequence[Work]
+) -> list[ScreeningEntry]:
+    """One entry per pair the run found, in arrival order, with the screen's
+    score (``None`` for a pair never screened), its decision and the work's
+    final rank among the result's works."""
+    place = {w.work_id: position for position, w in enumerate(works, start=1)}
+    entries: list[ScreeningEntry] = []
+    for arrival, pair in enumerate(state.arrivals):
+        work_id, subquestion_id = pair
+        candidate = state.candidates.get(work_id)
+        if candidate is None:
+            continue
+        score = state.scores.get(pair)
+        work = candidate.work
+        kept = score is not None and score.kept
+        entries.append(
+            ScreeningEntry(
+                work_id=work_id,
+                subquestion_id=subquestion_id,
+                arrival=arrival,
+                source_ranks=dict(candidate.source_ranks),
+                p=None if score is None else score.score,
+                kept=kept,
+                rank=place.get(work_id) if kept else None,
+                title=work.title,
+                year=work.year,
+                doi=work.doi,
+                arxiv_id=work.arxiv_id,
+                pmid=work.pmid,
+                pmcid=work.pmcid,
+                openalex_id=work.openalex_id,
+                s2_id=work.s2_id,
+                url=work.url,
+            )
+        )
+    return entries
 
 
 def _offline_skips(deps: ResearchDeps) -> list[str]:
@@ -634,6 +690,7 @@ async def research(
     source_client: SourceClient | None = None,
     http_cache: ResearchStore | None = None,
     decision_cache: bool = True,
+    shared_decisions: ResearchStore | None = None,
     progress: Callable[[str], None] | None = None,
     clock: Callable[[], float] = time.monotonic,
 ) -> ResearchResult:
@@ -679,6 +736,14 @@ async def research(
     twice, not counted in the run's decision calls); if its answers differ the
     cache stays off for the run, and a note and the run's stats say so. It does
     nothing without a decision model.
+
+    ``shared_decisions`` is a second store the decision cache reads through to
+    and writes to as well (an experiment's cells all screen the same works for
+    the same sub-questions): an own miss is looked up there, and every answer
+    goes to both stores. The determinism verdict of the model is read from it
+    too. It changes what a run costs, never what it finds: a cached answer is
+    the answer a request would get. Allowed with ``frozen``; ignored without a
+    decision model or while the cache is off or disabled for the model.
 
     A spent budget ends the search with ``stop_reason='budget:<name>'`` and
     still writes and verifies the report from what was found. A failing source
@@ -736,6 +801,7 @@ async def research(
             frozen=frozen,
             source_set=source_set,
             decision_cache=decision_cache,
+            shared_decisions=shared_decisions,
             progress=progress or (lambda _line: None),
             clock=clock,
         )
@@ -761,6 +827,7 @@ async def _run(
     frozen: FrozenInputs | None,
     source_set: SourceSet,
     decision_cache: bool,
+    shared_decisions: ResearchStore | None,
     progress: Callable[[str], None],
     clock: Callable[[], float],
 ) -> ResearchResult:
@@ -783,6 +850,7 @@ async def _run(
         stats=stats,
         decision_model=decision_model,
         model_settings=config.model_settings(),
+        shared_decisions=shared_decisions,
     )
     screener = Screener(asker=asker)
     client = source_set.client
@@ -835,7 +903,9 @@ async def _run(
     try:
         state = ResearchState()
         if decision_model is not None and decision_cache:
-            check = await check_determinism(decision_model, store=store)
+            check = await check_determinism(
+                decision_model, store=store, shared=shared_decisions
+            )
             asker.decision_cache = check.enabled
             stats.decision_cache = check.state
             stats.decision_probe_calls = check.probe_calls

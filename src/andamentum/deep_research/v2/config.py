@@ -8,7 +8,7 @@ in ``strategies.py`` and a registry entry) and a preset, and never edits the
 engine. ``config_hash`` identifies the configuration; the engine records it on
 every run (``runs.config_json``) and every ``ResearchResult``.
 
-Three presets (``PRESETS``):
+Four presets (``PRESETS``):
 
 - ``baseline`` (the default of ``research()``): one generic relevance question
   per candidate, dropped below ``GENERIC_DROP_BELOW``; reciprocal-rank fusion;
@@ -21,6 +21,9 @@ Three presets (``PRESETS``):
   decision model) and the ``code_first`` verification (a report sentence whose
   content tokens are in its quotes is supported in code). Everything else is
   the baseline's, so the two differ only in those two strategies.
+- ``recall``: the baseline with the ``source_rank`` queue (waiting candidates
+  are screened best-by-source-rank first instead of in arrival order) and
+  nothing else (round 3).
 - ``criteria``: the behaviour built first (LLM-compiled criteria scored by the
   decision model, refinement, criteria passage scoring, criteria facets, the
   budget's caps), kept as an arm to compare against the baseline.
@@ -41,6 +44,7 @@ from pydantic_ai.settings import ModelSettings
 from .steps import MAX_EXPAND_SEEDS
 from .strategies import (
     GENERIC_DROP_BELOW,
+    ArrivalQueue,
     CitationExpand,
     CodeFirstVerify,
     CriteriaFacets,
@@ -57,11 +61,13 @@ from .strategies import (
     NoFacets,
     NoRefine,
     PassageStrategy,
+    QueueStrategy,
     RankStrategy,
     RefineStrategy,
     RrfRank,
     ScoreRank,
     ScreenStrategy,
+    SourceRankQueue,
     VerifyStrategy,
 )
 
@@ -84,6 +90,11 @@ VERIFIES: dict[str, VerifyStrategy] = {
     "code_first": CodeFirstVerify(),
 }
 
+QUEUES: dict[str, QueueStrategy] = {
+    "arrival": ArrivalQueue(),
+    "source_rank": SourceRankQueue(),
+}
+
 _SLOTS: dict[str, Mapping[str, object]] = {
     "screen": SCREENS,
     "refine": REFINES,
@@ -92,6 +103,7 @@ _SLOTS: dict[str, Mapping[str, object]] = {
     "expand": EXPANDS,
     "facets": FACETS,
     "verify": VERIFIES,
+    "queue": QUEUES,
 }
 
 # The fixed seed both presets send with every language-model call.
@@ -101,7 +113,7 @@ _UNHASHED = frozenset({"name", "description"})
 # Fields added after the first presets were hashed: left out of the hash while
 # they hold the value every earlier configuration had, so a configuration that
 # predates the field keeps its hash (the recorded hashes keep their meaning).
-_UNHASHED_AT_DEFAULT: dict[str, object] = {"verify": "model"}
+_UNHASHED_AT_DEFAULT: dict[str, object] = {"verify": "model", "queue": "arrival"}
 
 
 class ResearchConfig(BaseModel):
@@ -133,6 +145,7 @@ class ResearchConfig(BaseModel):
     expand: str
     facets: str
     verify: str = "model"
+    queue: str = "arrival"
     drop_below: float = Field(default=GENERIC_DROP_BELOW, ge=0.0, le=1.0)
     screen_per_subquestion: int | None = Field(default=None, ge=1)
     read_per_subquestion: int | None = Field(default=None, ge=1)
@@ -189,6 +202,10 @@ class ResearchConfig(BaseModel):
     @property
     def verify_strategy(self) -> VerifyStrategy:
         return VERIFIES[self.verify]
+
+    @property
+    def queue_strategy(self) -> QueueStrategy:
+        return QUEUES[self.queue]
 
     @property
     def needs_criteria(self) -> bool:
@@ -262,6 +279,24 @@ PRESETS: dict[str, ResearchConfig] = {
         expand="citations",
         facets="off",
         verify="code_first",
+        drop_below=GENERIC_DROP_BELOW,
+        screen_per_subquestion=25,
+        read_per_subquestion=8,
+        expand_seeds=3,
+        expand_per_round=20,
+        passages_per_work=4,
+    ),
+    "recall": ResearchConfig(
+        name="recall",
+        description="the baseline with merit-ordered screening admission: waiting "
+        "candidates are screened best by source search rank first",
+        screen="generic",
+        refine="off",
+        rank="rrf",
+        passages="lexical",
+        expand="citations",
+        facets="off",
+        queue="source_rank",
         drop_below=GENERIC_DROP_BELOW,
         screen_per_subquestion=25,
         read_per_subquestion=8,

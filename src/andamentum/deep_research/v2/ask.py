@@ -166,6 +166,10 @@ class Asker:
     # model (digest), request and state answered it before. Switched on by the
     # run only after the model passed the determinism check.
     decision_cache: bool = False
+    # A second store the decision cache reads through to and writes to as well
+    # (``research(shared_decisions=)``): several runs over the same candidates
+    # then answer one request once. Used only while ``decision_cache`` is on.
+    shared_decisions: ResearchStore | None = None
 
     # -- language model ----------------------------------------------------
 
@@ -233,12 +237,28 @@ class Asker:
         key = request_key(questions)
         digest = decision_model.digest or ""
         if self.decision_cache and digest:
+            state_hash = _state_hash(state)
             stored = self.store.cached_answers(
-                digest=digest, question_hash=key, state_hash=_state_hash(state)
+                digest=digest, question_hash=key, state_hash=state_hash
             )
+            from_shared = False
+            if stored is None and self.shared_decisions is not None:
+                stored = self.shared_decisions.cached_answers(
+                    digest=digest, question_hash=key, state_hash=state_hash
+                )
+                if stored is not None:
+                    from_shared = True
+                    self.store.cache_answers(
+                        digest=digest,
+                        question_hash=key,
+                        state_hash=state_hash,
+                        answers=stored,
+                    )
             if stored is not None:
                 served = {k: Answer.model_validate(v) for k, v in stored.items()}
                 self.stats.decision_cache_hits += 1
+                if from_shared:
+                    self.stats.decision_shared_hits += 1
                 self.record(
                     step,
                     model=decision_model.id,
@@ -255,14 +275,15 @@ class Asker:
         self.stats.decision_calls += 1
         _count(self.stats.step_decision_calls, self.phase)
         if self.decision_cache and digest:
-            self.store.cache_answers(
-                digest=digest,
-                question_hash=key,
-                state_hash=_state_hash(state),
-                answers={
-                    k: a.model_dump(mode="json") for k, a in result.answers.items()
-                },
-            )
+            answers = {k: a.model_dump(mode="json") for k, a in result.answers.items()}
+            for target in (self.store, self.shared_decisions):
+                if target is not None:
+                    target.cache_answers(
+                        digest=digest,
+                        question_hash=key,
+                        state_hash=_state_hash(state),
+                        answers=answers,
+                    )
         self.record(
             step,
             model=decision_model.id,

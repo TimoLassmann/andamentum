@@ -256,6 +256,7 @@ async def test_the_v2_arm_calls_research_with_the_spec_arguments(
         "frozen": None,
         "source_client": None,
         "http_cache": None,
+        "shared_decisions": None,  # no store to share decision answers through
     }
     assert out.cost.llm_calls == 7
     assert out.result is not None and out.result.passages == []  # slimmed

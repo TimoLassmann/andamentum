@@ -5,7 +5,9 @@ fixed before the run; this module only reads it. The verdict is ``accepted``
 when the whole bootstrap interval is on the right side of the margin or
 threshold, ``not accepted`` when the whole interval is on the wrong side, and
 ``inconclusive`` when it straddles the line (or there is nothing to compare):
-a small sample is allowed to say "I cannot tell".
+a small sample is allowed to say "I cannot tell". The one exception is
+``no_harm`` (a guard): it is ``not accepted`` when the mean difference is below
+``-margin`` or the whole interval is below 0, and ``accepted`` otherwise.
 
 Items are the unit of resampling. A paired rule uses the items both arms have
 a value for; a missing value never counts as zero here (the runner records an
@@ -149,7 +151,7 @@ def judge_rule(
         return _judge_reduction(
             rule, arm=arm, reference=reference, resamples=resamples, seed=seed
         )
-    paired = rule.test in ("noninferior", "superior")
+    paired = rule.test in ("noninferior", "superior", "no_harm")
     if paired:
         if reference is None:
             raise ValueError(f"rule {rule.id} needs the reference arm's values")
@@ -162,6 +164,8 @@ def judge_rule(
             return _verdict(
                 rule, "inconclusive", None, "no item has a value for both arms"
             )
+        if rule.test == "no_harm":
+            return _judge_no_harm(rule, interval)
         bound = -rule.margin if rule.test == "noninferior" else rule.margin
         outcome: Outcome
         if interval.low > bound:
@@ -216,6 +220,30 @@ def judge_rule(
         f"{rule.arm} {rule.aggregate} {rule.metric}: {interval.estimate:.3f} "
         f"(95% interval {interval.low:.3f} to {interval.high:.3f}, "
         f"{interval.n_items} items); bar: {bar}"
+    )
+    return _verdict(rule, outcome, interval, statement)
+
+
+def _judge_no_harm(rule: Rule, interval: Interval) -> Verdict:
+    """The guard: harm is a mean below ``-margin`` or an interval wholly below 0.
+
+    There is no ``inconclusive``: a guard exists to catch harm, and with few
+    items an interval is too wide to prove equality (round 2 measured about
+    +-0.08 on 15 items, so a 0.05 non-inferiority bar could not be met)."""
+    mean_harm = interval.estimate < -rule.margin
+    interval_harm = interval.high < 0.0
+    outcome: Outcome = "not accepted" if mean_harm or interval_harm else "accepted"
+    reasons = []
+    if mean_harm:
+        reasons.append(f"the mean is below -{rule.margin:g}")
+    if interval_harm:
+        reasons.append("the whole interval is below 0")
+    verdict = "harm: " + " and ".join(reasons) if reasons else "no harm found"
+    statement = (
+        f"{rule.arm} minus {rule.reference}, oriented so that higher is better: "
+        f"{_fmt(interval.estimate)} (95% interval {_fmt(interval.low)} to "
+        f"{_fmt(interval.high)}, {interval.n_items} items); bar: no harm "
+        f"(mean not below -{rule.margin:g}, interval not wholly below 0); {verdict}"
     )
     return _verdict(rule, outcome, interval, statement)
 

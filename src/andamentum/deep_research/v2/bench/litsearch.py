@@ -285,16 +285,19 @@ async def download_litsearch(
 
 
 def load_litsearch(
-    root: Path, *, n: int = DEFAULT_SUBSET, seed: int = DEFAULT_SEED
+    root: Path, *, n: int = DEFAULT_SUBSET, seed: int = DEFAULT_SEED, skip: int = 0
 ) -> LitSearchSet:
     """The deterministic subset of *n* queries with their resolved gold papers.
 
-    Offline. Raises ``DatasetMissing`` when the queries, or the gold papers of
-    a chosen query, were not downloaded.
+    With *skip* the subset is the seeded order's positions ``skip + 1`` to
+    ``skip + n`` (``select_subset(ids, skip + n)[skip:]``): the queries a
+    smaller subset of the same seed did not hold. Offline. Raises
+    ``DatasetMissing`` when the queries, or the gold papers of a chosen query,
+    were not downloaded.
     """
     queries = _read_queries(root)
     by_id = {q.query_id: q for q in queries}
-    chosen = select_subset(list(by_id), n, seed=seed)
+    chosen = select_subset(list(by_id), skip + n, seed=seed)[skip:]
     held = _read_gold(root / GOLD_FILE)
     items: list[LitSearchItem] = []
     unresolved = 0
@@ -306,7 +309,7 @@ def load_litsearch(
             raise DatasetMissing(
                 f"the gold papers of {query_id} are not in {root}; run: uv run "
                 f"python -m andamentum.deep_research.v2.bench download litsearch "
-                f"--dir {root} --n {n} --seed {seed}"
+                f"--dir {root} --n {skip + n} --seed {seed}"
             )
         gold = [w for c in query.corpus_ids if (w := held[c].to_work()) is not None]
         unresolved += len(query.corpus_ids) - len(gold)

@@ -7,13 +7,18 @@
     litsearch --out-dir DIR --dir DIR --model M [--arms legacy v2] [--n 30] ...
     screening --out-dir DIR --dir DIR --model M --decision-model D [--arms ...] [--max-records N]
     report FILE.json ... [--out FILE.md]
+    freeze litsearch|web --snapshots DIR [--experiment FILE --inputs PROFILE] ...
+    pool --snapshots DIR [--inputs PROFILE] --dir DIR [--n N --skip K] [--against DIR]
+    experiment run FILE --out-dir DIR [--arm NAME ...] [--decision-cache PATH] ...
 
 Every directory is named on the command line; nothing is read from or written to
 a default location. Runs are sequential, one local-model call at a time. A run
 writes ``<task>-<arm>.json`` into ``--out-dir`` after every item. API keys and
 the OpenAlex contact address come from the environment (read here, after
 ``load_dotenv``, never in the library): ``SEMANTIC_SCHOLAR_API_KEY``,
-``OPENALEX_API_KEY``, ``OPENALEX_EMAIL``. The exit status is 2 when any item
+``OPENALEX_API_KEY``, ``OPENALEX_EMAIL``. A keyless experiment file (``keyless:
+true``), and ``download --keyless``, read neither key: the source
+configuration is built without them whatever the environment holds. The exit status is 2 when any item
 of any run failed (the failure is in the results file), else 0.
 """
 
@@ -26,6 +31,7 @@ import sys
 import time
 from collections.abc import Callable, Coroutine, Sequence
 from contextlib import AsyncExitStack
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
@@ -42,11 +48,18 @@ from ..types import Mode
 from .arms import AnswerArm, LegacyArm, V2Arm
 from .cache_import import cache_databases, import_stores
 from .download import DatasetMissing, Downloader, write_atomic
-from .experiment import Experiment, load_experiment
+from .experiment import Experiment, InputsSpec, load_experiment
 from .experiment_report import report_from_registry
 from .experiment_run import DataDirs, InfrastructureDown, Services, run_experiment
 from .concurrency import MAX_CLOUD_CONCURRENCY
-from .freeze import PREFETCH_TOP_K, SnapshotMissing, freeze_set, rewarm_set
+from .freeze import (
+    PREFETCH_TOP_K,
+    InputsSetup,
+    SnapshotMissing,
+    freeze_set,
+    rewarm_set,
+)
+from .pool import load_pool_items, pool_comparison, pool_tables
 from .health import SearxDown, require_searxng
 from .judging import ClaimJudge, UrlChecker
 from .litsearch import DEFAULT_SEED, DEFAULT_SUBSET, download_litsearch, load_litsearch
@@ -95,6 +108,12 @@ def build_parser() -> argparse.ArgumentParser:
     lit.add_argument("--dir", type=Path, required=True)
     lit.add_argument("--n", type=int, default=DEFAULT_SUBSET)
     lit.add_argument("--seed", type=int, default=DEFAULT_SEED)
+    lit.add_argument(
+        "--keyless",
+        action="store_true",
+        help="read no Semantic Scholar key (the batch endpoint is asked keyless, "
+        "whatever the environment holds)",
+    )
     syn = sets.add_parser("synergy", help="SYNERGY systematic-review screening sets")
     syn.add_argument("--dir", type=Path, required=True)
     syn.add_argument("--reviews", nargs="+", default=list(DEFAULT_REVIEWS))
@@ -199,10 +218,57 @@ def build_parser() -> argparse.ArgumentParser:
     freeze.add_argument("set", choices=("litsearch", "web"))
     freeze.add_argument("--snapshots", type=Path, required=True)
     freeze.add_argument("--dir", type=Path, default=None, help="litsearch download dir")
-    freeze.add_argument("--model", required=True)
+    freeze.add_argument(
+        "--model",
+        default=None,
+        help="the LLM; not needed when the plan is taken from another snapshot",
+    )
     freeze.add_argument("--decision-model", default=None)
     freeze.add_argument("--n", type=int, default=None, help="subset size")
-    freeze.add_argument("--seed", type=int, default=DEFAULT_SEED)
+    freeze.add_argument(
+        "--skip",
+        type=int,
+        default=None,
+        help="leave out the first K items of the seeded order (with --n: positions "
+        "K+1 to K+n)",
+    )
+    freeze.add_argument("--seed", type=int, default=None)
+    freeze.add_argument(
+        "--experiment",
+        type=Path,
+        default=None,
+        metavar="FILE",
+        help="an experiment file: its set gives the items (n, skip, seed) and, with "
+        "--inputs, a profile gives the sources, prefetch depth and patience",
+    )
+    freeze.add_argument(
+        "--inputs",
+        default=None,
+        metavar="PROFILE",
+        help="the inputs profile of --experiment to freeze; its snapshots go under "
+        "<snapshots>/<profile>/",
+    )
+    freeze.add_argument(
+        "--plan-from",
+        type=Path,
+        default=None,
+        metavar="DIR",
+        help="take the sub-questions and queries from the snapshots in DIR "
+        "(<set>/<item>/frozen.json) instead of the profile's plan; no model is "
+        "called",
+    )
+    freeze.add_argument(
+        "--search-only",
+        action="store_true",
+        help="search and admit only (no retraction check, texts or citation hops); "
+        "the snapshot is marked so that `experiment run` refuses it. Only with "
+        "this flag may --n, --skip and --seed override the experiment's items",
+    )
+    freeze.add_argument(
+        "--keyless",
+        action="store_true",
+        help="read no API key (implied by a keyless --experiment)",
+    )
     freeze.add_argument("--searxng-url", default=DEFAULT_SEARXNG_URL)
     freeze.add_argument(
         "--prefetch-top-k",
@@ -257,6 +323,22 @@ def build_parser() -> argparse.ArgumentParser:
         "the same command; the file and its registry are unchanged)",
     )
     run.add_argument(
+        "--arm",
+        action="append",
+        default=None,
+        metavar="NAME",
+        help="run only this arm (repeatable); the order stays the file's, solo arms "
+        "last, and snapshots are checked only for the chosen arms",
+    )
+    run.add_argument(
+        "--decision-cache",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="a store file the cells share their decision answers through (only its "
+        "decision cache tables are used); a solo cell never uses it",
+    )
+    run.add_argument(
         "--check-links",
         action="store_true",
         help="probe each answer's links over the network (URL integrity)",
@@ -268,18 +350,58 @@ def build_parser() -> argparse.ArgumentParser:
     summary.add_argument("file", type=Path)
     summary.add_argument("--out-dir", type=Path, required=True)
     summary.add_argument("--out", type=Path, default=None)
+    summary.add_argument(
+        "--snapshots",
+        type=Path,
+        default=None,
+        help="the snapshots root: adds each profile's search accounting and pool",
+    )
+    summary.add_argument(
+        "--litsearch-dir",
+        type=Path,
+        default=None,
+        help="the LitSearch download: adds the loss table of each arm (and, with "
+        "--snapshots, the pools)",
+    )
+
+    pool = commands.add_parser(
+        "pool",
+        help="the candidate pool of LitSearch snapshots (no model, no network)",
+    )
+    pool.add_argument("--snapshots", type=Path, required=True)
+    pool.add_argument("--inputs", default=None, metavar="PROFILE")
+    pool.add_argument("--dir", type=Path, required=True, help="the LitSearch download")
+    pool.add_argument("--n", type=int, default=DEFAULT_SUBSET)
+    pool.add_argument("--skip", type=int, default=0)
+    pool.add_argument("--seed", type=int, default=DEFAULT_SEED)
+    pool.add_argument(
+        "--against",
+        type=Path,
+        default=None,
+        metavar="DIR",
+        help="a second snapshots root (round-2 layout, or add --against-inputs): "
+        "also list the gold papers that entered or left the pool",
+    )
+    pool.add_argument("--against-inputs", default=None, metavar="PROFILE")
     return parser
 
 
 def _source_config(
-    searxng_url: str | None, pdf_extraction: PdfExtraction = BENCH_PDF_EXTRACTION
+    searxng_url: str | None,
+    pdf_extraction: PdfExtraction = BENCH_PDF_EXTRACTION,
+    *,
+    keyless: bool = False,
 ) -> SourceConfig:
+    """The sources' configuration. Keyless: neither API key is looked up at all
+    (not read, not checked for), whatever the environment holds."""
     return SourceConfig(
         searxng_url=searxng_url,
         pdf_extraction=pdf_extraction,
         mailto=os.environ.get("OPENALEX_EMAIL"),
-        openalex_api_key=os.environ.get("OPENALEX_API_KEY"),
-        semantic_scholar_api_key=os.environ.get("SEMANTIC_SCHOLAR_API_KEY"),
+        openalex_api_key=None if keyless else os.environ.get("OPENALEX_API_KEY"),
+        semantic_scholar_api_key=(
+            None if keyless else os.environ.get("SEMANTIC_SCHOLAR_API_KEY")
+        ),
     )
 
 
@@ -491,7 +613,9 @@ async def _cmd_download(args: argparse.Namespace) -> int:
                 downloader=downloader,
                 n=args.n,
                 seed=args.seed,
-                s2_api_key=os.environ.get("SEMANTIC_SCHOLAR_API_KEY"),
+                s2_api_key=(
+                    None if args.keyless else os.environ.get("SEMANTIC_SCHOLAR_API_KEY")
+                ),
             )
             print(
                 f"LitSearch: {done.n_queries_total} queries, subset of {done.n_subset}, "
@@ -556,18 +680,114 @@ async def _cmd_freeze(args: argparse.Namespace) -> int:
             cache.close()
 
 
+@dataclass(frozen=True)
+class FreezePlan:
+    """What a ``bench freeze`` command line resolves to."""
+
+    snapshots: Path
+    source_config: SourceConfig
+    prefetch_top_k: int | None
+    setup: InputsSetup
+    n: int | None
+    skip: int
+    seed: int
+
+
+def resolve_freeze(args: argparse.Namespace) -> FreezePlan:
+    """The items, sources, depth and setup of a freeze from its flags and, when
+    ``--experiment`` / ``--inputs`` name them, the experiment file. Raises
+    ``ValueError`` for a combination that would silently change what the file
+    registered."""
+    exp = load_experiment(args.experiment) if args.experiment else None
+    if args.inputs is not None and exp is None:
+        raise ValueError("--inputs needs --experiment")
+    if args.inputs is not None and exp is not None and args.inputs not in exp.inputs:
+        raise ValueError(
+            f"{args.inputs!r} is not an inputs profile of {args.experiment.name}; "
+            f"known: {', '.join(exp.inputs) or 'none'}"
+        )
+    keyless = bool(args.keyless or (exp is not None and exp.keyless))
+    profile: InputsSpec | None = (
+        exp.inputs[args.inputs] if exp and args.inputs else None
+    )
+    if profile is not None and profile.existing:
+        raise ValueError(f"{args.inputs}: an existing profile is not frozen again")
+    n, skip, seed = args.n, args.skip, args.seed
+    if exp is not None:
+        spec = exp.set(args.set) if args.set in {s.name for s in exp.sets} else None
+        if spec is None:
+            raise ValueError(f"{args.set} is not a set of {args.experiment.name}")
+        overridden = [
+            name
+            for name, value in (("--n", n), ("--skip", skip), ("--seed", seed))
+            if value is not None
+        ]
+        if overridden and not args.search_only:
+            raise ValueError(
+                f"{', '.join(overridden)} would change the items the experiment "
+                "registered; they are allowed only together with --search-only"
+            )
+        n = spec.n if n is None else n
+        skip = spec.skip if skip is None else skip
+        seed = spec.seed if seed is None else seed
+    skip = 0 if skip is None else skip
+    seed = DEFAULT_SEED if seed is None else seed
+    source_config = _source_config(
+        args.searxng_url, args.pdf_extraction, keyless=keyless
+    )
+    root = args.snapshots
+    plan_root: Path | None = None
+    plan_profile: str | None = None
+    top_k = args.prefetch_top_k
+    patient: tuple[str, ...] = ()
+    profile_hash: str | None = None
+    if profile is not None and args.inputs is not None:
+        source_config = source_config.model_copy(update=profile.sources.updates())
+        root = args.snapshots / args.inputs
+        profile_hash = profile.profile_hash()
+        if profile.prefetch_top_k is not None:
+            top_k = profile.prefetch_top_k
+        patient = tuple(profile.patient)
+        if profile.plan != "live":
+            plan_root = args.snapshots / profile.plan
+            plan_profile = profile.plan
+    if args.plan_from is not None:
+        plan_root, plan_profile = args.plan_from, None
+    if plan_root is None and not args.model:
+        raise ValueError("--model is required: this freeze plans with a model")
+    return FreezePlan(
+        snapshots=root,
+        source_config=source_config,
+        prefetch_top_k=top_k,
+        setup=InputsSetup(
+            profile=args.inputs,
+            profile_hash=profile_hash,
+            plan=plan_root,
+            plan_profile=plan_profile,
+            patient=patient,
+            search_only=args.search_only,
+            keyless=keyless,
+        ),
+        n=n,
+        skip=skip,
+        seed=seed,
+    )
+
+
 async def _freeze(args: argparse.Namespace, cache: ResearchStore | None) -> int:
+    plan = resolve_freeze(args)
     if args.rewarm:
         rewarmed = await rewarm_set(
             args.set,
-            snapshots=args.snapshots,
+            snapshots=plan.snapshots,
             data_dir=args.dir,
             model=args.model,
-            n=args.n,
-            seed=args.seed,
-            source_config=_source_config(args.searxng_url, args.pdf_extraction),
+            n=plan.n,
+            seed=plan.seed,
+            skip=plan.skip,
+            source_config=plan.source_config,
             progress=lambda line: print(line, file=sys.stderr),
-            prefetch_top_k=args.prefetch_top_k,
+            prefetch_top_k=plan.prefetch_top_k,
             concurrency=args.concurrency,
             http_cache=cache,
         )
@@ -575,25 +795,55 @@ async def _freeze(args: argparse.Namespace, cache: ResearchStore | None) -> int:
             print(line)
         return EXIT_ITEM_FAILED if rewarmed.failed or rewarmed.incomplete else 0
     async with AsyncExitStack() as stack:
-        decision = await _open_decision(stack, args.decision_model)
+        # a freeze that takes its plan from another snapshot calls no model, and
+        # opens none (opening a decision model is itself a request to the server)
+        planning = plan.setup.plan is None
+        decision = await _open_decision(
+            stack, args.decision_model if planning else None
+        )
         frozen = await freeze_set(
             args.set,
-            snapshots=args.snapshots,
+            snapshots=plan.snapshots,
             data_dir=args.dir,
-            model=args.model,
+            model=args.model if planning else None,
             decision_model=decision,
-            decision_label=args.decision_model,
-            n=args.n,
-            seed=args.seed,
-            source_config=_source_config(args.searxng_url, args.pdf_extraction),
+            decision_label=args.decision_model if planning else None,
+            n=plan.n,
+            seed=plan.seed,
+            skip=plan.skip,
+            source_config=plan.source_config,
             progress=lambda line: print(line, file=sys.stderr),
-            prefetch_top_k=args.prefetch_top_k,
+            prefetch_top_k=plan.prefetch_top_k,
             concurrency=args.concurrency,
             http_cache=cache,
+            setup=plan.setup,
         )
     for line in frozen.lines():
         print(line)
     return EXIT_ITEM_FAILED if frozen.failed or frozen.incomplete else 0
+
+
+async def _cmd_pool(args: argparse.Namespace) -> int:
+    data = load_litsearch(args.dir, n=args.n, seed=args.seed, skip=args.skip)
+    root = args.snapshots / args.inputs if args.inputs else args.snapshots
+    items, missing = load_pool_items(root, data.items)
+    print(f"# Candidate pool of {root.name}\n")
+    print(pool_tables(items, missing=missing))
+    if args.against is not None:
+        base_root = (
+            args.against / args.against_inputs if args.against_inputs else args.against
+        )
+        base, _unused = load_pool_items(base_root, data.items)
+        print(f"\n# {root.name} against {base_root.name}\n")
+        print(
+            pool_comparison(
+                items,
+                base,
+                this_label=root.name,
+                against_label=base_root.name,
+            )
+        )
+    return 0
 
 
 def _live_web(exp: Experiment, only_sets: Sequence[str] | None = None) -> bool:
@@ -627,6 +877,22 @@ async def _experiment_run(args: argparse.Namespace, cache: ResearchStore | None)
     if _live_web(exp, args.only_sets):
         health = await require_searxng(args.searxng_url)
         print(health.explain(), file=sys.stderr)
+    keyless = exp.keyless
+    shared_decisions = _open_cache(args.decision_cache)
+    try:
+        return await _run_with(args, exp, cache, shared_decisions, keyless)
+    finally:
+        if shared_decisions is not None:
+            shared_decisions.close()
+
+
+async def _run_with(
+    args: argparse.Namespace,
+    exp: Experiment,
+    cache: ResearchStore | None,
+    shared_decisions: ResearchStore | None,
+    keyless: bool,
+) -> int:
     async with AsyncExitStack() as stack:
         opened: dict[str, DecisionModel] = {}
         for name in sorted({a.decision_model for a in exp.arms if a.decision_model}):
@@ -645,13 +911,17 @@ async def _experiment_run(args: argparse.Namespace, cache: ResearchStore | None)
         checker = await _url_checker(args, stack)
         services = Services(
             decisions=opened,
-            source_config=_source_config(args.searxng_url, args.pdf_extraction),
+            source_config=_source_config(
+                args.searxng_url, args.pdf_extraction, keyless=keyless
+            ),
             judge=judge,
             judge_label=judge_label,
             judge_digest=judge_digest,
             url_checker=checker,
             check_searxng=require_searxng,
             http_cache=cache,
+            decision_cache=shared_decisions,
+            keyless=keyless,
         )
         written = await run_experiment(
             exp,
@@ -664,6 +934,7 @@ async def _experiment_run(args: argparse.Namespace, cache: ResearchStore | None)
             services=services,
             progress=lambda line: print(line, file=sys.stderr),
             only_sets=args.only_sets,
+            only_arms=args.arm,
             concurrency=args.concurrency,
         )
     failed = [r for r in written if r.error]
@@ -681,7 +952,12 @@ async def _experiment_run(args: argparse.Namespace, cache: ResearchStore | None)
 
 
 async def _cmd_experiment_report(args: argparse.Namespace) -> int:
-    text = report_from_registry(load_experiment(args.file), args.out_dir)
+    text = report_from_registry(
+        load_experiment(args.file),
+        args.out_dir,
+        snapshots=args.snapshots,
+        litsearch_dir=args.litsearch_dir,
+    )
     if args.out is not None:
         write_atomic(args.out, text.encode("utf-8"))
     else:
@@ -697,6 +973,7 @@ async def _cmd_experiment(args: argparse.Namespace) -> int:
 
 _HANDLERS: dict[str, Callable[[argparse.Namespace], Coroutine[Any, Any, int]]] = {
     "freeze": _cmd_freeze,
+    "pool": _cmd_pool,
     "cache": _cmd_cache,
     "experiment": _cmd_experiment,
     "download": _cmd_download,

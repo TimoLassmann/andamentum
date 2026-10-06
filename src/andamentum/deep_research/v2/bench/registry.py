@@ -41,6 +41,9 @@ class ArmRecord(BaseModel):
     repeats: int = 1
     solo: int | None = None
     outage: str = "stop"
+    inputs: dict[str, str] = Field(
+        default_factory=dict, description="Per set, the inputs profile it ran on."
+    )
 
 
 class StartRecord(BaseModel):
@@ -54,6 +57,13 @@ class StartRecord(BaseModel):
     notes: list[str] = Field(default_factory=list)
     concurrency: int = Field(
         default=1, ge=1, description="Cells of one arm in flight at once."
+    )
+    keyless: bool = Field(
+        default=False, description="No API key was read or used (the file says so)."
+    )
+    inputs: dict[str, str] = Field(
+        default_factory=dict,
+        description="Each inputs profile's name and canonical-JSON hash.",
     )
 
 

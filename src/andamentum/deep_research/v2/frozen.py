@@ -23,8 +23,15 @@ and the link and retraction checks only cached answers. So every arm and every
 repeat sees the same inputs and makes no network call.
 
 A snapshot is one JSON file (:meth:`FrozenInputs.save`, :meth:`FrozenInputs.load`).
-Abstracts under a ``no_redistribute`` licence are written as ``""`` (the
-``Work`` serialiser); the store keeps them.
+Abstracts and snippets under a ``no_redistribute`` licence are written as ``""``
+(the ``Work`` and ``Candidate`` serialisers); the store keeps them, and a frozen
+run reads them back from it (``steps.restore_licensed_text``).
+
+``capture(plan=snapshot)`` reuses another snapshot's sub-questions and queries
+(no model call of any kind): a different set of sources or a different query
+form can then be tried on exactly the queries another freeze was given. What a
+capture asked of each source (searches, failures, results per query, seconds)
+is recorded in the snapshot as accounting; it is not part of its digest.
 """
 
 from __future__ import annotations
@@ -33,7 +40,7 @@ import asyncio
 import hashlib
 import json
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
@@ -49,6 +56,14 @@ from .store import ResearchStore
 from .types import Budget, Candidate, Mode, RunStats, SubQuestion
 
 FROZEN_VERSION = 1
+# What a capture did, not what it found: left out of the digest, which names the inputs.
+_ACCOUNTING = (
+    "searches",
+    "search_failures",
+    "result_counts",
+    "search_s",
+    "tolerated",
+)
 
 
 class FrozenInputs(BaseModel):
@@ -77,6 +92,16 @@ class FrozenInputs(BaseModel):
     queries_per_subquestion: int = Field(default=1, ge=1)
     run_id: str = ""
     retraction_unchecked: list[str] = Field(default_factory=list)
+    # Search accounting (see ``steps.SearchOutcome``): searches attempted and
+    # failed per source, results returned per source and query, the seconds
+    # ``steps.search`` took, and the failures of sources the capture was told
+    # to tolerate (kept here, not in ``degraded``, so they are counted and
+    # judged rather than making the snapshot unusable).
+    searches: dict[str, int] = Field(default_factory=dict)
+    search_failures: dict[str, int] = Field(default_factory=dict)
+    result_counts: dict[str, dict[str, int]] = Field(default_factory=dict)
+    search_s: float = 0.0
+    tolerated: list[str] = Field(default_factory=list)
 
     def candidates_for(self, subquestion_id: str) -> list[Candidate]:
         """The candidates found for one sub-question, in capture order."""
@@ -89,7 +114,9 @@ class FrozenInputs(BaseModel):
     def digest(self) -> str:
         """sha256 of the snapshot's canonical JSON: names the inputs a run used."""
         text = json.dumps(
-            self.model_dump(mode="json"), sort_keys=True, separators=(",", ":")
+            self.model_dump(mode="json", exclude=set(_ACCOUNTING)),
+            sort_keys=True,
+            separators=(",", ":"),
         )
         return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
@@ -119,7 +146,7 @@ async def capture(
     question: str,
     *,
     mode: Mode,
-    model: str | Model,
+    model: str | Model | None,
     store: ResearchStore,
     decision_model: str | DecisionModel | None = None,
     budget: Budget = Budget(),
@@ -129,6 +156,8 @@ async def capture(
     progress: Callable[[str], None] | None = None,
     clock: Callable[[], float] = time.time,
     retractions: bool = True,
+    plan: FrozenInputs | None = None,
+    tolerate_failures: Collection[str] = (),
 ) -> FrozenInputs:
     """Plan *question* and run one round of search, live, and return the snapshot.
 
@@ -142,7 +171,21 @@ async def capture(
     hidden. ``retractions`` checks every candidate's DOI in Crossref once,
     concurrently (within the client's per-source cap), into the store's cache (a failed check is listed in
     ``retraction_unchecked``, not ``degraded``: the snapshot is still fair).
+
+    ``plan`` is another snapshot of the same question and mode whose
+    sub-questions and queries are used as they are (the planned filters follow
+    from the sub-questions by code): no model is called, none is opened, and
+    ``model`` may be ``None``. ``tolerate_failures`` names sources whose failed
+    searches are counted (``search_failures``, ``tolerated``) instead of
+    marking the snapshot degraded; every other failure still does.
     """
+    if plan is None and model is None:
+        raise ValueError("capture plans with a model: pass model, or plan= a snapshot")
+    if plan is not None and (plan.question != question or plan.mode != mode):
+        raise ValueError(
+            "plan is a snapshot of another question or mode: "
+            f"{plan.question!r} ({plan.mode}), not {question!r} ({mode})"
+        )
     if source_client is not None and source_client.store is not store:
         raise ValueError("source_client must belong to the store passed")
     say = progress or (lambda _line: None)
@@ -150,7 +193,9 @@ async def capture(
     handle: DecisionModel | None = None
     try:
         handle = (
-            await DecisionModel.open(decision_model)
+            None
+            if plan is not None
+            else await DecisionModel.open(decision_model)
             if isinstance(decision_model, str)
             else decision_model
         )
@@ -160,7 +205,7 @@ async def capture(
             exclude={"mailto", "openalex_api_key", "semantic_scholar_api_key"},
         )
         models: dict[str, JsonValue] = {
-            "model": _model_id(model),
+            "model": "" if model is None else _model_id(model),
             "decision_model": handle.id if handle else None,
             "decision_digest": handle.digest if handle else None,
             "model_settings": {"temperature": config.temperature, "seed": config.seed},
@@ -170,13 +215,14 @@ async def capture(
             mode=mode,
             config={
                 "frozen_capture": True,
+                "plan_from": plan.digest() if plan is not None else None,
                 "budget": budget.model_dump(mode="json"),
                 "sources": secretless,
             },
             models=models,
         )
         asker = Asker(
-            model=model,
+            model=model if model is not None else "unused",
             store=store,
             run_id=run_id,
             budget=budget,
@@ -186,35 +232,47 @@ async def capture(
         )
         degraded: list[str] = []
         try:
-            say("Freeze: sub-questions")
-            planned = await steps.plan(question, asker=asker)
-            degraded += planned.degraded
-            if planned.spent:
-                degraded.append(f"budget:{planned.spent} while planning")
-            for subquestion in planned.subquestions:
+            if plan is not None:
+                say("Freeze: the sub-questions and queries of another snapshot")
+                subquestions = list(plan.subquestions)
+                queries = {k: list(v) for k, v in plan.queries.items()}
+            else:
+                say("Freeze: sub-questions")
+                planned = await steps.plan(question, asker=asker)
+                degraded += planned.degraded
+                if planned.spent:
+                    degraded.append(f"budget:{planned.spent} while planning")
+                subquestions = planned.subquestions
+                say(f"Freeze: queries for {len(subquestions)} sub-questions")
+                written = await steps.write_queries(
+                    question,
+                    targets=subquestions,
+                    gaps={},
+                    done=[],
+                    per_subquestion=budget.queries_per_subq,
+                    asker=asker,
+                )
+                degraded += written.degraded
+                if written.spent:
+                    degraded.append(f"budget:{written.spent} while writing queries")
+                queries = written.queries
+            for subquestion in subquestions:
                 store.add_run_item(run_id, "subquestion", subquestion.id, subquestion)
-            say(f"Freeze: queries for {len(planned.subquestions)} sub-questions")
-            written = await steps.write_queries(
-                question,
-                targets=planned.subquestions,
-                gaps={},
-                done=[],
-                per_subquestion=budget.queries_per_subq,
-                asker=asker,
-            )
-            degraded += written.degraded
-            if written.spent:
-                degraded.append(f"budget:{written.spent} while writing queries")
-            say(
-                f"Freeze: search, {sum(len(q) for q in written.queries.values())} queries"
-            )
+            say(f"Freeze: search, {sum(len(q) for q in queries.values())} queries")
+            began = clock()
             searched = await steps.search(
-                written.queries,
+                queries,
                 sources=source_set.search,
-                filters={s.id: steps.filters_for(s) for s in planned.subquestions},
+                filters={s.id: steps.filters_for(s) for s in subquestions},
                 limit=sources.results_per_query,
             )
-            degraded += searched.degraded
+            search_s = clock() - began
+            tolerated = [
+                line
+                for name in tolerate_failures
+                for line in searched.failed_lines.get(name, [])
+            ]
+            degraded += [line for line in searched.degraded if line not in tolerated]
             admitted = steps.admit(searched.candidates, store=store, known={})
             unchecked: list[str] = []
             if retractions:
@@ -249,8 +307,8 @@ async def capture(
             question=question,
             mode=mode,
             captured_at=clock(),
-            subquestions=planned.subquestions,
-            queries=written.queries,
+            subquestions=subquestions,
+            queries=queries,
             candidates=list(admitted.candidates.values()),
             degraded=steps.unique(degraded),
             models=models,
@@ -258,6 +316,11 @@ async def capture(
             queries_per_subquestion=budget.queries_per_subq,
             run_id=run_id,
             retraction_unchecked=unchecked,
+            searches=dict(searched.searches),
+            search_failures=dict(searched.failures),
+            result_counts={k: dict(v) for k, v in searched.result_counts.items()},
+            search_s=search_s,
+            tolerated=tolerated,
         )
     finally:
         if isinstance(decision_model, str) and handle is not None:

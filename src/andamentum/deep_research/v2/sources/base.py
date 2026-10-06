@@ -20,7 +20,7 @@ import json
 import time
 import weakref
 from collections import Counter, defaultdict
-from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
+from collections.abc import AsyncIterator, Awaitable, Callable, Collection, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import Literal, Protocol, runtime_checkable
@@ -100,6 +100,15 @@ FETCH_INTERVAL_S = 0.5  # between fetches of pages from the open web
 RETRY_STATUSES = frozenset({429, 500, 502, 503, 504})
 DEFAULT_RETRIES = 2
 MAX_RETRY_WAIT_S = 30.0  # a longer Retry-After or reset is an error, not a sleep
+# The schedule of a "patient" source (a freeze asks a shared, rate-limited pool
+# such as keyless Semantic Scholar): eight retries with these waits in seconds;
+# a longer Retry-After is honoured up to PATIENT_MAX_RETRY_AFTER_S. After
+# PATIENT_GIVE_UP_AFTER requests in a row ran out of retries the source is
+# refused for the rest of the process, so a dead pool cannot hold a freeze for
+# hours. Live runs and every other source keep DEFAULT_RETRIES.
+PATIENT_RETRY_WAITS_S: tuple[float, ...] = (5, 10, 20, 40, 60, 60, 60, 60)
+PATIENT_MAX_RETRY_AFTER_S = 120.0
+PATIENT_GIVE_UP_AFTER = 3
 DEFAULT_TIMEOUT_S = 60.0  # OpenAlex's semantic search takes about ten seconds
 DEFAULT_RESULTS_PER_QUERY = 20
 MIN_FULL_TEXT_CHARS = 200  # shorter is an error page or a stub, not a paper
@@ -136,7 +145,12 @@ class SourceConfig(BaseModel):
     among them because it verifies rather than discovers. ``searxng_url`` is
     required for web mode. ``openalex_search`` picks the OpenAlex endpoint:
     both cost credits (about ten per call), so ``keyword`` is the default and
-    ``semantic`` or ``both`` is a choice. ``pdf_extraction`` picks how a fetched
+    ``semantic`` or ``both`` is a choice. ``arxiv_query`` joins the words of an
+    arXiv query by AND (``all_terms``) or OR (``any_term``). ``expand_with``
+    names the sources whose citation links are followed (``None``: every source
+    that has them); a source can be searched without being expanded, which
+    matters for one whose citation requests are too costly to make.
+    ``pdf_extraction`` picks how a fetched
     PDF becomes text: ``docling`` (the default: layout-aware, slow) or ``fast``
     (the PDF's own text layer, no OCR); see ``sources.extraction``.
     """
@@ -151,6 +165,10 @@ class SourceConfig(BaseModel):
     scholarly: tuple[
         Literal["openalex", "europepmc", "arxiv", "semantic_scholar"], ...
     ] = ("openalex", "europepmc", "arxiv")
+    arxiv_query: Literal["all_terms", "any_term"] = "all_terms"
+    expand_with: (
+        tuple[Literal["openalex", "europepmc", "arxiv", "semantic_scholar"], ...] | None
+    ) = None
     openalex_search: Literal["keyword", "semantic", "both"] = "keyword"
     results_per_query: int = Field(default=DEFAULT_RESULTS_PER_QUERY, ge=1, le=200)
     arxiv_pdf_interval_s: float = Field(default=ARXIV_PDF_INTERVAL_S, ge=0.0)
@@ -294,6 +312,10 @@ class SharedPacing:
     inflight: dict[str, asyncio.Semaphore] = field(default_factory=dict)
     # when a server said its budget is spent, until when it is not asked again
     exhausted_until: dict[str, float] = field(default_factory=dict)
+    # patient sources: requests in a row that ran out of retries, and the
+    # sources that are no longer asked in this process
+    patient_failures: dict[str, int] = field(default_factory=dict)
+    gave_up: set[str] = field(default_factory=set)
 
 
 _PROCESS_PACING: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, SharedPacing] = (
@@ -344,6 +366,10 @@ class SourceClient:
 
     ``clock`` and ``sleep`` are injected so a test runs without waiting.
 
+    ``patient`` names the sources asked with the patient retry schedule
+    (``PATIENT_RETRY_WAITS_S``, giving up after ``PATIENT_GIVE_UP_AFTER``
+    exhausted requests in a row); every other source keeps ``retries``.
+
     ``offline=True`` makes a client that never touches the network: answers
     come from the store's cache only (expired entries included), a miss
     raises :class:`SourceError` with ``kind='offline'`` and is counted in
@@ -368,6 +394,7 @@ class SourceClient:
         offline: bool = False,
         pacing: SharedPacing | None = None,
         inflight: Mapping[str, int] | None = None,
+        patient: Collection[str] = (),
     ) -> None:
         if offline and client is not None:
             raise ValueError("an offline SourceClient makes its own http client")
@@ -403,6 +430,9 @@ class SourceClient:
         self._inflight_caps = {**DEFAULT_INFLIGHT, **(inflight or {})}
         self._inflight_slots = shared.inflight
         self._exhausted_until = shared.exhausted_until
+        self._patient = frozenset(patient)
+        self._patient_failures = shared.patient_failures
+        self._gave_up = shared.gave_up
         self.rate_info: dict[str, RateInfo] = {}
         self.requests: Counter[str] = Counter()
         self.spent_usd: defaultdict[str, float] = defaultdict(float)
@@ -555,34 +585,66 @@ class SourceClient:
         interval: str,
     ) -> HttpResult:
         self._refuse_if_exhausted(source, url)
+        patient = source in self._patient
+        if patient and source in self._gave_up:
+            raise SourceError(
+                source,
+                f"not asked: {PATIENT_GIVE_UP_AFTER} requests in a row ran out of "
+                "retries, so the source is refused for the rest of this process",
+                kind="rate_limited",
+                url=url,
+            )
+        retries = len(PATIENT_RETRY_WAITS_S) if patient else self._retries
         reason = ""
-        for attempt in range(self._retries + 1):
+        for attempt in range(retries + 1):
             await self._space(interval)
             self.requests[source] += 1
+            scheduled = (
+                PATIENT_RETRY_WAITS_S[min(attempt, len(PATIENT_RETRY_WAITS_S) - 1)]
+                if patient
+                else 2.0**attempt
+            )
             try:
                 response = await self.http.get(
                     url, params=dict(params), headers=dict(headers)
                 )
             except httpx.HTTPError as exc:
                 reason = f"{type(exc).__name__}: {exc}"
-                if attempt < self._retries:
-                    await self._sleep(min(2.0**attempt, self._max_wait_s))
+                if attempt < retries:
+                    await self._sleep(
+                        scheduled if patient else min(scheduled, self._max_wait_s)
+                    )
                     continue
+                if patient:
+                    self._patient_exhausted(source)
                 raise SourceError(source, reason, kind="transport", url=url) from exc
             info = self._read_rate_headers(source, response)
             if response.status_code == 200:
                 self.fetched_bytes += len(response.content)
+                if patient:
+                    self._patient_failures[source] = 0
                 return HttpResult(status=200, body=response.content)
             reason = _http_reason(response)
-            if response.status_code in RETRY_STATUSES and attempt < self._retries:
+            if response.status_code in RETRY_STATUSES and attempt < retries:
+                if patient:
+                    wait = (
+                        scheduled
+                        if info.retry_after_s is None
+                        else min(
+                            max(scheduled, info.retry_after_s),
+                            PATIENT_MAX_RETRY_AFTER_S,
+                        )
+                    )
+                    await self._sleep(wait)
+                    continue
                 wait = (
-                    info.retry_after_s
-                    if info.retry_after_s is not None
-                    else 2.0**attempt
+                    info.retry_after_s if info.retry_after_s is not None else scheduled
                 )
                 if wait <= self._max_wait_s:
                     await self._sleep(wait)
                     continue
+            if patient and response.status_code in RETRY_STATUSES:
+                self._patient_exhausted(source)
             raise SourceError(
                 source,
                 reason,
@@ -592,6 +654,14 @@ class SourceClient:
                 retry_after_s=info.retry_after_s,
             )
         raise SourceError(source, reason or "no attempt made", url=url)  # unreachable
+
+    def _patient_exhausted(self, source: str) -> None:
+        """A patient source's request ran out of retries: count it, and stop
+        asking after ``PATIENT_GIVE_UP_AFTER`` in a row."""
+        failures = self._patient_failures.get(source, 0) + 1
+        self._patient_failures[source] = failures
+        if failures >= PATIENT_GIVE_UP_AFTER:
+            self._gave_up.add(source)
 
     def _lock(self, name: str) -> asyncio.Lock:
         if name not in self._locks:

@@ -84,6 +84,8 @@ def build_sources(
     Web mode needs ``searxng_url`` and raises a ``config`` error without it.
     The scholarly sources that read text come first (Europe PMC's open-access
     XML, then arXiv, then OpenAlex's open-access links), the web source last.
+    ``config.expand_with`` limits which sources follow citation links (``None``:
+    all that can); it does not limit which are searched or read.
     """
     shared = client or SourceClient.for_store(store)
     scholarly: list[Source] = []
@@ -102,7 +104,11 @@ def build_sources(
             scholarly.append(EuropePmcSource(client=shared))
         elif name == "arxiv":
             scholarly.append(
-                ArxivSource(client=shared, pdf_interval_s=config.arxiv_pdf_interval_s)
+                ArxivSource(
+                    client=shared,
+                    pdf_interval_s=config.arxiv_pdf_interval_s,
+                    query_form=config.arxiv_query,
+                )
             )
         else:
             scholarly.append(
@@ -141,6 +147,11 @@ def build_sources(
                 key=lambda s: reading.get(s.name, 9),
             )
         ),
-        expand=tuple(s for s in pool if isinstance(s, ExpandingSource)),
+        expand=tuple(
+            s
+            for s in pool
+            if isinstance(s, ExpandingSource)
+            and (config.expand_with is None or s.name in config.expand_with)
+        ),
         crossref=CrossrefSource(client=shared, mailto=config.mailto),
     )

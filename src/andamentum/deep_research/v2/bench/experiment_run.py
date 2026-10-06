@@ -12,6 +12,16 @@ skipped, so an interrupted run resumes where it stopped. Arms with ``solo`` set
 (clean-timing re-runs of a few items) run last, one cell at a time whatever the
 concurrency, so nothing else of the experiment shares their wall time.
 
+Inputs profiles (``experiment.InputsSpec``): when the file declares them, a
+frozen arm names the profile of each set it runs on (``ArmSpec.inputs``); its
+snapshots are ``<snapshots>/<profile>/<set>/<item>/`` and its run-time
+``SourceConfig`` is the run's own updated with the profile's ``sources`` (so
+its offline text sources and its citation expansion match its freeze). A
+snapshot marked ``search_only`` is refused. ``only_arms`` runs some of the
+file's arms (always in file order, solo arms last, snapshots checked only for
+them); ``Services.decision_cache`` is a store the cells share their decision
+answers through (never the solo cells).
+
 What "frozen" means for a v2 arm: Plan and Search come from the snapshot taken
 by ``bench freeze`` (``freeze.py``), the sources' cached responses come from the
 snapshot's store, and the run is entirely offline. Every (arm, repeat, item) cell
@@ -55,10 +65,12 @@ from .experiment import ArmSpec, Experiment, SetSpec
 from .freeze import (
     STORE_FILE,
     SnapshotMissing,
+    SnapshotSearchOnly,
     load_frozen,
     plant_into_store,
     planted_frozen,
     snapshot_dir,
+    snapshot_search_only,
 )
 from .health import SearxDown, SearxHealth
 from .judging import ClaimJudge, UrlChecker, check_links
@@ -129,10 +141,14 @@ class DataDirs:
 
 
 def _web_questions(spec: SetSpec) -> list[WebQuestion]:
-    if spec.n is None or spec.n >= len(WEB_QUESTIONS):
+    if spec.skip == 0 and (spec.n is None or spec.n >= len(WEB_QUESTIONS)):
         return list(WEB_QUESTIONS)
     wanted = set(
-        select_subset([q.question_id for q in WEB_QUESTIONS], spec.n, seed=spec.seed)
+        select_subset(
+            [q.question_id for q in WEB_QUESTIONS],
+            spec.skip + (spec.n if spec.n is not None else len(WEB_QUESTIONS)),
+            seed=spec.seed,
+        )[spec.skip :]
     )
     return [q for q in WEB_QUESTIONS if q.question_id in wanted]
 
@@ -143,7 +159,7 @@ def load_items(spec: SetSpec, dirs: DataDirs) -> list[Item]:
         if dirs.litsearch is None:
             raise ValueError("the litsearch set needs --litsearch-dir")
         data = load_litsearch(
-            dirs.litsearch, n=spec.n or DEFAULT_SUBSET, seed=spec.seed
+            dirs.litsearch, n=spec.n or DEFAULT_SUBSET, seed=spec.seed, skip=spec.skip
         )
         return [
             Item("litsearch", i.query.query_id, i.query.query, litsearch=i)
@@ -197,6 +213,15 @@ def cost_metrics(cost: Cost | None) -> dict[str, float | None]:
         if cost.output_tokens is None
         else float(cost.output_tokens),
     }
+
+
+def failed_search_share(frozen: FrozenInputs) -> float | None:
+    """The share of the snapshot's searches that failed, over every source
+    (``None`` for a snapshot that recorded no search accounting)."""
+    attempted = sum(frozen.searches.values())
+    if attempted == 0:
+        return None
+    return sum(frozen.search_failures.values()) / attempted
 
 
 def litsearch_metrics(
@@ -296,6 +321,11 @@ class Services:
     judge_digest: str | None = None
     # a shared read-through HTTP cache for the live v2 arms (frozen arms are offline)
     http_cache: ResearchStore | None = None
+    # a store the cells' decision caches read through to and write to as well
+    # (``research(shared_decisions=)``); a solo (clean-timing) cell never uses it
+    decision_cache: ResearchStore | None = None
+    # no API key is read or used (the experiment file says so); recorded in the registry
+    keyless: bool = False
     # probes SearxNG before each live web cell (the CLI sets it; None: no probe)
     check_searxng: Callable[[str | None], Awaitable[SearxHealth]] | None = None
     # tests replace these to run stub arms; the defaults build the real ones
@@ -324,7 +354,13 @@ def preset_of(spec: ArmSpec) -> ResearchConfig:
         raise ValueError(f"arm {spec.name}: {error.args[0]}") from None
 
 
-def build_answer_arm(spec: ArmSpec, mode: Mode, services: Services) -> ExperimentArm:
+def build_answer_arm(
+    spec: ArmSpec,
+    mode: Mode,
+    services: Services,
+    *,
+    sources: SourceConfig | None = None,
+) -> ExperimentArm:
     decision = services.decision_for(spec)
     if services.answer_arm is not None:
         return services.answer_arm(spec, mode, decision)
@@ -342,10 +378,11 @@ def build_answer_arm(spec: ArmSpec, mode: Mode, services: Services) -> Experimen
         mode=mode,
         model=spec.model,
         decision_model=decision,
-        sources=services.source_config,
+        sources=sources or services.source_config,
         config=preset_of(spec),
         name=spec.name,
         http_cache=services.http_cache,
+        shared_decisions=None if spec.is_solo else services.decision_cache,
     )
 
 
@@ -369,6 +406,25 @@ def mode_is_web(set_name: str) -> bool:
     return set_mode(set_name) == "web"
 
 
+def profile_sources(
+    exp: Experiment, spec: ArmSpec, set_name: str, services: Services
+) -> SourceConfig:
+    """The ``SourceConfig`` a frozen arm runs *set_name* with: the run's own,
+    updated with the sources of the arm's inputs profile for that set."""
+    name = exp.profile_of(spec, set_name)
+    if name is None:
+        return services.source_config
+    profile = exp.inputs[name]
+    if profile.existing:
+        return services.source_config
+    return services.source_config.model_copy(update=profile.sources.updates())
+
+
+def snapshot_root(snapshots: Path, profile: str | None) -> Path:
+    """Where the snapshots of an inputs profile are (the folder itself without one)."""
+    return snapshots if profile is None else snapshots / profile
+
+
 def arm_record(exp: Experiment, spec: ArmSpec, services: Services) -> ArmRecord:
     """What identifies an arm in the registry: config hash and model digests."""
     decision = services.decision_for(spec)
@@ -385,6 +441,7 @@ def arm_record(exp: Experiment, spec: ArmSpec, services: Services) -> ArmRecord:
         repeats=exp.repeats_of(spec),
         solo=spec.solo,
         outage=spec.outage,
+        inputs=dict(spec.inputs),
     )
 
 
@@ -431,27 +488,64 @@ def frozen_for(item: Item, *, snapshots: Path) -> FrozenInputs:
     return load_frozen(snapshot_dir(snapshots, item.set_name, item.item_id))
 
 
+def _needed_snapshots(
+    exp: Experiment,
+    items: Mapping[str, Sequence[Item]],
+    snapshots: Path | None,
+    only_arms: Sequence[str] | None,
+) -> list[tuple[str, Path | None]]:
+    """The snapshots the frozen arms to run need: a label and the folder (None
+    when no snapshots directory was given)."""
+    needed: dict[str, Path | None] = {}
+    for set_name, set_items in items.items():
+        for arm in exp.arms:
+            if not arm.is_frozen or not arm.runs_on(set_name):
+                continue
+            if only_arms is not None and arm.name not in only_arms:
+                continue
+            profile = exp.profile_of(arm, set_name)
+            for item in set_items:
+                base_set = "web" if item.planted else set_name
+                base_id = (
+                    item.web.question_id if item.planted and item.web else item.item_id
+                )
+                label = f"{profile + '/' if profile else ''}{base_set}/{base_id}"
+                needed[label] = (
+                    None
+                    if snapshots is None
+                    else snapshot_dir(
+                        snapshot_root(snapshots, profile), base_set, base_id
+                    )
+                )
+    return sorted(needed.items())
+
+
 def missing_snapshots(
-    exp: Experiment, items: Mapping[str, Sequence[Item]], snapshots: Path | None
+    exp: Experiment,
+    items: Mapping[str, Sequence[Item]],
+    snapshots: Path | None,
+    only_arms: Sequence[str] | None = None,
 ) -> list[str]:
     """What a frozen arm needs and the snapshots directory does not hold."""
-    missing: list[str] = []
-    for set_name, set_items in items.items():
-        if not any(a.is_frozen and a.runs_on(set_name) for a in exp.arms):
-            continue
-        for item in set_items:
-            base_set = "web" if item.planted else set_name
-            base_id = (
-                item.web.question_id if item.planted and item.web else item.item_id
-            )
-            if (
-                snapshots is None
-                or not (
-                    snapshot_dir(snapshots, base_set, base_id) / STORE_FILE
-                ).exists()
-            ):
-                missing.append(f"{base_set}/{base_id}")
-    return sorted(set(missing))
+    return [
+        label
+        for label, folder in _needed_snapshots(exp, items, snapshots, only_arms)
+        if folder is None or not (folder / STORE_FILE).exists()
+    ]
+
+
+def search_only_snapshots(
+    exp: Experiment,
+    items: Mapping[str, Sequence[Item]],
+    snapshots: Path | None,
+    only_arms: Sequence[str] | None = None,
+) -> list[str]:
+    """The needed snapshots that are marked ``search_only`` (not to be run on)."""
+    return [
+        label
+        for label, folder in _needed_snapshots(exp, items, snapshots, only_arms)
+        if folder is not None and snapshot_search_only(folder)
+    ]
 
 
 # -- the run ------------------------------------------------------------------------
@@ -481,6 +575,8 @@ async def _answer_cell(
         metrics = litsearch_metrics(
             output, item.litsearch, returns_pages=arm.returns_pages
         )
+        if frozen is not None and (share := failed_search_share(frozen)) is not None:
+            metrics["inputs_failed_search_share"] = share
     elif item.web is not None:
         verdicts: list[bool] | None = None
         if services.judge is not None:
@@ -506,6 +602,11 @@ async def _answer_cell(
     else:
         raise ValueError(f"{item.set_name}: nothing to measure for {item.item_id}")
     metrics.update(cost_metrics(output.cost))
+    if output.result is not None:
+        stats = output.result.stats
+        metrics["decision_answers"] = float(
+            stats.decision_calls + stats.decision_cache_hits
+        )
     return metrics, output, outcome
 
 
@@ -536,6 +637,7 @@ async def run_experiment(
     progress: Callable[[str], None] = lambda _line: None,
     clock: Callable[[], float] = time.time,
     only_sets: Sequence[str] | None = None,
+    only_arms: Sequence[str] | None = None,
     concurrency: int = 1,
 ) -> list[RunRecord]:
     """Run every cell not yet in the registry; returns the records written now.
@@ -543,6 +645,8 @@ async def run_experiment(
     ``only_sets`` restricts this invocation to some of the file's sets (a set
     whose data or infrastructure is not available yet); the file, its hash and
     the registry are unchanged, so a later invocation runs the rest.
+    ``only_arms`` does the same for arms (snapshots are checked only for them;
+    the order stays the file's, solo arms last).
 
     ``concurrency`` is how many cells of one arm are in flight at once (arms
     still run one after another). It is 1 unless every language model of the
@@ -561,13 +665,31 @@ async def run_experiment(
         if unknown:
             raise ValueError(f"not sets of this experiment: {', '.join(unknown)}")
     chosen = [s for s in exp.sets if only_sets is None or s.name in only_sets]
+    if only_arms is not None:
+        unknown_arms = [n for n in only_arms if n not in {a.name for a in exp.arms}]
+        if unknown_arms:
+            raise ValueError(f"not arms of this experiment: {', '.join(unknown_arms)}")
+    if exp.keyless and (
+        services.source_config.openalex_api_key
+        or services.source_config.semantic_scholar_api_key
+    ):
+        raise ValueError(
+            "the experiment is keyless but the source configuration holds an API key"
+        )
     path = registry_path(out_dir)
     check_same_experiment(path, experiment=exp.name, experiment_hash=exp.config_hash())
     items = {s.name: load_items(s, dirs) for s in chosen}
-    missing = missing_snapshots(exp, items, dirs.snapshots)
+    missing = missing_snapshots(exp, items, dirs.snapshots, only_arms)
     if missing:
         raise SnapshotMissing(
             f"no snapshot for {', '.join(missing)}: run `bench freeze` for those sets"
+        )
+    search_only = search_only_snapshots(exp, items, dirs.snapshots, only_arms)
+    if search_only:
+        raise SnapshotSearchOnly(
+            f"{', '.join(search_only)} {'is a' if len(search_only) == 1 else 'are'} "
+            "search-only snapshot(s) (no texts, no citation hops, no retraction "
+            "check): they compare candidate pools and are not run on"
         )
     if exp.needs_judge() and services.judge is None:
         raise ValueError(
@@ -587,6 +709,8 @@ async def run_experiment(
             judge_digest=services.judge_digest,
             notes=exp.notes,
             concurrency=concurrency,
+            keyless=exp.keyless,
+            inputs={n: i.profile_hash() for n, i in exp.inputs.items()},
         ),
     )
     done = {r.cell for r in runs_of(path, experiment_hash=exp.config_hash())}
@@ -594,9 +718,12 @@ async def run_experiment(
     # clean-timing (solo) arms go last, one cell at a time
     ordered = [a for a in exp.arms if not a.is_solo] + exp.solo_arms
     for spec in ordered:
+        if only_arms is not None and spec.name not in only_arms:
+            continue
         info = by_name[spec.name]
-        # one arm object per mode: a set's mode is part of what an arm is built for
-        answer_arms: dict[Mode, ExperimentArm] = {}
+        # one arm object per mode and inputs profile: both are part of what an
+        # arm is built for (a profile sets the sources of its offline run)
+        answer_arms: dict[tuple[Mode, str | None], ExperimentArm] = {}
         screening_arm: ScreeningArm | None = None
         jobs: list[Callable[[], Awaitable[RunRecord]]] = []
         for set_spec in chosen:
@@ -618,9 +745,17 @@ async def run_experiment(
                         arm = screening_arm
                     else:
                         mode = set_mode(set_spec.name)
-                        if mode not in answer_arms:
-                            answer_arms[mode] = build_answer_arm(spec, mode, services)
-                        arm = answer_arms[mode]
+                        built = (mode, exp.profile_of(spec, set_spec.name))
+                        if built not in answer_arms:
+                            answer_arms[built] = build_answer_arm(
+                                spec,
+                                mode,
+                                services,
+                                sources=profile_sources(
+                                    exp, spec, set_spec.name, services
+                                ),
+                            )
+                        arm = answer_arms[built]
                     jobs.append(
                         functools.partial(
                             _run_cell,
@@ -696,11 +831,14 @@ async def _run_cell(
             if spec.is_frozen:
                 if dirs.snapshots is None:
                     raise SnapshotMissing(NO_SNAPSHOT)
-                frozen = frozen_for(item, snapshots=dirs.snapshots)
+                root = snapshot_root(
+                    dirs.snapshots, exp.profile_of(spec, item.set_name)
+                )
+                frozen = frozen_for(item, snapshots=root)
                 store = prepare_working_copy(
                     item,
                     out_dir=out_dir,
-                    snapshots=dirs.snapshots,
+                    snapshots=root,
                     arm=spec.name,
                     repeat=repeat,
                 )

@@ -38,6 +38,7 @@ from .ask import MODEL_ERRORS, Asker, BudgetExhausted
 from .coverage import PairKey, find_conflicts
 from .criteria import Screener
 from .identity import merge, merge_pair
+from .sources._util import snippet_of
 from .sources.base import (
     ExpandingSource,
     SearchFilters,
@@ -384,7 +385,16 @@ class SearchOutcome:
     candidates: list[Candidate]
     degraded: list[str] = field(default_factory=list)
     queries_run: list[str] = field(default_factory=list)
-    notes: list[str] = field(default_factory=list)  # a partial answer: results, engines down
+    notes: list[str] = field(
+        default_factory=list
+    )  # a partial answer: results, engines down
+    # What was asked of each source (an experiment's search accounting):
+    # searches attempted and failed per source, the failure lines per source
+    # (the same text as ``degraded``), and how many results each query got.
+    searches: dict[str, int] = field(default_factory=dict)
+    failures: dict[str, int] = field(default_factory=dict)
+    failed_lines: dict[str, list[str]] = field(default_factory=dict)
+    result_counts: dict[str, dict[str, int]] = field(default_factory=dict)
 
 
 async def search(
@@ -404,15 +414,20 @@ async def search(
         for query in own:
             outcome.queries_run.append(query)
             for source in sources:
+                outcome.searches[source.name] = outcome.searches.get(source.name, 0) + 1
                 try:
                     results = await source.search(
                         query, limit=limit, filters=filters.get(subquestion_id)
                     )
                 except SourceError as error:
-                    outcome.degraded.append(
-                        f"{source.name} search failed for {query!r}: {error.reason}"
+                    line = f"{source.name} search failed for {query!r}: {error.reason}"
+                    outcome.degraded.append(line)
+                    outcome.failures[source.name] = (
+                        outcome.failures.get(source.name, 0) + 1
                     )
+                    outcome.failed_lines.setdefault(source.name, []).append(line)
                     continue
+                outcome.result_counts.setdefault(source.name, {})[query] = len(results)
                 if isinstance(source, WarningSource):
                     outcome.notes += source.take_warnings()
                 found += [
@@ -456,6 +471,40 @@ def admit(
         candidates[stored.work_id] = combined.model_copy(update={"work": stored})
         pairs += [(stored.work_id, s) for s in candidate.subquestion_ids]
     return Admitted(candidates, list(dict.fromkeys(pairs)))
+
+
+def restore_licensed_text(
+    found: Sequence[Candidate], *, store: ResearchStore
+) -> list[Candidate]:
+    """*found* with the text of a ``no_redistribute`` work put back from the store.
+
+    A snapshot's ``frozen.json`` carries no restricted text (the work's
+    abstract and the candidate's snippet are written blank, one licence rule for
+    every dump); the snapshot's store keeps it in its own column. A frozen run
+    reads each such candidate's abstract and snippet from the store's work
+    record, so the screen sees what a live run saw. A candidate the store does
+    not hold, or whose work is redistributable, is returned as it is.
+    """
+    restored: list[Candidate] = []
+    for candidate in found:
+        if candidate.work.redistributable:
+            restored.append(candidate)
+            continue
+        stored = store.find_work(candidate.work)
+        if stored is None or not stored.abstract:
+            restored.append(candidate)
+            continue
+        restored.append(
+            candidate.model_copy(
+                update={
+                    "work": candidate.work.model_copy(
+                        update={"abstract": stored.abstract}
+                    ),
+                    "snippet": candidate.snippet or snippet_of(stored),
+                }
+            )
+        )
+    return restored
 
 
 # -- screen -------------------------------------------------------------------

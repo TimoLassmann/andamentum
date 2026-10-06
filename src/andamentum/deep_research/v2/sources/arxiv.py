@@ -3,9 +3,12 @@
 The Atom API (``export.arxiv.org/api/query``) is asked for one request in
 three seconds on a single connection, which ``SourceClient`` enforces. It has
 no semantic search, no open-access filter and no citation links. A query is
-turned into an AND of its significant words over all fields, because arXiv's
-default treats a long phrase as a phrase; a query that already uses field
-syntax (``ti:``, ``abs:``, ``au:``, ``cat:``, ``all:``) is sent as written.
+turned into its significant words over all fields, because arXiv's default
+treats a long phrase as a phrase: joined by AND (``all_terms``, the default:
+every word must match, so a long query often finds one work or none) or by OR
+(``any_term``: a work matching any word is a result and the relevance sort puts
+those matching more words first); a query that already uses field syntax
+(``ti:``, ``abs:``, ``au:``, ``cat:``, ``all:``) is sent as written.
 
 The PDF is fetched from ``arxiv.org/pdf/<id>`` (the API host's robots.txt
 disallows robots; arxiv.org's allows ``/pdf`` with a 15 second crawl delay,
@@ -15,6 +18,7 @@ which is the spacing used) and read by harvest through the shared extractor.
 from __future__ import annotations
 
 import re
+from typing import Literal
 
 from lxml import etree  # type: ignore[attr-defined]  # lxml ships no stubs
 
@@ -41,6 +45,7 @@ MAX_RESULTS = (
     200  # arXiv allows 2000 per request; a research round never needs that many
 )
 MAX_TERMS = 8
+QueryForm = Literal["all_terms", "any_term"]
 _ATOM = "{http://www.w3.org/2005/Atom}"
 _ARXIV = "{http://arxiv.org/schemas/atom}"
 _FIELD_SYNTAX = re.compile(r"\b(?:ti|abs|au|cat|all|co|jr|rn|id):", re.IGNORECASE)
@@ -64,9 +69,11 @@ class ArxivSource:
         store: ResearchStore | None = None,
         client: SourceClient | None = None,
         pdf_interval_s: float = ARXIV_PDF_INTERVAL_S,
+        query_form: QueryForm = "all_terms",
     ) -> None:
         self._client = resolve_client(NAME, store=store, client=client)
         self._client.set_interval(PDF_INTERVAL_KEY, pdf_interval_s)
+        self._query_form: QueryForm = query_form
 
     async def search(
         self,
@@ -77,7 +84,7 @@ class ArxivSource:
     ) -> list[Candidate]:
         """Preprints matching *query*, best first. A year filter is applied after the
         fetch (the API filters by submission date only in its own syntax)."""
-        search_query = to_search_query(query)
+        search_query = to_search_query(query, form=self._query_form)
         if not search_query:
             raise SourceError(
                 NAME, f"no searchable words in the query {query!r}", kind="config"
@@ -121,9 +128,11 @@ class ArxivSource:
         )
 
 
-def to_search_query(query: str) -> str:
+def to_search_query(query: str, *, form: QueryForm = "all_terms") -> str:
     """An arXiv ``search_query``: the query as written when it uses field syntax, else
-    ``all:`` over each significant word, joined by AND."""
+    ``all:`` over each significant word (3 or more letters, stop words out,
+    each once, the first ``MAX_TERMS``), joined by AND (``all_terms``) or OR
+    (``any_term``)."""
     text = query.strip()
     if _FIELD_SYNTAX.search(text):
         return text
@@ -132,7 +141,8 @@ def to_search_query(query: str) -> str:
         lowered = word.lower()
         if len(lowered) >= 3 and lowered not in _STOP and lowered not in terms:
             terms.append(lowered)
-    return " AND ".join(f"all:{t}" for t in terms[:MAX_TERMS])
+    joiner = " AND " if form == "all_terms" else " OR "
+    return joiner.join(f"all:{t}" for t in terms[:MAX_TERMS])
 
 
 def works_from_feed(xml: bytes) -> list[Work]:

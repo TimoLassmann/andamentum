@@ -17,6 +17,10 @@ Slots and the strategies that exist:
   title and abstract (or snippet) against the sub-question, in code (the
   passages' BM25), and only the best ``PREFILTER_TOP`` are put to the generic
   question; the rest are dropped as "below lexical pre-filter".
+- **queue** — the order in which waiting (work, sub-question) pairs are
+  admitted to screening when a round cannot screen them all: ``arrival``
+  (the order they were found in, as built; the default) or ``source_rank``
+  (best by ``source_rank_score`` first, ties in arrival order).
 - **verify** — ``model``: every report sentence's claim support is put to the
   model; ``code_first``: a sentence whose content tokens occur in its cited
   quotes (``verify.CODE_SUPPORT_MIN_OVERLAP``) counts as supported in code and
@@ -124,6 +128,18 @@ class RankStrategy(Protocol):
         *,
         candidates: Mapping[str, Candidate],
     ) -> Kept: ...
+
+
+class QueueStrategy(Protocol):
+    """The order waiting pairs are offered to screening in. The engine applies
+    ``steps.round_robin`` (and its per-sub-question cap) to the result, so a
+    strategy only decides which of a sub-question's pairs come first."""
+
+    name: str
+
+    def order(
+        self, pairs: Sequence[Pair], *, candidates: Mapping[str, Candidate]
+    ) -> list[Pair]: ...
 
 
 class PassageStrategy(Protocol):
@@ -421,6 +437,43 @@ def screen_one(
         return standing, rank(final)
 
     return run
+
+
+# -- queue -----------------------------------------------------------------------
+
+
+def source_rank_score(candidate: Candidate) -> float:
+    """Reciprocal-rank fusion of the candidate's places in the lists it was found
+    in: the sum of ``1 / (RRF_K + rank)`` over ``source_ranks`` (a source's
+    search results, or a citation hop, each its own list). The search rank
+    only: no screening score is involved, so the rule is the same for every
+    arm. It orders the screening queue (``source_rank``) and picks the works
+    whose text a freeze prefetches (``bench.freeze.prefetch_targets``): one
+    function for both."""
+    return sum(1.0 / (RRF_K + rank) for rank in candidate.source_ranks.values())
+
+
+class ArrivalQueue:
+    """Waiting pairs in the order they were found in (the engine as built)."""
+
+    name = "arrival"
+
+    def order(
+        self, pairs: Sequence[Pair], *, candidates: Mapping[str, Candidate]
+    ) -> list[Pair]:
+        return list(pairs)
+
+
+class SourceRankQueue:
+    """Waiting pairs best first by :func:`source_rank_score`; pairs with an equal
+    score keep their arrival order (a stable sort)."""
+
+    name = "source_rank"
+
+    def order(
+        self, pairs: Sequence[Pair], *, candidates: Mapping[str, Candidate]
+    ) -> list[Pair]:
+        return sorted(pairs, key=lambda pair: -source_rank_score(candidates[pair[0]]))
 
 
 # -- rank ------------------------------------------------------------------------

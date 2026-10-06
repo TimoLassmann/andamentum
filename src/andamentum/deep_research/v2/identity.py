@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from andamentum.references import merge_works, works_compatible
+from andamentum.references import Work, merge_works, works_compatible
 
 from .types import Candidate
 
@@ -73,15 +73,26 @@ def _register(
 def merge_pair(first: Candidate, second: Candidate) -> Candidate:
     """Combine two records of one work: the work merged, the provenance unioned."""
     ranks = [r for r in (first.rank, second.rank) if r is not None]
+    work = merge_works(first.work, second.work)
     return Candidate(
-        work=merge_works(first.work, second.work),
+        work=work,
         sources=_union(first.sources, second.sources),
-        snippet=max(first.snippet, second.snippet, key=len),
+        snippet=_merged_snippet(first, second, work),
         queries=_union(first.queries, second.queries),
         subquestion_ids=_union(first.subquestion_ids, second.subquestion_ids),
         rank=min(ranks) if ranks else None,
         source_ranks=_best_ranks(first.source_ranks, second.source_ranks),
     )
+
+
+def _merged_snippet(first: Candidate, second: Candidate, work: Work) -> str:
+    """The longer snippet; but a snippet is the first characters of its record's
+    abstract, so when the merged work is redistributable (a free abstract won)
+    the snippet of a ``no_redistribute`` record is not carried into it."""
+    options = [first, second]
+    if work.redistributable:
+        options = [c for c in options if c.work.redistributable] or options
+    return max((c.snippet for c in options), key=len)
 
 
 def _best_ranks(first: dict[str, int], second: dict[str, int]) -> dict[str, int]:

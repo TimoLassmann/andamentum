@@ -1,0 +1,212 @@
+# Round 3: raise LitSearch recall. The round-3 diagnosis (24 of 31 gold papers
+# lost, 22 of them never in the candidate pool; the arXiv adapter ANDs every
+# query word; Europe PMC fills the first screening slots and holds no gold
+# paper) points to three changes, tested as a ladder on items no arm and no
+# diagnosis has seen:
+#   v2-baseline       preset baseline, inputs r3-base (Europe PMC + arXiv, all terms)
+#   v2-arxiv          preset recall (merit-ordered screening admission),
+#                     inputs r3-arxiv (arXiv any-term query)
+#   v2-combined       preset recall, inputs r3-combined (+ keyless Semantic
+#                     Scholar search); also web and web_planted, where it is
+#                     the recall preset alone (the web guards of both fix arms)
+#   v2-combined-solo  clean timing, first 3 items of each set, alone, last
+# Every LitSearch arm runs the same sub-questions and queries (written once for
+# r3-base); arms that change search have their own freeze. Rules, thresholds
+# and wording were fixed before any snapshot existed; a change is a new file.
+#
+# Run order and commands: the round-3 section of
+# src/andamentum/deep_research/v2/CLAUDE.md. Keyless: no API key is read or used.
+name: round3
+registered: "2026-10-06"
+description: >-
+  Merit-ordered screening admission, an any-term arXiv query and keyless
+  Semantic Scholar search, against the v2 baseline on 32 fresh LitSearch items
+  with the same queries for every arm; web answers and the planted false source
+  as guards; clean timing of the combined arm.
+repeats: 1
+keyless: true
+
+judge:
+  decision_model: "nimble:9b"
+
+inputs:
+  r3-base:
+    sources: {scholarly: [europepmc, arxiv], arxiv_query: all_terms, expand_with: [europepmc], results_per_query: 20}
+    plan: live
+    prefetch_top_k: 8
+  r3-arxiv:
+    sources: {scholarly: [europepmc, arxiv], arxiv_query: any_term, expand_with: [europepmc], results_per_query: 20}
+    plan: r3-base
+    prefetch_top_k: 8
+  r3-combined:
+    sources: {scholarly: [europepmc, arxiv, semantic_scholar], arxiv_query: any_term, expand_with: [europepmc], results_per_query: 20}
+    plan: r3-base
+    prefetch_top_k: 8
+    patient: [semantic_scholar]
+  web-r1:
+    existing: true
+
+sets:
+  - {name: litsearch, n: 32, skip: 28, seed: 0}   # positions 29-60: unseen by every arm and by the diagnosis
+  - {name: web, n: 15, seed: 0}
+  - {name: web_planted, n: 15, seed: 0}
+
+arms:
+  - name: v2-baseline
+    system: v2
+    preset: baseline
+    frozen: true
+    inputs: {litsearch: r3-base, web: web-r1}
+    model: "ollama:gemma4:31b-cloud"
+    decision_model: "nimble:9b"
+    sets: [litsearch, web]
+  - name: v2-arxiv
+    system: v2
+    preset: recall
+    frozen: true
+    inputs: {litsearch: r3-arxiv}
+    model: "ollama:gemma4:31b-cloud"
+    decision_model: "nimble:9b"
+    sets: [litsearch]
+  - name: v2-combined
+    system: v2
+    preset: recall
+    frozen: true
+    inputs: {litsearch: r3-combined, web: web-r1, web_planted: web-r1}
+    model: "ollama:gemma4:31b-cloud"
+    decision_model: "nimble:9b"
+    sets: [litsearch, web, web_planted]
+  - name: v2-combined-solo
+    system: v2
+    preset: recall
+    frozen: true
+    inputs: {litsearch: r3-combined, web: web-r1}
+    model: "ollama:gemma4:31b-cloud"
+    decision_model: "nimble:9b"
+    solo: 3
+    sets: [litsearch, web]
+
+baselines:
+  litsearch: v2-baseline
+  web: v2-baseline
+
+rules:
+  - id: P1-recall-at-20
+    group: P1
+    question: "LitSearch recall@20 of v2-combined is above v2-baseline (paired, the whole 95% interval above 0)"
+    set: litsearch
+    metric: recall_at_20
+    arm: v2-combined
+    reference: v2-baseline
+    test: superior
+    margin: 0
+  - id: L1-recall-at-20
+    group: L1
+    question: "LitSearch recall@20 of v2-arxiv is above v2-baseline (paired, the whole 95% interval above 0)"
+    set: litsearch
+    metric: recall_at_20
+    arm: v2-arxiv
+    reference: v2-baseline
+    test: superior
+    margin: 0
+  - id: L2-recall-at-20
+    group: L2
+    question: "LitSearch recall@20 of v2-combined is above v2-arxiv (paired, the whole 95% interval above 0)"
+    set: litsearch
+    metric: recall_at_20
+    arm: v2-combined
+    reference: v2-arxiv
+    test: superior
+    margin: 0
+  - id: H1-inputs-health
+    group: S2
+    question: "At most 10% of the searches of the r3-combined snapshots failed (mean over items, whole interval)"
+    set: litsearch
+    metric: inputs_failed_search_share
+    arm: v2-combined
+    test: at_most
+    threshold: 0.10
+  - id: G1-claim-support
+    group: GUARD
+    question: "Claim-support precision of v2-combined shows no harm against v2-baseline (mean not below -0.05, interval not wholly below 0)"
+    set: web
+    metric: claim_precision
+    arm: v2-combined
+    reference: v2-baseline
+    test: no_harm
+    margin: 0.05
+  - id: G2-answer-correct
+    group: GUARD
+    question: "Answer correctness of v2-combined shows no harm against v2-baseline (mean not below -0.05, interval not wholly below 0)"
+    set: web
+    metric: correct
+    arm: v2-combined
+    reference: v2-baseline
+    test: no_harm
+    margin: 0.05
+  - id: G3-planted-adoption
+    group: GUARD
+    question: "v2-combined adopts the planted false claim in 0 of 15 runs"
+    set: web_planted
+    metric: adopted_false_claim
+    arm: v2-combined
+    test: at_most
+    threshold: 0
+    aggregate: max
+  - id: T1-clean-wall
+    group: T1
+    question: "Median clean wall time of v2-combined (frozen: from screening on) is at most 300 s"
+    set: litsearch
+    also_sets: [web]
+    metric: wall_s
+    arm: v2-combined-solo
+    test: at_most
+    threshold: 300
+    aggregate: median
+    gate: false
+
+decisions:
+  - id: arxiv-and-merit
+    requires: [L1, GUARD]
+    if_accepted: "The recall preset (merit-ordered screening admission) becomes the default preset and any_term the default arXiv query form."
+    otherwise: "The baseline preset and the all-terms arXiv query stay the defaults, unless combined-as-unit is accepted."
+  - id: semantic-scholar
+    requires: [L2, S2, GUARD]
+    if_accepted: "Keyless Semantic Scholar search (Europe PMC the only citation source) joins the default scholarly sources."
+    otherwise: "Semantic Scholar does not join the default scholarly sources, unless combined-as-unit is accepted while arxiv-and-merit is not."
+  - id: combined-as-unit
+    requires: [P1, S2, GUARD]
+    if_accepted: "The combined configuration beats the baseline. If neither arxiv-and-merit nor semantic-scholar is accepted, it is adopted as one unit (recall preset, any-term arXiv, Semantic Scholar search); if only arxiv-and-merit is accepted, only that is adopted; if semantic-scholar is accepted, both are."
+    otherwise: "The combined configuration is not adopted as a unit. If arxiv-and-merit is not accepted either, no arm improved recall@20 with an interval excluding 0: round 3 adopts nothing and stops."
+
+notes:
+  - >-
+    Items: LitSearch positions 29-60 of the seed-0 order (LS0345 and LS0400 and
+    the next 30). The 28 items of round 2 were used to diagnose the losses and
+    to choose the arXiv query form, so they are not evaluated here; a
+    search-only pool check on them is reported separately as exploratory.
+  - >-
+    Every LitSearch arm runs the same sub-questions and queries, written once by
+    the language model for r3-base. Arms that change search have their own
+    freeze of those queries, with full text prefetched for the best 8
+    candidates of each sub-question by source rank (the baseline's per
+    sub-question read cap), the same rule for every profile. The comparison is
+    end to end over search, screening, reading and ranking with the query
+    wording held fixed.
+  - >-
+    OpenAlex is in no profile: its keyless budget (10 credits a search, 1000 a
+    day, measured 2026-10-06) cannot freeze the set. Semantic Scholar is used
+    keyless, for search only; its records are no_redistribute and their text is
+    never exported.
+  - >-
+    Decision answers are shared between cells through one decision cache
+    (nimble:9b is checked to answer deterministically): an answer served from
+    it is the answer a request would get. Cost is reported as decision answers
+    (requests plus cache hits) per arm. Solo cells use no shared cache.
+  - >-
+    The judge of claim support (nimble:9b) is also the arms' decision model,
+    as in round 2: the claim-support figures are not independent of the arms.
+  - >-
+    Frozen wall times exclude Plan, Search and page fetches. The live search
+    cost of each profile (search seconds and requests per source) is reported
+    from the freezes.
