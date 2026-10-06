@@ -108,7 +108,7 @@ def test_the_round_two_file_registers_the_planned_arms_rules_and_wording() -> No
         "decision_calls",
     )
     assert (r2.arm, r2.reference, r2.gate) == ("v2-fast", "v2-baseline", True)
-    assert r2.sets == ["litsearch", "web", "web_planted"]
+    assert r2.sets == ["litsearch", "web"]
     assert {(r.arm, r.reference) for r in groups["R3"]} == {
         ("v2-fast-tev", "v2-fast"),
         ("v2-fast-tev", None),
@@ -227,20 +227,24 @@ def _judge(
     return judge_rule(rule, arm=arm, reference=ref, resamples=500, seed=0)
 
 
-def test_a_reduction_is_accepted_only_when_the_whole_interval_clears_the_share() -> (
-    None
-):
+def test_a_reduction_is_accepted_when_the_median_reaches_the_share() -> None:
     reference = {f"i{n}": 100.0 for n in range(10)}
     big = {k: 40.0 for k in reference}  # a 60% cut everywhere
     verdict = _judge(_rule(), big, reference)
     assert verdict.outcome == "accepted"
     assert "60.0%" in verdict.statement and "at least 40%" in verdict.statement
+    assert "95% interval" in verdict.statement  # reported beside the point value
 
     small = {k: 80.0 for k in reference}  # a 20% cut everywhere
     assert _judge(_rule(), small, reference).outcome == "not accepted"
 
-    mixed = {k: (10.0 if n % 2 else 90.0) for n, k in enumerate(reference)}
-    assert _judge(_rule(), mixed, reference).outcome == "inconclusive"
+    # a wide interval does not turn a median above the bar into "inconclusive"
+    mixed = {k: (10.0 if n < 6 else 90.0) for n, k in enumerate(reference)}
+    verdict = _judge(_rule(), mixed, reference)
+    assert verdict.outcome == "accepted"
+    assert verdict.interval is not None and verdict.interval.low < 0.4
+    just_under = {k: (61.0 if n < 6 else 10.0) for n, k in enumerate(reference)}
+    assert _judge(_rule(), just_under, reference).outcome == "not accepted"
 
 
 def test_a_reduction_skips_items_without_something_to_reduce() -> None:
@@ -387,6 +391,28 @@ async def test_failed_searches_inside_a_record_arms_cell_are_recorded_too(
     )
     assert [r.outage for r in written] == [True, False, False, False, False]
     assert written[0].metrics == {}
+
+
+async def test_any_failed_cell_of_a_record_arm_has_no_metrics(
+    tmp_path: Path,
+) -> None:
+    def crash(question: str, call: int) -> ArmOutput:
+        if call == 1:
+            raise RuntimeError("legacy pipeline crashed")
+        return output(question, correct_answer(question), [work(1)])
+
+    exp = _experiment([_live("a", outage="record")])
+    arm = ScriptedArm("a", crash)
+    written = await run_experiment(
+        exp,
+        out_dir=tmp_path,
+        dirs=DataDirs(),
+        services=Services(answer_arm=lambda *_: arm),
+    )
+    first = written[0]
+    assert first.error and "RuntimeError" in first.error
+    assert first.metrics == {} and first.outage is False
+    assert all(r.metrics for r in written[1:])
 
 
 async def test_the_legacy_arm_is_probed_before_every_litsearch_query(

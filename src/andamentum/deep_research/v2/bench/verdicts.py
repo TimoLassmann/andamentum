@@ -245,18 +245,14 @@ def _judge_reduction(
             None,
             "no item has a value above zero for the reference arm",
         )
-    outcome: Outcome = (
-        "accepted"
-        if interval.low >= threshold
-        else "not accepted"
-        if interval.high < threshold
-        else "inconclusive"
-    )
+    # the registered rule is the aggregate itself ("median over items") against
+    # the bar, so the point value decides; the interval is reported beside it
+    outcome: Outcome = "accepted" if interval.estimate >= threshold else "not accepted"
     statement = (
         f"{rule.arm} reduces {rule.metric} against {rule.reference} by "
         f"{interval.estimate:.1%} ({rule.aggregate} over items; 95% interval "
         f"{interval.low:.1%} to {interval.high:.1%}, {interval.n_items} items); "
-        f"bar: at least {threshold:.0%}"
+        f"bar: the {rule.aggregate} at least {threshold:.0%}"
     )
     return _verdict(rule, outcome, interval, statement)
 

@@ -730,7 +730,13 @@ async def _run_cell(
         record.metrics = {}
     except Exception as error:  # recorded and counted, never dropped
         record.error = _error_text(error)
-        _zero_outcomes(item.set_name, record.metrics)
+        if spec.outage == "record":
+            # a failed legacy cell has no metric values: it drops out of the
+            # pairing instead of counting as zero recall (it stays listed in the
+            # failed-runs table, with outage False)
+            record.metrics = {}
+        else:
+            _zero_outcomes(item.set_name, record.metrics)
     finally:
         if store is not None:
             shutil.rmtree(store.parent, ignore_errors=True)

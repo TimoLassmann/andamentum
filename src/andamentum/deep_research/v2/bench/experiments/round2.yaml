@@ -10,7 +10,7 @@
 #   A  v2-baseline    preset baseline, nimble:9b, frozen inputs
 #   B  v2-fast        preset fast (generic_prefilter + code_first), nimble:9b, frozen
 #   C  v2-fast-tev    preset fast, tev1:0.8b, frozen
-#   D  legacy         live, LitSearch only; SearxNG probed before every query and
+#   D  legacy         live, LitSearch only; SearxNG probed before every LitSearch item (one cell per item) and
 #                     a blocked query recorded as failed (not as zero recall)
 #   S1 screen-generic-nimble / S2 screen-generic-tev: screening on SYNERGY with
 #      the baseline preset's own generic question ("baseline+decision" is the
@@ -90,7 +90,7 @@ arms:
     system: legacy
     model: "ollama:gemma4:31b-cloud"
     decision_model: "nimble:9b"
-    outage: record               # SearxNG probed before every query; blocked = failed
+    outage: record               # SearxNG probed before every LitSearch item (one cell per item); blocked = failed
     sets: [litsearch]
   - name: screen-generic-nimble
     system: screening
@@ -172,12 +172,15 @@ rules:
     test: at_most
     threshold: 0
     aggregate: max
-  # R2 (B against A): fewer decision-model requests. Gate.
+  # R2 (B against A): fewer decision-model requests. Gate. The rule is the
+  # median over items of the per-item reduction, compared as it stands with
+  # 40% (the interval is reported, not tested). LitSearch and web items are
+  # pooled; web_planted repeats the web questions and is left out.
   - id: R2-decision-calls
     group: R2
     question: "v2-fast makes at least 40% fewer decision calls per run than v2-baseline (median over items)"
     set: litsearch
-    also_sets: [web, web_planted]
+    also_sets: [web]
     metric: decision_calls
     arm: v2-fast
     reference: v2-baseline

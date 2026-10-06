@@ -166,7 +166,7 @@ class Rule(BaseModel):
     ``reduced_by``: per item, ``1 - arm / reference`` (items whose reference is
     0 or that lack a value drop out), aggregated (``aggregate``, median by
     convention) and compared with ``threshold`` as a share: accepted when the
-    whole interval is at or above it. ``aggregate: max`` gives the largest item
+    aggregate itself is at or above it (the interval is reported, not tested). ``aggregate: max`` gives the largest item
     value with no interval (``at_most: 0`` then reads "no item at all").
     ``also_sets`` pools more sets into the rule's values (items are named
     ``<set>/<item>``). ``group`` names the rules that stand or fall together
