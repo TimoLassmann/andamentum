@@ -1,0 +1,316 @@
+# Round 2: do the two speed levers (a lexical pre-filter before the generic
+# screening question, and code-first claim-support verification) keep the
+# baseline's answers, and does a 0.8B decision model keep the fast preset's
+# answers? Also the legacy comparison repeated with a search that fails loudly.
+# The rules and the wording of what they decide were fixed before any run; a
+# threshold changed after the numbers are seen is a new file and a new
+# experiment.
+#
+# Arms (the letters are the ones the plan uses):
+#   A  v2-baseline    preset baseline, nimble:9b, frozen inputs
+#   B  v2-fast        preset fast (generic_prefilter + code_first), nimble:9b, frozen
+#   C  v2-fast-tev    preset fast, tev1:0.8b, frozen
+#   D  legacy         live, LitSearch only; SearxNG probed before every query and
+#                     a blocked query recorded as failed (not as zero recall)
+#   S1 screen-generic-nimble / S2 screen-generic-tev: screening on SYNERGY with
+#      the baseline preset's own generic question ("baseline+decision" is the
+#      screening arm that runs the engine's generic strategy: one question per
+#      record), answered by nimble:9b and by tev1:0.8b
+#   A/B/C -solo: 3 LitSearch + 3 web items re-run ALONE, last, one cell at a
+#      time: the only wall-time numbers used for speed claims.
+#
+# Inputs: the frozen snapshots of round 1 (LitSearch, web, web_planted; the same
+# snapshot for every v2 arm) and SYNERGY 8 reviews x 150 records. Repeats: 1
+# (decision models are deterministic; the language-model variance was measured
+# in round 1). The scholarly sources are those the snapshots hold (OpenAlex was
+# missing for part of them in round 1: the same for every arm, stated in the
+# report).
+#
+# Run (decision models are local and serialised; language models are -cloud,
+# so up to four cells run at once, the solo cells never):
+#   bench experiment run round2.yaml --out-dir OUT --snapshots SNAP \
+#       --litsearch-dir DATA --synergy-dir DATA --searxng-url URL --cache CACHE \
+#       --concurrency 4
+#   bench experiment report round2.yaml --out-dir OUT
+name: round2
+registered: "2026-10-06"
+description: >-
+  v2-baseline against the fast preset (lexical pre-filter and code-first
+  verification) on the same frozen inputs, the fast preset with a 0.8B decision
+  model, the baseline against the legacy pipeline rerun with a search that fails
+  loudly, screening with the two decision models, and clean single-run timing.
+repeats: 1
+
+# Who judges claim support. The same deterministic local decision model as
+# round 1; it is also the screening model of arms A and B, so the judge is not
+# independent of them: stated in the report.
+judge:
+  decision_model: "nimble:9b"
+
+sets:
+  - {name: litsearch, n: 28, seed: 0}      # the 28 LitSearch queries with a snapshot
+  - {name: web, n: 15, seed: 0}
+  - {name: web_planted, n: 15, seed: 0}    # the same 15, each with one planted false page
+  - name: synergy
+    seed: 0
+    records: 150
+    reviews:
+      - Donners_2021
+      - Sep_2021
+      - Meijboom_2021
+      - Menon_2022
+      - Hall_2012
+      - Nelson_2002
+      - Radjenovic_2013
+      - Wassenaar_2017
+
+arms:
+  - name: v2-baseline
+    system: v2
+    preset: baseline
+    frozen: true
+    model: "ollama:gemma4:31b-cloud"
+    decision_model: "nimble:9b"
+    sets: [litsearch, web, web_planted]
+  - name: v2-fast
+    system: v2
+    preset: fast
+    frozen: true
+    model: "ollama:gemma4:31b-cloud"
+    decision_model: "nimble:9b"
+    sets: [litsearch, web, web_planted]
+  - name: v2-fast-tev
+    system: v2
+    preset: fast
+    frozen: true
+    model: "ollama:gemma4:31b-cloud"
+    decision_model: "tev1:0.8b"
+    sets: [litsearch, web, web_planted]
+  - name: legacy
+    system: legacy
+    model: "ollama:gemma4:31b-cloud"
+    decision_model: "nimble:9b"
+    outage: record               # SearxNG probed before every query; blocked = failed
+    sets: [litsearch]
+  - name: screen-generic-nimble
+    system: screening
+    screen: baseline+decision
+    decision_model: "nimble:9b"
+    sets: [synergy]
+  - name: screen-generic-tev
+    system: screening
+    screen: baseline+decision
+    decision_model: "tev1:0.8b"
+    sets: [synergy]
+  - name: v2-baseline-solo
+    system: v2
+    preset: baseline
+    frozen: true
+    model: "ollama:gemma4:31b-cloud"
+    decision_model: "nimble:9b"
+    solo: 3
+    sets: [litsearch, web]
+  - name: v2-fast-solo
+    system: v2
+    preset: fast
+    frozen: true
+    model: "ollama:gemma4:31b-cloud"
+    decision_model: "nimble:9b"
+    solo: 3
+    sets: [litsearch, web]
+  - name: v2-fast-tev-solo
+    system: v2
+    preset: fast
+    frozen: true
+    model: "ollama:gemma4:31b-cloud"
+    decision_model: "tev1:0.8b"
+    solo: 3
+    sets: [litsearch, web]
+
+# The arm every other arm is compared with in the paired tables.
+baselines:
+  litsearch: v2-baseline
+  web: v2-baseline
+  web_planted: v2-baseline
+  synergy: screen-generic-nimble
+
+rules:
+  # R1 (B against A): the fast preset keeps what the baseline does. Gate.
+  - id: R1-claim-support
+    group: R1
+    question: "Claim-support precision of v2-fast not worse than v2-baseline by more than 0.05"
+    set: web
+    metric: claim_precision
+    arm: v2-fast
+    reference: v2-baseline
+    test: noninferior
+    margin: 0.05
+  - id: R1-answer-correct
+    group: R1
+    question: "Answer correctness of v2-fast not worse than v2-baseline by more than 0.05"
+    set: web
+    metric: correct
+    arm: v2-fast
+    reference: v2-baseline
+    test: noninferior
+    margin: 0.05
+  - id: R1-recall-at-20
+    group: R1
+    question: "LitSearch recall@20 of v2-fast not worse than v2-baseline by more than 0.05"
+    set: litsearch
+    metric: recall_at_20
+    arm: v2-fast
+    reference: v2-baseline
+    test: noninferior
+    margin: 0.05
+  - id: R1-planted-adoption
+    group: R1
+    question: "v2-fast adopts the planted false claim in 0 of 15 runs"
+    set: web_planted
+    metric: adopted_false_claim
+    arm: v2-fast
+    test: at_most
+    threshold: 0
+    aggregate: max
+  # R2 (B against A): fewer decision-model requests. Gate.
+  - id: R2-decision-calls
+    group: R2
+    question: "v2-fast makes at least 40% fewer decision calls per run than v2-baseline (median over items)"
+    set: litsearch
+    also_sets: [web, web_planted]
+    metric: decision_calls
+    arm: v2-fast
+    reference: v2-baseline
+    test: reduced_by
+    threshold: 0.4
+    aggregate: median
+  # R3 (C against B): the 0.8B decision model keeps the fast preset's answers.
+  # Gate for adopting tev1:0.8b.
+  - id: R3-claim-support
+    group: R3
+    question: "Claim-support precision with tev1:0.8b not worse than with nimble:9b by more than 0.05"
+    set: web
+    metric: claim_precision
+    arm: v2-fast-tev
+    reference: v2-fast
+    test: noninferior
+    margin: 0.05
+  - id: R3-answer-correct
+    group: R3
+    question: "Answer correctness with tev1:0.8b not worse than with nimble:9b by more than 0.05"
+    set: web
+    metric: correct
+    arm: v2-fast-tev
+    reference: v2-fast
+    test: noninferior
+    margin: 0.05
+  - id: R3-recall-at-20
+    group: R3
+    question: "LitSearch recall@20 with tev1:0.8b not worse than with nimble:9b by more than 0.05"
+    set: litsearch
+    metric: recall_at_20
+    arm: v2-fast-tev
+    reference: v2-fast
+    test: noninferior
+    margin: 0.05
+  - id: R3-planted-adoption
+    group: R3
+    question: "v2-fast-tev adopts the planted false claim in 0 of 15 runs"
+    set: web_planted
+    metric: adopted_false_claim
+    arm: v2-fast-tev
+    test: at_most
+    threshold: 0
+    aggregate: max
+  # R4 (A against D, LitSearch): reported. Paired on the items where legacy did
+  # not fail; a query blocked by the search engines is a failure, counted in the
+  # report's failed-runs table, never a zero.
+  - id: R4-recall-at-20
+    group: R4
+    question: "LitSearch recall@20 of v2-baseline not worse than legacy by more than 0.05 (items where legacy did not fail)"
+    set: litsearch
+    metric: recall_at_20
+    arm: v2-baseline
+    reference: legacy
+    test: noninferior
+    margin: 0.05
+    gate: false
+  # R5 (S2 against S1): screening with the 0.8B model. Reported.
+  - id: R5-wss-at-95
+    group: R5
+    question: "Screening WSS@95 with tev1:0.8b not worse than with nimble:9b by more than 0.05"
+    set: synergy
+    metric: wss_at_95
+    arm: screen-generic-tev
+    reference: screen-generic-nimble
+    test: noninferior
+    margin: 0.05
+    gate: false
+  # R6: clean single-run wall time per arm, the median of the 3 LitSearch and 3
+  # web items run alone, against the 5 minute target. Reported.
+  - id: R6-v2-baseline
+    group: R6
+    question: "Median clean wall time of v2-baseline is at most 300 s"
+    set: litsearch
+    also_sets: [web]
+    metric: wall_s
+    arm: v2-baseline-solo
+    test: at_most
+    threshold: 300
+    aggregate: median
+    gate: false
+  - id: R6-v2-fast
+    group: R6
+    question: "Median clean wall time of v2-fast is at most 300 s"
+    set: litsearch
+    also_sets: [web]
+    metric: wall_s
+    arm: v2-fast-solo
+    test: at_most
+    threshold: 300
+    aggregate: median
+    gate: false
+  - id: R6-v2-fast-tev
+    group: R6
+    question: "Median clean wall time of v2-fast-tev is at most 300 s"
+    set: litsearch
+    also_sets: [web]
+    metric: wall_s
+    arm: v2-fast-tev-solo
+    test: at_most
+    threshold: 300
+    aggregate: median
+    gate: false
+
+# What the groups decide, in words fixed before the run.
+decisions:
+  - id: default-preset
+    requires: [R1, R2]
+    if_accepted: "The fast preset replaces the baseline as the default preset."
+    otherwise: "The baseline stays the default preset; the fast preset is not adopted (R1 and R2 must both be accepted)."
+  - id: decision-model
+    requires: [R3]
+    if_accepted: "tev1:0.8b becomes the recommended decision model."
+    otherwise: "tev1:0.8b is not recommended as the decision model (R3 is not accepted)."
+
+notes:
+  - >-
+    All v2 arms run on the frozen snapshots of round 1, which hold the search
+    results and the texts of the best candidates of each sub-question: a
+    candidate outside that set is read from its abstract for every arm. The
+    scholarly sources of the snapshots are those that answered when they were
+    frozen (OpenAlex was missing for part of them), the same for every arm.
+  - >-
+    The judge of claim support (nimble:9b) is also the screening and
+    verification model of arms v2-baseline and v2-fast, and it is not the model
+    of v2-fast-tev: the claim-support figures are not independent of the arms.
+  - >-
+    The legacy arm runs live, with the fail-loud search: SearxNG is probed before
+    every query and a query that the search engines block is recorded as
+    failed, not as zero recall. R4 compares only the items where legacy did not
+    fail.
+  - >-
+    Wall times in the main tables are measured with up to four cells at once and
+    are not comparable between arms; the clean-timing section (each cell run
+    alone) is the only source for speed claims. Frozen runs exclude Plan, Search
+    and page fetching from their wall time.

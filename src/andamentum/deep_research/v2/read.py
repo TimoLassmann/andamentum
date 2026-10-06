@@ -13,7 +13,11 @@ For each work kept for a sub-question:
    ``metadata`` (nothing to read) or ``unreadable`` (a source failed and nothing
    else was left). A work whose licence forbids redistribution (Semantic
    Scholar) is never read from an abstract. A source's failure is noted on the
-   reading; one other than a routine refusal also marks the run degraded.
+   reading; one other than a routine refusal is also listed in the reading's
+   ``failed_notes``, which the run records as notes: a single page that cannot
+   be read does not make the run degraded. The run is degraded only when more
+   than ``UNREADABLE_DEGRADE_SHARE`` of the works chosen for reading could not
+   be read (``unreadable_degraded``).
 3. **Passages.** The text is cut into passages of about 1,200 characters on
    paragraph boundaries. A passage is an exact slice of the text, so a
    quote can be located in it and the offsets mean something.
@@ -69,6 +73,9 @@ DECISION_SCORE_CAP = 60
 LLM_PICK_CAP = 20
 # A quote shorter than this proves too little to be a finding.
 QUOTE_MIN_CHARS = 20
+# A run is degraded by unreadable works only when more than this share of the
+# works chosen for reading could not be read (access ``unreadable``).
+UNREADABLE_DEGRADE_SHARE = 0.5
 MAX_FINDINGS_PER_SELECTION = 8
 
 _SENTENCE_END = re.compile(r"(?<=[.!?])\s+(?=[\"'(\[]?[A-Z0-9])")
@@ -140,6 +147,9 @@ class WorkReading(BaseModel):
     dropped: list[VerifyFlag] = Field(default_factory=list)
     done: list[str] = Field(default_factory=list)
     notes: list[str] = Field(default_factory=list)
+    # A text source that failed on this work (not a routine refusal): a note
+    # of the run, never degraded by itself.
+    failed_notes: list[str] = Field(default_factory=list)
     degraded: list[str] = Field(default_factory=list)
 
 
@@ -169,6 +179,23 @@ class ReadOutcome(BaseModel):
     @property
     def degraded(self) -> list[str]:
         return [d for r in self.readings for d in r.degraded]
+
+    @property
+    def failed_notes(self) -> list[str]:
+        return [n for r in self.readings for n in r.failed_notes]
+
+    @property
+    def attempted(self) -> int:
+        """Works the round chose to read and did not exclude."""
+        return sum(1 for r in self.readings if not r.excluded)
+
+    @property
+    def unreadable(self) -> int:
+        """Of those, works that could not be read: a text source failed and
+        nothing else was left (access ``unreadable``)."""
+        return sum(
+            1 for r in self.readings if not r.excluded and r.work.access == "unreadable"
+        )
 
     @property
     def done(self) -> set[tuple[str, str]]:
@@ -616,6 +643,18 @@ def _sync_fetched_bytes(deps: ReadDeps) -> None:
         deps.asker.stats.fetched_bytes = deps.fetched_bytes()
 
 
+def unreadable_degraded(*, attempted: int, unreadable: int) -> list[str]:
+    """The degraded line for a run whose works mostly could not be read: one
+    entry when more than ``UNREADABLE_DEGRADE_SHARE`` of the *attempted* works
+    were *unreadable*, else none."""
+    if attempted and unreadable / attempted > UNREADABLE_DEGRADE_SHARE:
+        return [
+            f"{unreadable} of {attempted} works chosen for reading could not be read "
+            f"(more than {UNREADABLE_DEGRADE_SHARE:.0%})"
+        ]
+    return []
+
+
 async def load_work(work: Work, *, deps: ReadDeps) -> tuple[WorkReading, list[Passage]]:
     """Steps 1-3 for one work, no language model: the retraction check, the
     text, and every passage of it, stored. A retracted work has ``excluded``
@@ -642,7 +681,7 @@ async def load_work(work: Work, *, deps: ReadDeps) -> tuple[WorkReading, list[Pa
 
     text, access, notes, failures = await _load_text(work, deps)
     reading.notes.extend(notes)
-    reading.degraded.extend(failures)
+    reading.failed_notes.extend(failures)
     store.set_work_state(work.work_id, access=access)
     reading.work = work.model_copy(update={"access": access})
     if not text:

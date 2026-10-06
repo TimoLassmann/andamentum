@@ -8,7 +8,9 @@ Ollama ``-cloud`` model (at most 4 cells of one arm in flight; a local Ollama
 server answers one call at a time, and decision-model requests are serialised
 by ``core.decisions`` whatever the value). A cell that raises is recorded with its error and counts against the
 arm (outcome metrics are zero), never dropped. A cell already in the registry is
-skipped, so an interrupted run resumes where it stopped.
+skipped, so an interrupted run resumes where it stopped. Arms with ``solo`` set
+(clean-timing re-runs of a few items) run last, one cell at a time whatever the
+concurrency, so nothing else of the experiment shares their wall time.
 
 What "frozen" means for a v2 arm: Plan and Search come from the snapshot taken
 by ``bench freeze`` (``freeze.py``), the sources' cached responses come from the
@@ -19,10 +21,14 @@ never written to. Frozen runs fetch nothing, so their wall time excludes Plan,
 Search and page fetches; the cost that includes them is the live arm's.
 
 A live cell (the legacy arm, or a v2 arm that is not frozen) depends on the
-network. SearxNG is probed before each live web cell, and a live cell whose
-search reports failed searches is not a result: the run stops with an
+network. SearxNG is probed before each live web cell (and before every cell of
+the legacy arm, which searches the web for any set), and a live cell whose
+search reports failed searches is not a result. By default the run stops with an
 ``InfrastructureDown`` error before that cell is recorded, so a resume runs it
-again once the outage is over.
+again once the outage is over. An arm registered with ``outage: record`` goes
+on instead: the cell is recorded as failed (``outage`` set, error text, no
+metric values at all, so it is neither a zero nor a pairing partner) and the
+report counts it.
 """
 
 from __future__ import annotations
@@ -54,7 +60,7 @@ from .freeze import (
     planted_frozen,
     snapshot_dir,
 )
-from .health import SearxHealth
+from .health import SearxDown, SearxHealth
 from .judging import ClaimJudge, UrlChecker, check_links
 from .litsearch import DEFAULT_SUBSET, LitSearchItem, load_litsearch
 from .metrics import (
@@ -93,7 +99,9 @@ OUTCOME_METRICS: dict[str, tuple[str, ...]] = {
         "found_any",
     ),
     "web": ("correct",),
-    "web_planted": ("correct", "good_planted_outcome", "adopted_false_claim"),
+    # adopted_false_claim is not here: a crash is not "did not adopt", and the
+    # rule that reads it needs every item to have a value
+    "web_planted": ("correct", "good_planted_outcome"),
     "synergy": ("kept_recall", "wss_at_95"),
 }
 
@@ -375,6 +383,8 @@ def arm_record(exp: Experiment, spec: ArmSpec, services: Services) -> ArmRecord:
         decision_digest=decision.digest if decision else None,
         frozen=spec.is_frozen,
         repeats=exp.repeats_of(spec),
+        solo=spec.solo,
+        outage=spec.outage,
     )
 
 
@@ -581,7 +591,9 @@ async def run_experiment(
     )
     done = {r.cell for r in runs_of(path, experiment_hash=exp.config_hash())}
     written: list[RunRecord] = []
-    for spec in exp.arms:
+    # clean-timing (solo) arms go last, one cell at a time
+    ordered = [a for a in exp.arms if not a.is_solo] + exp.solo_arms
+    for spec in ordered:
         info = by_name[spec.name]
         # one arm object per mode: a set's mode is part of what an arm is built for
         answer_arms: dict[Mode, ExperimentArm] = {}
@@ -590,7 +602,10 @@ async def run_experiment(
         for set_spec in chosen:
             if not spec.runs_on(set_spec.name):
                 continue
-            for item in items[set_spec.name]:
+            arm_items = items[set_spec.name]
+            if spec.solo is not None:
+                arm_items = arm_items[: spec.solo]
+            for item in arm_items:
                 for repeat in range(1, exp.repeats_of(spec) + 1):
                     cell = (spec.name, item.set_name, item.item_id, repeat)
                     if cell in done:
@@ -623,7 +638,9 @@ async def run_experiment(
                             clock=clock,
                         )
                     )
-        written += await run_bounded(jobs, concurrency=concurrency)
+        written += await run_bounded(
+            jobs, concurrency=1 if spec.is_solo else concurrency
+        )
     return written
 
 
@@ -648,9 +665,8 @@ async def _run_cell(
     not recorded and propagates (the other cells in flight are cancelled).
     """
     live = spec.system == "legacy" or (spec.system == "v2" and not spec.is_frozen)
-    if live and mode_is_web(item.set_name):
-        if services.check_searxng is not None:
-            await services.check_searxng(services.source_config.searxng_url)
+    # the legacy pipeline searches the web whatever the set; v2 only in web mode
+    searches_web = spec.system == "legacy" or mode_is_web(item.set_name)
     progress(f"{spec.name} {item.set_name}/{item.item_id} repeat {repeat}")
     record = RunRecord(
         experiment=exp.name,
@@ -670,6 +686,8 @@ async def _run_cell(
     )
     store: Path | None = None
     try:
+        if live and searches_web and services.check_searxng is not None:
+            await services.check_searxng(services.source_config.searxng_url)
         if isinstance(arm, ScreeningArm):
             metrics, _unused, score = await _screening_cell(arm, item)
             record.screening = score
@@ -703,8 +721,13 @@ async def _run_cell(
             record.output = output
             record.planted_outcome = outcome
         record.metrics = metrics
-    except InfrastructureDown:
-        raise
+    except (InfrastructureDown, SearxDown) as outage:
+        if spec.outage != "record":
+            raise
+        # recorded as failed with no metric values: not a zero, not a partner
+        record.error = f"outage: {_error_text(outage)}"
+        record.outage = True
+        record.metrics = {}
     except Exception as error:  # recorded and counted, never dropped
         record.error = _error_text(error)
         _zero_outcomes(item.set_name, record.metrics)

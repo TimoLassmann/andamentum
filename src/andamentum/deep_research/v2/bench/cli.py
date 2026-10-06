@@ -597,10 +597,15 @@ async def _freeze(args: argparse.Namespace, cache: ResearchStore | None) -> int:
 
 
 def _live_web(exp: Experiment, only_sets: Sequence[str] | None = None) -> bool:
-    """Does any arm search the web live (the legacy arm, or a live v2 arm on a web set)?"""
+    """Must SearxNG answer before anything runs? True when an arm that stops on
+    an outage searches the web live: the legacy arm (on any set) or a live v2
+    arm on a web set. An arm registered with ``outage: record`` probes before
+    each of its cells instead and records a blocked one as failed."""
     names = {s.name for s in exp.sets if only_sets is None or s.name in only_sets}
     for arm in exp.arms:
-        if arm.system == "legacy" and arm.runs_on("web") and "web" in names:
+        if arm.outage == "record":
+            continue
+        if arm.system == "legacy" and any(arm.runs_on(n) for n in names):
             return True
         if arm.system == "v2" and not arm.frozen:
             if any(arm.runs_on(n) and n != "litsearch" for n in names):

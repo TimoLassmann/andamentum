@@ -32,6 +32,7 @@ from __future__ import annotations
 import itertools
 import time
 from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -45,11 +46,12 @@ from andamentum.references import ReferenceHttp, Work
 from . import steps
 from .ask import Asker
 from .config import PRESETS, ResearchConfig, config_hash
+from .decision_cache import CHECK_NAME, check_determinism
 from .coverage import PairKey, compute_coverage, decide_stop, record_coverage
 from .criteria import Screener
 from .frozen import FrozenInputs
 from .identity import merge
-from .read import ReadDeps, ReadTarget, read_works
+from .read import ReadDeps, ReadTarget, read_works, unreadable_degraded
 from .sources import SourceClient, SourceConfig, SourceSet, build_sources
 from .sources.base import offline_url_check
 from .store import ResearchStore
@@ -123,6 +125,8 @@ class ResearchState:
     conflicts: list[Conflict] = field(default_factory=list)
     conflict_memory: dict[PairKey, Conflict | None] = field(default_factory=dict)
     queries_done: list[str] = field(default_factory=list)
+    read_attempted: int = 0
+    read_unreadable: int = 0
     finding_ids: Iterator[int] = field(default_factory=lambda: itertools.count(1))
     degraded: list[str] = field(default_factory=list)
     skipped: list[str] = field(default_factory=list)
@@ -134,6 +138,20 @@ class ResearchState:
 
 
 Ctx = GraphRunContext[ResearchState, ResearchDeps]
+
+
+@contextmanager
+def _timed(ctx: Ctx, step: str) -> Iterator[None]:
+    """Count a node's seconds (on the run's clock) and the model requests made
+    while it runs under *step* in the run's stats (``RunStats.step_*``)."""
+    deps = ctx.deps
+    deps.asker.phase = step
+    began = deps.clock()
+    try:
+        yield
+    finally:
+        seconds = deps.asker.stats.step_seconds
+        seconds[step] = seconds.get(step, 0.0) + (deps.clock() - began)
 
 
 def _spent(ctx: Ctx) -> str:
@@ -187,29 +205,30 @@ class Plan(BaseNode[ResearchState, ResearchDeps, ResearchResult]):
     criteria compiled for each when the configuration uses criteria."""
 
     async def run(self, ctx: Ctx) -> Search:
-        state, deps = ctx.state, ctx.deps
-        if deps.frozen is not None:
-            deps.progress("Plan: sub-questions from the frozen inputs")
-            state.subquestions = list(deps.frozen.subquestions)
-        else:
-            deps.progress("Plan: sub-questions")
-            planned = await steps.plan(deps.question, asker=deps.asker)
-            _note(state, degraded=planned.degraded, spent=planned.spent)
-            state.subquestions = planned.subquestions
-        for subquestion in state.subquestions:
-            deps.store.add_run_item(
-                deps.asker.run_id, "subquestion", subquestion.id, subquestion
+        with _timed(ctx, "Plan"):
+            state, deps = ctx.state, ctx.deps
+            if deps.frozen is not None:
+                deps.progress("Plan: sub-questions from the frozen inputs")
+                state.subquestions = list(deps.frozen.subquestions)
+            else:
+                deps.progress("Plan: sub-questions")
+                planned = await steps.plan(deps.question, asker=deps.asker)
+                _note(state, degraded=planned.degraded, spent=planned.spent)
+                state.subquestions = planned.subquestions
+            for subquestion in state.subquestions:
+                deps.store.add_run_item(
+                    deps.asker.run_id, "subquestion", subquestion.id, subquestion
+                )
+            if not deps.config.needs_criteria:
+                state.criteria = {}
+                return Search()
+            deps.progress(f"Plan: criteria for {len(state.subquestions)} sub-questions")
+            compiled = await steps.compile_all(
+                state.subquestions, screener=deps.screener, question=deps.question
             )
-        if not deps.config.needs_criteria:
-            state.criteria = {}
+            _note(state, degraded=compiled.degraded, spent=compiled.spent)
+            state.criteria = compiled.criteria
             return Search()
-        deps.progress(f"Plan: criteria for {len(state.subquestions)} sub-questions")
-        compiled = await steps.compile_all(
-            state.subquestions, screener=deps.screener, question=deps.question
-        )
-        _note(state, degraded=compiled.degraded, spent=compiled.spent)
-        state.criteria = compiled.criteria
-        return Search()
 
 
 @dataclass
@@ -217,46 +236,47 @@ class Search(BaseNode[ResearchState, ResearchDeps, ResearchResult]):
     """One round's queries for the open sub-questions, run on every source."""
 
     async def run(self, ctx: Ctx) -> Screen:
-        state, deps = ctx.state, ctx.deps
-        state.round += 1
-        state.round_new_kept = {}
-        state.expanded_this_round = False
-        closed = {
-            c.subquestion_id for c in state.coverage if c.covered or c.unresolvable
-        }
-        targets = [s for s in state.subquestions if s.id not in closed]
-        state.round_targets = [s.id for s in targets]
-        if _spent(ctx) or not targets:
+        with _timed(ctx, "Search"):
+            state, deps = ctx.state, ctx.deps
+            state.round += 1
+            state.round_new_kept = {}
+            state.expanded_this_round = False
+            closed = {
+                c.subquestion_id for c in state.coverage if c.covered or c.unresolvable
+            }
+            targets = [s for s in state.subquestions if s.id not in closed]
+            state.round_targets = [s.id for s in targets]
+            if _spent(ctx) or not targets:
+                return Screen()
+            if deps.frozen is not None:
+                # A frozen run searches once, from the snapshot; later rounds screen
+                # what is still waiting and what expansion brings.
+                if state.round == 1:
+                    deps.progress("Search: the frozen candidates")
+                    state.queries_done += deps.frozen.all_queries()
+                    _admit(ctx, list(deps.frozen.candidates))
+                return Screen()
+            deps.progress(f"Search: round {state.round}, {len(targets)} sub-questions")
+            written = await steps.write_queries(
+                deps.question,
+                targets=targets,
+                gaps=steps.coverage_gaps(state.coverage),
+                done=state.queries_done,
+                per_subquestion=deps.budget.queries_per_subq,
+                asker=deps.asker,
+            )
+            _note(state, degraded=written.degraded, spent=written.spent)
+            searched = await steps.search(
+                written.queries,
+                sources=deps.sources.search,
+                filters={s.id: steps.filters_for(s) for s in targets},
+                limit=deps.results_per_query,
+            )
+            state.queries_done += searched.queries_run
+            _note(state, degraded=searched.degraded)
+            state.notes += searched.notes
+            _admit(ctx, searched.candidates)
             return Screen()
-        if deps.frozen is not None:
-            # A frozen run searches once, from the snapshot; later rounds screen
-            # what is still waiting and what expansion brings.
-            if state.round == 1:
-                deps.progress("Search: the frozen candidates")
-                state.queries_done += deps.frozen.all_queries()
-                _admit(ctx, list(deps.frozen.candidates))
-            return Screen()
-        deps.progress(f"Search: round {state.round}, {len(targets)} sub-questions")
-        written = await steps.write_queries(
-            deps.question,
-            targets=targets,
-            gaps=steps.coverage_gaps(state.coverage),
-            done=state.queries_done,
-            per_subquestion=deps.budget.queries_per_subq,
-            asker=deps.asker,
-        )
-        _note(state, degraded=written.degraded, spent=written.spent)
-        searched = await steps.search(
-            written.queries,
-            sources=deps.sources.search,
-            filters={s.id: steps.filters_for(s) for s in targets},
-            limit=deps.results_per_query,
-        )
-        state.queries_done += searched.queries_run
-        _note(state, degraded=searched.degraded)
-        state.notes += searched.notes
-        _admit(ctx, searched.candidates)
-        return Screen()
 
 
 @dataclass
@@ -264,44 +284,45 @@ class Screen(BaseNode[ResearchState, ResearchDeps, ResearchResult]):
     """The criteria scored on every new candidate, at most a round's worth."""
 
     async def run(self, ctx: Ctx) -> Expand | Read:
-        state, deps = ctx.state, ctx.deps
-        waiting = [p for p in state.pending if p not in state.screened]
-        if waiting and not _spent(ctx):
-            deps.progress(f"Screen: {len(waiting)} candidates waiting")
-            outcome = await steps.screen(
-                waiting,
-                candidates=state.candidates,
-                subquestions=state.subquestions,
-                screen_one=screen_one(
-                    deps.config,
-                    criteria=state.criteria,
-                    screener=deps.screener,
-                    question=deps.question,
-                ),
-                limit=deps.budget.candidates_per_round,
-                per_subquestion=deps.config.screen_per_subquestion,
+        with _timed(ctx, "Screen"):
+            state, deps = ctx.state, ctx.deps
+            waiting = [p for p in state.pending if p not in state.screened]
+            if waiting and not _spent(ctx):
+                deps.progress(f"Screen: {len(waiting)} candidates waiting")
+                outcome = await steps.screen(
+                    waiting,
+                    candidates=state.candidates,
+                    subquestions=state.subquestions,
+                    screen_one=screen_one(
+                        deps.config,
+                        criteria=state.criteria,
+                        screener=deps.screener,
+                        question=deps.question,
+                    ),
+                    limit=deps.budget.candidates_per_round,
+                    per_subquestion=deps.config.screen_per_subquestion,
+                )
+                _note(state, degraded=outcome.degraded, spent=outcome.spent)
+                for score in outcome.scores:
+                    pair = (score.work_id, score.subquestion_id)
+                    before = state.scores.get(pair)
+                    if score.kept and (before is None or not before.kept):
+                        state.round_new_kept.setdefault(
+                            score.subquestion_id, set()
+                        ).add(score.work_id)
+                    state.scores[pair] = score
+                # a screen without criteria (generic) leaves none behind
+                state.criteria.update({k: v for k, v in outcome.criteria.items() if v})
+                state.screened |= set(outcome.screened)
+                state.pending = [p for p in waiting if p not in state.screened]
+            expands = (
+                deps.mode != "web"
+                and not state.expanded_this_round
+                and _expand_limit(deps) > 0
+                and deps.config.expand_strategy.enabled
+                and bool(deps.sources.expand)
             )
-            _note(state, degraded=outcome.degraded, spent=outcome.spent)
-            for score in outcome.scores:
-                pair = (score.work_id, score.subquestion_id)
-                before = state.scores.get(pair)
-                if score.kept and (before is None or not before.kept):
-                    state.round_new_kept.setdefault(score.subquestion_id, set()).add(
-                        score.work_id
-                    )
-                state.scores[pair] = score
-            # a screen without criteria (generic) leaves none behind
-            state.criteria.update({k: v for k, v in outcome.criteria.items() if v})
-            state.screened |= set(outcome.screened)
-            state.pending = [p for p in waiting if p not in state.screened]
-        expands = (
-            deps.mode != "web"
-            and not state.expanded_this_round
-            and _expand_limit(deps) > 0
-            and deps.config.expand_strategy.enabled
-            and bool(deps.sources.expand)
-        )
-        return Expand() if expands else Read()
+            return Expand() if expands else Read()
 
 
 def _expand_limit(deps: ResearchDeps) -> int:
@@ -317,26 +338,27 @@ class Expand(BaseNode[ResearchState, ResearchDeps, ResearchResult]):
     """One hop of references and citations from the best kept works."""
 
     async def run(self, ctx: Ctx) -> Screen:
-        state, deps = ctx.state, ctx.deps
-        state.expanded_this_round = True
-        seeds = deps.config.expand_strategy.seeds(
-            _kept(ctx),
-            candidates=state.candidates,
-            expanded=state.expanded,
-            config=deps.config,
-        )
-        if not seeds or _spent(ctx):
+        with _timed(ctx, "Expand"):
+            state, deps = ctx.state, ctx.deps
+            state.expanded_this_round = True
+            seeds = deps.config.expand_strategy.seeds(
+                _kept(ctx),
+                candidates=state.candidates,
+                expanded=state.expanded,
+                config=deps.config,
+            )
+            if not seeds or _spent(ctx):
+                return Screen()
+            deps.progress(f"Expand: citations of {len(seeds)} works")
+            outcome = await steps.expand(
+                seeds, sources=deps.sources.expand, limit=_expand_limit(deps)
+            )
+            _note(state, degraded=outcome.degraded)
+            state.skipped += outcome.skipped
+            state.notes += outcome.notes
+            state.expanded |= set(outcome.expanded)
+            _admit(ctx, merge(outcome.candidates))
             return Screen()
-        deps.progress(f"Expand: citations of {len(seeds)} works")
-        outcome = await steps.expand(
-            seeds, sources=deps.sources.expand, limit=_expand_limit(deps)
-        )
-        _note(state, degraded=outcome.degraded)
-        state.skipped += outcome.skipped
-        state.notes += outcome.notes
-        state.expanded |= set(outcome.expanded)
-        _admit(ctx, merge(outcome.candidates))
-        return Screen()
 
 
 @dataclass
@@ -344,47 +366,51 @@ class Read(BaseNode[ResearchState, ResearchDeps, ResearchResult]):
     """Kept works read into passages and findings with checked quotes."""
 
     async def run(self, ctx: Ctx) -> Coverage:
-        state, deps = ctx.state, ctx.deps
-        state.new_kept_by_round.append(
-            len({w for ids in state.round_new_kept.values() for w in ids})
-        )
-        if _spent(ctx):
+        with _timed(ctx, "Read"):
+            state, deps = ctx.state, ctx.deps
+            state.new_kept_by_round.append(
+                len({w for ids in state.round_new_kept.values() for w in ids})
+            )
+            if _spent(ctx):
+                return Coverage()
+            covered = {c.subquestion_id for c in state.coverage if c.covered}
+            chosen = steps.read_targets(
+                _kept(ctx),
+                done=state.read_done,
+                excluded=state.excluded,
+                covered=covered,
+                limit=deps.budget.read_per_round,
+                per_subquestion=deps.config.read_per_subquestion,
+            )
+            if not chosen:
+                return Coverage()
+            deps.progress(f"Read: {len(chosen)} works")
+            outcome = await read_works(
+                [
+                    ReadTarget(work=state.candidates[w].work, subquestion_ids=ids)
+                    for w, ids in chosen
+                ],
+                subquestions=state.subquestions,
+                criteria=_evidence_criteria(ctx),
+                deps=deps.reader,
+                ids=state.finding_ids,
+                skip=state.read_done,
+            )
+            _note(state, degraded=outcome.degraded, spent=outcome.stopped)
+            state.notes += outcome.failed_notes
+            state.read_attempted += outcome.attempted
+            state.read_unreadable += outcome.unreadable
+            for reading in outcome.readings:
+                candidate = state.candidates.get(reading.work.work_id)
+                if candidate is not None:
+                    state.candidates[reading.work.work_id] = candidate.model_copy(
+                        update={"work": reading.work}
+                    )
+            state.findings += outcome.findings
+            state.passages.update({p.passage_id: p for p in outcome.passages})
+            state.read_done |= outcome.done
+            state.excluded.update(dict(outcome.excluded))
             return Coverage()
-        covered = {c.subquestion_id for c in state.coverage if c.covered}
-        chosen = steps.read_targets(
-            _kept(ctx),
-            done=state.read_done,
-            excluded=state.excluded,
-            covered=covered,
-            limit=deps.budget.read_per_round,
-            per_subquestion=deps.config.read_per_subquestion,
-        )
-        if not chosen:
-            return Coverage()
-        deps.progress(f"Read: {len(chosen)} works")
-        outcome = await read_works(
-            [
-                ReadTarget(work=state.candidates[w].work, subquestion_ids=ids)
-                for w, ids in chosen
-            ],
-            subquestions=state.subquestions,
-            criteria=_evidence_criteria(ctx),
-            deps=deps.reader,
-            ids=state.finding_ids,
-            skip=state.read_done,
-        )
-        _note(state, degraded=outcome.degraded, spent=outcome.stopped)
-        for reading in outcome.readings:
-            candidate = state.candidates.get(reading.work.work_id)
-            if candidate is not None:
-                state.candidates[reading.work.work_id] = candidate.model_copy(
-                    update={"work": reading.work}
-                )
-        state.findings += outcome.findings
-        state.passages.update({p.passage_id: p for p in outcome.passages})
-        state.read_done |= outcome.done
-        state.excluded.update(dict(outcome.excluded))
-        return Coverage()
 
 
 @dataclass
@@ -392,45 +418,46 @@ class Coverage(BaseNode[ResearchState, ResearchDeps, ResearchResult]):
     """Coverage per sub-question; stop, or search again for what is open."""
 
     async def run(self, ctx: Ctx) -> Search | Write:
-        state, deps = ctx.state, ctx.deps
-        spent = _spent(ctx)
-        new_kept = {
-            s: len(state.round_new_kept.get(s, ())) for s in state.round_targets
-        }
-        state.coverage = compute_coverage(
-            state.subquestions,
-            criteria=_evidence_criteria(ctx),
-            findings=state.findings,
-            works=_works(state),
-            candidate_scores=list(state.scores.values()),
-            rounds_done=state.round,
-            new_kept_last_round=new_kept,
-        )
-        record_coverage(deps.asker, state.coverage)
-        decision = decide_stop(
-            state.coverage,
-            round_number=state.round,
-            new_kept_by_round=state.new_kept_by_round,
-            budget=deps.budget,
-            spent=spent or None,
-        )
-        covered = sum(c.covered for c in state.coverage)
-        deps.progress(
-            f"Coverage: round {state.round}, {covered}/{len(state.coverage)} covered, "
-            f"{len(state.findings)} findings"
-        )
-        if not decision.stop:
-            return Search()
-        state.stop_reason = decision.reason
-        found = await steps.conflicts(
-            state.findings,
-            works=_works(state),
-            asker=deps.asker,
-            checked=state.conflict_memory,
-        )
-        _note(state, degraded=found.degraded)
-        state.conflicts = found.conflicts
-        return Write()
+        with _timed(ctx, "Coverage"):
+            state, deps = ctx.state, ctx.deps
+            spent = _spent(ctx)
+            new_kept = {
+                s: len(state.round_new_kept.get(s, ())) for s in state.round_targets
+            }
+            state.coverage = compute_coverage(
+                state.subquestions,
+                criteria=_evidence_criteria(ctx),
+                findings=state.findings,
+                works=_works(state),
+                candidate_scores=list(state.scores.values()),
+                rounds_done=state.round,
+                new_kept_last_round=new_kept,
+            )
+            record_coverage(deps.asker, state.coverage)
+            decision = decide_stop(
+                state.coverage,
+                round_number=state.round,
+                new_kept_by_round=state.new_kept_by_round,
+                budget=deps.budget,
+                spent=spent or None,
+            )
+            covered = sum(c.covered for c in state.coverage)
+            deps.progress(
+                f"Coverage: round {state.round}, {covered}/{len(state.coverage)} covered, "
+                f"{len(state.findings)} findings"
+            )
+            if not decision.stop:
+                return Search()
+            state.stop_reason = decision.reason
+            found = await steps.conflicts(
+                state.findings,
+                works=_works(state),
+                asker=deps.asker,
+                checked=state.conflict_memory,
+            )
+            _note(state, degraded=found.degraded)
+            state.conflicts = found.conflicts
+            return Write()
 
 
 @dataclass
@@ -438,21 +465,22 @@ class Write(BaseNode[ResearchState, ResearchDeps, ResearchResult]):
     """The report, from the findings table only."""
 
     async def run(self, ctx: Ctx) -> Verify:
-        state, deps = ctx.state, ctx.deps
-        deps.progress(f"Write: {len(state.findings)} findings")
-        report = await write_report(
-            deps.question,
-            subquestions=state.subquestions,
-            criteria=_evidence_criteria(ctx),
-            findings=state.findings,
-            conflicts=state.conflicts,
-            coverage=state.coverage,
-            works=_works(state),
-            asker=deps.asker,
-        )
-        _note(state, degraded=report.degraded)
-        state.report = report.markdown
-        return Verify()
+        with _timed(ctx, "Write"):
+            state, deps = ctx.state, ctx.deps
+            deps.progress(f"Write: {len(state.findings)} findings")
+            report = await write_report(
+                deps.question,
+                subquestions=state.subquestions,
+                criteria=_evidence_criteria(ctx),
+                findings=state.findings,
+                conflicts=state.conflicts,
+                coverage=state.coverage,
+                works=_works(state),
+                asker=deps.asker,
+            )
+            _note(state, degraded=report.degraded)
+            state.report = report.markdown
+            return Verify()
 
 
 @dataclass
@@ -460,20 +488,22 @@ class Verify(BaseNode[ResearchState, ResearchDeps, ResearchResult]):
     """Every check on the report: quotes, claims, ids, links, retractions."""
 
     async def run(self, ctx: Ctx) -> Finish:
-        state, deps = ctx.state, ctx.deps
-        deps.progress("Verify: claims, quotes and links")
-        outcome = await verify_report(
-            state.report,
-            findings=state.findings,
-            passages=state.passages,
-            works=_works(state),
-            asker=deps.asker,
-            http=deps.verify_http,
-        )
-        _note(state, degraded=outcome.degraded)
-        state.report = outcome.report_markdown
-        state.verification = outcome.flags
-        return Finish()
+        with _timed(ctx, "Verify"):
+            state, deps = ctx.state, ctx.deps
+            deps.progress("Verify: claims, quotes and links")
+            outcome = await verify_report(
+                state.report,
+                findings=state.findings,
+                passages=state.passages,
+                works=_works(state),
+                asker=deps.asker,
+                http=deps.verify_http,
+                code_first=deps.config.verify_strategy.code_first,
+            )
+            _note(state, degraded=outcome.degraded)
+            state.report = outcome.report_markdown
+            state.verification = outcome.flags
+            return Finish()
 
 
 @dataclass
@@ -510,7 +540,13 @@ class Finish(BaseNode[ResearchState, ResearchDeps, ResearchResult]):
                 "conflicts": state.conflicts,
                 "verification": state.verification,
                 "stop_reason": state.stop_reason,
-                "degraded": steps.unique(state.degraded),
+                "degraded": steps.unique(
+                    state.degraded
+                    + unreadable_degraded(
+                        attempted=state.read_attempted,
+                        unreadable=state.read_unreadable,
+                    )
+                ),
                 "skipped": steps.unique(state.skipped + _offline_skips(deps)),
                 "notes": steps.unique(state.notes),
                 "stats": deps.asker.stats,
@@ -597,6 +633,7 @@ async def research(
     frozen: FrozenInputs | None = None,
     source_client: SourceClient | None = None,
     http_cache: ResearchStore | None = None,
+    decision_cache: bool = True,
     progress: Callable[[str], None] | None = None,
     clock: Callable[[], float] = time.monotonic,
 ) -> ResearchResult:
@@ -634,6 +671,14 @@ async def research(
     this call opens, so it cannot be combined with an open ``store`` (open
     that one with ``shared_cache=``) or with ``frozen`` (a frozen run reads
     only its snapshot).
+
+    ``decision_cache`` (on by default, for every preset) serves a decision
+    answer from the run's store when the same model (by digest) already
+    answered the same request about the same state. The model is first checked
+    to be deterministic (``decision_determinism``: one fixed request sent
+    twice, not counted in the run's decision calls); if its answers differ the
+    cache stays off for the run, and a note and the run's stats say so. It does
+    nothing without a decision model.
 
     A spent budget ends the search with ``stop_reason='budget:<name>'`` and
     still writes and verifies the report from what was found. A failing source
@@ -690,6 +735,7 @@ async def research(
             config=config,
             frozen=frozen,
             source_set=source_set,
+            decision_cache=decision_cache,
             progress=progress or (lambda _line: None),
             clock=clock,
         )
@@ -714,6 +760,7 @@ async def _run(
     config: ResearchConfig,
     frozen: FrozenInputs | None,
     source_set: SourceSet,
+    decision_cache: bool,
     progress: Callable[[str], None],
     clock: Callable[[], float],
 ) -> ResearchResult:
@@ -786,7 +833,29 @@ async def _run(
         return stats
 
     try:
-        result = await graph.run(state=ResearchState(), deps=deps, inputs=Plan())
+        state = ResearchState()
+        if decision_model is not None and decision_cache:
+            check = await check_determinism(decision_model, store=store)
+            asker.decision_cache = check.enabled
+            stats.decision_cache = check.state
+            stats.decision_probe_calls = check.probe_calls
+            store.add_run_item(
+                run_id,
+                "check",
+                CHECK_NAME,
+                {
+                    "model": decision_model.id,
+                    "digest": decision_model.digest or "",
+                    "deterministic": check.deterministic,
+                    "cache": "enabled" if check.enabled else "disabled",
+                    "detail": check.detail,
+                    "probe_calls": check.probe_calls,
+                    "reused": check.reused,
+                },
+            )
+            if not check.enabled:
+                state.notes.append(f"decision cache disabled: {check.detail}")
+        result = await graph.run(state=state, deps=deps, inputs=Plan())
     except BaseException as error:
         store.finish_run(
             run_id,

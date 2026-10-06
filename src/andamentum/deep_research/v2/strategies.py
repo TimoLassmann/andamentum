@@ -13,6 +13,14 @@ Slots and the strategies that exist:
   the title, abstract or snippet, year and venue; dropped when
   p(relevant) < ``config.drop_below`` (``GENERIC_DROP_BELOW``). ``criteria``:
   the compiled rubric, ``Screener.score_candidates`` as built.
+  ``generic_prefilter``: the candidates of a sub-question are ranked by BM25 of
+  title and abstract (or snippet) against the sub-question, in code (the
+  passages' BM25), and only the best ``PREFILTER_TOP`` are put to the generic
+  question; the rest are dropped as "below lexical pre-filter".
+- **verify** — ``model``: every report sentence's claim support is put to the
+  model; ``code_first``: a sentence whose content tokens occur in its cited
+  quotes (``verify.CODE_SUPPORT_MIN_OVERLAP``) counts as supported in code and
+  only the others go to the model.
 - **refine** — ``off``; ``on``: ``Screener.refine`` as built (needs criteria).
 - **rank** — ``score``: a kept work's best screen score, as built; ``rrf``:
   reciprocal-rank fusion of each source's search rank and the screen score's
@@ -49,6 +57,10 @@ if TYPE_CHECKING:
 
 # The generic screen drops a candidate whose p(relevant) is below this.
 GENERIC_DROP_BELOW = 0.5
+# The generic pre-filter sends this many candidates of a sub-question (the best
+# by BM25 against the sub-question) to the generic question; the rest are
+# dropped without a model request.
+PREFILTER_TOP = 12
 # The key of the generic screen's one question in a candidate's ``criterion_p``.
 RELEVANT_KEY = "relevant"
 # The constant of reciprocal-rank fusion (Cormack et al. 2009): each list adds
@@ -148,6 +160,15 @@ class ExpandStrategy(Protocol):
     ) -> list[tuple[Work, list[str]]]: ...
 
 
+class VerifyStrategy(Protocol):
+    """How a report sentence's claim support is settled: ``code_first`` says
+    whether the token-overlap rule decides the sentences it can before the
+    model sees the rest."""
+
+    name: str
+    code_first: bool
+
+
 class FacetStrategy(Protocol):
     """The criteria that travel with the evidence table (extraction, coverage,
     the writer)."""
@@ -226,6 +247,81 @@ class GenericScreen:
                 reason=(
                     f"{'kept' if kept else 'dropped'}: p(relevant)={p:.2f} "
                     f"({'>=' if kept else '<'} {config.drop_below:.2f})"
+                ),
+            )
+            screener.store.add_run_item(
+                screener.run_id,
+                "candidate",
+                f"{subquestion.id}/generic/{work_id}",
+                {**score.model_dump(mode="json"), "screen": self.name},
+            )
+            scores.append(score)
+        return scores
+
+
+def prefilter_text(candidate: Candidate) -> str:
+    """What the lexical pre-filter reads of a candidate: title and abstract (or
+    the search snippet)."""
+    work = candidate.work
+    return f"{work.title} {work.abstract or candidate.snippet}"
+
+
+def prefilter_order(
+    subquestion: SubQuestion, candidates: Sequence[Candidate]
+) -> list[int]:
+    """Indexes of *candidates*, best BM25 against the sub-question first; equal
+    scores keep the order the candidates came in."""
+    scores = bm25_scores(subquestion.text, [prefilter_text(c) for c in candidates])
+    return sorted(range(len(candidates)), key=lambda i: (-scores[i], i))
+
+
+class GenericPrefilterScreen(GenericScreen):
+    """The generic screen over the ``PREFILTER_TOP`` candidates a lexical
+    ranking puts first; every other candidate is dropped, in code, with the
+    reason recorded (and logged as a ``candidate`` item like any other)."""
+
+    name = "generic_prefilter"
+
+    async def screen(
+        self,
+        subquestion: SubQuestion,
+        candidates: list[Candidate],
+        *,
+        criteria: list[Criterion],
+        screener: Screener,
+        config: ResearchConfig,
+    ) -> list[CandidateScore]:
+        order = prefilter_order(subquestion, candidates)
+        asked = {i for i in order[:PREFILTER_TOP]}
+        answered = iter(
+            await super().screen(
+                subquestion,
+                [c for i, c in enumerate(candidates) if i in asked],
+                criteria=criteria,
+                screener=screener,
+                config=config,
+            )
+        )
+        rank_of = {index: place for place, index in enumerate(order, start=1)}
+        scores: list[CandidateScore] = []
+        for index, candidate in enumerate(candidates):
+            if index in asked:
+                scores.append(next(answered))
+                continue
+            work_id = candidate.work.work_id
+            if not work_id:
+                raise ValueError(
+                    f"candidate {candidate.work.title!r} has no work_id; "
+                    "upsert it into the store before screening"
+                )
+            score = CandidateScore(
+                work_id=work_id,
+                subquestion_id=subquestion.id,
+                score=0.0,
+                kept=False,
+                reason=(
+                    f"dropped: below lexical pre-filter (BM25 rank {rank_of[index]} "
+                    f"of {len(candidates)}; the best {PREFILTER_TOP} are asked)"
                 ),
             )
             screener.store.add_run_item(
@@ -542,6 +638,24 @@ class NoExpand:
         config: ResearchConfig,
     ) -> list[tuple[Work, list[str]]]:
         return []
+
+
+# -- verify ----------------------------------------------------------------------
+
+
+class ModelVerify:
+    """Every sentence's claim support goes to the model."""
+
+    name = "model"
+    code_first = False
+
+
+class CodeFirstVerify:
+    """A sentence whose content tokens are in its quotes is supported in code;
+    only the rest go to the model."""
+
+    name = "code_first"
+    code_first = True
 
 
 # -- facets ----------------------------------------------------------------------

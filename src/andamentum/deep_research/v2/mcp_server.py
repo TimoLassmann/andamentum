@@ -416,7 +416,7 @@ class ResearchTools:
                         ids=itertools.count(self._next_finding_number(run_id)),
                     )
                     findings = reading.findings
-            notes = [*reading.notes, *reading.degraded]
+            notes = [*reading.notes, *reading.failed_notes, *reading.degraded]
             if reading.excluded:
                 notes.append(reading.excluded)
             work = self._work(work.work_id)

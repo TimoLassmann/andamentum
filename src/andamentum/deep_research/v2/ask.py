@@ -127,6 +127,20 @@ def render_state(state: Mapping[str, object] | str, *, indent: int = 0) -> str:
     return "\n".join(lines)
 
 
+def _count(counts: dict[str, int], phase: str) -> None:
+    counts[phase or "other"] = counts.get(phase or "other", 0) + 1
+
+
+def request_key(questions: Mapping[str, Question]) -> str:
+    """One hash for a request's questions: each question's own hash under its
+    key, in key order (the cache key's "question hash")."""
+    text = json.dumps(
+        sorted((key, question_hash(q)) for key, q in questions.items()),
+        ensure_ascii=False,
+    )
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
 def _state_hash(state: Mapping[str, object] | str) -> str:
     text = json.dumps(state, sort_keys=True, ensure_ascii=False, default=str)
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
@@ -145,6 +159,13 @@ class Asker:
     # pydantic-ai model settings sent with every language-model call (the run
     # config's temperature and seed); None sends none.
     model_settings: Mapping[str, Any] | None = None
+    # The graph step now running (``types.STEPS``): the model requests made are
+    # counted under it in ``stats.step_llm_calls`` / ``step_decision_calls``.
+    phase: str = ""
+    # Serve a decision request from the store's decision cache when the same
+    # model (digest), request and state answered it before. Switched on by the
+    # run only after the model passed the determinism check.
+    decision_cache: bool = False
 
     # -- language model ----------------------------------------------------
 
@@ -160,6 +181,7 @@ class Asker:
         if self.stats.llm_calls >= self.budget.max_llm_calls:
             raise BudgetExhausted("max_llm_calls")
         self.stats.llm_calls += 1
+        _count(self.stats.step_llm_calls, self.phase)
         output, usage = await run_agent_with_usage(
             self.model,
             instructions=instructions,
@@ -208,10 +230,39 @@ class Asker:
         decision_model = self.decision_model
         if decision_model is None:
             raise AskError("decide needs a decision model")
+        key = request_key(questions)
+        digest = decision_model.digest or ""
+        if self.decision_cache and digest:
+            stored = self.store.cached_answers(
+                digest=digest, question_hash=key, state_hash=_state_hash(state)
+            )
+            if stored is not None:
+                served = {k: Answer.model_validate(v) for k, v in stored.items()}
+                self.stats.decision_cache_hits += 1
+                self.record(
+                    step,
+                    model=decision_model.id,
+                    digest=digest,
+                    state=state,
+                    questions=questions,
+                    answers=served,
+                    ms=0.0,
+                )
+                return served
         if self.stats.decision_calls >= self.budget.max_decision_calls:
             raise BudgetExhausted("max_decision_calls")
         result = await decision_model.decide_with_usage(state, questions)
         self.stats.decision_calls += 1
+        _count(self.stats.step_decision_calls, self.phase)
+        if self.decision_cache and digest:
+            self.store.cache_answers(
+                digest=digest,
+                question_hash=key,
+                state_hash=_state_hash(state),
+                answers={
+                    k: a.model_dump(mode="json") for k, a in result.answers.items()
+                },
+            )
         self.record(
             step,
             model=decision_model.id,

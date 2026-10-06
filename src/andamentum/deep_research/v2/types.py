@@ -54,6 +54,8 @@ VerifyKind = Literal[
 
 # A sub-question is covered when this many independent sources support it.
 MIN_INDEPENDENT_SOURCES = 2
+# The steps of the graph a run's time and calls are counted under, in order.
+STEPS = ("Plan", "Search", "Screen", "Expand", "Read", "Coverage", "Write", "Verify")
 
 DEFAULT_MAX_ROUNDS = 3
 DEFAULT_QUERIES_PER_SUBQ = 3
@@ -244,6 +246,24 @@ class RunStats(BaseModel):
     cache_misses: int = Field(default=0, ge=0)
     fetched_bytes: int = Field(default=0, ge=0)
     per_source: dict[str, int] = Field(default_factory=dict)
+    # Per step of the graph (``STEPS``): seconds on the run's clock, and the
+    # language-model and decision-model requests made while it ran. A step the
+    # run never reached has no entry.
+    step_seconds: dict[str, float] = Field(default_factory=dict)
+    step_llm_calls: dict[str, int] = Field(default_factory=dict)
+    step_decision_calls: dict[str, int] = Field(default_factory=dict)
+    # Report sentences whose claim support was settled by the token-overlap
+    # rule in code, and by the model (the ``code_first`` verification only
+    # settles any by code).
+    verify_by_code: int = Field(default=0, ge=0)
+    verify_by_model: int = Field(default=0, ge=0)
+    # The decision cache: its state for this run ("off", "enabled", or
+    # "disabled: <why>"), the answers it served instead of a request, and the
+    # requests of the determinism check that decided it (not in
+    # ``decision_calls``).
+    decision_cache: str = "off"
+    decision_cache_hits: int = Field(default=0, ge=0)
+    decision_probe_calls: int = Field(default=0, ge=0)
 
 
 class ResearchResult(BaseModel):

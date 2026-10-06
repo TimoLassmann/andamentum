@@ -70,6 +70,10 @@ def aggregate_interval(
     """The mean or median of *values* with a bootstrap interval; None for no values."""
     if not values:
         return None
+    if aggregate == "max":
+        # no sampling: the largest value is the largest value
+        top = float(max(values))
+        return Interval(estimate=top, low=top, high=top, n_items=len(values))
     if aggregate == "mean":
         ci = paired_bootstrap_ci(values, resamples, seed, confidence=confidence)
         return Interval(estimate=ci.mean, low=ci.low, high=ci.high, n_items=ci.n_items)
@@ -94,6 +98,16 @@ def paired_values(arm: ItemValues, reference: ItemValues) -> list[float]:
         a - b
         for item, a in arm.items()
         if a is not None and (b := reference.get(item)) is not None
+    ]
+
+
+def reductions(arm: ItemValues, reference: ItemValues) -> list[float]:
+    """Per item ``1 - arm / reference`` over the items both have a value for
+    and whose reference is above zero (there is nothing to reduce otherwise)."""
+    return [
+        1.0 - a / b
+        for item, a in arm.items()
+        if a is not None and (b := reference.get(item)) is not None and b > 0
     ]
 
 
@@ -131,6 +145,10 @@ def judge_rule(
     seed: int,
 ) -> Verdict:
     """Apply *rule* to the item values of its arm (and reference arm)."""
+    if rule.test == "reduced_by":
+        return _judge_reduction(
+            rule, arm=arm, reference=reference, resamples=resamples, seed=seed
+        )
     paired = rule.test in ("noninferior", "superior")
     if paired:
         if reference is None:
@@ -169,6 +187,13 @@ def judge_rule(
     interval = single_interval(arm, rule.aggregate, resamples=resamples, seed=seed)
     if interval is None:
         return _verdict(rule, "inconclusive", None, "no item has a value")
+    if rule.test == "at_most" and rule.aggregate == "max":
+        outcome = "accepted" if interval.high <= threshold else "not accepted"
+        statement = (
+            f"{rule.arm} largest {rule.metric} over {interval.n_items} items: "
+            f"{interval.estimate:g}; bar: <= {threshold:g}"
+        )
+        return _verdict(rule, outcome, interval, statement)
     if rule.test == "at_least":
         outcome = (
             "accepted"
@@ -191,6 +216,47 @@ def judge_rule(
         f"{rule.arm} {rule.aggregate} {rule.metric}: {interval.estimate:.3f} "
         f"(95% interval {interval.low:.3f} to {interval.high:.3f}, "
         f"{interval.n_items} items); bar: {bar}"
+    )
+    return _verdict(rule, outcome, interval, statement)
+
+
+def _judge_reduction(
+    rule: Rule,
+    *,
+    arm: ItemValues,
+    reference: ItemValues | None,
+    resamples: int,
+    seed: int,
+) -> Verdict:
+    """``reduced_by``: the aggregate share by which *arm* uses less than
+    *reference* per item, against the rule's threshold."""
+    if reference is None:
+        raise ValueError(f"rule {rule.id} needs the reference arm's values")
+    threshold = rule.threshold
+    if threshold is None:  # the rule validator guarantees one
+        raise ValueError(f"rule {rule.id} has no threshold")
+    interval = aggregate_interval(
+        reductions(arm, reference), rule.aggregate, resamples=resamples, seed=seed
+    )
+    if interval is None:
+        return _verdict(
+            rule,
+            "inconclusive",
+            None,
+            "no item has a value above zero for the reference arm",
+        )
+    outcome: Outcome = (
+        "accepted"
+        if interval.low >= threshold
+        else "not accepted"
+        if interval.high < threshold
+        else "inconclusive"
+    )
+    statement = (
+        f"{rule.arm} reduces {rule.metric} against {rule.reference} by "
+        f"{interval.estimate:.1%} ({rule.aggregate} over items; 95% interval "
+        f"{interval.low:.1%} to {interval.high:.1%}, {interval.n_items} items); "
+        f"bar: at least {threshold:.0%}"
     )
     return _verdict(rule, outcome, interval, statement)
 

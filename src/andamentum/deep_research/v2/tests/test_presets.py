@@ -186,7 +186,7 @@ async def test_the_criteria_preset_reproduces_the_first_build() -> None:
             world=engine_world,
             store_type=ResearchStore,
             source_config=SourceConfig,
-            extra={"config": PRESETS["criteria"]},
+            extra={"config": PRESETS["criteria"], "decision_cache": False},
         )
         got = json.loads(json.dumps(got, sort_keys=True))
         for key in expected:

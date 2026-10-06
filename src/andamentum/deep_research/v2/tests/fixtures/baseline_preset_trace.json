@@ -1,0 +1,1079 @@
+[
+ {
+  "conflicts": [],
+  "coverage": [
+   {
+    "covered": true,
+    "independent_sources": 3,
+    "note": "",
+    "per_criterion": {},
+    "subquestion_id": "Q1",
+    "unresolvable": false
+   },
+   {
+    "covered": true,
+    "independent_sources": 2,
+    "note": "",
+    "per_criterion": {},
+    "subquestion_id": "Q2",
+    "unresolvable": false
+   }
+  ],
+  "criteria": {},
+  "decision": true,
+  "decision_calls": [
+   {
+    "questions": "2e9a9ad785ff4ca7",
+    "state": "49cbccb151a7ae40"
+   },
+   {
+    "questions": "2e9a9ad785ff4ca7",
+    "state": "c91a471edc1fe5e1"
+   },
+   {
+    "questions": "d1a754dfb27a3305",
+    "state": "5403d3bde3dc50b7"
+   },
+   {
+    "questions": "d1a754dfb27a3305",
+    "state": "7e717b122cb177a0"
+   },
+   {
+    "questions": "d1a754dfb27a3305",
+    "state": "df643e2059694a5c"
+   },
+   {
+    "questions": "919baa83a5b93379",
+    "state": "a1675a40b89d4b67"
+   },
+   {
+    "questions": "919baa83a5b93379",
+    "state": "1eb178b4ed7e31cc"
+   },
+   {
+    "questions": "d1a754dfb27a3305",
+    "state": "d91e6eaf5c830aaa"
+   },
+   {
+    "questions": "18e2fc54c3e62292",
+    "state": "d9dcfb5ab57e9191"
+   },
+   {
+    "questions": "18e2fc54c3e62292",
+    "state": "87c0b5cf28e0efff"
+   },
+   {
+    "questions": "18e2fc54c3e62292",
+    "state": "7aa166825613f125"
+   },
+   {
+    "questions": "18e2fc54c3e62292",
+    "state": "d3547a71c17c3bc9"
+   },
+   {
+    "questions": "82bb5873c120ca5f",
+    "state": "7ba2e00e656cef23"
+   },
+   {
+    "questions": "82bb5873c120ca5f",
+    "state": "ae846a8ccc05b10d"
+   },
+   {
+    "questions": "82bb5873c120ca5f",
+    "state": "99c157dea9da2119"
+   },
+   {
+    "questions": "82bb5873c120ca5f",
+    "state": "6d7fe50b884fb1ba"
+   },
+   {
+    "questions": "82bb5873c120ca5f",
+    "state": "3a5b467bc742fb11"
+   }
+  ],
+  "decision_count": 17,
+  "degraded": [],
+  "excluded": [
+   "10.5555/apollo-retracted"
+  ],
+  "findings": [
+   {
+    "claim": "Enabling the Apollo cache reduced median request latency from 120 ms to 45 ms in every tested workload.",
+    "criteria": [],
+    "id": "F1",
+    "quote": "Enabling the Apollo cache reduced median request latency from 120 ms to 45 ms in every tested workload",
+    "subquestion": "Q1",
+    "work": "10.5555/apollo-a"
+   },
+   {
+    "claim": "Verbose SaltLog logging added roughly 3 ms of overhead to each request in the benchmark.",
+    "criteria": [],
+    "id": "F2",
+    "quote": "Verbose SaltLog logging added roughly 3 ms of overhead to each request in the benchmark",
+    "subquestion": "Q2",
+    "work": "10.5555/saltlog-d"
+   },
+   {
+    "claim": "A follow-up study confirmed that the Apollo cache cut median request latency roughly in half.",
+    "criteria": [],
+    "id": "F3",
+    "quote": "A follow-up study confirmed that the Apollo cache cut median request latency roughly in half",
+    "subquestion": "Q1",
+    "work": "10.5555/apollo-f"
+   },
+   {
+    "claim": "In a replication across three services, the Apollo caching layer lowered median latency by about half.",
+    "criteria": [],
+    "id": "F4",
+    "quote": "In a replication across three services, the Apollo caching layer lowered median latency by about half",
+    "subquestion": "Q1",
+    "work": "10.5555/apollo-b"
+   },
+   {
+    "claim": "In production traces, SaltLog added between 2 and 4 ms per request when verbose logging was on.",
+    "criteria": [],
+    "id": "F5",
+    "quote": "In production traces, SaltLog added between 2 and 4 ms per request when verbose logging was on",
+    "subquestion": "Q2",
+    "work": "10.5555/saltlog-e"
+   }
+  ],
+  "llm_calls": [
+   {
+    "head": "You split a research question into 2 to ",
+    "instructions": "6e9e58698c90c196",
+    "prompt": "c58db22f04103c54"
+   },
+   {
+    "head": "You write search queries for sub-questio",
+    "instructions": "a7997294cebd4216",
+    "prompt": "882edf61f8877805"
+   },
+   {
+    "head": "You extract findings from passages of on",
+    "instructions": "f16624be3f6b621f",
+    "prompt": "a42a6ac149728ea1"
+   },
+   {
+    "head": "You extract findings from passages of on",
+    "instructions": "f16624be3f6b621f",
+    "prompt": "c1324e2c443468c6"
+   },
+   {
+    "head": "You extract findings from passages of on",
+    "instructions": "f16624be3f6b621f",
+    "prompt": "3f50ba8a176c46db"
+   },
+   {
+    "head": "You extract findings from passages of on",
+    "instructions": "f16624be3f6b621f",
+    "prompt": "a03b2ab80a87ca78"
+   },
+   {
+    "head": "You extract findings from passages of on",
+    "instructions": "f16624be3f6b621f",
+    "prompt": "864399f46d8e4a2c"
+   },
+   {
+    "head": "You write one section of a research repo",
+    "instructions": "0a0577483bf17e24",
+    "prompt": "cd1bb92cbcd6b37b"
+   },
+   {
+    "head": "You write one section of a research repo",
+    "instructions": "0a0577483bf17e24",
+    "prompt": "2824172fbbe5dc88"
+   }
+  ],
+  "llm_count": 9,
+  "mode": "scholarly",
+  "queries": [
+   "apollo latency",
+   "saltlog latency"
+  ],
+  "report": "# How do the Apollo cache and SaltLog logging affect request latency?\n\n## How much does the Apollo cache reduce median request latency?\n\nEnabling the Apollo cache reduced median request latency from 120 ms to 45 ms in every tested workload [F1]. A follow-up study confirmed that the Apollo cache cut median request latency roughly in half [F3]. In a replication across three services, the Apollo caching layer lowered median latency by about half [F4].\n\n## How much overhead does SaltLog logging add per request?\n\nVerbose SaltLog logging added roughly 3 ms of overhead to each request in the benchmark [F2]. In production traces, SaltLog added between 2 and 4 ms per request when verbose logging was on [F5].\n\n## Sources\n\n- [F1] Jane Doe (2024). Apollo cache halves median latency in read-heavy services. Journal of Invented Systems. https://doi.org/10.5555/apollo-a\n- [F3] Kim Lee (2024). A follow-up on Apollo cache latency. Journal of Invented Systems. https://doi.org/10.5555/apollo-f\n- [F4] Ravi Rowe (2024). Latency effects of the Apollo caching layer. Journal of Invented Systems. https://doi.org/10.5555/apollo-b\n- [F2] Ada Byte (2024). SaltLog logging overhead per request. Journal of Invented Systems. https://doi.org/10.5555/saltlog-d\n- [F5] Lin Quay (2024). Measuring SaltLog overhead in production. Journal of Invented Systems. https://doi.org/10.5555/saltlog-e\n",
+  "stop_reason": "covered",
+  "subquestions": [
+   {
+    "id": "Q1",
+    "kind": "topical",
+    "text": "How much does the Apollo cache reduce median request latency?"
+   },
+   {
+    "id": "Q2",
+    "kind": "topical",
+    "text": "How much overhead does SaltLog logging add per request?"
+   }
+  ],
+  "verification": [
+   {
+    "detail": "rests on F1, one independent source",
+    "kind": "single_source",
+    "ref": "Enabling the Apollo cache reduced median request latency from 120 ms to 45 ms in every tested workload"
+   },
+   {
+    "detail": "rests on F3, one independent source",
+    "kind": "single_source",
+    "ref": "A follow-up study confirmed that the Apollo cache cut median request latency roughly in half"
+   },
+   {
+    "detail": "rests on F4, one independent source",
+    "kind": "single_source",
+    "ref": "In a replication across three services, the Apollo caching layer lowered median latency by about half"
+   },
+   {
+    "detail": "rests on F2, one independent source",
+    "kind": "single_source",
+    "ref": "Verbose SaltLog logging added roughly 3 ms of overhead to each request in the benchmark"
+   },
+   {
+    "detail": "rests on F5, one independent source",
+    "kind": "single_source",
+    "ref": "In production traces, SaltLog added between 2 and 4 ms per request when verbose logging was on"
+   }
+  ],
+  "works": [
+   "10.5555/apollo-a",
+   "10.5555/apollo-f",
+   "10.5555/apollo-b",
+   "10.5555/saltlog-d",
+   "10.5555/saltlog-e"
+  ]
+ },
+ {
+  "conflicts": [],
+  "coverage": [
+   {
+    "covered": true,
+    "independent_sources": 3,
+    "note": "",
+    "per_criterion": {},
+    "subquestion_id": "Q1",
+    "unresolvable": false
+   },
+   {
+    "covered": true,
+    "independent_sources": 2,
+    "note": "",
+    "per_criterion": {},
+    "subquestion_id": "Q2",
+    "unresolvable": false
+   }
+  ],
+  "criteria": {},
+  "decision": false,
+  "decision_calls": [],
+  "decision_count": 0,
+  "degraded": [],
+  "excluded": [
+   "10.5555/apollo-retracted"
+  ],
+  "findings": [
+   {
+    "claim": "Enabling the Apollo cache reduced median request latency from 120 ms to 45 ms in every tested workload.",
+    "criteria": [],
+    "id": "F1",
+    "quote": "Enabling the Apollo cache reduced median request latency from 120 ms to 45 ms in every tested workload",
+    "subquestion": "Q1",
+    "work": "10.5555/apollo-a"
+   },
+   {
+    "claim": "Verbose SaltLog logging added roughly 3 ms of overhead to each request in the benchmark.",
+    "criteria": [],
+    "id": "F2",
+    "quote": "Verbose SaltLog logging added roughly 3 ms of overhead to each request in the benchmark",
+    "subquestion": "Q2",
+    "work": "10.5555/saltlog-d"
+   },
+   {
+    "claim": "A follow-up study confirmed that the Apollo cache cut median request latency roughly in half.",
+    "criteria": [],
+    "id": "F3",
+    "quote": "A follow-up study confirmed that the Apollo cache cut median request latency roughly in half",
+    "subquestion": "Q1",
+    "work": "10.5555/apollo-f"
+   },
+   {
+    "claim": "In a replication across three services, the Apollo caching layer lowered median latency by about half.",
+    "criteria": [],
+    "id": "F4",
+    "quote": "In a replication across three services, the Apollo caching layer lowered median latency by about half",
+    "subquestion": "Q1",
+    "work": "10.5555/apollo-b"
+   },
+   {
+    "claim": "In production traces, SaltLog added between 2 and 4 ms per request when verbose logging was on.",
+    "criteria": [],
+    "id": "F5",
+    "quote": "In production traces, SaltLog added between 2 and 4 ms per request when verbose logging was on",
+    "subquestion": "Q2",
+    "work": "10.5555/saltlog-e"
+   }
+  ],
+  "llm_calls": [
+   {
+    "head": "You split a research question into 2 to ",
+    "instructions": "6e9e58698c90c196",
+    "prompt": "c58db22f04103c54"
+   },
+   {
+    "head": "You write search queries for sub-questio",
+    "instructions": "a7997294cebd4216",
+    "prompt": "882edf61f8877805"
+   },
+   {
+    "head": "You screen one search result for a resea",
+    "instructions": "4a966b347d2dc859",
+    "prompt": "ee91cbade535a736"
+   },
+   {
+    "head": "You screen one search result for a resea",
+    "instructions": "4a966b347d2dc859",
+    "prompt": "9568a31e528cc65d"
+   },
+   {
+    "head": "You screen one search result for a resea",
+    "instructions": "4a966b347d2dc859",
+    "prompt": "9b1def79b65b9f72"
+   },
+   {
+    "head": "You screen one search result for a resea",
+    "instructions": "4a966b347d2dc859",
+    "prompt": "156398fcd7cd44f7"
+   },
+   {
+    "head": "You screen one search result for a resea",
+    "instructions": "4a966b347d2dc859",
+    "prompt": "6d8ba2770f14db27"
+   },
+   {
+    "head": "You screen one search result for a resea",
+    "instructions": "4a966b347d2dc859",
+    "prompt": "102b9ed5a2efd85e"
+   },
+   {
+    "head": "You extract findings from passages of on",
+    "instructions": "f16624be3f6b621f",
+    "prompt": "a42a6ac149728ea1"
+   },
+   {
+    "head": "You extract findings from passages of on",
+    "instructions": "f16624be3f6b621f",
+    "prompt": "c1324e2c443468c6"
+   },
+   {
+    "head": "You extract findings from passages of on",
+    "instructions": "f16624be3f6b621f",
+    "prompt": "3f50ba8a176c46db"
+   },
+   {
+    "head": "You extract findings from passages of on",
+    "instructions": "f16624be3f6b621f",
+    "prompt": "a03b2ab80a87ca78"
+   },
+   {
+    "head": "You extract findings from passages of on",
+    "instructions": "f16624be3f6b621f",
+    "prompt": "864399f46d8e4a2c"
+   },
+   {
+    "head": "You answer one yes/no question about eac",
+    "instructions": "e93005fb7726984f",
+    "prompt": "836ae25b76705b47"
+   },
+   {
+    "head": "You answer one yes/no question about eac",
+    "instructions": "e93005fb7726984f",
+    "prompt": "7f1d2d1030823786"
+   },
+   {
+    "head": "You write one section of a research repo",
+    "instructions": "0a0577483bf17e24",
+    "prompt": "cd1bb92cbcd6b37b"
+   },
+   {
+    "head": "You write one section of a research repo",
+    "instructions": "0a0577483bf17e24",
+    "prompt": "2824172fbbe5dc88"
+   },
+   {
+    "head": "You answer one yes/no question about eac",
+    "instructions": "e93005fb7726984f",
+    "prompt": "481cc4dbb9e89c05"
+   }
+  ],
+  "llm_count": 18,
+  "mode": "scholarly",
+  "queries": [
+   "apollo latency",
+   "saltlog latency"
+  ],
+  "report": "# How do the Apollo cache and SaltLog logging affect request latency?\n\n## How much does the Apollo cache reduce median request latency?\n\nEnabling the Apollo cache reduced median request latency from 120 ms to 45 ms in every tested workload [F1]. A follow-up study confirmed that the Apollo cache cut median request latency roughly in half [F3]. In a replication across three services, the Apollo caching layer lowered median latency by about half [F4].\n\n## How much overhead does SaltLog logging add per request?\n\nVerbose SaltLog logging added roughly 3 ms of overhead to each request in the benchmark [F2]. In production traces, SaltLog added between 2 and 4 ms per request when verbose logging was on [F5].\n\n## Sources\n\n- [F1] Jane Doe (2024). Apollo cache halves median latency in read-heavy services. Journal of Invented Systems. https://doi.org/10.5555/apollo-a\n- [F3] Kim Lee (2024). A follow-up on Apollo cache latency. Journal of Invented Systems. https://doi.org/10.5555/apollo-f\n- [F4] Ravi Rowe (2024). Latency effects of the Apollo caching layer. Journal of Invented Systems. https://doi.org/10.5555/apollo-b\n- [F2] Ada Byte (2024). SaltLog logging overhead per request. Journal of Invented Systems. https://doi.org/10.5555/saltlog-d\n- [F5] Lin Quay (2024). Measuring SaltLog overhead in production. Journal of Invented Systems. https://doi.org/10.5555/saltlog-e\n",
+  "stop_reason": "covered",
+  "subquestions": [
+   {
+    "id": "Q1",
+    "kind": "topical",
+    "text": "How much does the Apollo cache reduce median request latency?"
+   },
+   {
+    "id": "Q2",
+    "kind": "topical",
+    "text": "How much overhead does SaltLog logging add per request?"
+   }
+  ],
+  "verification": [
+   {
+    "detail": "rests on F1, one independent source",
+    "kind": "single_source",
+    "ref": "Enabling the Apollo cache reduced median request latency from 120 ms to 45 ms in every tested workload"
+   },
+   {
+    "detail": "rests on F3, one independent source",
+    "kind": "single_source",
+    "ref": "A follow-up study confirmed that the Apollo cache cut median request latency roughly in half"
+   },
+   {
+    "detail": "rests on F4, one independent source",
+    "kind": "single_source",
+    "ref": "In a replication across three services, the Apollo caching layer lowered median latency by about half"
+   },
+   {
+    "detail": "rests on F2, one independent source",
+    "kind": "single_source",
+    "ref": "Verbose SaltLog logging added roughly 3 ms of overhead to each request in the benchmark"
+   },
+   {
+    "detail": "rests on F5, one independent source",
+    "kind": "single_source",
+    "ref": "In production traces, SaltLog added between 2 and 4 ms per request when verbose logging was on"
+   }
+  ],
+  "works": [
+   "10.5555/apollo-a",
+   "10.5555/apollo-f",
+   "10.5555/apollo-b",
+   "10.5555/saltlog-d",
+   "10.5555/saltlog-e"
+  ]
+ },
+ {
+  "conflicts": [],
+  "coverage": [
+   {
+    "covered": true,
+    "independent_sources": 5,
+    "note": "",
+    "per_criterion": {},
+    "subquestion_id": "Q1",
+    "unresolvable": false
+   },
+   {
+    "covered": true,
+    "independent_sources": 4,
+    "note": "",
+    "per_criterion": {},
+    "subquestion_id": "Q2",
+    "unresolvable": false
+   }
+  ],
+  "criteria": {},
+  "decision": true,
+  "decision_calls": [
+   {
+    "questions": "2e9a9ad785ff4ca7",
+    "state": "49cbccb151a7ae40"
+   },
+   {
+    "questions": "2e9a9ad785ff4ca7",
+    "state": "c91a471edc1fe5e1"
+   },
+   {
+    "questions": "d1a754dfb27a3305",
+    "state": "5403d3bde3dc50b7"
+   },
+   {
+    "questions": "d1a754dfb27a3305",
+    "state": "7e717b122cb177a0"
+   },
+   {
+    "questions": "d1a754dfb27a3305",
+    "state": "df643e2059694a5c"
+   },
+   {
+    "questions": "d1a754dfb27a3305",
+    "state": "e98daeb4a40dd62c"
+   },
+   {
+    "questions": "d1a754dfb27a3305",
+    "state": "e1d75f257ec48d3f"
+   },
+   {
+    "questions": "d1a754dfb27a3305",
+    "state": "1f77fe5f2458c7d6"
+   },
+   {
+    "questions": "d1a754dfb27a3305",
+    "state": "07b6e60ebb1265ae"
+   },
+   {
+    "questions": "919baa83a5b93379",
+    "state": "e98daeb4a40dd62c"
+   },
+   {
+    "questions": "919baa83a5b93379",
+    "state": "e1d75f257ec48d3f"
+   },
+   {
+    "questions": "919baa83a5b93379",
+    "state": "1f77fe5f2458c7d6"
+   },
+   {
+    "questions": "919baa83a5b93379",
+    "state": "07b6e60ebb1265ae"
+   },
+   {
+    "questions": "919baa83a5b93379",
+    "state": "a1675a40b89d4b67"
+   },
+   {
+    "questions": "919baa83a5b93379",
+    "state": "1eb178b4ed7e31cc"
+   },
+   {
+    "questions": "d1a754dfb27a3305",
+    "state": "d91e6eaf5c830aaa"
+   },
+   {
+    "questions": "18e2fc54c3e62292",
+    "state": "341b20f58a5d92c5"
+   },
+   {
+    "questions": "18e2fc54c3e62292",
+    "state": "f41d1fc3a8eace1d"
+   },
+   {
+    "questions": "18e2fc54c3e62292",
+    "state": "d9dcfb5ab57e9191"
+   },
+   {
+    "questions": "18e2fc54c3e62292",
+    "state": "d24602d7301e87be"
+   },
+   {
+    "questions": "18e2fc54c3e62292",
+    "state": "85efdd1483a3db4e"
+   },
+   {
+    "questions": "18e2fc54c3e62292",
+    "state": "87c0b5cf28e0efff"
+   },
+   {
+    "questions": "18e2fc54c3e62292",
+    "state": "dd746d76da6a86b0"
+   },
+   {
+    "questions": "18e2fc54c3e62292",
+    "state": "7aa166825613f125"
+   },
+   {
+    "questions": "18e2fc54c3e62292",
+    "state": "04df4546b43a2417"
+   },
+   {
+    "questions": "18e2fc54c3e62292",
+    "state": "027833ac53c47652"
+   },
+   {
+    "questions": "18e2fc54c3e62292",
+    "state": "191add63b12d9afd"
+   },
+   {
+    "questions": "18e2fc54c3e62292",
+    "state": "c61f2547993f5ec4"
+   },
+   {
+    "questions": "18e2fc54c3e62292",
+    "state": "d3547a71c17c3bc9"
+   },
+   {
+    "questions": "18e2fc54c3e62292",
+    "state": "d641d10aa432fdb5"
+   },
+   {
+    "questions": "18e2fc54c3e62292",
+    "state": "a1af71518a0e8879"
+   },
+   {
+    "questions": "18e2fc54c3e62292",
+    "state": "dda79800ba5a5dbc"
+   },
+   {
+    "questions": "82bb5873c120ca5f",
+    "state": "7ba2e00e656cef23"
+   },
+   {
+    "questions": "82bb5873c120ca5f",
+    "state": "959082006aaed482"
+   },
+   {
+    "questions": "82bb5873c120ca5f",
+    "state": "ae846a8ccc05b10d"
+   },
+   {
+    "questions": "82bb5873c120ca5f",
+    "state": "99c157dea9da2119"
+   },
+   {
+    "questions": "82bb5873c120ca5f",
+    "state": "a210e8db365cb513"
+   },
+   {
+    "questions": "82bb5873c120ca5f",
+    "state": "6d7fe50b884fb1ba"
+   },
+   {
+    "questions": "82bb5873c120ca5f",
+    "state": "3a5b467bc742fb11"
+   },
+   {
+    "questions": "82bb5873c120ca5f",
+    "state": "f4e33dc22cc2df65"
+   },
+   {
+    "questions": "82bb5873c120ca5f",
+    "state": "177f2b9cef7bc200"
+   }
+  ],
+  "decision_count": 41,
+  "degraded": [],
+  "excluded": [
+   "10.5555/apollo-retracted"
+  ],
+  "findings": [
+   {
+    "claim": "Enabling the Apollo cache reduced median request latency from 120 ms to 45 ms in every tested workload.",
+    "criteria": [],
+    "id": "F1",
+    "quote": "Enabling the Apollo cache reduced median request latency from 120 ms to 45 ms in every tested workload",
+    "subquestion": "Q1",
+    "work": "10.5555/apollo-a"
+   },
+   {
+    "claim": "Turning on the Apollo cache brought median latency down from 120 ms to 50 ms on our staging cluster.",
+    "criteria": [],
+    "id": "F2",
+    "quote": "Turning on the Apollo cache brought median latency down from 120 ms to 50 ms on our staging cluster",
+    "subquestion": "Q1",
+    "work": "https://apollo-docs.example/latency"
+   },
+   {
+    "claim": "Verbose SaltLog logging added roughly 3 ms of overhead to each request in the benchmark.",
+    "criteria": [],
+    "id": "F3",
+    "quote": "Verbose SaltLog logging added roughly 3 ms of overhead to each request in the benchmark",
+    "subquestion": "Q2",
+    "work": "10.5555/saltlog-d"
+   },
+   {
+    "claim": "A follow-up study confirmed that the Apollo cache cut median request latency roughly in half.",
+    "criteria": [],
+    "id": "F4",
+    "quote": "A follow-up study confirmed that the Apollo cache cut median request latency roughly in half",
+    "subquestion": "Q1",
+    "work": "10.5555/apollo-f"
+   },
+   {
+    "claim": "In a replication across three services, the Apollo caching layer lowered median latency by about half.",
+    "criteria": [],
+    "id": "F5",
+    "quote": "In a replication across three services, the Apollo caching layer lowered median latency by about half",
+    "subquestion": "Q1",
+    "work": "10.5555/apollo-b"
+   },
+   {
+    "claim": "Our measurements show the Apollo cache cut median latency by roughly 60 percent for read-heavy endpoints.",
+    "criteria": [],
+    "id": "F6",
+    "quote": "Our measurements show the Apollo cache cut median latency by roughly 60 percent for read-heavy endpoints",
+    "subquestion": "Q1",
+    "work": "https://ops-notes.example/apollo"
+   },
+   {
+    "claim": "In production traces, SaltLog added between 2 and 4 ms per request when verbose logging was on.",
+    "criteria": [],
+    "id": "F7",
+    "quote": "In production traces, SaltLog added between 2 and 4 ms per request when verbose logging was on",
+    "subquestion": "Q2",
+    "work": "10.5555/saltlog-e"
+   },
+   {
+    "claim": "Verbose SaltLog logging costs about 3 ms per request on our hosts.",
+    "criteria": [],
+    "id": "F8",
+    "quote": "Verbose SaltLog logging costs about 3 ms per request on our hosts",
+    "subquestion": "Q2",
+    "work": "https://saltlog-blog.example/overhead"
+   },
+   {
+    "claim": "SaltLog adds 2 to 4 milliseconds per request when verbose mode is enabled.",
+    "criteria": [],
+    "id": "F9",
+    "quote": "SaltLog adds 2 to 4 milliseconds per request when verbose mode is enabled",
+    "subquestion": "Q2",
+    "work": "https://saltlog-faq.example/faq"
+   }
+  ],
+  "llm_calls": [
+   {
+    "head": "You split a research question into 2 to ",
+    "instructions": "6e9e58698c90c196",
+    "prompt": "c58db22f04103c54"
+   },
+   {
+    "head": "You write search queries for sub-questio",
+    "instructions": "a7997294cebd4216",
+    "prompt": "882edf61f8877805"
+   },
+   {
+    "head": "You extract findings from passages of on",
+    "instructions": "f16624be3f6b621f",
+    "prompt": "a42a6ac149728ea1"
+   },
+   {
+    "head": "You extract findings from passages of on",
+    "instructions": "f16624be3f6b621f",
+    "prompt": "19f04e5efee8038e"
+   },
+   {
+    "head": "You extract findings from passages of on",
+    "instructions": "f16624be3f6b621f",
+    "prompt": "c1324e2c443468c6"
+   },
+   {
+    "head": "You extract findings from passages of on",
+    "instructions": "f16624be3f6b621f",
+    "prompt": "3f50ba8a176c46db"
+   },
+   {
+    "head": "You extract findings from passages of on",
+    "instructions": "f16624be3f6b621f",
+    "prompt": "a03b2ab80a87ca78"
+   },
+   {
+    "head": "You extract findings from passages of on",
+    "instructions": "f16624be3f6b621f",
+    "prompt": "c799e9ac9cc00b9b"
+   },
+   {
+    "head": "You extract findings from passages of on",
+    "instructions": "f16624be3f6b621f",
+    "prompt": "864399f46d8e4a2c"
+   },
+   {
+    "head": "You extract findings from passages of on",
+    "instructions": "f16624be3f6b621f",
+    "prompt": "e8cdfa3ded3f9a77"
+   },
+   {
+    "head": "You extract findings from passages of on",
+    "instructions": "f16624be3f6b621f",
+    "prompt": "c766899b757e86fd"
+   },
+   {
+    "head": "You write one section of a research repo",
+    "instructions": "0a0577483bf17e24",
+    "prompt": "f8d17490d4d03476"
+   },
+   {
+    "head": "You write one section of a research repo",
+    "instructions": "0a0577483bf17e24",
+    "prompt": "3426b218db57350e"
+   }
+  ],
+  "llm_count": 13,
+  "mode": "both",
+  "queries": [
+   "apollo latency",
+   "saltlog latency"
+  ],
+  "report": "# How do the Apollo cache and SaltLog logging affect request latency?\n\n## How much does the Apollo cache reduce median request latency?\n\nEnabling the Apollo cache reduced median request latency from 120 ms to 45 ms in every tested workload [F1]. Turning on the Apollo cache brought median latency down from 120 ms to 50 ms on our staging cluster [F2]. A follow-up study confirmed that the Apollo cache cut median request latency roughly in half [F4]. In a replication across three services, the Apollo caching layer lowered median latency by about half [F5]. Our measurements show the Apollo cache cut median latency by roughly 60 percent for read-heavy endpoints [F6].\n\n## How much overhead does SaltLog logging add per request?\n\nVerbose SaltLog logging added roughly 3 ms of overhead to each request in the benchmark [F3]. In production traces, SaltLog added between 2 and 4 ms per request when verbose logging was on [F7]. Verbose SaltLog logging costs about 3 ms per request on our hosts [F8]. SaltLog adds 2 to 4 milliseconds per request when verbose mode is enabled [F9].\n\n## Sources\n\n- [F1] Jane Doe (2024). Apollo cache halves median latency in read-heavy services. Journal of Invented Systems. https://doi.org/10.5555/apollo-a\n- [F2] Apollo cache latency guide. apollo-docs.example. https://apollo-docs.example/latency\n- [F4] Kim Lee (2024). A follow-up on Apollo cache latency. Journal of Invented Systems. https://doi.org/10.5555/apollo-f\n- [F5] Ravi Rowe (2024). Latency effects of the Apollo caching layer. Journal of Invented Systems. https://doi.org/10.5555/apollo-b\n- [F6] Ops notes: Apollo in production. ops-notes.example. https://ops-notes.example/apollo\n- [F3] Ada Byte (2024). SaltLog logging overhead per request. Journal of Invented Systems. https://doi.org/10.5555/saltlog-d\n- [F7] Lin Quay (2024). Measuring SaltLog overhead in production. Journal of Invented Systems. https://doi.org/10.5555/saltlog-e\n- [F8] What SaltLog costs. saltlog-blog.example. https://saltlog-blog.example/overhead\n- [F9] SaltLog FAQ. saltlog-faq.example. https://saltlog-faq.example/faq\n",
+  "stop_reason": "covered",
+  "subquestions": [
+   {
+    "id": "Q1",
+    "kind": "topical",
+    "text": "How much does the Apollo cache reduce median request latency?"
+   },
+   {
+    "id": "Q2",
+    "kind": "topical",
+    "text": "How much overhead does SaltLog logging add per request?"
+   }
+  ],
+  "verification": [
+   {
+    "detail": "rests on F1, one independent source",
+    "kind": "single_source",
+    "ref": "Enabling the Apollo cache reduced median request latency from 120 ms to 45 ms in every tested workload"
+   },
+   {
+    "detail": "rests on F2, one independent source",
+    "kind": "single_source",
+    "ref": "Turning on the Apollo cache brought median latency down from 120 ms to 50 ms on our staging cluster"
+   },
+   {
+    "detail": "rests on F4, one independent source",
+    "kind": "single_source",
+    "ref": "A follow-up study confirmed that the Apollo cache cut median request latency roughly in half"
+   },
+   {
+    "detail": "rests on F5, one independent source",
+    "kind": "single_source",
+    "ref": "In a replication across three services, the Apollo caching layer lowered median latency by about half"
+   },
+   {
+    "detail": "rests on F6, one independent source",
+    "kind": "single_source",
+    "ref": "Our measurements show the Apollo cache cut median latency by roughly 60 percent for read-heavy endpoints"
+   },
+   {
+    "detail": "rests on F3, one independent source",
+    "kind": "single_source",
+    "ref": "Verbose SaltLog logging added roughly 3 ms of overhead to each request in the benchmark"
+   },
+   {
+    "detail": "rests on F7, one independent source",
+    "kind": "single_source",
+    "ref": "In production traces, SaltLog added between 2 and 4 ms per request when verbose logging was on"
+   },
+   {
+    "detail": "rests on F8, one independent source",
+    "kind": "single_source",
+    "ref": "Verbose SaltLog logging costs about 3 ms per request on our hosts"
+   },
+   {
+    "detail": "rests on F9, one independent source",
+    "kind": "single_source",
+    "ref": "SaltLog adds 2 to 4 milliseconds per request when verbose mode is enabled"
+   }
+  ],
+  "works": [
+   "10.5555/apollo-a",
+   "https://apollo-docs.example/latency",
+   "10.5555/apollo-f",
+   "10.5555/apollo-b",
+   "https://ops-notes.example/apollo",
+   "10.5555/saltlog-d",
+   "10.5555/saltlog-e",
+   "https://saltlog-blog.example/overhead",
+   "https://saltlog-faq.example/faq"
+  ]
+ },
+ {
+  "conflicts": [],
+  "coverage": [
+   {
+    "covered": true,
+    "independent_sources": 2,
+    "note": "",
+    "per_criterion": {},
+    "subquestion_id": "Q1",
+    "unresolvable": false
+   },
+   {
+    "covered": true,
+    "independent_sources": 2,
+    "note": "",
+    "per_criterion": {},
+    "subquestion_id": "Q2",
+    "unresolvable": false
+   }
+  ],
+  "criteria": {},
+  "decision": false,
+  "decision_calls": [],
+  "decision_count": 0,
+  "degraded": [],
+  "excluded": [],
+  "findings": [
+   {
+    "claim": "Turning on the Apollo cache brought median latency down from 120 ms to 50 ms on our staging cluster.",
+    "criteria": [],
+    "id": "F1",
+    "quote": "Turning on the Apollo cache brought median latency down from 120 ms to 50 ms on our staging cluster",
+    "subquestion": "Q1",
+    "work": "https://apollo-docs.example/latency"
+   },
+   {
+    "claim": "Our measurements show the Apollo cache cut median latency by roughly 60 percent for read-heavy endpoints.",
+    "criteria": [],
+    "id": "F2",
+    "quote": "Our measurements show the Apollo cache cut median latency by roughly 60 percent for read-heavy endpoints",
+    "subquestion": "Q1",
+    "work": "https://ops-notes.example/apollo"
+   },
+   {
+    "claim": "Verbose SaltLog logging costs about 3 ms per request on our hosts.",
+    "criteria": [],
+    "id": "F3",
+    "quote": "Verbose SaltLog logging costs about 3 ms per request on our hosts",
+    "subquestion": "Q2",
+    "work": "https://saltlog-blog.example/overhead"
+   },
+   {
+    "claim": "SaltLog adds 2 to 4 milliseconds per request when verbose mode is enabled.",
+    "criteria": [],
+    "id": "F4",
+    "quote": "SaltLog adds 2 to 4 milliseconds per request when verbose mode is enabled",
+    "subquestion": "Q2",
+    "work": "https://saltlog-faq.example/faq"
+   }
+  ],
+  "llm_calls": [
+   {
+    "head": "You split a research question into 2 to ",
+    "instructions": "6e9e58698c90c196",
+    "prompt": "c58db22f04103c54"
+   },
+   {
+    "head": "You write search queries for sub-questio",
+    "instructions": "a7997294cebd4216",
+    "prompt": "882edf61f8877805"
+   },
+   {
+    "head": "You screen one search result for a resea",
+    "instructions": "4a966b347d2dc859",
+    "prompt": "83ab2ad29e6cb389"
+   },
+   {
+    "head": "You screen one search result for a resea",
+    "instructions": "4a966b347d2dc859",
+    "prompt": "6e3a7aa447f4fe45"
+   },
+   {
+    "head": "You screen one search result for a resea",
+    "instructions": "4a966b347d2dc859",
+    "prompt": "2eab31a1c0339d3e"
+   },
+   {
+    "head": "You screen one search result for a resea",
+    "instructions": "4a966b347d2dc859",
+    "prompt": "1ed163f80bfad540"
+   },
+   {
+    "head": "You screen one search result for a resea",
+    "instructions": "4a966b347d2dc859",
+    "prompt": "06550abc8c39b24e"
+   },
+   {
+    "head": "You screen one search result for a resea",
+    "instructions": "4a966b347d2dc859",
+    "prompt": "4e180a87e2509735"
+   },
+   {
+    "head": "You screen one search result for a resea",
+    "instructions": "4a966b347d2dc859",
+    "prompt": "bba7a94344e32e45"
+   },
+   {
+    "head": "You screen one search result for a resea",
+    "instructions": "4a966b347d2dc859",
+    "prompt": "ceb40e82045eb01d"
+   },
+   {
+    "head": "You extract findings from passages of on",
+    "instructions": "f16624be3f6b621f",
+    "prompt": "19f04e5efee8038e"
+   },
+   {
+    "head": "You extract findings from passages of on",
+    "instructions": "f16624be3f6b621f",
+    "prompt": "c799e9ac9cc00b9b"
+   },
+   {
+    "head": "You extract findings from passages of on",
+    "instructions": "f16624be3f6b621f",
+    "prompt": "e8cdfa3ded3f9a77"
+   },
+   {
+    "head": "You extract findings from passages of on",
+    "instructions": "f16624be3f6b621f",
+    "prompt": "c766899b757e86fd"
+   },
+   {
+    "head": "You answer one yes/no question about eac",
+    "instructions": "e93005fb7726984f",
+    "prompt": "c3af8990a890e124"
+   },
+   {
+    "head": "You answer one yes/no question about eac",
+    "instructions": "e93005fb7726984f",
+    "prompt": "244bd23fa1943bcb"
+   },
+   {
+    "head": "You write one section of a research repo",
+    "instructions": "0a0577483bf17e24",
+    "prompt": "528de74e86475422"
+   },
+   {
+    "head": "You write one section of a research repo",
+    "instructions": "0a0577483bf17e24",
+    "prompt": "c5efee5fc2414eab"
+   },
+   {
+    "head": "You answer one yes/no question about eac",
+    "instructions": "e93005fb7726984f",
+    "prompt": "d1d92ad2c6c53fac"
+   }
+  ],
+  "llm_count": 19,
+  "mode": "web",
+  "queries": [
+   "apollo latency",
+   "saltlog latency"
+  ],
+  "report": "# How do the Apollo cache and SaltLog logging affect request latency?\n\n## How much does the Apollo cache reduce median request latency?\n\nTurning on the Apollo cache brought median latency down from 120 ms to 50 ms on our staging cluster [F1]. Our measurements show the Apollo cache cut median latency by roughly 60 percent for read-heavy endpoints [F2].\n\n## How much overhead does SaltLog logging add per request?\n\nVerbose SaltLog logging costs about 3 ms per request on our hosts [F3]. SaltLog adds 2 to 4 milliseconds per request when verbose mode is enabled [F4].\n\n## Sources\n\n- [F1] Apollo cache latency guide. apollo-docs.example. https://apollo-docs.example/latency\n- [F2] Ops notes: Apollo in production. ops-notes.example. https://ops-notes.example/apollo\n- [F3] What SaltLog costs. saltlog-blog.example. https://saltlog-blog.example/overhead\n- [F4] SaltLog FAQ. saltlog-faq.example. https://saltlog-faq.example/faq\n",
+  "stop_reason": "covered",
+  "subquestions": [
+   {
+    "id": "Q1",
+    "kind": "topical",
+    "text": "How much does the Apollo cache reduce median request latency?"
+   },
+   {
+    "id": "Q2",
+    "kind": "topical",
+    "text": "How much overhead does SaltLog logging add per request?"
+   }
+  ],
+  "verification": [
+   {
+    "detail": "rests on F1, one independent source",
+    "kind": "single_source",
+    "ref": "Turning on the Apollo cache brought median latency down from 120 ms to 50 ms on our staging cluster"
+   },
+   {
+    "detail": "rests on F2, one independent source",
+    "kind": "single_source",
+    "ref": "Our measurements show the Apollo cache cut median latency by roughly 60 percent for read-heavy endpoints"
+   },
+   {
+    "detail": "rests on F3, one independent source",
+    "kind": "single_source",
+    "ref": "Verbose SaltLog logging costs about 3 ms per request on our hosts"
+   },
+   {
+    "detail": "rests on F4, one independent source",
+    "kind": "single_source",
+    "ref": "SaltLog adds 2 to 4 milliseconds per request when verbose mode is enabled"
+   }
+  ],
+  "works": [
+   "https://apollo-docs.example/latency",
+   "https://ops-notes.example/apollo",
+   "https://saltlog-blog.example/overhead",
+   "https://saltlog-faq.example/faq"
+  ]
+ }
+]

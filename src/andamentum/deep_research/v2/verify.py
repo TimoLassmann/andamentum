@@ -7,7 +7,11 @@ Checks, in code unless noted:
 - **Claim support** (decision model or language model): for each report
   sentence, do the quotes of the findings it cites state what it claims? A
   sentence that fails, or that cites nothing, is flagged ``unsupported`` and
-  marked in the returned report.
+  marked in the returned report. With ``code_first`` (the ``code_first``
+  verification strategy) a sentence is first tried by a token-overlap rule in
+  code: when at least ``CODE_SUPPORT_MIN_OVERLAP`` of its content tokens occur
+  in the quotes it cites it counts as supported, and only the other sentences
+  go to the model. The run records how many were settled by code and by model.
 - **Retraction.** No cited finding rests on a retracted work, and no DOI in the
   report is retracted (Crossref, through ``references``).
 - **Links and DOIs.** Every URL and DOI in the report resolves. Only a
@@ -41,7 +45,7 @@ from andamentum.references import (
 
 from .ask import MODEL_ERRORS, Asker, BudgetExhausted
 from .coverage import independent_sources
-from .read import locate_quote
+from .read import _STOPWORDS, locate_quote
 from .types import MIN_INDEPENDENT_SOURCES, Finding, Passage, VerifyFlag
 from .write import CODE_LINE_PREFIXES, SOURCES_HEADING
 
@@ -51,6 +55,9 @@ CLAIM_QUESTION = (
     "says more than the quotes support, says something they do not say, or "
     "gives a number or name they do not contain."
 )
+# ``code_first``: a sentence is supported in code when at least this share of
+# its content tokens occur in the quotes it cites.
+CODE_SUPPORT_MIN_OVERLAP = 0.8
 # States put to the claim-support check at a time (one budget check per chunk).
 CLAIM_CHUNK = 8
 MAX_LINKS_CHECKED = 100
@@ -118,6 +125,41 @@ def report_units(report: str) -> list[ReportUnit]:
     return units
 
 
+# A content token is a number exactly as written ("3.5", "1,200"), or a word
+# or alphanumeric of three characters or more that is not a stop-word; a token
+# with a digit in it is kept whatever its length.
+_TOKEN = re.compile(r"\d+(?:[.,]\d+)+|[^\W_]+")
+
+
+def content_tokens(text: str) -> list[str]:
+    """The lower-cased content tokens of *text*: stop-words and one- or
+    two-letter words out, numbers (and anything with a digit) kept exactly."""
+    tokens: list[str] = []
+    for token in _TOKEN.findall(text.casefold()):
+        if any(ch.isdigit() for ch in token):
+            tokens.append(token)
+        elif len(token) >= 3 and token not in _STOPWORDS:
+            tokens.append(token)
+    return tokens
+
+
+def token_overlap(statement: str, quotes: Sequence[str]) -> float | None:
+    """The share of the statement's content tokens that occur in *quotes*;
+    ``None`` when the statement has no content token (nothing to compare)."""
+    wanted = content_tokens(statement)
+    if not wanted:
+        return None
+    present = set(content_tokens(" ".join(quotes)))
+    return sum(1 for token in wanted if token in present) / len(wanted)
+
+
+def supported_in_code(statement: str, quotes: Sequence[str]) -> bool:
+    """Does the token-overlap rule settle *statement* as supported by *quotes*?
+    Only ``True`` settles it; anything else is left to the model."""
+    overlap = token_overlap(statement, quotes)
+    return overlap is not None and overlap >= CODE_SUPPORT_MIN_OVERLAP
+
+
 def _is_code_line(unit: ReportUnit) -> bool:
     return not unit.finding_ids and unit.text.startswith(CODE_LINE_PREFIXES)
 
@@ -132,6 +174,8 @@ class VerifyOutcome(BaseModel):
     unchecked: list[str] = Field(default_factory=list)
     degraded: list[str] = Field(default_factory=list)
     sentences_checked: int = 0
+    by_code: int = 0
+    by_model: int = 0
 
 
 def check_quotes(
@@ -168,8 +212,12 @@ async def verify_report(
     works: Mapping[str, Work],
     asker: Asker,
     http: ReferenceHttp,
+    code_first: bool = False,
 ) -> VerifyOutcome:
-    """Run every check on *report_markdown* and record the flags in the store."""
+    """Run every check on *report_markdown* and record the flags in the store.
+
+    ``code_first`` settles the sentences the token-overlap rule supports in
+    code (``supported_in_code``) and puts only the others to the model."""
     by_id = {f.finding_id: f for f in findings}
     flags = check_quotes(findings, passages)
     degraded: list[str] = []
@@ -235,6 +283,16 @@ async def verify_report(
                 )
             )
 
+    by_code = 0
+    if code_first:
+        undecided = [
+            (unit, known)
+            for unit, known in checkable
+            if not supported_in_code(unit.text, [f.quote for f in known])
+        ]
+        by_code = len(checkable) - len(undecided)
+        checkable = undecided
+
     checked = 0
     for chunk_start in range(0, len(checkable), CLAIM_CHUNK):
         chunk = checkable[chunk_start : chunk_start + CLAIM_CHUNK]
@@ -271,6 +329,9 @@ async def verify_report(
                     )
                 )
 
+    asker.stats.verify_by_code += by_code
+    asker.stats.verify_by_model += checked
+
     link_flags, unchecked = await check_links(report_markdown, http=http)
     flags += link_flags
 
@@ -283,7 +344,9 @@ async def verify_report(
         report_markdown=_mark(report_markdown, unsupported),
         unchecked=unchecked,
         degraded=degraded,
-        sentences_checked=checked,
+        sentences_checked=checked + by_code,
+        by_code=by_code,
+        by_model=checked,
     )
 
 

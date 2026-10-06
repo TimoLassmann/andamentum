@@ -445,7 +445,7 @@ async def test_access_records_what_we_could_read(
         assert reading.passages == [] and reading.findings == []
 
 
-async def test_a_routine_refusal_is_noted_but_other_failures_degrade_the_run() -> None:
+async def test_a_routine_refusal_is_noted_and_other_failures_are_failed_notes() -> None:
     refused = _deps(provider=FakeProvider(error=_refused()))
     broken = _deps(
         provider=FakeProvider(error=SourceError("fake", "HTTP 503", kind="http"))
@@ -462,8 +462,12 @@ async def test_a_routine_refusal_is_noted_but_other_failures_degrade_the_run() -
             )
         )
     assert results[0].notes and results[0].degraded == []
-    assert results[1].notes and len(results[1].degraded) == 1
-    assert "HTTP 503" in results[1].degraded[0]
+    assert results[0].failed_notes == []
+    # a failing source is noted on the reading and in failed_notes; one
+    # unreadable page does not degrade the run (the run decides that by share)
+    assert results[1].notes and results[1].degraded == []
+    assert len(results[1].failed_notes) == 1
+    assert "HTTP 503" in results[1].failed_notes[0]
 
 
 async def test_an_abstract_from_a_source_is_not_read_under_a_no_redistribute_licence() -> (

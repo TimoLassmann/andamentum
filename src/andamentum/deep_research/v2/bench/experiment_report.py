@@ -11,8 +11,12 @@ computes, and decides nothing the experiment file did not register:
   rank correlation, findings reproduced, answer agreement, spread, and for live
   arms the overlap of the plan;
 - the planted-source outcomes per arm;
-- cost;
-- the verdict of every pre-registered rule.
+- cost, and where a run's time and model requests went, step by step
+  (``RunStats.step_*`` of every v2 run);
+- how many runs failed, and how many of those met a search outage;
+- the clean-timing (solo) runs, reported apart from everything else;
+- the verdict of every pre-registered rule, the outcome of each rule group and
+  the pre-registered wording of what the groups decide.
 
 Work ids are random per store, so before any two runs are compared the ids are
 replaced by the identity key of the work (``stable_key``): the same paper found
@@ -29,8 +33,8 @@ from pathlib import Path
 from andamentum.references import Work
 from andamentum.references.works import normalise_title
 
-from ..types import ResearchResult
-from .experiment import Experiment, Rule
+from ..types import STEPS, ResearchResult, RunStats
+from .experiment import ArmSpec, Experiment, Rule
 from .registry import RunRecord, StartRecord, read_records, registry_path
 from .stability import (
     answer_agreement,
@@ -42,6 +46,7 @@ from .stability import (
 )
 from .verdicts import (
     Interval,
+    Outcome,
     Verdict,
     judge_rule,
     paired_interval,
@@ -140,6 +145,11 @@ class Cells:
     def n_errors(self, arm: str, set_name: str) -> int:
         return sum(
             1 for r in self.runs if r.arm == arm and r.set == set_name and r.error
+        )
+
+    def n_outages(self, arm: str, set_name: str) -> int:
+        return sum(
+            1 for r in self.runs if r.arm == arm and r.set == set_name and r.outage
         )
 
 
@@ -281,6 +291,18 @@ def _metrics_for(exp: Experiment, set_name: str) -> list[str]:
 # -- sections -----------------------------------------------------------------------
 
 
+def rule_values(cells: Cells, arm: str, rule: Rule) -> dict[str, float | None]:
+    """The item values a rule reads for *arm*: its set's, or, for a rule that
+    pools sets, every set's with the items named ``<set>/<item>``."""
+    if not rule.also_sets:
+        return item_values(cells, arm, rule.set, rule.metric)
+    return {
+        f"{set_name}/{item}": value
+        for set_name in rule.sets
+        for item, value in item_values(cells, arm, set_name, rule.metric).items()
+    }
+
+
 def _arms_section(exp: Experiment, start: StartRecord | None) -> str:
     recorded = {a.name: a for a in start.arms} if start else {}
     rows = []
@@ -298,7 +320,9 @@ def _arms_section(exp: Experiment, start: StartRecord | None) -> str:
                     if info
                     else arm.decision_model or "-"
                 ),
-                "frozen" if arm.is_frozen else "live",
+                ("frozen" if arm.is_frozen else "live")
+                + (f", solo: first {arm.solo} items of each set" if arm.is_solo else "")
+                + (", failed outage cells recorded" if arm.outage == "record" else ""),
                 str(exp.repeats_of(arm)),
             ]
         )
@@ -320,7 +344,7 @@ def _arms_section(exp: Experiment, start: StartRecord | None) -> str:
 def _means_section(exp: Experiment, cells: Cells, set_name: str) -> str:
     metrics = _metrics_for(exp, set_name)
     rows = []
-    for arm in exp.arms_on(set_name):
+    for arm in exp.main_arms_on(set_name):
         n = len(cells.items(arm.name, set_name))
         row = [arm.name, str(n), str(cells.n_errors(arm.name, set_name))]
         row += [
@@ -338,7 +362,7 @@ def _paired_section(exp: Experiment, cells: Cells, set_name: str) -> str:
     metrics = _metrics_for(exp, set_name)
     base = {m: item_values(cells, baseline, set_name, m) for m in metrics}
     rows = []
-    for arm in exp.arms_on(set_name):
+    for arm in exp.main_arms_on(set_name):
         if arm.name == baseline:
             continue
         row = [arm.name]
@@ -370,7 +394,7 @@ def _paired_section(exp: Experiment, cells: Cells, set_name: str) -> str:
 def _stability_section(exp: Experiment, cells: Cells, set_name: str) -> str | None:
     rows = []
     spreads = []
-    for arm in exp.arms_on(set_name):
+    for arm in exp.main_arms_on(set_name):
         if exp.repeats_of(arm) < 2 or arm.system == "screening":
             continue
         stability = stability_values(cells, arm.name, set_name)
@@ -417,7 +441,7 @@ def _planted_section(exp: Experiment, cells: Cells) -> str | None:
     if not any(s.name == "web_planted" for s in exp.sets):
         return None
     rows = []
-    for arm in exp.arms_on("web_planted"):
+    for arm in exp.main_arms_on("web_planted"):
         runs = [r for r in cells.runs if r.arm == arm.name and r.set == "web_planted"]
         counts = {
             o: sum(1 for r in runs if r.planted_outcome == o) for o in PLANTED_OUTCOMES
@@ -441,6 +465,8 @@ def _planted_section(exp: Experiment, cells: Cells) -> str | None:
 def _cost_section(exp: Experiment, cells: Cells) -> str:
     rows = []
     for arm in exp.arms:
+        if arm.is_solo:
+            continue  # clean timing has its own section
         for set_spec in exp.sets:
             if not arm.runs_on(set_spec.name):
                 continue
@@ -485,12 +511,8 @@ def _cost_section(exp: Experiment, cells: Cells) -> str:
 def judge_rules(exp: Experiment, cells: Cells) -> list[Verdict]:
     verdicts = []
     for rule in exp.rules:
-        arm = item_values(cells, rule.arm, rule.set, rule.metric)
-        reference = (
-            item_values(cells, rule.reference, rule.set, rule.metric)
-            if rule.reference
-            else None
-        )
+        arm = rule_values(cells, rule.arm, rule)
+        reference = rule_values(cells, rule.reference, rule) if rule.reference else None
         verdict = judge_rule(
             rule,
             arm=arm,
@@ -507,9 +529,17 @@ def _require_every_item(rule: Rule, verdict: Verdict, cells: Cells) -> Verdict:
     an item that dropped out (no claims, an error) must not be quietly ignored."""
     if not rule.gate or verdict.interval is None:
         return verdict
-    ran = set(cells.items(rule.arm, rule.set))
+    ran = {
+        (set_name, item)
+        for set_name in rule.sets
+        for item in cells.items(rule.arm, set_name)
+    }
     if rule.reference:
-        ran |= set(cells.items(rule.reference, rule.set))
+        ran |= {
+            (set_name, item)
+            for set_name in rule.sets
+            for item in cells.items(rule.reference, set_name)
+        }
     k = verdict.interval.n_items
     if k >= len(ran) or verdict.outcome == "inconclusive":
         return verdict
@@ -534,6 +564,39 @@ def overall(verdicts: Sequence[Verdict]) -> str:
     return "inconclusive"
 
 
+def group_outcome(verdicts: Sequence[Verdict]) -> Outcome:
+    """Rules that stand or fall together: ``accepted`` when every one is,
+    ``not accepted`` when any is not, else ``inconclusive`` (the rules' own
+    ``gate`` flags are not read: a group is asked about as a whole)."""
+    if any(v.outcome == "not accepted" for v in verdicts):
+        return "not accepted"
+    if verdicts and all(v.outcome == "accepted" for v in verdicts):
+        return "accepted"
+    return "inconclusive"
+
+
+def decision_lines(exp: Experiment, verdicts: Sequence[Verdict]) -> list[str]:
+    """What each registered decision says, in the file's own words: the
+    ``if_accepted`` wording when every required group is accepted, else the
+    ``otherwise`` wording, with each group's outcome beside it."""
+    by_rule = {v.rule_id: v for v in verdicts}
+    groups = exp.rule_groups()
+    lines = []
+    for decision in exp.decisions:
+        outcomes = {
+            g: group_outcome([by_rule[r.id] for r in groups[g]])
+            for g in decision.requires
+        }
+        said = (
+            decision.if_accepted
+            if all(o == "accepted" for o in outcomes.values())
+            else decision.otherwise
+        )
+        shown = ", ".join(f"{g} {o}" for g, o in outcomes.items())
+        lines.append(f"- **{decision.id}** ({shown}): {said}")
+    return lines
+
+
 def _verdict_section(exp: Experiment, cells: Cells) -> str:
     verdicts = judge_rules(exp, cells)
     by_id = {v.rule_id: v for v in verdicts}
@@ -543,14 +606,222 @@ def _verdict_section(exp: Experiment, cells: Cells) -> str:
         rows.append(
             [
                 rule.id,
+                rule.group or "-",
                 rule.question,
                 "gate" if rule.gate else "reported",
                 f"**{verdict.outcome}**",
                 verdict.statement,
             ]
         )
-    text = table(["rule", "question", "role", "verdict", "evidence"], rows)
+    text = table(["rule", "group", "question", "role", "verdict", "evidence"], rows)
     text += f"\n\nGating rules together: **{overall(verdicts)}**."
+    groups = exp.rule_groups()
+    if groups:
+        text += "\n\nRule groups (all rules of a group accepted = accepted):\n\n"
+        text += table(
+            ["group", "rules", "outcome"],
+            [
+                [
+                    group,
+                    ", ".join(r.id for r in rules),
+                    f"**{group_outcome([by_id[r.id] for r in rules])}**",
+                ]
+                for group, rules in groups.items()
+            ],
+        )
+    if exp.decisions:
+        text += "\n\nWhat the groups decide (wording fixed in the file):\n\n"
+        text += "\n".join(decision_lines(exp, verdicts))
+    return text
+
+
+# -- steps, failures and clean timing --------------------------------------------
+
+
+def _stats(record: RunRecord) -> RunStats | None:
+    """The v2 run's stats, when the record holds a v2 result."""
+    if record.error or record.output is None or record.output.result is None:
+        return None
+    return record.output.result.stats
+
+
+def _median(values: Sequence[float]) -> float | None:
+    return statistics.median(values) if values else None
+
+
+def _v2_runs(
+    exp: Experiment, cells: Cells, arm: ArmSpec, set_name: str
+) -> list[RunStats]:
+    return [
+        stats
+        for r in cells.runs
+        if r.arm == arm.name and r.set == set_name and (stats := _stats(r)) is not None
+    ]
+
+
+def _step_tables(exp: Experiment, cells: Cells, *, solo: bool) -> str | None:
+    """Seconds and model requests per step of the v2 runs of the arms that are
+    (or are not) clean-timing re-runs. A step a run never reached counts as 0."""
+    seconds_rows: list[list[str]] = []
+    calls_rows: list[list[str]] = []
+    verify_rows: list[list[str]] = []
+    for arm in exp.arms:
+        if arm.system != "v2" or arm.is_solo != solo:
+            continue
+        for set_spec in exp.sets:
+            if not arm.runs_on(set_spec.name):
+                continue
+            runs = _v2_runs(exp, cells, arm, set_spec.name)
+            if not runs:
+                continue
+            head = [arm.name, set_spec.name, str(len(runs))]
+            seconds_rows.append(
+                [
+                    *head,
+                    *[
+                        fmt(_median([s.step_seconds.get(step, 0.0) for s in runs]), 1)
+                        for step in STEPS
+                    ],
+                    fmt(_median([sum(s.step_seconds.values()) for s in runs]), 1),
+                    fmt(_median([s.wall_s for s in runs]), 1),
+                ]
+            )
+            calls_rows.append(
+                [
+                    *head,
+                    *[
+                        f"{_mean([float(s.step_llm_calls.get(step, 0)) for s in runs]):.1f}"
+                        f" / {_mean([float(s.step_decision_calls.get(step, 0)) for s in runs]):.1f}"
+                        for step in STEPS
+                    ],
+                ]
+            )
+            by_code = sum(s.verify_by_code for s in runs)
+            by_model = sum(s.verify_by_model for s in runs)
+            states: dict[str, int] = {}
+            for s in runs:
+                key = s.decision_cache.split(":")[0]
+                states[key] = states.get(key, 0) + 1
+            verify_rows.append(
+                [
+                    *head,
+                    fmt(_mean([float(s.verify_by_code) for s in runs]), 1),
+                    fmt(_mean([float(s.verify_by_model) for s in runs]), 1),
+                    fmt(by_code / (by_code + by_model), 2)
+                    if by_code + by_model
+                    else NOTHING,
+                    fmt(_mean([float(s.decision_cache_hits) for s in runs]), 1),
+                    ", ".join(f"{k} {n}" for k, n in sorted(states.items())),
+                ]
+            )
+    if not seconds_rows:
+        return None
+    return (
+        "Seconds per step, median over runs (a step a run did not reach counts as 0; "
+        "`steps` is the median of each run's sum, `wall` of each run's total):\n\n"
+        + table(
+            ["arm", "set", "runs", *STEPS, "steps", "wall"],
+            seconds_rows,
+        )
+        + "\n\nModel requests per step, mean per run, `language model / decision "
+        "model` (decision requests served from the cache are not requests):\n\n"
+        + table(["arm", "set", "runs", *STEPS], calls_rows)
+        + "\n\nClaim-support checks settled in code and by the model (means per "
+        "run, `share` = code / all), decision answers served from the cache, and "
+        "the cache state of the runs:\n\n"
+        + table(
+            [
+                "arm",
+                "set",
+                "runs",
+                "by code",
+                "by model",
+                "share by code",
+                "cache hits",
+                "decision cache",
+            ],
+            verify_rows,
+        )
+    )
+
+
+def _failures_section(exp: Experiment, cells: Cells) -> str | None:
+    rows = []
+    for arm in exp.arms:
+        for set_spec in exp.sets:
+            if not arm.runs_on(set_spec.name):
+                continue
+            runs = [
+                r for r in cells.runs if r.arm == arm.name and r.set == set_spec.name
+            ]
+            failed = sum(1 for r in runs if r.error)
+            outages = sum(1 for r in runs if r.outage)
+            if failed or arm.outage == "record":
+                rows.append(
+                    [
+                        arm.name,
+                        set_spec.name,
+                        str(len(runs)),
+                        str(failed),
+                        str(outages),
+                        str(failed - outages),
+                    ]
+                )
+    if not rows:
+        return None
+    return (
+        table(["arm", "set", "runs", "failed", "search outage", "other errors"], rows)
+        + "\n\nA run that met a search outage is recorded as failed with no metric "
+        "values: it is not a zero (no recall is claimed or denied) and it drops out "
+        "of every paired comparison. Another error counts as a miss on the outcome "
+        "metrics."
+    )
+
+
+def _solo_section(exp: Experiment, cells: Cells) -> str | None:
+    solo = exp.solo_arms
+    if not solo:
+        return None
+    rows = []
+    for arm in solo:
+        per_set = []
+        pooled: list[float] = []
+        for set_spec in exp.sets:
+            if not arm.runs_on(set_spec.name):
+                continue
+            walls = [
+                w
+                for r in cells.runs
+                if r.arm == arm.name and r.set == set_spec.name and not r.error
+                if (w := r.metrics.get("wall_s")) is not None
+            ]
+            pooled += walls
+            per_set.append(
+                f"{set_spec.name} {fmt(_median(walls), 1)} s ({len(walls)} runs)"
+            )
+        rows.append(
+            [
+                arm.name,
+                "frozen" if arm.is_frozen else "live",
+                "; ".join(per_set),
+                f"{fmt(_median(pooled), 1)} s ({len(pooled)} runs)",
+            ]
+        )
+    text = (
+        "These are the only wall-time numbers to use for speed claims: each cell "
+        "ran alone (concurrency 1, after every other arm). Median wall time per "
+        "run:\n\n" + table(["arm", "inputs", "per set", "pooled median"], rows)
+    )
+    if any(a.is_frozen for a in solo):
+        text += (
+            "\n\nA frozen run takes Plan and Search from the snapshot and fetches "
+            "nothing, so its wall time excludes the planning call, the searches and "
+            "the page fetches; it is the cost of everything from screening on. It "
+            "is not an end-to-end time."
+        )
+    steps = _step_tables(exp, cells, solo=True)
+    if steps:
+        text += "\n\n" + steps
     return text
 
 
@@ -618,7 +889,7 @@ def build_report(exp: Experiment, records: Sequence[StartRecord | RunRecord]) ->
         name = set_spec.name
         lines += ["", f"## Set {name}", ""]
         items = max(
-            (len(cells.items(a.name, name)) for a in exp.arms_on(name)), default=0
+            (len(cells.items(a.name, name)) for a in exp.main_arms_on(name)), default=0
         )
         lines += [f"{items} items, seed {set_spec.seed}.", ""]
         lines += [
@@ -633,6 +904,15 @@ def build_report(exp: Experiment, records: Sequence[StartRecord | RunRecord]) ->
     if planted:
         lines += ["", "## Planted false source", "", planted]
     lines += ["", "## Cost", "", _cost_section(exp, cells)]
+    steps = _step_tables(exp, cells, solo=False)
+    if steps:
+        lines += ["", "## Where the time and the requests went", "", steps]
+    failures = _failures_section(exp, cells)
+    if failures:
+        lines += ["", "## Failed runs", "", failures]
+    solo = _solo_section(exp, cells)
+    if solo:
+        lines += ["", "## Clean timing (solo runs)", "", solo]
     lines += [
         "",
         "## Verdicts (pre-registered rules)",

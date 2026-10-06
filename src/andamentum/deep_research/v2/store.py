@@ -47,7 +47,7 @@ from andamentum.references.works import ID_FIELDS, title_key
 
 from .types import Passage
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 TTL_SEARCH_S = 7 * 86_400
 TTL_METADATA_S = 30 * 86_400
@@ -60,7 +60,14 @@ INLINE_BLOB_LIMIT = 16 * 1024
 HTTP_CACHE_MAX_BYTES = 200 * 1024 * 1024
 
 RunItemKind = Literal[
-    "subquestion", "criterion", "candidate", "finding", "conflict", "coverage", "flag"
+    "subquestion",
+    "criterion",
+    "candidate",
+    "finding",
+    "conflict",
+    "coverage",
+    "flag",
+    "check",
 ]
 
 _DIGEST = re.compile(r"[0-9a-f]{64}")
@@ -188,8 +195,26 @@ UPDATE http_cache SET last_used = fetched_at;
 CREATE INDEX http_cache_used ON http_cache(last_used);
 """
 
+# The decision cache: an answer by (model digest, request hash, state hash), and
+# whether a model's answers to identical requests were found identical.
+_SCHEMA_V3 = """
+CREATE TABLE decision_cache (
+    digest TEXT NOT NULL,
+    question_hash TEXT NOT NULL,
+    state_hash TEXT NOT NULL,
+    answers_json TEXT NOT NULL,
+    PRIMARY KEY (digest, question_hash, state_hash)
+);
+CREATE TABLE decision_determinism (
+    digest TEXT PRIMARY KEY,
+    deterministic INTEGER NOT NULL,
+    detail TEXT NOT NULL,
+    checked_at REAL NOT NULL
+);
+"""
+
 # Migrations by the version they produce. Development: no shims for old files.
-_MIGRATIONS: dict[int, str] = {1: _SCHEMA_V1, 2: _SCHEMA_V2}
+_MIGRATIONS: dict[int, str] = {1: _SCHEMA_V1, 2: _SCHEMA_V2, 3: _SCHEMA_V3}
 
 
 class StoreError(RuntimeError):
@@ -644,9 +669,7 @@ class ResearchStore:
     def purge_expired(self) -> int:
         """Delete the entries whose TTL has run out (and their blobs); the number removed."""
         with self._lock:
-            return self._delete_rows(
-                "fetched_at + ttl_s <= ?", (self._clock(),)
-            ).rows
+            return self._delete_rows("fetched_at + ttl_s <= ?", (self._clock(),)).rows
 
     # -- cache size cap ---------------------------------------------------
 
@@ -1160,6 +1183,58 @@ class ResearchStore:
                 )
             except sqlite3.IntegrityError as error:
                 raise StoreError(f"unknown run {run_id}") from error
+
+    # -- decision cache ---------------------------------------------------
+
+    def cached_answers(
+        self, *, digest: str, question_hash: str, state_hash: str
+    ) -> dict[str, JsonValue] | None:
+        """The answers stored for this model, request and state, or ``None``."""
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT answers_json FROM decision_cache "
+                "WHERE digest = ? AND question_hash = ? AND state_hash = ?",
+                (digest, question_hash, state_hash),
+            ).fetchone()
+        if row is None:
+            return None
+        stored: dict[str, JsonValue] = json.loads(row["answers_json"])
+        return stored
+
+    def cache_answers(
+        self,
+        *,
+        digest: str,
+        question_hash: str,
+        state_hash: str,
+        answers: Mapping[str, JsonValue],
+    ) -> None:
+        """Remember the answers of one request (a repeat replaces it)."""
+        with self._lock:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO decision_cache VALUES (?, ?, ?, ?)",
+                (digest, question_hash, state_hash, json.dumps(dict(answers))),
+            )
+
+    def determinism_of(self, digest: str) -> tuple[bool, str] | None:
+        """What the determinism check found for this model digest: whether
+        identical requests gave identical answers, and the detail. ``None``
+        if it was never checked in this store."""
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT deterministic, detail FROM decision_determinism WHERE digest = ?",
+                (digest,),
+            ).fetchone()
+        return (bool(row["deterministic"]), row["detail"]) if row else None
+
+    def record_determinism(
+        self, digest: str, *, deterministic: bool, detail: str
+    ) -> None:
+        with self._lock:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO decision_determinism VALUES (?, ?, ?, ?)",
+                (digest, int(deterministic), detail, self._clock()),
+            )
 
     def decisions(self, run_id: str, step: str | None = None) -> list[DecisionRecord]:
         query = "SELECT * FROM decisions WHERE run_id = ?"

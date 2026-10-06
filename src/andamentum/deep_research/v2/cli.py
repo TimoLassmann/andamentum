@@ -1,7 +1,7 @@
 """``andamentum-research v2``: the evidence-first engine from the command line.
 
     andamentum-research v2 "QUESTION" --mode both --model M
-        [--preset baseline|criteria]
+        [--preset baseline|fast|criteria]
         [--decision-model NAME] [--store PATH] [--cache PATH] [--searxng-url URL]
         [--sources openalex,europepmc,arxiv] [--openalex-search keyword]
         [--tdm-host HOST ...] [--results-per-query N]
@@ -68,8 +68,9 @@ def build_parser() -> argparse.ArgumentParser:
         choices=sorted(PRESETS),
         default=DEFAULT_PRESET,
         help="what the run does at every swappable step: baseline (one generic "
-        "relevance question per candidate) or criteria (LLM-compiled criteria); "
-        "default: %(default)s",
+        "relevance question per candidate), fast (the baseline with a lexical "
+        "pre-filter and code-first claim-support checks) or criteria "
+        "(LLM-compiled criteria); default: %(default)s",
     )
     parser.add_argument(
         "--decision-model",

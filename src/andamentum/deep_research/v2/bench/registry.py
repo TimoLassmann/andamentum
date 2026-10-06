@@ -39,6 +39,8 @@ class ArmRecord(BaseModel):
     decision_digest: str | None = None
     frozen: bool = False
     repeats: int = 1
+    solo: int | None = None
+    outage: str = "stop"
 
 
 class StartRecord(BaseModel):
@@ -76,6 +78,13 @@ class RunRecord(BaseModel):
     output: ArmOutput | None = None
     screening: ScreeningScore | None = None
     error: str | None = None
+    outage: bool = Field(
+        default=False,
+        description=(
+            "The cell met a search outage and was recorded as failed (the arm's "
+            "'record' outage mode): its metrics are absent, not zero."
+        ),
+    )
 
     @property
     def cell(self) -> tuple[str, str, str, int]:

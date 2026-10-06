@@ -8,7 +8,7 @@ in ``strategies.py`` and a registry entry) and a preset, and never edits the
 engine. ``config_hash`` identifies the configuration; the engine records it on
 every run (``runs.config_json``) and every ``ResearchResult``.
 
-Two presets (``PRESETS``):
+Three presets (``PRESETS``):
 
 - ``baseline`` (the default of ``research()``): one generic relevance question
   per candidate, dropped below ``GENERIC_DROP_BELOW``; reciprocal-rank fusion;
@@ -16,11 +16,16 @@ Two presets (``PRESETS``):
   sub-question over the run; citations of the 3 best kept works, at most 20
   new candidates a round; BM25 passage selection (4 a work); no refinement and
   no criteria.
+- ``fast``: the baseline with the ``generic_prefilter`` screen (a BM25 ranking
+  puts only the best ``PREFILTER_TOP`` candidates of a sub-question to the
+  decision model) and the ``code_first`` verification (a report sentence whose
+  content tokens are in its quotes is supported in code). Everything else is
+  the baseline's, so the two differ only in those two strategies.
 - ``criteria``: the behaviour built first (LLM-compiled criteria scored by the
   decision model, refinement, criteria passage scoring, criteria facets, the
   budget's caps), kept as an arm to compare against the baseline.
 
-Both presets set the same determinism knobs (``temperature`` 0 and a fixed
+All presets set the same determinism knobs (``temperature`` 0 and a fixed
 ``seed``), so the arms differ only in their strategies.
 """
 
@@ -37,14 +42,17 @@ from .steps import MAX_EXPAND_SEEDS
 from .strategies import (
     GENERIC_DROP_BELOW,
     CitationExpand,
+    CodeFirstVerify,
     CriteriaFacets,
     CriteriaPassages,
     CriteriaRefine,
     CriteriaScreen,
     ExpandStrategy,
     FacetStrategy,
+    GenericPrefilterScreen,
     GenericScreen,
     LexicalPassages,
+    ModelVerify,
     NoExpand,
     NoFacets,
     NoRefine,
@@ -54,11 +62,13 @@ from .strategies import (
     RrfRank,
     ScoreRank,
     ScreenStrategy,
+    VerifyStrategy,
 )
 
 # The registries: a strategy name to its implementation, one per slot.
 SCREENS: dict[str, ScreenStrategy] = {
     "generic": GenericScreen(),
+    "generic_prefilter": GenericPrefilterScreen(),
     "criteria": CriteriaScreen(),
 }
 REFINES: dict[str, RefineStrategy] = {"off": NoRefine(), "on": CriteriaRefine()}
@@ -69,6 +79,10 @@ PASSAGES: dict[str, PassageStrategy] = {
 }
 EXPANDS: dict[str, ExpandStrategy] = {"citations": CitationExpand(), "off": NoExpand()}
 FACETS: dict[str, FacetStrategy] = {"off": NoFacets(), "on": CriteriaFacets()}
+VERIFIES: dict[str, VerifyStrategy] = {
+    "model": ModelVerify(),
+    "code_first": CodeFirstVerify(),
+}
 
 _SLOTS: dict[str, Mapping[str, object]] = {
     "screen": SCREENS,
@@ -77,12 +91,17 @@ _SLOTS: dict[str, Mapping[str, object]] = {
     "passages": PASSAGES,
     "expand": EXPANDS,
     "facets": FACETS,
+    "verify": VERIFIES,
 }
 
 # The fixed seed both presets send with every language-model call.
 DEFAULT_SEED = 42
 # Left out of the hash: what the configuration is called, not what it does.
 _UNHASHED = frozenset({"name", "description"})
+# Fields added after the first presets were hashed: left out of the hash while
+# they hold the value every earlier configuration had, so a configuration that
+# predates the field keeps its hash (the recorded hashes keep their meaning).
+_UNHASHED_AT_DEFAULT: dict[str, object] = {"verify": "model"}
 
 
 class ResearchConfig(BaseModel):
@@ -113,6 +132,7 @@ class ResearchConfig(BaseModel):
     passages: str
     expand: str
     facets: str
+    verify: str = "model"
     drop_below: float = Field(default=GENERIC_DROP_BELOW, ge=0.0, le=1.0)
     screen_per_subquestion: int | None = Field(default=None, ge=1)
     read_per_subquestion: int | None = Field(default=None, ge=1)
@@ -167,6 +187,10 @@ class ResearchConfig(BaseModel):
         return FACETS[self.facets]
 
     @property
+    def verify_strategy(self) -> VerifyStrategy:
+        return VERIFIES[self.verify]
+
+    @property
     def needs_criteria(self) -> bool:
         """Whether the run compiles criteria at Plan (an LLM call per sub-question)."""
         return any(
@@ -197,6 +221,9 @@ def canonical_json(config: ResearchConfig) -> str:
     """The configuration as canonical JSON: sorted keys, no spaces, the name
     and description left out."""
     data = config.model_dump(mode="json", exclude=set(_UNHASHED))
+    for field, default in _UNHASHED_AT_DEFAULT.items():
+        if data.get(field) == default:
+            del data[field]
     return json.dumps(data, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
 
@@ -217,6 +244,24 @@ PRESETS: dict[str, ResearchConfig] = {
         passages="lexical",
         expand="citations",
         facets="off",
+        drop_below=GENERIC_DROP_BELOW,
+        screen_per_subquestion=25,
+        read_per_subquestion=8,
+        expand_seeds=3,
+        expand_per_round=20,
+        passages_per_work=4,
+    ),
+    "fast": ResearchConfig(
+        name="fast",
+        description="the baseline with a lexical pre-filter before the generic "
+        "screen question and code-first claim-support verification",
+        screen="generic_prefilter",
+        refine="off",
+        rank="rrf",
+        passages="lexical",
+        expand="citations",
+        facets="off",
+        verify="code_first",
         drop_below=GENERIC_DROP_BELOW,
         screen_per_subquestion=25,
         read_per_subquestion=8,

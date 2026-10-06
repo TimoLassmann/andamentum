@@ -24,8 +24,9 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 SetName = Literal["litsearch", "web", "web_planted", "synergy"]
 System = Literal["legacy", "v2", "screening"]
-Test = Literal["noninferior", "superior", "at_least", "at_most"]
-Aggregate = Literal["mean", "median"]
+Test = Literal["noninferior", "superior", "reduced_by", "at_least", "at_most"]
+Aggregate = Literal["mean", "median", "max"]
+Outage = Literal["stop", "record"]
 
 # The sets an arm of each system can be run on.
 SYSTEM_SETS: dict[str, frozenset[str]] = {
@@ -87,9 +88,35 @@ class ArmSpec(BaseModel):
     sets: list[SetName] | None = Field(
         default=None, description="Restrict the arm to these sets."
     )
+    solo: int | None = Field(
+        default=None,
+        ge=1,
+        description=(
+            "Clean timing: run only the first N items of each set, after every "
+            "other arm, one cell at a time (concurrency 1), so the wall time is "
+            "not shared with another cell. Answer arms only."
+        ),
+    )
+    outage: Outage = Field(
+        default="stop",
+        description=(
+            "A live cell that meets a search outage: 'stop' ends the run without "
+            "recording the cell (a resume runs it again); 'record' records it as "
+            "failed, with no metric values (never as zero), and goes on."
+        ),
+    )
 
     @model_validator(mode="after")
     def _consistent(self) -> ArmSpec:
+        if self.solo is not None and self.system == "screening":
+            raise ValueError(f"arm {self.name}: solo timing is for answer arms")
+        if self.outage == "record" and not (
+            self.system == "legacy" or (self.system == "v2" and not self.frozen)
+        ):
+            raise ValueError(
+                f"arm {self.name}: outage applies to live arms (legacy, or v2 with "
+                "frozen: false)"
+            )
         if self.system == "v2" and not self.preset:
             raise ValueError(f"arm {self.name}: a v2 arm names its preset")
         if self.system == "screening":
@@ -116,6 +143,10 @@ class ArmSpec(BaseModel):
     def is_frozen(self) -> bool:
         return self.system == "v2" and self.frozen
 
+    @property
+    def is_solo(self) -> bool:
+        return self.solo is not None
+
     def runs_on(self, set_name: str) -> bool:
         if self.sets is not None:
             return set_name in self.sets
@@ -132,6 +163,14 @@ class Rule(BaseModel):
     own item values against ``threshold``; no reference. The verdict is
     ``accepted`` when the whole interval is on the right side, ``not accepted``
     when the whole interval is on the wrong side, else ``inconclusive``.
+    ``reduced_by``: per item, ``1 - arm / reference`` (items whose reference is
+    0 or that lack a value drop out), aggregated (``aggregate``, median by
+    convention) and compared with ``threshold`` as a share: accepted when the
+    whole interval is at or above it. ``aggregate: max`` gives the largest item
+    value with no interval (``at_most: 0`` then reads "no item at all").
+    ``also_sets`` pools more sets into the rule's values (items are named
+    ``<set>/<item>``). ``group`` names the rules that stand or fall together
+    (``Experiment.decisions`` read groups, not single rules).
     ``gate=False`` marks a rule that is reported, not a condition.
     """
 
@@ -151,23 +190,46 @@ class Rule(BaseModel):
     aggregate: Aggregate = "mean"
     higher_is_better: bool = True
     gate: bool = True
+    also_sets: list[SetName] = Field(default_factory=list)
+    group: str | None = None
 
     @model_validator(mode="after")
     def _consistent(self) -> Rule:
-        paired = self.test in ("noninferior", "superior")
+        shift = self.test in ("noninferior", "superior")
+        paired = shift or self.test == "reduced_by"
         if paired and not self.reference:
             raise ValueError(f"rule {self.id}: {self.test} needs a reference arm")
-        if not paired and (self.reference or self.threshold is None):
+        if self.test == "reduced_by":
+            if self.threshold is None or not 0.0 < self.threshold <= 1.0:
+                raise ValueError(
+                    f"rule {self.id}: reduced_by needs a threshold share in (0, 1]"
+                )
+            if self.margin:
+                raise ValueError(f"rule {self.id}: reduced_by takes a threshold only")
+            if self.aggregate == "max":
+                raise ValueError(
+                    f"rule {self.id}: reduced_by aggregates by mean or median"
+                )
+        elif not paired and (self.reference or self.threshold is None):
             raise ValueError(
                 f"rule {self.id}: {self.test} needs a threshold, no reference"
             )
-        if paired and self.threshold is not None:
+        if shift and self.threshold is not None:
             raise ValueError(
                 f"rule {self.id}: {self.test} takes a margin, not a threshold"
             )
-        if paired and self.aggregate != "mean":
+        if shift and self.aggregate != "mean":
             raise ValueError(f"rule {self.id}: paired rules compare means")
+        if self.set in self.also_sets or len(set(self.also_sets)) != len(
+            self.also_sets
+        ):
+            raise ValueError(f"rule {self.id}: also_sets repeats a set")
         return self
+
+    @property
+    def sets(self) -> list[str]:
+        """Every set the rule reads, its own first."""
+        return [self.set, *self.also_sets]
 
 
 class JudgeSpec(BaseModel):
@@ -195,6 +257,20 @@ class JudgeSpec(BaseModel):
         return self.decision_model or self.model or ""
 
 
+class ExperimentDecision(BaseModel):
+    """What the registered rules mean for the project, in words fixed before the
+    run: ``if_accepted`` is the verdict when every rule group in ``requires`` is
+    accepted, ``otherwise`` when any is not (rejected or inconclusive; the
+    report states each group's outcome beside it)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    id: str
+    requires: list[str] = Field(min_length=1)
+    if_accepted: str
+    otherwise: str
+
+
 # Item metrics that exist only when claims are judged.
 JUDGED_METRICS = frozenset({"claim_precision", "unsourced_share", "n_unsourced"})
 
@@ -219,6 +295,7 @@ class Experiment(BaseModel):
         description="Per set, the arm every other arm is compared with in the tables."
     )
     rules: list[Rule] = Field(default_factory=list)
+    decisions: list[ExperimentDecision] = Field(default_factory=list)
     report_metrics: dict[str, list[str]] = Field(
         default_factory=dict,
         description="Metrics of the paired tables per set (default: the set's own list).",
@@ -254,14 +331,27 @@ class Experiment(BaseModel):
                     raise ValueError(f"rule {rule.id}: {name!r} is not an arm")
             if rule.set not in set_names:
                 raise ValueError(f"rule {rule.id}: {rule.set} is not a set here")
-            for name in (rule.arm, rule.reference):
-                if name is not None and not self._arm(name).runs_on(rule.set):
-                    raise ValueError(
-                        f"rule {rule.id}: {name!r} does not run on {rule.set}"
-                    )
+            for set_name in rule.sets:
+                if set_name not in set_names:
+                    raise ValueError(f"rule {rule.id}: {set_name} is not a set here")
+                for name in (rule.arm, rule.reference):
+                    if name is not None and not self._arm(name).runs_on(set_name):
+                        raise ValueError(
+                            f"rule {rule.id}: {name!r} does not run on {set_name}"
+                        )
         ids = [r.id for r in self.rules]
         if len(set(ids)) != len(ids):
             raise ValueError("rule ids must be unique")
+        groups = {r.group for r in self.rules if r.group}
+        decision_ids = [d.id for d in self.decisions]
+        if len(set(decision_ids)) != len(decision_ids):
+            raise ValueError("decision ids must be unique")
+        for decision in self.decisions:
+            unknown = [g for g in decision.requires if g not in groups]
+            if unknown:
+                raise ValueError(
+                    f"decision {decision.id}: no rule is in group {', '.join(unknown)}"
+                )
         if self.judge is None and self.needs_judge():
             raise ValueError(
                 "a rule or report metric reads claim support, so the file must "
@@ -287,6 +377,22 @@ class Experiment(BaseModel):
 
     def arms_on(self, set_name: str) -> list[ArmSpec]:
         return [a for a in self.arms if a.runs_on(set_name)]
+
+    def main_arms_on(self, set_name: str) -> list[ArmSpec]:
+        """The arms on a set that are not clean-timing (solo) re-runs."""
+        return [a for a in self.arms_on(set_name) if not a.is_solo]
+
+    @property
+    def solo_arms(self) -> list[ArmSpec]:
+        return [a for a in self.arms if a.is_solo]
+
+    def rule_groups(self) -> dict[str, list[Rule]]:
+        """The rules by group, in file order."""
+        groups: dict[str, list[Rule]] = {}
+        for rule in self.rules:
+            if rule.group:
+                groups.setdefault(rule.group, []).append(rule)
+        return groups
 
     def repeats_of(self, arm: ArmSpec) -> int:
         return arm.repeats if arm.repeats is not None else self.repeats
@@ -316,6 +422,7 @@ def load_experiment(path: Path) -> Experiment:
 __all__ = [
     "ArmSpec",
     "Experiment",
+    "ExperimentDecision",
     "JUDGED_METRICS",
     "JudgeSpec",
     "Rule",
