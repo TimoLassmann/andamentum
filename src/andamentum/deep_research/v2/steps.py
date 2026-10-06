@@ -38,7 +38,13 @@ from .ask import MODEL_ERRORS, Asker, BudgetExhausted
 from .coverage import PairKey, find_conflicts
 from .criteria import Screener
 from .identity import merge, merge_pair
-from .sources.base import ExpandingSource, SearchFilters, Source, SourceError
+from .sources.base import (
+    ExpandingSource,
+    SearchFilters,
+    Source,
+    SourceError,
+    WarningSource,
+)
 from .store import ResearchStore
 from .types import (
     Candidate,
@@ -378,6 +384,7 @@ class SearchOutcome:
     candidates: list[Candidate]
     degraded: list[str] = field(default_factory=list)
     queries_run: list[str] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)  # a partial answer: results, engines down
 
 
 async def search(
@@ -406,6 +413,8 @@ async def search(
                         f"{source.name} search failed for {query!r}: {error.reason}"
                     )
                     continue
+                if isinstance(source, WarningSource):
+                    outcome.notes += source.take_warnings()
                 found += [
                     c.model_copy(
                         update={

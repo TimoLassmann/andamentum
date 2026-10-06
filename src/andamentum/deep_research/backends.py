@@ -4,8 +4,11 @@ SearchBackend is the injection point: application code can inject a
 Playwright-based backend, while standalone users get HttpxSearchBackend.
 """
 
+import asyncio
 import logging
-from typing import Protocol, runtime_checkable
+import time
+from collections.abc import Awaitable, Callable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 from urllib.parse import urlparse
 
 import httpx
@@ -19,6 +22,11 @@ from andamentum.core.fetch_gate import (
 
 from .circuit_breaker import CircuitBreaker, CircuitOpenError
 from .models import SearchResult, FetchedPage
+from .searxng_search import SearchEnginesBlocked, searxng_query
+
+if TYPE_CHECKING:
+    from .v2.sources.base import SourceClient
+    from .v2.store import ResearchStore
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +39,15 @@ class SearchBackendError(RuntimeError):
     Raised instead of returning ``[]`` so the caller can tell "the search
     failed" from "the search found nothing" and record it.
     """
+
+
+class SearchResults(list[SearchResult]):
+    """A search's results, with ``warnings``: set when SearxNG answered with
+    results while some of its engines did not (a partial answer)."""
+
+    def __init__(self, results: list[SearchResult], warnings: list[str]) -> None:
+        super().__init__(results)
+        self.warnings = warnings
 
 
 # ── Protocol ────────────────────────────────────────────────────────────
@@ -74,7 +91,15 @@ class HttpxSearchBackend:
         *,
         tdm_allowed_hosts: frozenset[str] = frozenset(),
         breaker: CircuitBreaker | None = None,
+        cache: "ResearchStore | None" = None,
+        clock: Callable[[], float] = time.monotonic,
+        sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     ):
+        """``cache`` is an explicit store for SearxNG search answers (kept
+        seven days, size-capped by the store). There is no default: without
+        one, nothing is read from or written to any cache. ``clock`` and
+        ``sleep`` time the shared query spacing and the blocked-engine
+        backoff, injectable so a test does not wait."""
         self.searxng_url = searxng_url
         # One breaker per backend instance; ``run_research`` builds a backend
         # per run, so a failure streak never leaks into the next run.
@@ -90,6 +115,27 @@ class HttpxSearchBackend:
             headers={"User-Agent": _USER_AGENT},
         )
         self._tdm_allowed_hosts = tdm_allowed_hosts
+        self._cache = cache
+        self._clock = clock
+        self._sleep = sleep
+        self._searx_client: SourceClient | None = None
+
+    def _client(self) -> "SourceClient":
+        """The shared SearxNG client over this backend's HTTP client: the
+        process-wide query spacing, the retry of a blocked query and the cache
+        all live there (``searxng_search``). Built on first use."""
+        if self._searx_client is None:
+            from .v2.sources.base import SourceClient
+            from .v2.store import ResearchStore
+
+            self._searx_client = SourceClient(
+                self._cache if self._cache is not None else ResearchStore.in_memory(),
+                client=self._http,
+                clock=self._clock,
+                sleep=self._sleep,
+                retries=0,  # an HTTP failure is one failure, as it always was
+            )
+        return self._searx_client
 
     async def search(self, query: str, max_results: int = 10) -> list[SearchResult]:
         """Search via SearXNG JSON API.
@@ -97,19 +143,25 @@ class HttpxSearchBackend:
         Raises :class:`SearchBackendError` on a transport or HTTP failure or
         an unreadable reply, and :class:`CircuitOpenError` while this
         backend's breaker is open. Never returns ``[]`` for an error.
+        :class:`SearchEnginesBlocked` is raised when SearxNG had no results
+        because its upstream engines did not answer (after backoff retries).
+        A partial answer is returned as :class:`SearchResults` with
+        ``warnings``.
         """
         if not self._breaker.allow_request():
             raise CircuitOpenError(self._breaker.name)
 
         try:
-            resp = await self._http.get(
+            page = await searxng_query(
+                self._client(),
                 f"{self.searxng_url}/search",
-                params={"q": query, "format": "json"},
+                {"q": query, "format": "json"},
+                cache=self._cache is not None,
             )
-            resp.raise_for_status()
-            data = resp.json()
-            if not isinstance(data, dict):
-                raise ValueError("SearXNG reply is not a JSON object")
+        except SearchEnginesBlocked:
+            self._breaker.record_failure()
+            logger.error("Search blocked for '%s': engines did not answer", query[:50])
+            raise
         except Exception as e:
             self._breaker.record_failure()
             logger.error(f"Search failed for '{query[:50]}...': {e}")
@@ -118,24 +170,27 @@ class HttpxSearchBackend:
             ) from e
 
         self._breaker.record_success()
+        warnings = [f"{query!r}: {page.warning}"] if page.warning else []
+        if warnings:
+            logger.warning("Search for '%s': %s", query[:50], page.warning)
 
-        raw = data.get("results", [])
+        raw = page.results
         results: list[SearchResult] = []
         for i, item in enumerate(raw[:max_results]):
-            url = item.get("url", "")
+            url = str(item.get("url") or "")
             if not url:
                 continue
             results.append(
                 SearchResult(
                     link_id=i,
-                    title=item.get("title", "No title").strip(),
+                    title=str(item.get("title", "No title")).strip(),
                     url=url,
-                    snippet=item.get("content", item.get("snippet", "")).strip(),
+                    snippet=str(item.get("content", item.get("snippet", ""))).strip(),
                     domain=urlparse(url).netloc or "unknown",
                     relevance_score=0.8,
                 )
             )
-        return results
+        return SearchResults(results, warnings)
 
     async def fetch_page(self, url: str) -> FetchedPage:
         """Fetch page content and extract markdown via content-type routing."""

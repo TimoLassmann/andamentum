@@ -126,6 +126,7 @@ class ResearchState:
     finding_ids: Iterator[int] = field(default_factory=lambda: itertools.count(1))
     degraded: list[str] = field(default_factory=list)
     skipped: list[str] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
     spent: str = ""
     stop_reason: str = ""
     report: str = ""
@@ -253,6 +254,7 @@ class Search(BaseNode[ResearchState, ResearchDeps, ResearchResult]):
         )
         state.queries_done += searched.queries_run
         _note(state, degraded=searched.degraded)
+        state.notes += searched.notes
         _admit(ctx, searched.candidates)
         return Screen()
 
@@ -331,6 +333,7 @@ class Expand(BaseNode[ResearchState, ResearchDeps, ResearchResult]):
         )
         _note(state, degraded=outcome.degraded)
         state.skipped += outcome.skipped
+        state.notes += outcome.notes
         state.expanded |= set(outcome.expanded)
         _admit(ctx, merge(outcome.candidates))
         return Screen()
@@ -509,6 +512,7 @@ class Finish(BaseNode[ResearchState, ResearchDeps, ResearchResult]):
                 "stop_reason": state.stop_reason,
                 "degraded": steps.unique(state.degraded),
                 "skipped": steps.unique(state.skipped + _offline_skips(deps)),
+                "notes": steps.unique(state.notes),
                 "stats": deps.asker.stats,
             }
         )

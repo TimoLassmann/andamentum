@@ -226,6 +226,10 @@ def main(argv: list[str]) -> None:
         f"{len(result.works)} works; {len(result.verification)} verification flags",
         file=sys.stderr,
     )
+    if result.notes:
+        print(f"notes ({len(result.notes)}):", file=sys.stderr)
+        for note in result.notes:
+            print(f"  - {note}", file=sys.stderr)
     if result.degraded:
         print(f"degraded ({len(result.degraded)}):", file=sys.stderr)
         for reason in result.degraded:

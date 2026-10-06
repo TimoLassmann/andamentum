@@ -206,3 +206,62 @@ def test_the_protocols_tell_what_an_adapter_can_do() -> None:
     openalex = next(s for s in built.search if s.name == "openalex")
     assert isinstance(arxiv, TextSource) and not isinstance(arxiv, ExpandingSource)
     assert isinstance(openalex, TextSource) and isinstance(openalex, ExpandingSource)
+
+
+# -- engines that did not answer ------------------------------------------------
+
+_RATE_LIMITED = b'{"results": [], "unresponsive_engines": [["brave", "Suspended: too many requests"], ["duckduckgo", "CAPTCHA"]]}'
+_PARTIAL = (
+    b'{"results": [{"url": "https://example.org/a", "title": "A page", "content": "x"}],'
+    b' "unresponsive_engines": [["brave", "Suspended: too many requests"]]}'
+)
+
+
+async def test_rate_limited_engines_are_retried_with_backoff_then_raise() -> None:
+    kit = SourceKit(lambda _r: httpx.Response(200, content=_RATE_LIMITED))
+    with pytest.raises(SourceError) as caught:
+        await web(kit).search("apollo", limit=5)
+    assert caught.value.kind == "rate_limited"
+    assert "brave (Suspended: too many requests)" in caught.value.reason
+    assert len(kit.requests) == 3
+    assert kit.time.sleeps == [5.0, 15.0]
+    assert list(kit.store.iter_cache()) == []
+
+
+async def test_a_partial_answer_is_returned_with_a_warning() -> None:
+    kit = SourceKit(lambda _r: httpx.Response(200, content=_PARTIAL))
+    source = web(kit)
+    found = await source.search("apollo", limit=1)
+    assert [c.work.title for c in found] == ["A page"]
+    [warning] = source.take_warnings()
+    assert "brave (Suspended: too many requests)" in warning
+    assert source.take_warnings() == []
+
+
+async def test_steps_record_a_blocked_search_as_degraded_and_a_partial_as_a_note() -> (
+    None
+):
+    from andamentum.deep_research.v2 import steps
+
+    blocked = SourceKit(lambda _r: httpx.Response(200, content=_RATE_LIMITED))
+    outcome = await steps.search(
+        {"q1": ["apollo"]}, sources=[web(blocked)], filters={}, limit=5
+    )
+    assert outcome.candidates == []
+    [reason] = outcome.degraded
+    assert "web search failed for 'apollo'" in reason and "brave" in reason
+
+    partial = SourceKit(lambda _r: httpx.Response(200, content=_PARTIAL))
+    outcome = await steps.search(
+        {"q1": ["apollo"]}, sources=[web(partial)], filters={}, limit=1
+    )
+    assert len(outcome.candidates) == 1 and outcome.degraded == []
+    assert len(outcome.notes) == 1 and "partial search" in outcome.notes[0]
+
+
+async def test_web_queries_are_spaced_by_the_shared_interval() -> None:
+    kit = SourceKit(results, intervals={"web": 1.5})
+    reader = web(kit)
+    await reader.search("one", limit=1)
+    await reader.search("two", limit=1)
+    assert kit.time.sleeps == [1.5]

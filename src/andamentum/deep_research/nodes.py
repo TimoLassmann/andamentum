@@ -316,6 +316,7 @@ class ParallelSearch(BaseNode[ResearchState, NodeDeps, EvidenceReport]):
                         is_retryable=True,
                     )
                 )
+            ctx.state.search_warnings += outcome.warnings
             ctx.state.search_history.append(
                 SearchQuery(
                     query=outcome.query,

@@ -31,10 +31,11 @@ import time
 import uuid
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, get_args
 
-from pydantic import BaseModel, JsonValue
+from pydantic import BaseModel, Field, JsonValue
 
 from andamentum.references import (
     LICENCE_NO_REDISTRIBUTE,
@@ -46,13 +47,17 @@ from andamentum.references.works import ID_FIELDS, title_key
 
 from .types import Passage
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 TTL_SEARCH_S = 7 * 86_400
 TTL_METADATA_S = 30 * 86_400
 TTL_FULL_TEXT_S = 180 * 86_400
 
 INLINE_BLOB_LIMIT = 16 * 1024
+
+# Hard cap on the bytes of response bodies the HTTP cache holds. Enforced on
+# every write: expired rows go first, then the least recently used.
+HTTP_CACHE_MAX_BYTES = 200 * 1024 * 1024
 
 RunItemKind = Literal[
     "subquestion", "criterion", "candidate", "finding", "conflict", "coverage", "flag"
@@ -174,8 +179,17 @@ CREATE TABLE decisions (
 CREATE INDEX decisions_run ON decisions(run_id, step);
 """
 
+# The cache's size and recency, for the size cap: ``size`` is the body's bytes
+# (backfilled from the blobs on open), ``last_used`` the last read or write.
+_SCHEMA_V2 = """
+ALTER TABLE http_cache ADD COLUMN size INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE http_cache ADD COLUMN last_used REAL NOT NULL DEFAULT 0;
+UPDATE http_cache SET last_used = fetched_at;
+CREATE INDEX http_cache_used ON http_cache(last_used);
+"""
+
 # Migrations by the version they produce. Development: no shims for old files.
-_MIGRATIONS: dict[int, str] = {1: _SCHEMA_V1}
+_MIGRATIONS: dict[int, str] = {1: _SCHEMA_V1, 2: _SCHEMA_V2}
 
 
 class StoreError(RuntimeError):
@@ -192,6 +206,26 @@ class CachedResponse(BaseModel):
     fetched_at: float
     ttl_s: int
     licence: str = ""
+
+
+class CacheStats(BaseModel):
+    """What the HTTP cache holds: bytes of bodies, rows per source, the age range."""
+
+    bytes: int = 0
+    rows: int = 0
+    by_source: dict[str, int] = Field(default_factory=dict)
+    oldest: float | None = None  # fetched_at of the oldest row
+    newest: float | None = None
+    max_bytes: int = HTTP_CACHE_MAX_BYTES
+
+
+class CachePrune(BaseModel):
+    """What :meth:`ResearchStore.prune_cache` removed."""
+
+    expired: int = 0
+    evicted: int = 0
+    freed_bytes: int = 0
+    blobs_deleted: int = 0
 
 
 class CacheImportCounts(BaseModel):
@@ -265,12 +299,13 @@ class ResearchStore:
         *,
         clock: Callable[[], float] = time.time,
         shared_cache: ResearchStore | None = None,
+        max_cache_bytes: int | None = None,
     ) -> None:
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         self.path: Path | None = path
         self._blob_dir: Path | None = path.parent / "blobs"
-        self._open(str(path), clock, shared_cache)
+        self._open(str(path), clock, shared_cache, max_cache_bytes)
 
     @classmethod
     def in_memory(
@@ -278,12 +313,13 @@ class ResearchStore:
         *,
         clock: Callable[[], float] = time.time,
         shared_cache: ResearchStore | None = None,
+        max_cache_bytes: int | None = None,
     ) -> ResearchStore:
         """A store that lives and dies with the process."""
         store = cls.__new__(cls)
         store.path = None
         store._blob_dir = None
-        store._open(":memory:", clock, shared_cache)
+        store._open(":memory:", clock, shared_cache, max_cache_bytes)
         return store
 
     def _open(
@@ -291,7 +327,13 @@ class ResearchStore:
         database: str,
         clock: Callable[[], float],
         shared_cache: ResearchStore | None = None,
+        max_cache_bytes: int | None = None,
     ) -> None:
+        if max_cache_bytes is not None and max_cache_bytes < 0:
+            raise ValueError(f"max_cache_bytes must be >= 0, got {max_cache_bytes}")
+        self.max_cache_bytes = (
+            HTTP_CACHE_MAX_BYTES if max_cache_bytes is None else max_cache_bytes
+        )
         if shared_cache is self:
             raise ValueError("a store cannot be its own shared cache")
         self._clock = clock
@@ -341,6 +383,22 @@ class ResearchStore:
                 for statement in _split_statements(_MIGRATIONS[version]):
                     self._conn.execute(statement)
                 self._conn.execute("INSERT INTO schema_version VALUES (?)", (version,))
+        self._backfill_cache_sizes()
+
+    def _backfill_cache_sizes(self) -> None:
+        """Give the rows a version-1 file left at size 0 their body's real size."""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT key, body_blob FROM http_cache WHERE size = 0"
+            ).fetchall()
+            for row in rows:
+                try:
+                    size = len(self.get_blob(row["body_blob"]))
+                except StoreError:
+                    continue  # a row whose blob is gone stays at 0; a read reports it
+                self._conn.execute(
+                    "UPDATE http_cache SET size = ? WHERE key = ?", (size, row["key"])
+                )
 
     def schema_version(self) -> int:
         with self._lock:
@@ -430,6 +488,7 @@ class ResearchStore:
             )
             if row is not None and (any_age or not expired):
                 self.cache_hits += 1
+                self._touch(key)
                 return self._cached(row)
             if self._shared is not None and not any_age:
                 shared = self._shared._live_entry(key)
@@ -449,14 +508,26 @@ class ResearchStore:
             ).fetchone()
             if row is None or row["fetched_at"] + row["ttl_s"] <= self._clock():
                 return None
+            self._touch(key)
             return self._cached(row)
+
+    def _touch(self, key: str) -> None:
+        self._conn.execute(
+            "UPDATE http_cache SET last_used = ? WHERE key = ?", (self._clock(), key)
+        )
+
+    _CACHE_INSERT = (
+        "INSERT OR REPLACE INTO http_cache "
+        "(key, source, url, status, body_blob, fetched_at, ttl_s, licence, size, last_used) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    )
 
     def _store_entry(self, entry: CachedResponse) -> None:
         """Write *entry* as it is, keeping its own ``fetched_at``."""
         digest = self.put_blob(entry.body)
         with self._lock:
             self._conn.execute(
-                "INSERT OR REPLACE INTO http_cache VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                self._CACHE_INSERT,
                 (
                     entry.key,
                     entry.source,
@@ -466,8 +537,11 @@ class ResearchStore:
                     entry.fetched_at,
                     entry.ttl_s,
                     entry.licence,
+                    len(entry.body),
+                    self._clock(),
                 ),
             )
+            self._enforce_cache_cap()
 
     def cache_put(
         self,
@@ -486,10 +560,12 @@ class ResearchStore:
             raise ValueError(f"ttl_s must be positive, got {ttl_s}")
         digest = self.put_blob(body)
         with self._lock:
+            now = self._clock()
             self._conn.execute(
-                "INSERT OR REPLACE INTO http_cache VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (key, source, url, status, digest, self._clock(), ttl_s, licence),
+                self._CACHE_INSERT,
+                (key, source, url, status, digest, now, ttl_s, licence, len(body), now),
             )
+            self._enforce_cache_cap()
         if self._shared is not None:
             self._shared.cache_put(
                 key,
@@ -566,12 +642,110 @@ class ResearchStore:
         return report
 
     def purge_expired(self) -> int:
-        """Delete the entries whose TTL has run out; the number removed."""
+        """Delete the entries whose TTL has run out (and their blobs); the number removed."""
         with self._lock:
-            cursor = self._conn.execute(
-                "DELETE FROM http_cache WHERE fetched_at + ttl_s <= ?", (self._clock(),)
-            )
-            return cursor.rowcount
+            return self._delete_rows(
+                "fetched_at + ttl_s <= ?", (self._clock(),)
+            ).rows
+
+    # -- cache size cap ---------------------------------------------------
+
+    def cache_bytes(self) -> int:
+        """The bytes of response bodies the HTTP cache holds."""
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT COALESCE(SUM(size), 0) AS n FROM http_cache"
+            ).fetchone()
+            return int(row["n"])
+
+    def cache_stats(self) -> CacheStats:
+        """Size, rows per source and the age range of the HTTP cache."""
+        with self._lock:
+            by_source = {
+                r["source"]: int(r["n"])
+                for r in self._conn.execute(
+                    "SELECT source, COUNT(*) AS n FROM http_cache GROUP BY source ORDER BY source"
+                )
+            }
+            span = self._conn.execute(
+                "SELECT MIN(fetched_at) AS lo, MAX(fetched_at) AS hi FROM http_cache"
+            ).fetchone()
+        return CacheStats(
+            bytes=self.cache_bytes(),
+            rows=sum(by_source.values()),
+            by_source=by_source,
+            oldest=span["lo"],
+            newest=span["hi"],
+            max_bytes=self.max_cache_bytes,
+        )
+
+    def prune_cache(self, max_bytes: int | None = None) -> CachePrune:
+        """Bring the HTTP cache under *max_bytes* (default: this store's cap):
+        expired rows first, then the least recently used. Blobs nothing else
+        refers to are deleted with their rows."""
+        with self._lock:
+            return self._enforce_cache_cap(max_bytes)
+
+    def _enforce_cache_cap(self, max_bytes: int | None = None) -> CachePrune:
+        cap = self.max_cache_bytes if max_bytes is None else max_bytes
+        done = CachePrune()
+        if self.cache_bytes() <= cap:
+            return done
+        expired = self._delete_rows("fetched_at + ttl_s <= ?", (self._clock(),))
+        done.expired = expired.rows
+        done.freed_bytes += expired.freed
+        done.blobs_deleted += expired.blobs
+        while True:
+            over = self.cache_bytes() - cap
+            if over <= 0:
+                break
+            victim = self._conn.execute(
+                "SELECT key FROM http_cache ORDER BY last_used, rowid LIMIT 1"
+            ).fetchone()
+            if victim is None:
+                break
+            gone = self._delete_rows("key = ?", (victim["key"],))
+            done.evicted += gone.rows
+            done.freed_bytes += gone.freed
+            done.blobs_deleted += gone.blobs
+        return done
+
+    def _delete_rows(self, where: str, args: tuple[object, ...]) -> _Deleted:
+        rows = self._conn.execute(
+            f"SELECT key, body_blob, size FROM http_cache WHERE {where}", args
+        ).fetchall()
+        deleted = _Deleted()
+        for row in rows:
+            self._conn.execute("DELETE FROM http_cache WHERE key = ?", (row["key"],))
+            deleted.rows += 1
+            deleted.freed += int(row["size"])
+            if self._delete_blob_if_unused(row["body_blob"]):
+                deleted.blobs += 1
+        return deleted
+
+    def _delete_blob_if_unused(self, digest: str) -> bool:
+        """Delete blob *digest* unless a cache row, a work or a passage still names it."""
+        for table, column in (
+            ("http_cache", "body_blob"),
+            ("works", "abstract_blob"),
+            ("passages", "text_blob"),
+        ):
+            if self._conn.execute(
+                f"SELECT 1 FROM {table} WHERE {column} = ? LIMIT 1", (digest,)
+            ).fetchone():
+                return False
+        removed = self._conn.execute(
+            "DELETE FROM blobs_inline WHERE sha256 = ?", (digest,)
+        ).rowcount
+        if removed:
+            return True
+        if self._blob_dir is None:
+            return self._memory_blobs.pop(digest, None) is not None
+        target = self._blob_path(digest)
+        if target.exists():
+            target.unlink()
+            return True
+        return False
 
     def iter_cache(self, *, exportable_only: bool = True) -> Iterator[CachedResponse]:
         """Every entry, expired or not. By default the ``no_redistribute`` ones are left out."""
@@ -1008,6 +1182,13 @@ class ResearchStore:
             )
             for r in rows
         ]
+
+
+@dataclass
+class _Deleted:
+    rows: int = 0
+    freed: int = 0
+    blobs: int = 0
 
 
 class ReferenceCache:

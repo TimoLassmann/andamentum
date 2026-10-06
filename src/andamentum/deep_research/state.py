@@ -87,5 +87,6 @@ class ResearchState:
 
     # Error tracking (Phase 2 fix: surface search failures)
     search_errors: list[SearchError] = field(default_factory=list)
+    search_warnings: list[str] = field(default_factory=list)
     fetch_errors: list[FetchError] = field(default_factory=list)
     summary_errors: list[SummaryError] = field(default_factory=list)

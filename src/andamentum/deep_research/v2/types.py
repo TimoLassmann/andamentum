@@ -260,7 +260,9 @@ class ResearchResult(BaseModel):
     ``ResearchConfig`` the run used (``config.config_hash``); ``frozen`` is the
     digest of the frozen inputs it ran on (empty for a live run), and
     ``skipped`` lists what such a run did not fetch because the snapshot did
-    not hold it.
+    not hold it. ``notes`` records what is worth knowing without being a
+    failure, such as a web search that answered with results while some
+    engines did not.
     """
 
     run_id: str
@@ -283,6 +285,7 @@ class ResearchResult(BaseModel):
     stop_reason: str = ""
     degraded: list[str] = Field(default_factory=list)
     skipped: list[str] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
     stats: RunStats = Field(default_factory=RunStats)
 
     def cited_work_ids(self) -> list[str]:

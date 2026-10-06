@@ -39,7 +39,11 @@ async def run_searches(
         async with sem:
             try:
                 results = await backend.search(q, max_results=max_results)
-                return SearchOutcome(query=q, results=results)
+                return SearchOutcome(
+                    query=q,
+                    results=results,
+                    warnings=list(getattr(results, "warnings", [])),
+                )
             except Exception as e:
                 return SearchOutcome(query=q, results=[], error=str(e))
 

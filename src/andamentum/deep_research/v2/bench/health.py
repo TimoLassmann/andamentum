@@ -14,6 +14,8 @@ from urllib.parse import urlencode
 import httpx
 from pydantic import BaseModel
 
+from andamentum.deep_research.searxng_search import parse_unresponsive
+
 PROBE_QUERY = "Mount Kilimanjaro height"
 PROBE_TIMEOUT_S = 30.0
 
@@ -38,15 +40,7 @@ class SearxDown(RuntimeError):
 
 
 def _engine_names(raw: object) -> list[str]:
-    names: list[str] = []
-    if isinstance(raw, list):
-        for entry in raw:
-            if isinstance(entry, list) and entry:
-                reason = f" ({entry[1]})" if len(entry) > 1 else ""
-                names.append(f"{entry[0]}{reason}")
-            else:
-                names.append(str(entry))
-    return names
+    return [str(engine) for engine in parse_unresponsive(raw)]
 
 
 async def check_searxng(

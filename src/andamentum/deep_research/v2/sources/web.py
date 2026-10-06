@@ -17,18 +17,21 @@ through the shared client and reuses the gate, the SSRF layer and the extractor.
 
 from __future__ import annotations
 
-import json
 from collections.abc import Mapping
 from urllib.parse import urlparse
 
 from pydantic import JsonValue
 
+from andamentum.deep_research.searxng_search import (
+    SearchEnginesBlocked,
+    searxng_query,
+)
 from andamentum.references import Work
 from andamentum.references.works import canonical_url
 
-from ..store import TTL_SEARCH_S, ResearchStore
+from ..store import ResearchStore
 from ..types import Candidate
-from ._util import as_list, as_mapping, expect_mapping, squash, year_of_date
+from ._util import as_mapping, squash, year_of_date
 from .base import (
     DEFAULT_RESULTS_PER_QUERY,
     FetchedText,
@@ -65,6 +68,12 @@ class WebSource:
         self._client = resolve_client(NAME, store=store, client=client)
         self._endpoint = f"{searxng_url.rstrip('/')}/search"
         self._tdm = tdm_allowed_hosts
+        self._warnings: list[str] = []
+
+    def take_warnings(self) -> list[str]:
+        """The partial-search warnings since the last call (and forget them)."""
+        taken, self._warnings = self._warnings, []
+        return taken
 
     async def search(
         self,
@@ -80,19 +89,25 @@ class WebSource:
         found: list[Candidate] = []
         seen: set[str] = set()
         for page in range(1, MAX_PAGES + 1):
-            body = await self._client.get_json(
-                NAME,
-                self._endpoint,
-                params={"q": query, "format": "json", "pageno": page},
-                ttl_s=TTL_SEARCH_S,
-                validate=_reject_unanswered,
-            )
-            results = as_list(
-                expect_mapping(NAME, body, what="the search").get("results")
-            )
-            if not results:
+            try:
+                answer = await searxng_query(
+                    self._client,
+                    self._endpoint,
+                    {"q": query, "format": "json", "pageno": page},
+                )
+            except SearchEnginesBlocked as blocked:
+                raise SourceError(
+                    NAME,
+                    str(blocked),
+                    kind="rate_limited" if blocked.retryable else "http",
+                ) from blocked
+            if answer.warning:
+                note = f"web search for {query!r}: {answer.warning}"
+                if note not in self._warnings:
+                    self._warnings.append(note)
+            if not answer.results:
                 break
-            for item in results:
+            for item in answer.results:
                 candidate = _candidate(as_mapping(item), query, rank=len(found))
                 if candidate is None:
                     continue
@@ -110,27 +125,6 @@ class WebSource:
             return None
         return await self._client.fetch_document(
             NAME, work.url, tdm_allowed_hosts=self._tdm
-        )
-
-
-def _reject_unanswered(body: bytes) -> None:
-    """No results while engines failed says nothing about the web: raise, do not cache."""
-    try:
-        data = json.loads(body)
-    except ValueError:
-        return  # get_json reports a body that is not JSON
-    if not isinstance(data, dict) or data.get("results"):
-        return
-    down = as_list(data.get("unresponsive_engines"))
-    if down:
-        names = ", ".join(
-            f"{as_list(e)[0]} ({as_list(e)[1] if len(as_list(e)) > 1 else '?'})"
-            if isinstance(e, list) and e
-            else str(e)
-            for e in down
-        )
-        raise SourceError(
-            NAME, f"no results and the engines did not answer: {names}", kind="http"
         )
 
 

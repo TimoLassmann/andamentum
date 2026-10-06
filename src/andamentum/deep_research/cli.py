@@ -105,6 +105,15 @@ def _build_parser() -> argparse.ArgumentParser:
             "verifier judges every query"
         ),
     )
+    parser.add_argument(
+        "--cache",
+        default=None,
+        metavar="PATH",
+        help=(
+            "Keep SearxNG search answers (seven days, size-capped) in this "
+            "research store file. Default: no cache, nothing is written"
+        ),
+    )
     return parser
 
 
@@ -182,6 +191,8 @@ def _display_results(result: Any, verbose: bool) -> None:
         print(
             f"\n--- Errors: {result.errors.search_errors} search, {result.errors.fetch_errors} fetch ---"
         )
+    for warning in result.errors.search_warnings:
+        print(f"--- Warning: {warning} ---")
 
 
 async def _run(args: argparse.Namespace) -> None:
@@ -218,6 +229,11 @@ async def _run(args: argparse.Namespace) -> None:
         from andamentum.core.decisions import DecisionModel
 
         decision_model = await DecisionModel.open(args.decision_model)
+    search_cache = None
+    if args.cache:
+        from .v2.store import ResearchStore
+
+        search_cache = ResearchStore(Path(args.cache))
     try:
         result = await run_research(
             args.query,
@@ -230,10 +246,13 @@ async def _run(args: argparse.Namespace) -> None:
             reporter=reporter,
             tdm_allowed_hosts=tdm_hosts,
             decision_model=decision_model,
+            search_cache=search_cache,
         )
     finally:
         if decision_model is not None:
             await decision_model.aclose()
+        if search_cache is not None:
+            search_cache.close()
 
     if args.json_output:
         print(result.model_dump_json(indent=2))
@@ -250,6 +269,11 @@ def main() -> None:
         from .v2.mcp_server import main as mcp_main
 
         mcp_main(sys.argv[2:])
+        return
+    if len(sys.argv) > 1 and sys.argv[1] in ("cache-info", "cache-prune"):
+        from .cache_cli import main as cache_main
+
+        cache_main(sys.argv[1:])
         return
     if len(sys.argv) > 1 and sys.argv[1] == "v2":
         from .v2.cli import main as v2_main

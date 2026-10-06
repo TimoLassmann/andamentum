@@ -42,6 +42,9 @@ from andamentum.core.url_safety import (
 from andamentum.deep_research.content_extractor import (
     ExtractionError,
 )
+from andamentum.deep_research.searxng_search import (
+    SEARXNG_MIN_INTERVAL_S,
+)
 from andamentum.references import Work
 
 from ..store import (
@@ -82,7 +85,7 @@ DEFAULT_INTERVAL_S: dict[str, float] = {
     "europepmc": 0.2,
     "arxiv": 3.0,
     "semantic_scholar": 1.0,
-    "web": 0.0,
+    "web": SEARXNG_MIN_INTERVAL_S,  # SearxNG: its upstream engines suspend a fast caller
 }
 # arxiv.org's robots.txt asks for a 15 second crawl delay on its pages and
 # PDFs (the API host, export.arxiv.org, disallows everything to robots), so a
@@ -209,6 +212,14 @@ class Source(Protocol):
         limit: int = DEFAULT_RESULTS_PER_QUERY,
         filters: SearchFilters | None = None,
     ) -> list[Candidate]: ...
+
+
+@runtime_checkable
+class WarningSource(Source, Protocol):
+    """A source whose search can answer partially; the engine drains the
+    warnings after each search and records them as run notes."""
+
+    def take_warnings(self) -> list[str]: ...
 
 
 @runtime_checkable
@@ -435,6 +446,10 @@ class SourceClient:
             data, content_type, url, pdf_extraction=self.pdf_extraction
         )
 
+    async def pause(self, seconds: float) -> None:
+        """Wait *seconds* on this client's (injectable) sleep."""
+        await self._sleep(seconds)
+
     def set_interval(self, name: str, seconds: float) -> None:
         """Set the smallest gap between network requests under spacing key *name*."""
         self._intervals[name] = seconds
@@ -462,6 +477,7 @@ class SourceClient:
         ttl_s: int,
         licence: str = "",
         validate: Callable[[bytes], None] | None = None,
+        cache: bool = True,
     ) -> HttpResult:
         """GET *url*, from the cache when it holds a live answer.
 
@@ -471,9 +487,11 @@ class SourceClient:
         Only a 200 is cached, and only after ``validate`` (which raises
         :class:`SourceError`) accepted it: some APIs answer 200 with an error
         body, and that must not be remembered for a week. Anything else raises.
+        ``cache=False`` neither reads nor writes the cache (not for an offline client).
         """
         key = cache_key(source, url, {k: str(v) for k, v in (params or {}).items()})
-        cached = self.store.cache_get(key, any_age=self.offline)
+        use_cache = cache or self.offline
+        cached = self.store.cache_get(key, any_age=self.offline) if use_cache else None
         if cached is not None:
             return HttpResult(status=cached.status, body=cached.body, from_cache=True)
         if self.offline:
@@ -485,15 +503,16 @@ class SourceClient:
             )
         if validate is not None:
             validate(result.body)
-        self.store.cache_put(
-            key,
-            source=source,
-            url=_audit_url(url, params),
-            status=result.status,
-            body=result.body,
-            ttl_s=ttl_s,
-            licence=licence,
-        )
+        if use_cache:
+            self.store.cache_put(
+                key,
+                source=source,
+                url=_audit_url(url, params),
+                status=result.status,
+                body=result.body,
+                ttl_s=ttl_s,
+                licence=licence,
+            )
         return result
 
     async def get_json(

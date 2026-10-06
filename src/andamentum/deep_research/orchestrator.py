@@ -14,11 +14,14 @@ Usage::
 from __future__ import annotations
 
 import uuid
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from andamentum.core.decisions import DecisionModel
 
 from .models import ResearchResult, ResearchErrors
+
+if TYPE_CHECKING:
+    from .v2.store import ResearchStore
 
 
 async def run_research(
@@ -34,6 +37,7 @@ async def run_research(
     reporter: Any = None,  # SearchReporter — typed loosely to avoid mandatory import
     tdm_allowed_hosts: frozenset[str] = frozenset(),
     decision_model: DecisionModel | None = None,
+    search_cache: "ResearchStore | None" = None,
 ) -> "ResearchResult":
     """Run a complete research session.
 
@@ -53,6 +57,9 @@ async def run_research(
         decision_model: Optional opened local decision model
             (``DecisionModel.open``) that judges candidate queries instead of
             the ``topic_verifier`` agent. Default None: the agent judges.
+        search_cache: Optional explicit ``ResearchStore`` that keeps SearxNG
+            search answers (seven days, size-capped). Default None: no cache,
+            nothing is written. Only consulted when ``backend`` is None.
 
     Returns:
         ResearchResult with output, iterations, searches, pages_fetched, verification, errors
@@ -71,6 +78,7 @@ async def run_research(
         backend = HttpxSearchBackend(
             searxng_url=searxng_url,
             tdm_allowed_hosts=tdm_allowed_hosts,
+            cache=search_cache,
         )
 
     # Resolve model (provides localhost default for ollama: prefix)
@@ -122,5 +130,6 @@ async def run_research(
             search_errors=len(state.search_errors),
             fetch_errors=len(state.fetch_errors),
             summary_errors=len(state.summary_errors),
+            search_warnings=list(state.search_warnings),
         ),
     )

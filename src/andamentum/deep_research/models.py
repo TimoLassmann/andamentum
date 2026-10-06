@@ -70,6 +70,10 @@ class SearchOutcome(BaseModel):
     query: str
     results: list[SearchResult] = Field(default_factory=list)
     error: str | None = None
+    warnings: list[str] = Field(
+        default_factory=list,
+        description="A partial answer: results came back, some engines did not answer",
+    )
 
 
 class GeneratorOutput(BaseModel):
@@ -308,6 +312,10 @@ class ResearchErrors(BaseModel):
     search_errors: int
     fetch_errors: int
     summary_errors: int = 0
+    search_warnings: list[str] = Field(
+        default_factory=list,
+        description="Searches that returned results while some engines did not answer",
+    )
 
 
 class ResearchResult(BaseModel):
