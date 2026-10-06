@@ -61,7 +61,7 @@ from ..sources.base import SourceConfig
 from ..store import ResearchStore
 from ..types import Mode
 from .concurrency import resolve_concurrency, run_bounded
-from .arms import ArmOutput, ExperimentArm, LegacyArm, V2Arm
+from .arms import ArmOutput, Bm25Arm, ExperimentArm, LegacyArm, V2Arm
 from .experiment import ArmSpec, Experiment, SetSpec
 from .freeze import (
     META_FILE,
@@ -77,6 +77,7 @@ from .freeze import (
 from .health import SearxDown, SearxHealth
 from .judging import ClaimJudge, UrlChecker, check_links
 from .litsearch import DEFAULT_SUBSET, LitSearchItem, load_litsearch
+from .litsearch_local import load_litsearch_local
 from .metrics import (
     DEFAULT_KS,
     Cost,
@@ -100,12 +101,21 @@ from .synergy import DEFAULT_REVIEWS, ScreeningReview, load_review, sample_recor
 from .web_set import WEB_QUESTIONS, WebQuestion, answer_correct
 
 WORK_DIR = "work"
+# the sets scored by recall of gold papers
+LITSEARCH_SETS = ("litsearch", "litsearch-local")
 NO_SNAPSHOT = "no snapshot"
 
 # Metrics where a failed item is a zero, not an absent value: a crashing arm
 # must not look better than a working one.
 OUTCOME_METRICS: dict[str, tuple[str, ...]] = {
     "litsearch": (
+        "recall_at_5",
+        "recall_at_10",
+        "recall_at_20",
+        "recall_at_50",
+        "found_any",
+    ),
+    "litsearch-local": (
         "recall_at_5",
         "recall_at_10",
         "recall_at_20",
@@ -139,6 +149,7 @@ class DataDirs:
 
     snapshots: Path | None = None
     litsearch: Path | None = None
+    litsearch_local: Path | None = None
     synergy: Path | None = None
 
 
@@ -166,6 +177,19 @@ def load_items(spec: SetSpec, dirs: DataDirs) -> list[Item]:
         return [
             Item("litsearch", i.query.query_id, i.query.query, litsearch=i)
             for i in data.items
+        ]
+    if spec.name == "litsearch-local":
+        if dirs.litsearch_local is None:
+            raise ValueError("the litsearch-local set needs --litsearch-local-dir")
+        local = load_litsearch_local(
+            dirs.litsearch_local,
+            n=spec.n or DEFAULT_SUBSET,
+            seed=spec.seed,
+            skip=spec.skip,
+        )
+        return [
+            Item("litsearch-local", i.query.query_id, i.query.query, litsearch=i)
+            for i in local.items
         ]
     if spec.name == "web":
         return [
@@ -366,6 +390,13 @@ def build_answer_arm(
     decision = services.decision_for(spec)
     if services.answer_arm is not None:
         return services.answer_arm(spec, mode, decision)
+    if spec.system == "bm25":
+        corpus = (sources or services.source_config).local_corpus
+        if corpus is None or spec.top_k is None:
+            raise ValueError(
+                f"arm {spec.name}: the BM25 reference needs --local-corpus (the corpus folder)"
+            )
+        return Bm25Arm(corpus_dir=corpus, top_k=spec.top_k, name=spec.name)
     if spec.model is None:
         raise ValueError(f"arm {spec.name} needs a model")
     if spec.system == "legacy":
@@ -401,7 +432,7 @@ def build_screening_arm(spec: ArmSpec, services: Services) -> ScreeningArm:
 
 
 def set_mode(set_name: str) -> Mode:
-    return "scholarly" if set_name == "litsearch" else "web"
+    return "scholarly" if set_name in LITSEARCH_SETS else "web"
 
 
 def mode_is_web(set_name: str) -> bool:
@@ -412,10 +443,15 @@ def profile_sources(
     exp: Experiment, spec: ArmSpec, set_name: str, services: Services
 ) -> SourceConfig:
     """The ``SourceConfig`` a frozen arm runs *set_name* with: the run's own,
-    updated with the sources of the arm's inputs profile for that set."""
+    updated with the sources of the arm's inputs profile for that set. A live v2
+    arm takes the experiment's ``set_sources`` for the set, when it has any (the
+    BM25 reference takes the same, so both read the one corpus)."""
     name = exp.profile_of(spec, set_name)
     if name is None:
-        return services.source_config
+        own = exp.sources_for(set_name)
+        if own is None or spec.is_frozen:
+            return services.source_config
+        return services.source_config.model_copy(update=own.updates())
     profile = exp.inputs[name]
     if profile.existing:
         return services.source_config
@@ -627,7 +663,7 @@ async def _answer_cell(
 ) -> tuple[dict[str, float | None], ArmOutput, str | None]:
     output = await arm.run(item.question, frozen=frozen, store=store)
     outcome: str | None = None
-    if item.set_name == "litsearch" and item.litsearch is not None:
+    if item.set_name in LITSEARCH_SETS and item.litsearch is not None:
         metrics = litsearch_metrics(
             output, item.litsearch, returns_pages=arm.returns_pages
         )
@@ -731,6 +767,22 @@ async def run_experiment(
     ):
         raise ValueError(
             "the experiment is keyless but the source configuration holds an API key"
+        )
+    if (
+        services.answer_arm is None
+        and services.source_config.local_corpus is None
+        and any(
+            s.name == "litsearch-local"
+            and any(
+                a.runs_on(s.name) and (only_arms is None or a.name in only_arms)
+                for a in exp.arms
+            )
+            for s in chosen
+        )
+    ):
+        raise ValueError(
+            "the litsearch-local set needs --local-corpus (the corpus folder its "
+            "arms search)"
         )
     path = registry_path(out_dir)
     check_same_experiment(path, experiment=exp.name, experiment_hash=exp.config_hash())

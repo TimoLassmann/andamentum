@@ -606,6 +606,7 @@ def _screening_record(
                 pmcid=work.pmcid,
                 openalex_id=work.openalex_id,
                 s2_id=work.s2_id,
+                local_id=work.local_id,
                 url=work.url,
             )
         )
@@ -664,7 +665,12 @@ def _run_config(
         "budget": budget.model_dump(mode="json"),
         "sources": sources.model_dump(
             mode="json",
-            exclude={"mailto", "openalex_api_key", "semantic_scholar_api_key"},
+            exclude={
+                "mailto",
+                "openalex_api_key",
+                "semantic_scholar_api_key",
+                "local_corpus",
+            },
         ),
         "research_config": config.model_dump(mode="json"),
         "config_hash": config_hash(config),

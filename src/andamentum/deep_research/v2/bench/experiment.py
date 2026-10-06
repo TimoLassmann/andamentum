@@ -25,20 +25,23 @@ from typing import Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-SetName = Literal["litsearch", "web", "web_planted", "synergy"]
-System = Literal["legacy", "v2", "screening"]
+SetName = Literal["litsearch", "litsearch-local", "web", "web_planted", "synergy"]
+System = Literal["legacy", "v2", "screening", "bm25"]
 Test = Literal[
     "noninferior", "superior", "no_harm", "reduced_by", "at_least", "at_most"
 ]
-ScholarlyName = Literal["openalex", "europepmc", "arxiv", "semantic_scholar"]
+ScholarlyName = Literal[
+    "openalex", "europepmc", "arxiv", "semantic_scholar", "local_corpus"
+]
 Aggregate = Literal["mean", "median", "max"]
 Outage = Literal["stop", "record"]
 
 # The sets an arm of each system can be run on.
 SYSTEM_SETS: dict[str, frozenset[str]] = {
     "legacy": frozenset({"litsearch", "web"}),
-    "v2": frozenset({"litsearch", "web", "web_planted"}),
+    "v2": frozenset({"litsearch", "litsearch-local", "web", "web_planted"}),
     "screening": frozenset({"synergy"}),
+    "bm25": frozenset({"litsearch-local"}),
 }
 DEFAULT_RESAMPLES = 10_000
 DEFAULT_BOOTSTRAP_SEED = 0
@@ -117,7 +120,7 @@ class SetSpec(BaseModel):
         default=0,
         ge=0,
         description=(
-            "litsearch and web: the items are the seeded order's positions "
+            "litsearch, litsearch-local and web: the items are the seeded order's positions "
             "skip+1 to skip+n (select_subset(ids, skip + n)[skip:])."
         ),
     )
@@ -134,8 +137,10 @@ class SetSpec(BaseModel):
             raise ValueError(f"{self.name}: reviews and records belong to synergy")
         if self.name == "synergy" and self.n is not None:
             raise ValueError("synergy: give reviews and records, not n")
-        if self.skip and self.name not in ("litsearch", "web"):
-            raise ValueError(f"{self.name}: skip belongs to litsearch and web")
+        if self.skip and self.name not in ("litsearch", "litsearch-local", "web"):
+            raise ValueError(
+                f"{self.name}: skip belongs to litsearch and web (and litsearch-local)"
+            )
         if self.skip and self.n is None:
             raise ValueError(
                 f"{self.name}: skip needs n (the items after the first skip)"
@@ -159,6 +164,11 @@ class ArmSpec(BaseModel):
     )
     model: str | None = None
     decision_model: str | None = None
+    top_k: int | None = Field(
+        default=None,
+        ge=1,
+        description="bm25: how many works of the ranked list are the arm's answer.",
+    )
     frozen: bool = Field(
         default=True,
         description="v2 only: take Plan and Search from the snapshot (False: live).",
@@ -206,6 +216,17 @@ class ArmSpec(BaseModel):
             )
         if self.system == "v2" and not self.preset:
             raise ValueError(f"arm {self.name}: a v2 arm names its preset")
+        if self.system == "bm25":
+            if self.top_k is None:
+                raise ValueError(f"arm {self.name}: a bm25 arm names its top_k")
+            if self.preset or self.model or self.decision_model or self.screen:
+                raise ValueError(
+                    f"arm {self.name}: a bm25 arm calls no model and has no preset"
+                )
+            if self.solo is not None:
+                raise ValueError(f"arm {self.name}: solo timing is for model arms")
+        elif self.top_k is not None:
+            raise ValueError(f"arm {self.name}: top_k belongs to bm25 arms")
         if self.system == "screening":
             if not self.screen:
                 raise ValueError(f"arm {self.name}: a screening arm names its screen")
@@ -219,7 +240,7 @@ class ArmSpec(BaseModel):
             raise ValueError(
                 f"arm {self.name}: inputs profiles belong to frozen v2 arms"
             )
-        if self.system != "screening" and not self.model:
+        if self.system not in ("screening", "bm25") and not self.model:
             raise ValueError(f"arm {self.name}: {self.system} needs a model")
         allowed = SYSTEM_SETS[self.system]
         if self.sets is not None:
@@ -397,6 +418,13 @@ class Experiment(BaseModel):
         default_factory=dict,
         description="Named inputs profiles (how each family of snapshots is made).",
     )
+    set_sources: dict[SetName, InputSources] = Field(
+        default_factory=dict,
+        description=(
+            "Per set, the SourceConfig fields the live v2 arms run it with (a frozen "
+            "arm takes its sources from its inputs profile instead)."
+        ),
+    )
     sets: list[SetSpec] = Field(min_length=1)
     arms: list[ArmSpec] = Field(min_length=1)
     baselines: dict[str, str] = Field(
@@ -426,6 +454,9 @@ class Experiment(BaseModel):
                 raise ValueError(
                     f"report_metrics for {set_name}, which is not a set here"
                 )
+        for set_name in self.set_sources:
+            if set_name not in set_names:
+                raise ValueError(f"set_sources for {set_name}, which is not a set here")
         for set_name, arm in self.baselines.items():
             if set_name not in set_names:
                 raise ValueError(f"baseline for {set_name}, which is not a set here")
@@ -514,6 +545,13 @@ class Experiment(BaseModel):
                         f"{', '.join(absent)}"
                     )
 
+    def sources_for(self, set_name: str) -> InputSources | None:
+        """The sources the live arms run *set_name* with (``None``: the run's own)."""
+        for name, sources in self.set_sources.items():
+            if name == set_name:
+                return sources
+        return None
+
     def needs_judge(self) -> bool:
         """Does any rule or report metric need claims judged?"""
         wanted = {r.metric for r in self.rules}
@@ -567,12 +605,16 @@ class Experiment(BaseModel):
             del data["inputs"]
         if not data["keyless"]:
             del data["keyless"]
+        if not data["set_sources"]:
+            del data["set_sources"]
         for entry in data["sets"]:
             if not entry["skip"]:
                 del entry["skip"]
         for entry in data["arms"]:
             if not entry["inputs"]:
                 del entry["inputs"]
+            if entry["top_k"] is None:
+                del entry["top_k"]
         return canonical_hash(data)
 
 

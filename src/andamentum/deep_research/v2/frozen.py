@@ -202,7 +202,12 @@ async def capture(
         source_set = build_sources(sources, store=store, mode=mode, client=client)
         secretless = sources.model_dump(
             mode="json",
-            exclude={"mailto", "openalex_api_key", "semantic_scholar_api_key"},
+            exclude={
+                "mailto",
+                "openalex_api_key",
+                "semantic_scholar_api_key",
+                "local_corpus",
+            },
         )
         models: dict[str, JsonValue] = {
             "model": "" if model is None else _model_id(model),

@@ -1,6 +1,7 @@
 """The benchmark runner: ``python -m andamentum.deep_research.v2.bench``.
 
     download litsearch --dir DIR [--n 30] [--seed 0]
+    download litsearch-local --dir DIR [--force]
     download synergy   --dir DIR [--reviews Donners_2021 Sep_2021 ...]
     verify-web-set
     web       --out-dir DIR --searxng-url URL --model M [--decision-model D] [--arms legacy v2] ...
@@ -32,6 +33,7 @@ import time
 from collections.abc import Callable, Coroutine, Sequence
 from contextlib import AsyncExitStack
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 from typing import Any, Literal
 
@@ -50,7 +52,13 @@ from .cache_import import cache_databases, import_stores
 from .download import DatasetMissing, Downloader, write_atomic
 from .experiment import Experiment, InputsSpec, load_experiment
 from .experiment_report import report_from_registry
-from .experiment_run import DataDirs, InfrastructureDown, Services, run_experiment
+from .experiment_run import (
+    DataDirs,
+    InfrastructureDown,
+    Services,
+    run_experiment,
+    set_mode,
+)
 from .concurrency import MAX_CLOUD_CONCURRENCY
 from .freeze import (
     PREFETCH_TOP_K,
@@ -113,6 +121,18 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="read no Semantic Scholar key (the batch endpoint is asked keyless, "
         "whatever the environment holds)",
+    )
+    local = sets.add_parser(
+        "litsearch-local",
+        help="LitSearch queries and its own corpus (titles, abstracts, citation "
+        "ids) with a BM25 index, for evaluation with no network; needs pyarrow "
+        "(the bench-data extra)",
+    )
+    local.add_argument("--dir", type=Path, required=True)
+    local.add_argument(
+        "--force",
+        action="store_true",
+        help="fetch the files again even when the folder holds them",
     )
     syn = sets.add_parser("synergy", help="SYNERGY systematic-review screening sets")
     syn.add_argument("--dir", type=Path, required=True)
@@ -313,6 +333,20 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--out-dir", type=Path, required=True)
     run.add_argument("--snapshots", type=Path, default=None)
     run.add_argument("--litsearch-dir", type=Path, default=None)
+    run.add_argument(
+        "--litsearch-local-dir",
+        type=Path,
+        default=None,
+        help="the litsearch-local download (queries and gold papers)",
+    )
+    run.add_argument(
+        "--local-corpus",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="the corpus folder the local_corpus source and the BM25 reference read "
+        "(the same folder as --litsearch-local-dir)",
+    )
     run.add_argument("--synergy-dir", type=Path, default=None)
     run.add_argument("--searxng-url", default=DEFAULT_SEARXNG_URL)
     run.add_argument(
@@ -363,6 +397,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="the LitSearch download: adds the loss table of each arm (and, with "
         "--snapshots, the pools)",
     )
+    summary.add_argument(
+        "--litsearch-local-dir",
+        type=Path,
+        default=None,
+        help="the litsearch-local download: adds the loss table of each arm on "
+        "that set",
+    )
 
     pool = commands.add_parser(
         "pool",
@@ -391,12 +432,14 @@ def _source_config(
     pdf_extraction: PdfExtraction = BENCH_PDF_EXTRACTION,
     *,
     keyless: bool = False,
+    local_corpus: Path | None = None,
 ) -> SourceConfig:
     """The sources' configuration. Keyless: neither API key is looked up at all
     (not read, not checked for), whatever the environment holds."""
     return SourceConfig(
         searxng_url=searxng_url,
         pdf_extraction=pdf_extraction,
+        local_corpus=local_corpus,
         mailto=os.environ.get("OPENALEX_EMAIL"),
         openalex_api_key=None if keyless else os.environ.get("OPENALEX_API_KEY"),
         semantic_scholar_api_key=(
@@ -604,7 +647,31 @@ async def _cmd_screening(args: argparse.Namespace) -> int:
     return _finish(runs, args.out_dir)
 
 
+def _download_litsearch_local(args: argparse.Namespace) -> int:
+    from .litsearch_local import download_litsearch_local
+
+    with httpx.Client(timeout=120.0, follow_redirects=True) as client:
+        done = download_litsearch_local(
+            args.dir,
+            client=client,
+            today=date.today(),
+            progress=lambda line: print(line, file=sys.stderr, flush=True),
+            force=args.force,
+        )
+    print(
+        f"LitSearch (local): {done.n_queries} queries, {done.index.n_records} corpus "
+        f"records ({done.index.n_with_abstract} with an abstract), "
+        f"{done.index.n_citation_edges} citation edges, {done.n_gold_in_corpus} of "
+        f"{done.n_gold_ids} gold papers in the corpus; {done.bytes_fetched / 1e6:.0f} MB "
+        f"fetched into {args.dir}"
+    )
+    print(f"provenance: {args.dir / 'PROVENANCE.md'}")
+    return 0
+
+
 async def _cmd_download(args: argparse.Namespace) -> int:
+    if args.dataset == "litsearch-local":
+        return await asyncio.to_thread(_download_litsearch_local, args)
     async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
         downloader = Downloader(client)
         if args.dataset == "litsearch":
@@ -863,7 +930,7 @@ def _live_web(exp: Experiment, only_sets: Sequence[str] | None = None) -> bool:
         if arm.system == "legacy" and any(arm.runs_on(n) for n in names):
             return True
         if arm.system == "v2" and not arm.frozen:
-            if any(arm.runs_on(n) and n != "litsearch" for n in names):
+            if any(arm.runs_on(n) and set_mode(n) == "web" for n in names):
                 return True
     return False
 
@@ -917,7 +984,10 @@ async def _run_with(
         services = Services(
             decisions=opened,
             source_config=_source_config(
-                args.searxng_url, args.pdf_extraction, keyless=keyless
+                args.searxng_url,
+                args.pdf_extraction,
+                keyless=keyless,
+                local_corpus=args.local_corpus,
             ),
             judge=judge,
             judge_label=judge_label,
@@ -934,6 +1004,7 @@ async def _run_with(
             dirs=DataDirs(
                 snapshots=args.snapshots,
                 litsearch=args.litsearch_dir,
+                litsearch_local=args.litsearch_local_dir,
                 synergy=args.synergy_dir,
             ),
             services=services,
@@ -962,6 +1033,7 @@ async def _cmd_experiment_report(args: argparse.Namespace) -> int:
         args.out_dir,
         snapshots=args.snapshots,
         litsearch_dir=args.litsearch_dir,
+        litsearch_local_dir=args.litsearch_local_dir,
     )
     if args.out is not None:
         write_atomic(args.out, text.encode("utf-8"))

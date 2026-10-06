@@ -3,7 +3,8 @@
     andamentum-research v2 "QUESTION" --mode both --model M
         [--preset baseline|fast|criteria]
         [--decision-model NAME] [--store PATH] [--cache PATH] [--searxng-url URL]
-        [--sources openalex,europepmc,arxiv] [--openalex-search keyword]
+        [--sources openalex,europepmc,arxiv] [--local-corpus PATH]
+        [--openalex-search keyword]
         [--tdm-host HOST ...] [--results-per-query N]
         [--max-rounds N ... every Budget field] [--json | --md] [--out FILE]
 
@@ -37,7 +38,9 @@ from .store import ResearchStore
 from .types import Budget, Mode, ResearchResult
 
 EXIT_DEGRADED = 4
-ScholarlyName = Literal["openalex", "europepmc", "arxiv", "semantic_scholar"]
+ScholarlyName = Literal[
+    "openalex", "europepmc", "arxiv", "semantic_scholar", "local_corpus"
+]
 _SCHOLARLY: tuple[ScholarlyName, ...] = get_args(ScholarlyName)
 
 
@@ -105,6 +108,14 @@ def build_parser() -> argparse.ArgumentParser:
         "(default: %(default)s)",
     )
     parser.add_argument(
+        "--local-corpus",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="the folder of the local_corpus source (corpus.jsonl and its index, "
+        "see sources/local_corpus.py); needed when --sources names local_corpus",
+    )
+    parser.add_argument(
         "--openalex-search",
         choices=("keyword", "semantic", "both"),
         default="keyword",
@@ -167,6 +178,7 @@ def _source_config(args: argparse.Namespace) -> SourceConfig:
         searxng_url=args.searxng_url,
         tdm_allowed_hosts=frozenset(args.tdm_host),
         scholarly=args.sources,
+        local_corpus=args.local_corpus,
         openalex_search=args.openalex_search,
         results_per_query=args.results_per_query,
     )

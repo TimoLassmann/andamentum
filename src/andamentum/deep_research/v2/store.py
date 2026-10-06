@@ -47,7 +47,7 @@ from andamentum.references.works import ID_FIELDS, title_key
 
 from .types import Passage
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 TTL_SEARCH_S = 7 * 86_400
 TTL_METADATA_S = 30 * 86_400
@@ -79,6 +79,7 @@ _WORK_COLUMNS = (
     "pmcid",
     "openalex_id",
     "s2_id",
+    "local_id",
     "url",
     "title",
     "authors_json",
@@ -100,6 +101,7 @@ _KIND_COLUMN = {
     "pmcid": "pmcid",
     "openalex": "openalex_id",
     "s2": "s2_id",
+    "local": "local_id",
     "url": "url",
 }
 
@@ -213,8 +215,19 @@ CREATE TABLE decision_determinism (
 );
 """
 
+# The identifier of a record in a local corpus (``Work.local_id``).
+_SCHEMA_V4 = """
+ALTER TABLE works ADD COLUMN local_id TEXT;
+CREATE UNIQUE INDEX works_local_id ON works(local_id) WHERE local_id IS NOT NULL;
+"""
+
 # Migrations by the version they produce. Development: no shims for old files.
-_MIGRATIONS: dict[int, str] = {1: _SCHEMA_V1, 2: _SCHEMA_V2, 3: _SCHEMA_V3}
+_MIGRATIONS: dict[int, str] = {
+    1: _SCHEMA_V1,
+    2: _SCHEMA_V2,
+    3: _SCHEMA_V3,
+    4: _SCHEMA_V4,
+}
 
 
 class StoreError(RuntimeError):
@@ -939,6 +952,7 @@ class ResearchStore:
             pmcid=row["pmcid"],
             openalex_id=row["openalex_id"],
             s2_id=row["s2_id"],
+            local_id=row["local_id"],
             url=row["url"],
             title=row["title"],
             authors=json.loads(row["authors_json"]),

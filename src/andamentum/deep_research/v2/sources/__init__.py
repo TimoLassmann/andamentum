@@ -28,6 +28,7 @@ from .base import (
 )
 from .crossref import CrossrefSource
 from .europepmc import EuropePmcSource
+from .local_corpus import LocalCorpusSource
 from .openalex import OpenAlexSource
 from .semantic_scholar import SemanticScholarSource
 from .web import WebSource
@@ -39,6 +40,7 @@ __all__ = [
     "ExpandingSource",
     "FetchedText",
     "HttpResult",
+    "LocalCorpusSource",
     "OpenAlexSource",
     "RateInfo",
     "SearchFilters",
@@ -102,6 +104,15 @@ def build_sources(
             )
         elif name == "europepmc":
             scholarly.append(EuropePmcSource(client=shared))
+        elif name == "local_corpus":
+            if config.local_corpus is None:
+                raise SourceError(
+                    "local_corpus",
+                    "the local_corpus source needs SourceConfig.local_corpus (the "
+                    "corpus folder)",
+                    kind="config",
+                )
+            scholarly.append(LocalCorpusSource(corpus_dir=config.local_corpus))
         elif name == "arxiv":
             scholarly.append(
                 ArxivSource(
@@ -132,6 +143,7 @@ def build_sources(
     searched = (scholarly if mode in ("scholarly", "both") else []) + web
     pool = scholarly + web
     reading = {
+        "local_corpus": -1,
         "europepmc": 0,
         "arxiv": 1,
         "openalex": 2,

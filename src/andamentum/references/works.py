@@ -7,8 +7,8 @@ has; :func:`merge_works` combines two records of the same work without losing
 what either knew.
 
 Identity is by key. :meth:`Work.identity_keys` lists the keys in a fixed order
-— DOI, arXiv id, PMID, PMCID, OpenAlex id, Semantic Scholar id, canonical URL,
-then normalised title plus year. Every key but the last is *hard*: sharing one
+— DOI, arXiv id, PMID, PMCID, OpenAlex id, Semantic Scholar id, local-corpus id,
+canonical URL, then normalised title plus year. Every key but the last is *hard*: sharing one
 means the same work. The title key is a fallback, and two records are merged on
 it only when :func:`works_compatible` finds no identifier on which they
 disagree (a preprint and its published version carry different DOIs and stay
@@ -36,7 +36,9 @@ from pydantic import (
     JsonValue,
     ValidationInfo,
     field_serializer,
+    SerializerFunctionWrapHandler,
     field_validator,
+    model_serializer,
     model_validator,
 )
 
@@ -73,6 +75,7 @@ _ARXIV_DOI_PREFIX = "10.48550/arxiv."
 _PMCID = re.compile(r"pmc\d+", re.IGNORECASE)
 _OPENALEX = re.compile(r"w\d+", re.IGNORECASE)
 _S2 = re.compile(r"[0-9a-f]{40}")
+_LOCAL = re.compile(r"local:[A-Za-z0-9][A-Za-z0-9._-]*")
 
 _TRACKING_PARAMS = frozenset(
     {
@@ -181,6 +184,20 @@ def normalise_s2_id(value: str | None) -> str | None:
     return text if _S2.fullmatch(text) else None
 
 
+def normalise_local_id(value: str | None) -> str | None:
+    """An identifier in a local corpus, as ``local:<id>``; else None.
+
+    A local corpus is a folder of records a run searches without any network;
+    its records have no public identifier, so the corpus' own id names them.
+    The ``local:`` prefix is required (a bare id is not accepted: it would be
+    mistaken for any other kind of id).
+    """
+    if value is None:
+        return None
+    text = value.strip()
+    return text if _LOCAL.fullmatch(text) else None
+
+
 def canonical_url(value: str | None) -> str | None:
     """The one spelling of an http(s) URL that two links to a page share.
 
@@ -259,6 +276,7 @@ _NORMALISERS = {
     "pmcid": normalise_pmcid,
     "openalex_id": normalise_openalex_id,
     "s2_id": normalise_s2_id,
+    "local_id": normalise_local_id,
     "url": canonical_url,
 }
 
@@ -270,6 +288,7 @@ ID_FIELDS: tuple[str, ...] = (
     "pmcid",
     "openalex_id",
     "s2_id",
+    "local_id",
 )
 _KEY_KIND = {
     "doi": "doi",
@@ -278,6 +297,7 @@ _KEY_KIND = {
     "pmcid": "pmcid",
     "openalex_id": "openalex",
     "s2_id": "s2",
+    "local_id": "local",
     "url": "url",
 }
 
@@ -299,6 +319,7 @@ class Work(BaseModel):
     pmcid: str | None = None
     openalex_id: str | None = None
     s2_id: str | None = None
+    local_id: str | None = None
     url: str | None = None
     title: str = ""
     authors: list[str] = Field(default_factory=list)
@@ -342,6 +363,18 @@ class Work(BaseModel):
         The store keeps the text in its own column, not through a dump.
         """
         return value if self.redistributable else ""
+
+    @model_serializer(mode="wrap")
+    def _local_id_only_when_set(
+        self, handler: SerializerFunctionWrapHandler
+    ) -> dict[str, Any]:
+        """A dump has no ``local_id`` key unless the work has one: only records of a
+        local corpus carry it, and every other work's dump (and any digest of it)
+        stays what it was before the field existed."""
+        data: dict[str, Any] = handler(self)
+        if data.get("local_id") is None:
+            data.pop("local_id", None)
+        return data
 
     @property
     def redistributable(self) -> bool:

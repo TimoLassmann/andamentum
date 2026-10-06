@@ -374,6 +374,19 @@ def classify_gold(record: RunRecord, gold: Work) -> str:
     """The loss category of one gold paper in one run (see the module docstring)."""
     output = record.output
     result = None if output is None else output.result
+    if output is not None and output.reference and not record.error:
+        # a retrieval reference has no screening: its list is all there is
+        rank = next(
+            (
+                position
+                for position, work in enumerate(output.works, start=1)
+                if work_matches(work, gold)
+            ),
+            None,
+        )
+        if rank is None:
+            return NOT_IN_POOL
+        return HIT if rank <= TOP else KEPT_LOW
     if output is None or result is None or record.error:
         return FAILED
     rank = next(
@@ -423,13 +436,16 @@ def loss_section(
     arms: Sequence[str],
     records: Sequence[RunRecord],
     gold_of: Mapping[str, Sequence[Work]],
+    *,
+    set_name: str = "litsearch",
 ) -> str:
-    """The loss table of the arms (counts), then the gold papers outside the hit
-    category, arm by arm."""
+    """The loss table of the arms (counts) on one set, then the gold papers
+    outside the hit category, arm by arm. A retrieval reference (BM25) is placed
+    by its ranked list: ``(a)`` for a paper outside it."""
     rows = []
     named_by_arm: dict[str, dict[str, list[str]]] = {}
     for arm in arms:
-        mine = [r for r in records if r.arm == arm and r.set == "litsearch"]
+        mine = [r for r in records if r.arm == arm and r.set == set_name]
         if not mine:
             continue
         counts, named = loss_counts(mine, gold_of)
@@ -443,7 +459,8 @@ def loss_section(
             ]
         )
     if not rows:
-        return "_No LitSearch run to read._"
+        label = "LitSearch" if set_name == "litsearch" else set_name
+        return f"_No {label} run to read._"
     text = table(["arm", "runs", *LOSS_CATEGORIES, "gold papers"], rows)
     text += (
         "\n\n" + "; ".join(f"`{c}` {LOSS_MEANING[c]}" for c in LOSS_CATEGORIES) + "."

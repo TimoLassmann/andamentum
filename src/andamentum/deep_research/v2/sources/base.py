@@ -23,6 +23,7 @@ from collections import Counter, defaultdict
 from collections.abc import AsyncIterator, Awaitable, Callable, Collection, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Literal, Protocol, runtime_checkable
 from urllib.parse import urlencode, urlparse
 
@@ -158,6 +159,10 @@ class SourceConfig(BaseModel):
     ``pdf_extraction`` picks how a fetched
     PDF becomes text: ``docling`` (the default: layout-aware, slow) or ``fast``
     (the PDF's own text layer, no OCR); see ``sources.extraction``.
+    ``local_corpus`` is the folder of the ``local_corpus`` source (see
+    ``sources.local_corpus``); naming that source without it is a ``config``
+    error when the sources are built. The path is never recorded in a run's
+    configuration or a snapshot (it is an address on one machine).
     """
 
     model_config = ConfigDict(frozen=True)
@@ -168,12 +173,20 @@ class SourceConfig(BaseModel):
     searxng_url: str | None = None
     tdm_allowed_hosts: frozenset[str] = frozenset()
     scholarly: tuple[
-        Literal["openalex", "europepmc", "arxiv", "semantic_scholar"], ...
+        Literal["openalex", "europepmc", "arxiv", "semantic_scholar", "local_corpus"],
+        ...,
     ] = ("openalex", "europepmc", "arxiv")
     arxiv_query: Literal["all_terms", "any_term"] = "all_terms"
     expand_with: (
-        tuple[Literal["openalex", "europepmc", "arxiv", "semantic_scholar"], ...] | None
+        tuple[
+            Literal[
+                "openalex", "europepmc", "arxiv", "semantic_scholar", "local_corpus"
+            ],
+            ...,
+        ]
+        | None
     ) = None
+    local_corpus: Path | None = None
     openalex_search: Literal["keyword", "semantic", "both"] = "keyword"
     results_per_query: int = Field(default=DEFAULT_RESULTS_PER_QUERY, ge=1, le=200)
     arxiv_pdf_interval_s: float = Field(default=ARXIV_PDF_INTERVAL_S, ge=0.0)

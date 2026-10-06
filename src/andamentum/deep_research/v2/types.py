@@ -312,6 +312,7 @@ class ScreeningEntry(BaseModel):
     pmcid: str | None = None
     openalex_id: str | None = None
     s2_id: str | None = None
+    local_id: str | None = None
     url: str | None = None
 
     def identity(self) -> Work:
@@ -326,6 +327,7 @@ class ScreeningEntry(BaseModel):
             pmcid=self.pmcid,
             openalex_id=self.openalex_id,
             s2_id=self.s2_id,
+            local_id=self.local_id,
             url=self.url,
         )
 

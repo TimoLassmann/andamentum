@@ -596,9 +596,18 @@ async def screen(
 
 
 def is_scholarly(work: Work) -> bool:
-    """A work a citation graph can place: it holds a scholarly identifier."""
+    """A work a citation graph can place: it holds a scholarly identifier (a
+    record of a local corpus counts, its corpus holds the links)."""
     return any(
-        (work.doi, work.arxiv_id, work.pmid, work.pmcid, work.openalex_id, work.s2_id)
+        (
+            work.doi,
+            work.arxiv_id,
+            work.pmid,
+            work.pmcid,
+            work.openalex_id,
+            work.s2_id,
+            work.local_id,
+        )
     )
 
 

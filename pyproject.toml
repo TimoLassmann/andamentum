@@ -154,6 +154,15 @@ vlm = [
 rerank = [
     "sentence-transformers>=5.0,<7",
 ]
+# Reading the Hugging Face parquet files of a benchmark dataset one column at a
+# time (`bench download litsearch-local`): the 64k-record LitSearch corpus holds
+# the full text of every paper beside its abstract, and only the title, abstract
+# and citation ids are wanted. Nothing in the library imports it; the command
+# raises an ImportError naming this extra without it. Install
+# `andamentum[bench-data]` to fetch the data.
+bench-data = [
+    "pyarrow>=20,<26",
+]
 dev = [
     "pytest>=8.0.0,<9",
     "pytest-asyncio>=0.24.0,<1",
@@ -165,6 +174,9 @@ dev = [
     # Same reason: the dev install type-checks and exercises the rerank path.
     # It adds no transitive dependency — torch and transformers are already here.
     "sentence-transformers>=5.0,<7",
+    # Same reason: the dev install exercises the parquet column reader of the
+    # benchmark download. pyarrow is already in the lock (through datasets).
+    "pyarrow>=20,<26",
 ]
 # The SciFact calibration benchmark (paper/scifact/) is orchestrated by
 # Snakemake; everything else it needs (scipy, matplotlib, numpy, pyyaml, rich,

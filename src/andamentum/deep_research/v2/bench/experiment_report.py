@@ -49,7 +49,8 @@ from .stability import (
     subquestion_overlap,
 )
 from .litsearch import load_litsearch
-from .pool import PoolItem, load_pool_items, loss_section, pool_tables
+from .litsearch_local import load_litsearch_local
+from .pool import TOP, PoolItem, load_pool_items, loss_section, pool_tables
 from .tables import NOTHING, fmt, table
 from .verdicts import (
     Interval,
@@ -61,6 +62,15 @@ from .verdicts import (
 
 DEFAULT_REPORT_METRICS: dict[str, list[str]] = {
     "litsearch": [
+        "recall_at_5",
+        "recall_at_10",
+        "recall_at_20",
+        "recall_at_50",
+        "found_any",
+        "kept_precision",
+        "kept_n",
+    ],
+    "litsearch-local": [
         "recall_at_5",
         "recall_at_10",
         "recall_at_20",
@@ -88,6 +98,7 @@ COST_METRICS = (
 )
 SPREAD_METRICS: dict[str, list[str]] = {
     "litsearch": ["recall_at_20", "kept_n"],
+    "litsearch-local": ["recall_at_20", "kept_n"],
     "web": ["correct", "claim_precision"],
     "web_planted": ["good_planted_outcome"],
     "synergy": ["kept_recall"],
@@ -955,9 +966,12 @@ def _decision_answers_section(exp: Experiment, cells: Cells) -> str | None:
     )
 
 
-def _gold_by_item(exp: Experiment, litsearch_dir: Path) -> dict[str, list[Work]]:
-    spec = exp.set("litsearch")
-    data = load_litsearch(litsearch_dir, n=spec.n or 30, seed=spec.seed, skip=spec.skip)
+def _gold_by_item(
+    exp: Experiment, litsearch_dir: Path, *, set_name: str = "litsearch"
+) -> dict[str, list[Work]]:
+    spec = exp.set(set_name)
+    load = load_litsearch_local if set_name == "litsearch-local" else load_litsearch
+    data = load(litsearch_dir, n=spec.n or 30, seed=spec.seed, skip=spec.skip)
     return {item.query.query_id: list(item.gold) for item in data.items}
 
 
@@ -1044,12 +1058,17 @@ def _pool_sections(exp: Experiment, snapshots: Path, litsearch_dir: Path) -> lis
     return lines
 
 
+def _has_set(exp: Experiment, name: str) -> bool:
+    return any(s.name == name for s in exp.sets)
+
+
 def build_report(
     exp: Experiment,
     records: Sequence[StartRecord | RunRecord],
     *,
     snapshots: Path | None = None,
     litsearch_dir: Path | None = None,
+    litsearch_local_dir: Path | None = None,
 ) -> str:
     """The markdown report of *exp* from the registry's *records*.
 
@@ -1116,7 +1135,7 @@ def build_report(
     if planted:
         lines += ["", "## Planted false source", "", planted]
     lines += ["", "## Cost", "", _cost_section(exp, cells)]
-    if exp.inputs:
+    if exp.inputs or _has_set(exp, "litsearch-local"):
         answers = _decision_answers_section(exp, cells)
         if answers:
             lines += ["", "### Decision answers", "", answers]
@@ -1144,6 +1163,27 @@ def build_report(
         if snapshots is not None and litsearch_dir is not None:
             lines += ["", "## Candidate pools (LitSearch)"]
             lines += _pool_sections(exp, snapshots, litsearch_dir)
+    if _has_set(exp, "litsearch-local") and litsearch_local_dir is not None:
+        gold = _gold_by_item(exp, litsearch_local_dir, set_name="litsearch-local")
+        lines += [
+            "",
+            "## Loss table (LitSearch, local corpus)",
+            "",
+            "Where each gold paper of each run ended. `hit`: kept and ranked "
+            f"{TOP} or better; `(c)` kept, ranked below {TOP} (never retrieved is "
+            "`(a)`: not in the pool; screened out is `(b)`: screened and dropped; "
+            "`(b')`: in the pool, never screened). The BM25 reference has no "
+            "screening, so its papers are `hit`, `(c)` (in its list, below "
+            f"{TOP}) or `(a)` (outside its list). A gold paper is matched by its "
+            "corpus id.",
+            "",
+            loss_section(
+                [a.name for a in exp.main_arms_on("litsearch-local")],
+                runs,
+                gold,
+                set_name="litsearch-local",
+            ),
+        ]
     solo = _solo_section(exp, cells)
     if solo:
         lines += ["", "## Clean timing (solo runs)", "", solo]
@@ -1163,6 +1203,7 @@ def report_from_registry(
     *,
     snapshots: Path | None = None,
     litsearch_dir: Path | None = None,
+    litsearch_local_dir: Path | None = None,
 ) -> str:
     """Read ``experiments.jsonl`` in *out_dir* and build the report."""
     path = registry_path(out_dir)
@@ -1173,6 +1214,7 @@ def report_from_registry(
         list(read_records(path)),
         snapshots=snapshots,
         litsearch_dir=litsearch_dir,
+        litsearch_local_dir=litsearch_local_dir,
     )
 
 

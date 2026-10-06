@@ -30,6 +30,7 @@ from ..config import PRESETS, ResearchConfig
 from ..frozen import FrozenInputs
 from ..graph import research
 from ..sources.base import SourceClient, SourceConfig
+from ..sources.local_corpus import LocalCorpusSource
 from ..store import ResearchStore
 from ..types import _FINDING_REFERENCE, Budget, Mode, ResearchResult
 from .judging import ClaimEvidence, best_window
@@ -56,6 +57,14 @@ class ArmOutput(BaseModel):
     degraded: list[str] = Field(default_factory=list)
     stop_reason: str = ""
     cost: Cost
+    reference: bool = Field(
+        default=False,
+        description=(
+            "A retrieval reference (BM25 over a corpus): ``works`` is its whole ranked "
+            "list, there is no screening and no result, and a gold paper outside it "
+            "was never retrieved."
+        ),
+    )
     result: ResearchResult | None = Field(
         default=None,
         description=(
@@ -354,3 +363,49 @@ class V2Arm:
             shared_decisions=self.shared_decisions,
         )
         return map_v2(result)
+
+
+# -- reference ------------------------------------------------------------------------
+
+
+class Bm25Arm:
+    """BM25 over a local corpus with the raw question as the query: the
+    retrieval reference of a local-corpus set. No model, no network, no
+    screening; the answer is the first ``top_k`` records of the corpus' BM25
+    ranking, in rank order. It is what plain lexical retrieval achieves, so an
+    arm that spends language-model calls on query writing and screening can be
+    read against it."""
+
+    returns_pages = False
+
+    def __init__(self, *, corpus_dir: Path, top_k: int, name: str = "bm25-question"):
+        self.name = name
+        self.top_k = top_k
+        self._source = LocalCorpusSource(corpus_dir=corpus_dir)
+
+    async def run(
+        self,
+        question: str,
+        *,
+        frozen: FrozenInputs | None = None,
+        store: Path | None = None,
+    ) -> ArmOutput:
+        if frozen is not None:
+            raise ValueError(
+                "the BM25 reference reads the corpus; it takes no snapshot"
+            )
+        started = time.monotonic()
+        found = await self._source.search(question, limit=self.top_k)
+        return ArmOutput(
+            answer_text="",
+            works=[c.work for c in found],
+            stop_reason="bm25",
+            cost=Cost(
+                wall_s=time.monotonic() - started,
+                llm_calls=0,
+                input_tokens=0,
+                output_tokens=0,
+                decision_calls=0,
+            ),
+            reference=True,
+        )
