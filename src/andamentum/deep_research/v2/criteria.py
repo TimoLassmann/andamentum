@@ -773,6 +773,14 @@ class Screener:
 
     # -- asking ---------------------------------------------------------------------
 
+    async def ask(
+        self, state: dict[str, object], questions: dict[str, Question], *, step: str
+    ) -> dict[str, Answer]:
+        """Answers to *questions* about *state*, through the run's scorer (the
+        decision model, else the LLM), cached and recorded like every
+        screening answer. A screen strategy with its own questions uses this."""
+        return await self._ask(state, questions, step=step)
+
     async def _ask(
         self, state: dict[str, object], questions: dict[str, Question], *, step: str
     ) -> dict[str, Answer]:
@@ -828,9 +836,13 @@ class Screener:
                 f"    no = {outcomes.get('false', 'it does not hold')}"
             )
         with_type = SOURCE_TYPE_KEY in questions
-        message = (
-            f"Sub-question: {state['question']}\n\nResult:\n{_state_block(state)}\n\n"
-            "Criteria:\n" + "\n".join(lines)
+        # A state without the sub-question (the generic screen asks it in the
+        # question itself) is shown without that line.
+        context = (
+            f"Sub-question: {state['question']}\n\n" if "question" in state else ""
+        )
+        message = f"{context}Result:\n{_state_block(state)}\n\nCriteria:\n" + "\n".join(
+            lines
         )
         output_type: type[CandidateJudgement] | type[PassageJudgement] = (
             PassageJudgement

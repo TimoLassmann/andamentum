@@ -105,6 +105,10 @@ class Candidate(BaseModel):
     queries: list[str] = Field(default_factory=list)
     subquestion_ids: list[str] = Field(default_factory=list)
     rank: int | None = None
+    # The best (smallest, 1-based) position this work reached in each ranked
+    # list it came from, by list name: a source's search results (``openalex``)
+    # or a citation hop (``openalex:citations``). Read by rank fusion.
+    source_ranks: dict[str, int] = Field(default_factory=dict)
 
 
 class CandidateScore(BaseModel):
@@ -252,12 +256,19 @@ class ResearchResult(BaseModel):
     lists every flag raised; ``degraded`` gives the reason for every source or
     model failure (empty means none occurred). ``stop_reason``
     is why the run ended (``covered``, ``flat``, ``unresolvable``, or
-    ``budget:<name>``).
+    ``budget:<name>``). ``config_name`` and ``config_hash`` name the
+    ``ResearchConfig`` the run used (``config.config_hash``); ``frozen`` is the
+    digest of the frozen inputs it ran on (empty for a live run), and
+    ``skipped`` lists what such a run did not fetch because the snapshot did
+    not hold it.
     """
 
     run_id: str
     question: str
     mode: Mode
+    config_name: str = ""
+    config_hash: str = ""
+    frozen: str = ""
     subquestions: list[SubQuestion] = Field(default_factory=list)
     criteria: dict[str, list[Criterion]] = Field(default_factory=dict)
     works: list[Work] = Field(default_factory=list)
@@ -271,6 +282,7 @@ class ResearchResult(BaseModel):
     verification: list[VerifyFlag] = Field(default_factory=list)
     stop_reason: str = ""
     degraded: list[str] = Field(default_factory=list)
+    skipped: list[str] = Field(default_factory=list)
     stats: RunStats = Field(default_factory=RunStats)
 
     def cited_work_ids(self) -> list[str]:

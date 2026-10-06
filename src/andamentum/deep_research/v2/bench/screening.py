@@ -9,6 +9,13 @@ they pass:
 - ``criteria``: the rubric the LLM compiles for the review's question
   (``Screener.compile``), 3 to 8 atomic questions of its own.
 
+A third kind, ``baseline``, is not a rubric at all: it runs the baseline
+preset's own screen strategy (``strategies.GenericScreen``, the one the engine
+uses), which asks ONE question per record ("Is this item relevant to the
+question: ...?") and keeps a record when p >= ``GENERIC_DROP_BELOW``. It is the
+arm that measures what ``research()`` really does by default; ``generic`` is the
+older two-question variant (the criterion plus the source-type question).
+
 A scorer is the decision model (``decision``) or the LLM (``llm``); the criteria
 arms compile with the LLM either way. The compile cost is part of a criteria
 arm's cost. The ranking is the combined score; the kept set is ``combine``'s
@@ -26,15 +33,20 @@ from pydantic import BaseModel, Field
 from andamentum.core.decisions import DecisionModel
 
 from ..ask import Asker
+from ..config import PRESETS
 from ..criteria import Screener
 from ..store import ResearchStore
 from ..types import Budget, Candidate, Criterion, RunStats, SubQuestion
 from .metrics import Cost, ScreeningScore, screening_score
 from .synergy import ScreeningReview
 
-ScreenKind = Literal["generic", "criteria"]
+ScreenKind = Literal["baseline", "generic", "criteria"]
 ScorerKind = Literal["decision", "llm"]
-_KINDS: dict[str, ScreenKind] = {"generic": "generic", "criteria": "criteria"}
+_KINDS: dict[str, ScreenKind] = {
+    "baseline": "baseline",
+    "generic": "generic",
+    "criteria": "criteria",
+}
 _SCORERS: dict[str, ScorerKind] = {"decision": "decision", "llm": "llm"}
 SUBQUESTION_ID = "S1"
 SOURCE_NAME = "synergy"
@@ -47,7 +59,7 @@ def parse_arm(name: str) -> tuple[ScreenKind, ScorerKind]:
     kind, _, scorer = name.partition("+")
     if kind not in _KINDS or scorer not in _SCORERS:
         raise ValueError(
-            f"{name!r} is not a screening arm: expected <generic|criteria>+<decision|llm>"
+            f"{name!r} is not a screening arm: expected <baseline|generic|criteria>+<decision|llm>"
         )
     return _KINDS[kind], _SCORERS[scorer]
 
@@ -151,7 +163,16 @@ class ScreeningArm:
         and shared by the arms that compare scorers on it).
         """
         subquestion = review_subquestion(review)
-        if self.kind == "generic":
+        if self.kind == "baseline":
+            criteria = []
+            carried = Cost(
+                wall_s=0.0,
+                llm_calls=0,
+                input_tokens=0,
+                output_tokens=0,
+                decision_calls=0,
+            )
+        elif self.kind == "generic":
             criteria = [generic_criterion(subquestion)]
             carried = Cost(
                 wall_s=0.0,
@@ -175,9 +196,18 @@ class ScreeningArm:
             Candidate(work=r.to_work(), sources=[SOURCE_NAME]) for r in review.records
         ]
         started = time.monotonic()
-        scores = await Screener(asker=asker).score_candidates(
-            subquestion, criteria, candidates
-        )
+        screener = Screener(asker=asker)
+        if self.kind == "baseline":
+            config = PRESETS["baseline"]
+            scores = await config.screen_strategy.screen(
+                subquestion,
+                candidates,
+                criteria=[],
+                screener=screener,
+                config=config,
+            )
+        else:
+            scores = await screener.score_candidates(subquestion, criteria, candidates)
         wall_s = time.monotonic() - started
         by_work = {s.work_id: s for s in scores}
         ordered = [by_work[r.record_id] for r in review.records]

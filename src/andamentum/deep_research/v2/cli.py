@@ -1,12 +1,15 @@
 """``andamentum-research v2``: the evidence-first engine from the command line.
 
     andamentum-research v2 "QUESTION" --mode both --model M
+        [--preset baseline|criteria]
         [--decision-model NAME] [--store PATH] [--searxng-url URL]
         [--sources openalex,europepmc,arxiv] [--openalex-search keyword]
         [--tdm-host HOST ...] [--results-per-query N]
         [--max-rounds N ... every Budget field] [--json | --md] [--out FILE]
 
-Every model and address is a flag; nothing has a hidden default. Without
+Every model and address is a flag; nothing has a hidden default. ``--preset``
+names the run's ``ResearchConfig`` (``config.PRESETS``; ``baseline`` unless
+another is named). Without
 ``--store`` nothing persists. Secrets are read here only, from the environment
 after ``load_dotenv()``: ``OPENALEX_API_KEY``, ``OPENALEX_EMAIL`` (the polite
 contact address for OpenAlex and Crossref) and ``SEMANTIC_SCHOLAR_API_KEY``.
@@ -27,6 +30,7 @@ from typing import Literal, get_args
 
 from dotenv import load_dotenv
 
+from .config import DEFAULT_PRESET, PRESETS
 from .graph import research
 from .sources import SourceConfig
 from .types import Budget, Mode, ResearchResult
@@ -57,6 +61,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--model",
         required=True,
         help="the language model, a pydantic-ai id (e.g. ollama:gemma4:31b-cloud)",
+    )
+    parser.add_argument(
+        "--preset",
+        choices=sorted(PRESETS),
+        default=DEFAULT_PRESET,
+        help="what the run does at every swappable step: baseline (one generic "
+        "relevance question per candidate) or criteria (LLM-compiled criteria); "
+        "default: %(default)s",
     )
     parser.add_argument(
         "--decision-model",
@@ -171,6 +183,7 @@ async def _run(args: argparse.Namespace) -> ResearchResult:
         store=Path(args.store) if args.store else None,
         budget=budget,
         sources=_source_config(args),
+        config=PRESETS[args.preset],
         progress=progress,
     )
 
@@ -193,6 +206,7 @@ def main(argv: list[str]) -> None:
     else:
         sys.stdout.write(text)
     print(
+        f"preset: {result.config_name} ({result.config_hash[:12]}); "
         f"stop: {result.stop_reason}; {len(result.findings)} findings from "
         f"{len(result.works)} works; {len(result.verification)} verification flags",
         file=sys.stderr,

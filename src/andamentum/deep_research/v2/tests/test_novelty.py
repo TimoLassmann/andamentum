@@ -108,7 +108,9 @@ async def test_a_spent_decision_budget_is_undetermined_not_novel() -> None:
 
     report, _ = await _check(
         anticipates=lambda text: False,
-        budget=Budget(max_rounds=2, max_decision_calls=24),
+        # enough decisions for the search and some passages, not all of them
+        # (the baseline preset screens with one question per candidate)
+        budget=Budget(max_rounds=2, max_decision_calls=20),
     )
     assert report.is_novel is None
     assert "decision budget ran out" in report.assessment

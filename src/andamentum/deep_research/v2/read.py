@@ -39,8 +39,9 @@ from __future__ import annotations
 import re
 import time
 import unicodedata
-from collections.abc import Callable, Iterator, Mapping, Sequence, Set
+from collections.abc import Awaitable, Callable, Iterator, Mapping, Sequence, Set
 from dataclasses import dataclass
+from typing import Protocol
 
 from pydantic import BaseModel, Field
 from pydantic_ai import ModelRetry
@@ -81,14 +82,36 @@ _STOPWORDS = frozenset(
 )
 
 
+class PassageSelect(Protocol):
+    """How a work's passages are chosen for one sub-question (the run's
+    ``passages`` strategy). :func:`select_passages` is the criteria one."""
+
+    def __call__(
+        self,
+        passages: Sequence[Passage],
+        *,
+        subquestion: SubQuestion,
+        criteria: Sequence[Criterion],
+        screener: Screener,
+        limit: int,
+        work_titles: Mapping[str, str],
+    ) -> Awaitable[list[Passage]]: ...
+
+
 @dataclass(kw_only=True)
 class ReadDeps:
-    """What reading needs besides the work: the run's models and the network."""
+    """What reading needs besides the work: the run's models and the network.
+
+    ``select`` chooses the passages (``None``: :func:`select_passages`);
+    ``passages_per_work`` is how many it may choose (``None``: the budget's).
+    """
 
     screener: Screener
     crossref: CrossrefSource
     providers: Sequence[TextSource]
     fetched_bytes: Callable[[], int] | None = None
+    select: PassageSelect | None = None
+    passages_per_work: int | None = None
 
     @property
     def asker(self) -> Asker:
@@ -531,14 +554,17 @@ async def check_retraction(
 ) -> tuple[WorkRetraction | None, str]:
     """The work's retraction state from Crossref, and a note on a failed check.
 
-    ``None`` means not checked (no DOI, an unknown DOI, or Crossref failed),
-    never "fine".
+    ``None`` means not checked (no DOI, an unknown DOI, Crossref failed, or an
+    offline run's snapshot does not hold the answer), never "fine". Only a
+    failure is a note; an offline miss is counted by the source client.
     """
     if not work.doi:
         return None, ""
     try:
         found = await crossref.retraction_status(work.doi)
     except SourceError as exc:
+        if exc.kind == "offline":
+            return None, ""
         return None, f"retraction check failed for {work.doi}: {exc.reason}"
     return (None if found == "unknown" else found), ""
 
@@ -563,8 +589,10 @@ async def _load_text(
         try:
             fetched = await provider.fetch_text(work)
         except SourceError as exc:
-            failed = True
             notes.append(f"{provider.name}: {exc.reason}")
+            if exc.kind == "offline":
+                continue  # not in the snapshot: not a failure, nothing fetched
+            failed = True
             if exc.kind != "refused":
                 degraded.append(
                     f"{provider.name} could not give the text of "
@@ -640,7 +668,10 @@ async def read_work(
     """
     asker = deps.asker
     store = deps.store
-    limit = passages_per_work or asker.budget.passages_per_work
+    limit = (
+        passages_per_work or deps.passages_per_work or asker.budget.passages_per_work
+    )
+    choose = deps.select or select_passages
     reading, all_passages = await load_work(work, deps=deps)
     work = reading.work
     if not all_passages:
@@ -648,7 +679,7 @@ async def read_work(
     used: dict[str, Passage] = {}
     for subquestion in subquestions:
         own = criteria.get(subquestion.id, ())
-        selected = await select_passages(
+        selected = await choose(
             all_passages,
             subquestion=subquestion,
             criteria=own,

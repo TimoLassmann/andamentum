@@ -306,6 +306,10 @@ async def test_the_mode_can_be_overridden_and_scholarly_needs_no_searxng(
         tmp_path, research=ResearchSetup(sources=SourceConfig(), mode="scholarly")
     )
     assert fake.calls[0]["mode"] == "scholarly"
+    # compose runs the engine's baseline: no LLM-written screening criteria
+    from andamentum.deep_research.v2 import PRESETS
+
+    assert fake.calls[0]["config"] is PRESETS["baseline"]
 
 
 async def test_a_degraded_run_is_reported_not_hidden(

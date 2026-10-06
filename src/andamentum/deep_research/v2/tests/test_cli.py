@@ -10,6 +10,7 @@ from typing import Any
 import pytest
 
 from .. import cli
+from ..config import PRESETS
 from ..sources import SourceConfig
 from ..types import Budget, ResearchResult
 
@@ -80,9 +81,20 @@ def test_flags_become_the_research_arguments(
     assert sources.searxng_url == "http://127.0.0.1:4070"
     assert sources.tdm_allowed_hosts == frozenset({"journals.example"})
     assert sources.openalex_api_key is None
+    assert call["config"] is PRESETS["baseline"]  # the default preset
     out = capsys.readouterr()
     assert out.out == "# Why Apollo?\n\nIt is fast [F1].\n"
     assert "stop: covered" in out.err
+
+
+def test_the_preset_flag_picks_the_configuration(calls: list[dict[str, Any]]) -> None:
+    cli.main(
+        ["q", "--mode", "scholarly", "--model", "m", "--preset", "criteria", "--quiet"]
+    )
+    assert calls[0]["config"] is PRESETS["criteria"]
+    with pytest.raises(SystemExit) as stopped:
+        cli.main(["q", "--mode", "scholarly", "--model", "m", "--preset", "nope"])
+    assert stopped.value.code == 2
 
 
 def test_secrets_come_from_the_environment_only(

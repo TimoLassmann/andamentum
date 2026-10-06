@@ -546,7 +546,10 @@ def test_screening_arms_default_to_those_the_given_models_allow() -> None:
     only_decision = parser.parse_args(
         ["screening", "--dir", "d", "--out-dir", "o", "--decision-model", "nimble:9b"]
     )
-    assert cli._screening_arm_names(only_decision) == ["generic+decision"]
+    assert cli._screening_arm_names(only_decision) == [
+        "baseline+decision",
+        "generic+decision",
+    ]
     both = parser.parse_args(
         [
             "screening",
@@ -577,3 +580,38 @@ def test_a_judge_and_a_judge_decision_model_cannot_both_be_given() -> None:
 
     with pytest.raises(SystemExit, match="not both"):
         asyncio.run(attempt())
+
+
+async def test_the_baseline_screening_arm_asks_the_engines_one_question(
+    tmp_path: Path, scripted: ScriptedLLM
+) -> None:
+    """``baseline`` runs the baseline preset's own screen: one noul per record,
+    the same Question the engine sends, and no source-type question."""
+    from andamentum.deep_research.v2.strategies import relevance_question
+
+    make_synergy_dir(tmp_path)
+    review = load_review(tmp_path, REVIEW_KEY)
+    asked: list[dict[str, dict[str, object]]] = []
+
+    def respond(
+        state: object, questions: dict[str, dict[str, object]]
+    ) -> dict[str, Answer]:
+        assert isinstance(state, dict)
+        asked.append(questions)
+        about = str(state["title"]).startswith("SaltLog")
+        return {key: noul_answer(0.9 if about else 0.05) for key in questions}
+
+    decisions = StubDecisions(respond)
+    arm = ScreeningArm(
+        kind="baseline", scorer="decision", decision_model=decisions.model()
+    )
+    outcome = await arm.run(review)
+
+    assert parse_arm("baseline+llm") == ("baseline", "llm")
+    assert len(asked) == N_INCLUDED + N_EXCLUDED
+    assert all(list(q) == ["relevant"] for q in asked)
+    wanted = relevance_question(review_subquestion(review))
+    assert all(q["relevant"]["instructions"] == wanted.instructions for q in asked)
+    assert outcome.criteria == []  # nothing compiled, nothing written by a model
+    assert outcome.score.kept_recall == 1.0 and outcome.score.kept_precision == 1.0
+    assert outcome.cost.llm_calls == 0

@@ -7,6 +7,7 @@ import pytest
 
 from andamentum.references import Work
 
+from ..config import PRESETS
 from ..criteria import Screener
 from ..sources.base import SearchFilters, SourceError
 from ..store import ResearchStore
@@ -26,6 +27,7 @@ from ..steps import (
     write_queries,
     write_reserve,
 )
+from ..strategies import screen_one
 from ..types import Budget, Candidate, SubQuestion
 from .engine_world import respond
 from .llm_stub import ScriptedLLM, make_asker
@@ -203,9 +205,12 @@ async def test_a_spent_screening_budget_leaves_the_rest_pending() -> None:
         admitted.pairs,
         candidates=admitted.candidates,
         subquestions=[Q1, Q2],
-        criteria={"Q1": fallback_criteria(Q1), "Q2": fallback_criteria(Q2)},
-        screener=Screener(asker=asker),
-        question="q",
+        screen_one=screen_one(
+            PRESETS["criteria"],
+            criteria={"Q1": fallback_criteria(Q1), "Q2": fallback_criteria(Q2)},
+            screener=Screener(asker=asker),
+            question="q",
+        ),
         limit=10,
     )
     assert outcome.spent == "max_llm_calls"

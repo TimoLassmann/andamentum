@@ -227,8 +227,10 @@ class World:
             },
         )
 
-    def client(self, store: ResearchStore) -> SourceClient:
-        """A source client over this world: no waiting, plain-text extraction."""
+    def client(self, store: ResearchStore, *, offline: bool = False) -> SourceClient:
+        """A source client over this world: no waiting, plain-text extraction.
+        ``offline`` makes the client a frozen run uses: it answers from the
+        store's cache only and never reaches the world."""
 
         async def no_sleep(_seconds: float) -> None:
             return None
@@ -238,9 +240,12 @@ class World:
 
         return SourceClient(
             store,
-            client=httpx.AsyncClient(
+            client=None
+            if offline
+            else httpx.AsyncClient(
                 transport=httpx.MockTransport(self.handler), follow_redirects=False
             ),
+            offline=offline,
             intervals={
                 name: 0.0
                 for name in (

@@ -31,6 +31,7 @@ from .base import (
     SearchFilters,
     SourceClient,
     SourceError,
+    offline_url_check,
     resolve_client,
 )
 
@@ -58,8 +59,9 @@ class CrossrefSource:
         self._client = resolve_client(NAME, store=store, client=client)
         self._http = http or ReferenceHttp(
             client=self._client.http,
-            cache=self._client.store.reference_cache(),
+            cache=self._client.reference_cache(),
             mailto=mailto,
+            url_check=offline_url_check if self._client.offline else None,
         )
 
     async def search(
@@ -117,7 +119,11 @@ class CrossrefSource:
         async with self._client.paced(NAME):
             status = await lookup_retraction(clean, http=self._http)
         if status.status == "service_error":
-            raise SourceError(NAME, status.detail or "retraction lookup failed")
+            raise SourceError(
+                NAME,
+                status.detail or "retraction lookup failed",
+                kind="offline" if self._client.offline else "http",
+            )
         if status.status == "not_found":
             return "unknown"
         kinds = {n.kind for n in status.notices}
@@ -136,7 +142,12 @@ class CrossrefSource:
         async with self._client.paced(NAME):
             result = await self._http.crossref(path, params)
         if isinstance(result, str):
-            raise SourceError(NAME, result, url=path)
+            raise SourceError(
+                NAME,
+                result,
+                url=path,
+                kind="offline" if self._client.offline else "http",
+            )
         status, body = result
         return None if status == 404 else body
 

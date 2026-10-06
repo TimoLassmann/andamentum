@@ -5,7 +5,7 @@ Moved from the root `CLAUDE.md`, word for word. Claude Code loads this file when
 ## Overview
 
 - `andamentum.deep_research` — web research pipeline (search → fetch → extract → verify → synthesize) built on `pydantic-graph`
-- `andamentum.deep_research.v2` — the evidence-first engine (web and scholarly sources, a research store, query-dependent screening criteria scored by decision models, findings with code-checked quotes, a verified report): `await v2.research(question, *, mode, model, ...)`, `andamentum-research v2 ...`, `andamentum-research mcp ...`. Its notes are in `v2/CLAUDE.md`. `v2.run_novelty_check_v2` is the v2 novelty check (scholarly sources, a decision model judging passages; whetstone `--novelty-engine v2`). The legacy pipeline below stays for `epistemic`.
+- `andamentum.deep_research.v2` — the evidence-first engine (web and scholarly sources, a research store, a baseline that screens with one generic decision-model relevance question per candidate, with query-dependent screening criteria kept as the `criteria` preset, frozen-input replays for experiments, findings with code-checked quotes, a verified report): `await v2.research(question, *, mode, model, config=PRESETS['baseline'], frozen=None, ...)`, `andamentum-research v2 ...`, `andamentum-research mcp ...`. Its notes are in `v2/CLAUDE.md`. `v2.run_novelty_check_v2` is the v2 novelty check (scholarly sources, a decision model judging passages; whetstone `--novelty-engine v2`). The legacy pipeline below stays for `epistemic`.
 
 ## Design
 

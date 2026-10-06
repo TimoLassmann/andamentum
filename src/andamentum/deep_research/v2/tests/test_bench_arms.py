@@ -6,6 +6,7 @@ return invented results; nothing here reaches a model or the network.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -25,6 +26,8 @@ from andamentum.deep_research.v2.bench.arms import (
     map_v2,
     report_claims,
 )
+from andamentum.deep_research.v2.config import PRESETS
+from andamentum.deep_research.v2.frozen import FrozenInputs
 from andamentum.deep_research.v2.sources.base import SourceConfig
 from andamentum.deep_research.v2.types import (
     Budget,
@@ -32,6 +35,7 @@ from andamentum.deep_research.v2.types import (
     Passage,
     ResearchResult,
     RunStats,
+    SubQuestion,
 )
 from andamentum.core import fetch_gate, url_safety
 from andamentum.deep_research.v2.store import ResearchStore
@@ -248,9 +252,54 @@ async def test_the_v2_arm_calls_research_with_the_spec_arguments(
         "store": None,  # nothing persists
         "budget": Budget(max_rounds=1),
         "sources": sources,
+        "config": PRESETS["baseline"],  # the arm names its preset, never implied
+        "frozen": None,
         "source_client": None,
     }
     assert out.cost.llm_calls == 7
+    assert out.result is not None and out.result.passages == []  # slimmed
+
+
+async def test_the_v2_arm_passes_its_preset_and_a_runs_frozen_inputs_and_store(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    seen: dict[str, Any] = {}
+
+    async def research(question: str, **kwargs: Any) -> ResearchResult:
+        seen.update(kwargs)
+        return v2_result(REPORT)
+
+    monkeypatch.setattr(arms, "research", research)
+    arm = V2Arm(
+        mode="web",
+        model="ollama:stub",
+        sources=SourceConfig(),
+        config=PRESETS["criteria"],
+        name="v2-criteria",
+    )
+    frozen = FrozenInputs(
+        question="Does SaltLog work?",
+        mode="web",
+        captured_at=1.0,
+        subquestions=[SubQuestion(id="S1", text="Does SaltLog work?")],
+    )
+    await arm.run("Does SaltLog work?", frozen=frozen, store=tmp_path / "s.db")
+    assert arm.name == "v2-criteria"
+    assert seen["config"] is PRESETS["criteria"]
+    assert seen["frozen"] is frozen
+    assert seen["store"] == tmp_path / "s.db"  # the run's own working store
+
+
+async def test_the_legacy_arm_cannot_take_frozen_inputs() -> None:
+    arm = LegacyArm(model="ollama:stub", searxng_url="http://127.0.0.1:4070")
+    frozen = FrozenInputs(
+        question="q",
+        mode="web",
+        captured_at=1.0,
+        subquestions=[SubQuestion(id="S1", text="q")],
+    )
+    with pytest.raises(ValueError, match="run it live"):
+        await arm.run("q", frozen=frozen)
 
 
 async def test_the_v2_arm_runs_the_real_engine_offline(

@@ -372,13 +372,20 @@ class ResearchStore:
 
     # -- HTTP cache -------------------------------------------------------
 
-    def cache_get(self, key: str) -> CachedResponse | None:
-        """The live entry for *key*; None on a miss or once its TTL has run out."""
+    def cache_get(self, key: str, *, any_age: bool = False) -> CachedResponse | None:
+        """The live entry for *key*; None on a miss or once its TTL has run out.
+
+        ``any_age`` returns an expired entry too: an offline run over a
+        snapshot reads what the snapshot holds, however old.
+        """
         with self._lock:
             row = self._conn.execute(
                 "SELECT * FROM http_cache WHERE key = ?", (key,)
             ).fetchone()
-            if row is None or row["fetched_at"] + row["ttl_s"] <= self._clock():
+            expired = (
+                row is not None and row["fetched_at"] + row["ttl_s"] <= self._clock()
+            )
+            if row is None or (expired and not any_age):
                 self.cache_misses += 1
                 return None
             self.cache_hits += 1
@@ -437,10 +444,15 @@ class ResearchStore:
         )
 
     def reference_cache(
-        self, *, source: str = "crossref", ttl_s: int = TTL_METADATA_S
+        self,
+        *,
+        source: str = "crossref",
+        ttl_s: int = TTL_METADATA_S,
+        any_age: bool = False,
     ) -> ReferenceCache:
-        """This store as the ``references`` HTTP cache, so Crossref lookups share it."""
-        return ReferenceCache(self, source=source, ttl_s=ttl_s)
+        """This store as the ``references`` HTTP cache, so Crossref lookups share it.
+        ``any_age`` serves expired entries too (an offline run over a snapshot)."""
+        return ReferenceCache(self, source=source, ttl_s=ttl_s, any_age=any_age)
 
     # -- works ------------------------------------------------------------
 
@@ -848,13 +860,16 @@ class ResearchStore:
 class ReferenceCache:
     """The ``references.http.Cache`` protocol over the store's HTTP cache."""
 
-    def __init__(self, store: ResearchStore, *, source: str, ttl_s: int) -> None:
+    def __init__(
+        self, store: ResearchStore, *, source: str, ttl_s: int, any_age: bool = False
+    ) -> None:
         self._store = store
         self._source = source
         self._ttl_s = ttl_s
+        self._any_age = any_age
 
     def get(self, key: str) -> bytes | None:
-        hit = self._store.cache_get(cache_key(self._source, key))
+        hit = self._store.cache_get(cache_key(self._source, key), any_age=self._any_age)
         return hit.body if hit else None
 
     def put(self, key: str, value: bytes) -> None:

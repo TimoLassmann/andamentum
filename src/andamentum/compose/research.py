@@ -32,7 +32,12 @@ from .genres import Genre, ResearchMode
 from .schemas import Fact, Source
 
 if TYPE_CHECKING:
-    from andamentum.deep_research.v2 import Budget, ResearchResult, SourceConfig
+    from andamentum.deep_research.v2 import (
+        Budget,
+        ResearchConfig,
+        ResearchResult,
+        SourceConfig,
+    )
     from andamentum.references import Work
 
 RESEARCH_DB = "research.db"
@@ -52,13 +57,16 @@ class ResearchSetup:
     mail or keys of the scholarly sources. ``decision_model`` is a local
     decision model that screens and checks (``None``: the language model
     answers those questions). ``mode`` overrides the genre's mode. ``budget``
-    bounds the run (``None``: the engine's default).
+    bounds the run (``None``: the engine's default). ``config`` is the
+    engine's configuration (``None``: the ``baseline`` preset, one generic
+    relevance question per candidate and no LLM-written criteria).
     """
 
     sources: SourceConfig
     decision_model: str | None = None
     mode: ResearchMode | None = None
     budget: Budget | None = None
+    config: ResearchConfig | None = None
 
 
 def research_mode(genre: Genre, setup: ResearchSetup) -> ResearchMode:
@@ -80,7 +88,7 @@ async def run_research_v2(
     The question is the user's own task text, as it was when research was
     plain web search: nothing derived from a source file is ever sent out.
     """
-    from andamentum.deep_research.v2 import Budget, research
+    from andamentum.deep_research.v2 import PRESETS, Budget, research
 
     mode = research_mode(genre, setup)
     if mode != "scholarly" and not setup.sources.searxng_url:
@@ -97,6 +105,7 @@ async def run_research_v2(
         store=database,
         budget=setup.budget or Budget(),
         sources=setup.sources,
+        config=setup.config or PRESETS["baseline"],
         progress=progress,
     )
 

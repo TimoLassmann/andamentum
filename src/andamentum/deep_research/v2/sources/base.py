@@ -46,6 +46,7 @@ from andamentum.references import Work
 
 from ..store import (
     TTL_FULL_TEXT_S,
+    ReferenceCache,
     ResearchStore,
     cache_key,
 )
@@ -61,6 +62,7 @@ ErrorKind = Literal[
     "refused",  # our own gate refused the fetch: SSRF, robots.txt, paywall list
     "parse",  # an answer that is not the shape the API documents
     "config",  # the source cannot run as configured
+    "offline",  # an offline run: the answer is not in the store's cache
 ]
 
 # Smallest gap between two network requests to one source, in seconds.
@@ -217,6 +219,37 @@ class ExpandingSource(Source, Protocol):
     ) -> list[Candidate]: ...
 
 
+class _OfflineTransport(httpx.AsyncBaseTransport):
+    """A transport that sends nothing: every request fails as a connection
+    error, counted by host. An offline client's ``http`` uses it, so a caller
+    that makes its own request (Crossref through ``references``, the link
+    checks of verification) reaches no network either."""
+
+    def __init__(self, refused: Counter[str]) -> None:
+        self._refused = refused
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        host = request.url.host or "?"
+        self._refused[host] += 1
+        raise httpx.ConnectError(
+            f"offline run: no network request is made ({host})", request=request
+        )
+
+
+OFFLINE_REASON = "not in the snapshot (offline run); not fetched"
+
+
+def offline_url_check(_url: str) -> tuple[bool, str]:
+    """Accept every URL for the safety pre-check of an offline run.
+
+    The real check resolves the host through DNS before any request, which is a
+    network call. An offline client's transport already refuses every request,
+    so nothing is sent; the probe then ends as an error ("unchecked"), not a
+    dead link that depends on the machine's DNS.
+    """
+    return True, ""
+
+
 class SourceClient:
     """The one HTTP client the sources share: cache, spacing, retry, headers.
 
@@ -226,6 +259,12 @@ class SourceClient:
     the text extractor.
 
     ``clock`` and ``sleep`` are injected so a test runs without waiting.
+
+    ``offline=True`` makes a client that never touches the network: answers
+    come from the store's cache only (expired entries included), a miss
+    raises :class:`SourceError` with ``kind='offline'`` and is counted in
+    ``offline_misses`` (by source, or by host for a request made through
+    ``http``). A frozen run uses one, so every arm sees the same inputs.
     """
 
     def __init__(
@@ -241,14 +280,20 @@ class SourceClient:
         extractor: Extractor = extract_content,
         max_fetch_bytes: int | None = None,
         user_agent: str | None = None,
+        offline: bool = False,
     ) -> None:
+        if offline and client is not None:
+            raise ValueError("an offline SourceClient makes its own http client")
         self.store = store
         self.user_agent = user_agent or user_agent_for("research")
+        self.offline = offline
+        self.offline_misses: Counter[str] = Counter()
         self._owns_client = client is None
         self.http = client or httpx.AsyncClient(
             timeout=DEFAULT_TIMEOUT_S,
             follow_redirects=False,
             headers={"User-Agent": self.user_agent},
+            transport=_OfflineTransport(self.offline_misses) if offline else None,
         )
         self._intervals = {**DEFAULT_INTERVAL_S, **(intervals or {})}
         self._clock = clock
@@ -291,6 +336,14 @@ class SourceClient:
             finally:
                 self._last_request[source] = self._clock()
 
+    def reference_cache(self) -> ReferenceCache:
+        """The store as the ``references`` cache, serving any age when offline."""
+        return self.store.reference_cache(any_age=self.offline)
+
+    def _offline_miss(self, source: str, url: str) -> SourceError:
+        self.offline_misses[source] += 1
+        return SourceError(source, OFFLINE_REASON, kind="offline", url=url)
+
     def set_interval(self, name: str, seconds: float) -> None:
         """Set the smallest gap between network requests under spacing key *name*."""
         self._intervals[name] = seconds
@@ -329,9 +382,11 @@ class SourceClient:
         body, and that must not be remembered for a week. Anything else raises.
         """
         key = cache_key(source, url, {k: str(v) for k, v in (params or {}).items()})
-        cached = self.store.cache_get(key)
+        cached = self.store.cache_get(key, any_age=self.offline)
         if cached is not None:
             return HttpResult(status=cached.status, body=cached.body, from_cache=True)
+        if self.offline:
+            raise self._offline_miss(source, _audit_url(url, params))
         sent = {**(params or {}), **(auth_params or {})}
         async with self._lock(source):
             result = await self._request(
@@ -502,7 +557,7 @@ class SourceClient:
         """
         cap = max_bytes if max_bytes is not None else self.max_fetch_bytes
         key = cache_key(f"{source}:text", url)
-        cached = self.store.cache_get(key)
+        cached = self.store.cache_get(key, any_age=self.offline)
         if cached is not None:
             return FetchedText(
                 source=source,
@@ -510,6 +565,8 @@ class SourceClient:
                 text=cached.body.decode("utf-8"),
                 content_type="text/markdown",
             )
+        if self.offline:
+            raise self._offline_miss(source, url)
         gap = interval or f"fetch:{urlparse(url).netloc.lower()}"
         async with self._lock(gap):
             try:

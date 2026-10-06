@@ -142,6 +142,9 @@ class Asker:
     budget: Budget
     stats: RunStats
     decision_model: DecisionModel | None = None
+    # pydantic-ai model settings sent with every language-model call (the run
+    # config's temperature and seed); None sends none.
+    model_settings: Mapping[str, Any] | None = None
 
     # -- language model ----------------------------------------------------
 
@@ -163,6 +166,7 @@ class Asker:
             output_type=output_type,
             user_message=user_message,
             validators=validators,
+            model_settings=self.model_settings,
         )
         self.stats.input_tokens += int(getattr(usage, "input_tokens", 0) or 0)
         self.stats.output_tokens += int(getattr(usage, "output_tokens", 0) or 0)

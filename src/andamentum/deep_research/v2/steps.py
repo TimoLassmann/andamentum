@@ -25,7 +25,7 @@ Failure rules, the same in every step:
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 
 from pydantic import BaseModel, Field
@@ -388,7 +388,8 @@ async def search(
     limit: int,
 ) -> SearchOutcome:
     """Every query on every source, one call after another; results tagged
-    with their sub-question and merged by identity. A failing source is
+    with their sub-question and their position in the source's list
+    (``source_ranks``, 1-based), and merged by identity. A failing source is
     recorded and the others go on."""
     found: list[Candidate] = []
     outcome = SearchOutcome([])
@@ -406,8 +407,13 @@ async def search(
                     )
                     continue
                 found += [
-                    c.model_copy(update={"subquestion_ids": [subquestion_id]})
-                    for c in results
+                    c.model_copy(
+                        update={
+                            "subquestion_ids": [subquestion_id],
+                            "source_ranks": {source.name: position},
+                        }
+                    )
+                    for position, c in enumerate(results, start=1)
                 ]
     outcome.candidates = merge(found)
     return outcome
@@ -447,13 +453,19 @@ def admit(
 
 
 def round_robin(
-    pairs: Sequence[Pair], *, subquestions: Sequence[SubQuestion]
+    pairs: Sequence[Pair],
+    *,
+    subquestions: Sequence[SubQuestion],
+    per_subquestion: int | None = None,
 ) -> list[Pair]:
     """*pairs* interleaved across sub-questions (each sub-question's in their
-    order), so a cap takes a fair share of each."""
+    order), so a cap takes a fair share of each. ``per_subquestion`` keeps at
+    most that many of each sub-question's pairs (the first ones)."""
     by_subquestion: dict[str, list[Pair]] = {s.id: [] for s in subquestions}
     for pair in pairs:
-        by_subquestion.setdefault(pair[1], []).append(pair)
+        own = by_subquestion.setdefault(pair[1], [])
+        if per_subquestion is None or len(own) < per_subquestion:
+            own.append(pair)
     ordered: list[Pair] = []
     depth = 0
     longest = max((len(v) for v in by_subquestion.values()), default=0)
@@ -461,6 +473,14 @@ def round_robin(
         ordered += [v[depth] for v in by_subquestion.values() if depth < len(v)]
         depth += 1
     return ordered
+
+
+# Screens one sub-question's candidates: returns the criteria that stand after
+# it (unchanged for a strategy that has none) and one score per candidate.
+ScreenOne = Callable[
+    [SubQuestion, list[Candidate]],
+    Awaitable[tuple[list[Criterion], list[CandidateScore]]],
+]
 
 
 @dataclass
@@ -477,28 +497,26 @@ async def screen(
     *,
     candidates: Mapping[str, Candidate],
     subquestions: Sequence[SubQuestion],
-    criteria: Mapping[str, list[Criterion]],
-    screener: Screener,
-    question: str,
+    screen_one: ScreenOne,
     limit: int,
+    per_subquestion: int | None = None,
 ) -> ScreenOutcome:
-    """Screen at most *limit* pairs, a fair share of each sub-question, through
-    ``Screener.screen`` (score, then the once-per-sub-question refinement).
-    ``criteria`` in the outcome holds the rubric that stands after refinement.
-    Pairs not screened (over the cap, a failed model, a spent budget) are left
-    for the caller to keep pending."""
-    chosen = round_robin(pairs, subquestions=subquestions)[:limit]
+    """Screen at most *limit* pairs, a fair share of each sub-question and at
+    most *per_subquestion* of one, through *screen_one* (the run's screen and
+    refine strategies, ``config``). ``criteria`` in the outcome holds the
+    rubric that stands after screening. Pairs not screened (over a cap, a
+    failed model, a spent budget) are left for the caller to keep pending."""
+    chosen = round_robin(
+        pairs, subquestions=subquestions, per_subquestion=per_subquestion
+    )[:limit]
     outcome = ScreenOutcome()
     for subquestion in subquestions:
         own = [p for p in chosen if p[1] == subquestion.id]
         if not own:
             continue
         try:
-            screening = await screener.screen(
-                subquestion,
-                criteria[subquestion.id],
-                [candidates[work_id] for work_id, _ in own],
-                question=question,
+            standing, scores = await screen_one(
+                subquestion, [candidates[work_id] for work_id, _ in own]
             )
         except BudgetExhausted as spent:
             outcome.spent = spent.name
@@ -510,8 +528,8 @@ async def screen(
                 "for the next round"
             )
             continue
-        outcome.scores += screening.scores
-        outcome.criteria[subquestion.id] = screening.criteria
+        outcome.scores += scores
+        outcome.criteria[subquestion.id] = standing
         outcome.screened += own
     return outcome
 
@@ -531,10 +549,11 @@ def expansion_seeds(
     *,
     candidates: Mapping[str, Candidate],
     expanded: set[str],
+    limit: int = MAX_EXPAND_SEEDS,
 ) -> list[tuple[Work, list[str]]]:
     """Kept scholarly works not yet expanded, best score first, at most
-    ``MAX_EXPAND_SEEDS``. *kept* maps a work id to its best score and the
-    sub-questions it was kept for."""
+    *limit*. *kept* maps a work id to its best score and the sub-questions it
+    was kept for."""
     ordered = sorted(kept.items(), key=lambda item: (-item[1][0], item[0]))
     seeds: list[tuple[Work, list[str]]] = []
     for work_id, (_, subquestion_ids) in ordered:
@@ -542,7 +561,7 @@ def expansion_seeds(
         if candidate is None or work_id in expanded or not is_scholarly(candidate.work):
             continue
         seeds.append((candidate.work, subquestion_ids))
-        if len(seeds) >= MAX_EXPAND_SEEDS:
+        if len(seeds) >= limit:
             break
     return seeds
 
@@ -553,6 +572,7 @@ class ExpandOutcome:
     expanded: list[str] = field(default_factory=list)
     degraded: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
+    skipped: list[str] = field(default_factory=list)
 
 
 async def expand(
@@ -563,8 +583,10 @@ async def expand(
 ) -> ExpandOutcome:
     """One hop back (references) and forward (citations) from each seed, until
     *limit* candidates are collected; each new candidate inherits its seed's
-    sub-questions. A source that cannot place a work is a note; any other
-    failure is degraded."""
+    sub-questions and its position in the hop's list (``source_ranks``). A
+    source that cannot place a work is a note; a hop an offline run's
+    snapshot does not hold is ``skipped`` (never fetched); any other failure is
+    degraded."""
     outcome = ExpandOutcome()
     for work, subquestion_ids in seeds:
         for source in sources:
@@ -584,6 +606,8 @@ async def expand(
                     )
                     if error.kind == "config":
                         outcome.notes.append(message)
+                    elif error.kind == "offline":
+                        outcome.skipped.append(message)
                     else:
                         outcome.degraded.append(message)
                     continue
@@ -592,9 +616,10 @@ async def expand(
                         update={
                             "subquestion_ids": list(subquestion_ids),
                             "sources": [f"{source.name}:{direction}"],
+                            "source_ranks": {f"{source.name}:{direction}": position},
                         }
                     )
-                    for c in found[:room]
+                    for position, c in enumerate(found[:room], start=1)
                 ]
         outcome.expanded.append(work.work_id)
     return outcome
@@ -610,21 +635,60 @@ def read_targets(
     excluded: Mapping[str, str],
     covered: set[str],
     limit: int,
+    per_subquestion: int | None = None,
 ) -> list[tuple[str, list[str]]]:
     """The works to read this round, with the sub-questions to read each for:
     kept pairs not read yet, works for uncovered sub-questions first, then by
-    score; at most *limit* works."""
+    score; at most *limit* works. ``per_subquestion`` bounds the works read
+    for one sub-question over the whole run (pairs in *done* count): only the
+    best-scored unread ones fill what is left of it."""
+    allowed = _within_subquestion_cap(
+        kept, done=done, excluded=excluded, per_subquestion=per_subquestion
+    )
     wanted: list[tuple[bool, float, str, list[str]]] = []
     for work_id, (score, subquestion_ids) in kept.items():
         if work_id in excluded:
             continue
-        open_ids = [s for s in subquestion_ids if (work_id, s) not in done]
+        open_ids = [
+            s
+            for s in subquestion_ids
+            if (work_id, s) not in done and (allowed is None or (work_id, s) in allowed)
+        ]
         if not open_ids:
             continue
         only_covered = all(s in covered for s in open_ids)
         wanted.append((only_covered, -score, work_id, open_ids))
     wanted.sort()
     return [(work_id, ids) for _, _, work_id, ids in wanted[:limit]]
+
+
+def _within_subquestion_cap(
+    kept: Mapping[str, tuple[float, list[str]]],
+    *,
+    done: set[Pair],
+    excluded: Mapping[str, str],
+    per_subquestion: int | None,
+) -> set[Pair] | None:
+    """The unread pairs a per-sub-question read cap leaves room for: for each
+    sub-question, its best-scored unread kept works, as many as the cap minus
+    the works already read for it. ``None`` without a cap."""
+    if per_subquestion is None:
+        return None
+    read_so_far: dict[str, int] = {}
+    for _work_id, subquestion_id in done:
+        read_so_far[subquestion_id] = read_so_far.get(subquestion_id, 0) + 1
+    unread: dict[str, list[tuple[float, str]]] = {}
+    for work_id, (score, subquestion_ids) in kept.items():
+        if work_id in excluded:
+            continue
+        for subquestion_id in subquestion_ids:
+            if (work_id, subquestion_id) not in done:
+                unread.setdefault(subquestion_id, []).append((-score, work_id))
+    allowed: set[Pair] = set()
+    for subquestion_id, ranked in unread.items():
+        room = max(0, per_subquestion - read_so_far.get(subquestion_id, 0))
+        allowed |= {(w, subquestion_id) for _, w in sorted(ranked)[:room]}
+    return allowed
 
 
 # -- coverage -----------------------------------------------------------------

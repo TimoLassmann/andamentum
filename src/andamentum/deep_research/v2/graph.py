@@ -13,6 +13,12 @@ Screen-Expand-Screen detour by one expansion per round, every model call by
 clock by ``max_wall_s`` and fetching by ``max_fetch_bytes``. A spent bound is
 a ``stop_reason``, never an exception.
 
+What each swappable step does (the screen, refinement, ranking, passage
+selection, expansion, criteria facets, and every cap) is the run's
+``ResearchConfig`` (``config.py``; default ``PRESETS['baseline']``). With
+``frozen`` inputs (``frozen.py``) Plan and Search come from the snapshot and
+every source request is answered from the store's cache or skipped.
+
 Nodes only route and assign state; the work is in ``steps`` and the worker
 modules. The store sits behind the deps (L1): every worker writes what it
 learns there, so a run can be inspected, and a second run reads the first
@@ -38,12 +44,16 @@ from andamentum.references import ReferenceHttp, Work
 
 from . import steps
 from .ask import Asker
+from .config import PRESETS, ResearchConfig, config_hash
 from .coverage import PairKey, compute_coverage, decide_stop, record_coverage
 from .criteria import Screener
+from .frozen import FrozenInputs
 from .identity import merge
 from .read import ReadDeps, ReadTarget, read_works
 from .sources import SourceClient, SourceConfig, SourceSet, build_sources
+from .sources.base import offline_url_check
 from .store import ResearchStore
+from .strategies import screen_one
 from .types import Coverage as SubQuestionCoverage
 from .types import (
     Budget,
@@ -68,7 +78,8 @@ Pair = steps.Pair
 @dataclass(frozen=True)
 class ResearchDeps:
     """What a run is given: the question, the store, the sources, the run's
-    models behind one ``Asker``, the budget and the clock."""
+    models behind one ``Asker``, the configuration, the frozen inputs (if
+    any), the budget and the clock."""
 
     question: str
     mode: Mode
@@ -83,6 +94,9 @@ class ResearchDeps:
     started: float
     clock: Callable[[], float]
     progress: Callable[[str], None]
+    config: ResearchConfig = PRESETS["baseline"]
+    frozen: FrozenInputs | None = None
+    offline_before: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass
@@ -111,6 +125,7 @@ class ResearchState:
     queries_done: list[str] = field(default_factory=list)
     finding_ids: Iterator[int] = field(default_factory=lambda: itertools.count(1))
     degraded: list[str] = field(default_factory=list)
+    skipped: list[str] = field(default_factory=list)
     spent: str = ""
     stop_reason: str = ""
     report: str = ""
@@ -140,15 +155,17 @@ def _note(state: ResearchState, *, degraded: list[str], spent: str = "") -> None
         state.spent = spent
 
 
-def _kept(state: ResearchState) -> dict[str, tuple[float, list[str]]]:
-    """Each kept work's best score and the sub-questions it was kept for."""
-    kept: dict[str, tuple[float, list[str]]] = {}
-    for (work_id, subquestion_id), score in state.scores.items():
-        if not score.kept:
-            continue
-        best, ids = kept.get(work_id, (0.0, []))
-        kept[work_id] = (max(best, score.score), [*ids, subquestion_id])
-    return kept
+def _kept(ctx: Ctx) -> dict[str, tuple[float, list[str]]]:
+    """Each kept work's ranking value (the config's rank strategy) and the
+    sub-questions it was kept for."""
+    return ctx.deps.config.rank_strategy.kept(
+        ctx.state.scores, candidates=ctx.state.candidates
+    )
+
+
+def _evidence_criteria(ctx: Ctx) -> dict[str, list[Criterion]]:
+    """The criteria that travel with the evidence table (the facets strategy)."""
+    return ctx.deps.config.facet_strategy.evidence(ctx.state.criteria)
 
 
 def _works(state: ResearchState) -> dict[str, Work]:
@@ -165,18 +182,26 @@ def _admit(ctx: Ctx, found: list[Candidate]) -> None:
 
 @dataclass
 class Plan(BaseNode[ResearchState, ResearchDeps, ResearchResult]):
-    """Sub-questions, and the screening criteria compiled for each."""
+    """Sub-questions (planned, or the frozen snapshot's), and the screening
+    criteria compiled for each when the configuration uses criteria."""
 
     async def run(self, ctx: Ctx) -> Search:
         state, deps = ctx.state, ctx.deps
-        deps.progress("Plan: sub-questions")
-        planned = await steps.plan(deps.question, asker=deps.asker)
-        _note(state, degraded=planned.degraded, spent=planned.spent)
-        state.subquestions = planned.subquestions
+        if deps.frozen is not None:
+            deps.progress("Plan: sub-questions from the frozen inputs")
+            state.subquestions = list(deps.frozen.subquestions)
+        else:
+            deps.progress("Plan: sub-questions")
+            planned = await steps.plan(deps.question, asker=deps.asker)
+            _note(state, degraded=planned.degraded, spent=planned.spent)
+            state.subquestions = planned.subquestions
         for subquestion in state.subquestions:
             deps.store.add_run_item(
                 deps.asker.run_id, "subquestion", subquestion.id, subquestion
             )
+        if not deps.config.needs_criteria:
+            state.criteria = {}
+            return Search()
         deps.progress(f"Plan: criteria for {len(state.subquestions)} sub-questions")
         compiled = await steps.compile_all(
             state.subquestions, screener=deps.screener, question=deps.question
@@ -201,6 +226,14 @@ class Search(BaseNode[ResearchState, ResearchDeps, ResearchResult]):
         targets = [s for s in state.subquestions if s.id not in closed]
         state.round_targets = [s.id for s in targets]
         if _spent(ctx) or not targets:
+            return Screen()
+        if deps.frozen is not None:
+            # A frozen run searches once, from the snapshot; later rounds screen
+            # what is still waiting and what expansion brings.
+            if state.round == 1:
+                deps.progress("Search: the frozen candidates")
+                state.queries_done += deps.frozen.all_queries()
+                _admit(ctx, list(deps.frozen.candidates))
             return Screen()
         deps.progress(f"Search: round {state.round}, {len(targets)} sub-questions")
         written = await steps.write_queries(
@@ -237,10 +270,14 @@ class Screen(BaseNode[ResearchState, ResearchDeps, ResearchResult]):
                 waiting,
                 candidates=state.candidates,
                 subquestions=state.subquestions,
-                criteria=state.criteria,
-                screener=deps.screener,
-                question=deps.question,
+                screen_one=screen_one(
+                    deps.config,
+                    criteria=state.criteria,
+                    screener=deps.screener,
+                    question=deps.question,
+                ),
                 limit=deps.budget.candidates_per_round,
+                per_subquestion=deps.config.screen_per_subquestion,
             )
             _note(state, degraded=outcome.degraded, spent=outcome.spent)
             for score in outcome.scores:
@@ -251,16 +288,26 @@ class Screen(BaseNode[ResearchState, ResearchDeps, ResearchResult]):
                         score.work_id
                     )
                 state.scores[pair] = score
-            state.criteria.update(outcome.criteria)
+            # a screen without criteria (generic) leaves none behind
+            state.criteria.update({k: v for k, v in outcome.criteria.items() if v})
             state.screened |= set(outcome.screened)
             state.pending = [p for p in waiting if p not in state.screened]
         expands = (
             deps.mode != "web"
             and not state.expanded_this_round
-            and deps.budget.expand_per_round > 0
+            and _expand_limit(deps) > 0
+            and deps.config.expand_strategy.enabled
             and bool(deps.sources.expand)
         )
         return Expand() if expands else Read()
+
+
+def _expand_limit(deps: ResearchDeps) -> int:
+    """New candidates a round's expansion may bring: the budget's bound, and
+    the configuration's cap within it."""
+    cap = deps.config.expand_per_round
+    budget = deps.budget.expand_per_round
+    return budget if cap is None else min(cap, budget)
 
 
 @dataclass
@@ -270,16 +317,20 @@ class Expand(BaseNode[ResearchState, ResearchDeps, ResearchResult]):
     async def run(self, ctx: Ctx) -> Screen:
         state, deps = ctx.state, ctx.deps
         state.expanded_this_round = True
-        seeds = steps.expansion_seeds(
-            _kept(state), candidates=state.candidates, expanded=state.expanded
+        seeds = deps.config.expand_strategy.seeds(
+            _kept(ctx),
+            candidates=state.candidates,
+            expanded=state.expanded,
+            config=deps.config,
         )
         if not seeds or _spent(ctx):
             return Screen()
         deps.progress(f"Expand: citations of {len(seeds)} works")
         outcome = await steps.expand(
-            seeds, sources=deps.sources.expand, limit=deps.budget.expand_per_round
+            seeds, sources=deps.sources.expand, limit=_expand_limit(deps)
         )
         _note(state, degraded=outcome.degraded)
+        state.skipped += outcome.skipped
         state.expanded |= set(outcome.expanded)
         _admit(ctx, merge(outcome.candidates))
         return Screen()
@@ -298,11 +349,12 @@ class Read(BaseNode[ResearchState, ResearchDeps, ResearchResult]):
             return Coverage()
         covered = {c.subquestion_id for c in state.coverage if c.covered}
         chosen = steps.read_targets(
-            _kept(state),
+            _kept(ctx),
             done=state.read_done,
             excluded=state.excluded,
             covered=covered,
             limit=deps.budget.read_per_round,
+            per_subquestion=deps.config.read_per_subquestion,
         )
         if not chosen:
             return Coverage()
@@ -313,7 +365,7 @@ class Read(BaseNode[ResearchState, ResearchDeps, ResearchResult]):
                 for w, ids in chosen
             ],
             subquestions=state.subquestions,
-            criteria=state.criteria,
+            criteria=_evidence_criteria(ctx),
             deps=deps.reader,
             ids=state.finding_ids,
             skip=state.read_done,
@@ -344,7 +396,7 @@ class Coverage(BaseNode[ResearchState, ResearchDeps, ResearchResult]):
         }
         state.coverage = compute_coverage(
             state.subquestions,
-            criteria=state.criteria,
+            criteria=_evidence_criteria(ctx),
             findings=state.findings,
             works=_works(state),
             candidate_scores=list(state.scores.values()),
@@ -388,7 +440,7 @@ class Write(BaseNode[ResearchState, ResearchDeps, ResearchResult]):
         report = await write_report(
             deps.question,
             subquestions=state.subquestions,
-            criteria=state.criteria,
+            criteria=_evidence_criteria(ctx),
             findings=state.findings,
             conflicts=state.conflicts,
             coverage=state.coverage,
@@ -432,11 +484,14 @@ class Finish(BaseNode[ResearchState, ResearchDeps, ResearchResult]):
             run_id=deps.asker.run_id,
             question=deps.question,
             mode=deps.mode,
+            config_name=deps.config.name,
+            config_hash=config_hash(deps.config),
+            frozen=deps.frozen.digest() if deps.frozen is not None else "",
             findings=state.findings,
             report_markdown=state.report,
         )
         ordered = draft.cited_work_ids()
-        by_score = sorted(_kept(state).items(), key=lambda item: (-item[1][0], item[0]))
+        by_score = sorted(_kept(ctx).items(), key=lambda item: (-item[1][0], item[0]))
         ordered += [w for w, _ in by_score if w not in ordered]
         result = draft.model_copy(
             update={
@@ -453,11 +508,23 @@ class Finish(BaseNode[ResearchState, ResearchDeps, ResearchResult]):
                 "verification": state.verification,
                 "stop_reason": state.stop_reason,
                 "degraded": steps.unique(state.degraded),
+                "skipped": steps.unique(state.skipped + _offline_skips(deps)),
                 "stats": deps.asker.stats,
             }
         )
         deps.progress(f"Finish: {state.stop_reason}")
         return End(result)
+
+
+def _offline_skips(deps: ResearchDeps) -> list[str]:
+    """What an offline (frozen) run did not fetch, per source or host."""
+    misses = deps.sources.client.offline_misses
+    lines: list[str] = []
+    for name in sorted(misses):
+        count = misses[name] - deps.offline_before.get(name, 0)
+        if count > 0:
+            lines.append(f"{name}: {count} request(s) not in the snapshot; not fetched")
+    return lines
 
 
 _builder = GraphBuilder[ResearchState, ResearchDeps, Plan, ResearchResult](
@@ -488,13 +555,27 @@ def _model_id(model: str | Model) -> str:
     return model if isinstance(model, str) else f"{model.system}:{model.model_name}"
 
 
-def _run_config(budget: Budget, sources: SourceConfig) -> dict[str, JsonValue]:
-    """What the run was asked to do, secrets left out."""
+def _run_config(
+    budget: Budget,
+    sources: SourceConfig,
+    *,
+    config: ResearchConfig,
+    frozen: FrozenInputs | None,
+) -> dict[str, JsonValue]:
+    """What the run was asked to do, secrets left out: the budget, the
+    sources, the configuration and its hash, and the frozen inputs' digest."""
     return {
         "budget": budget.model_dump(mode="json"),
         "sources": sources.model_dump(
             mode="json",
             exclude={"mailto", "openalex_api_key", "semantic_scholar_api_key"},
+        ),
+        "research_config": config.model_dump(mode="json"),
+        "config_hash": config_hash(config),
+        "frozen": (
+            {"digest": frozen.digest(), "captured_at": frozen.captured_at}
+            if frozen is not None
+            else None
         ),
     }
 
@@ -508,11 +589,24 @@ async def research(
     store: Path | ResearchStore | None = None,
     budget: Budget = Budget(),
     sources: SourceConfig = SourceConfig(),
+    config: ResearchConfig = PRESETS["baseline"],
+    frozen: FrozenInputs | None = None,
     source_client: SourceClient | None = None,
     progress: Callable[[str], None] | None = None,
     clock: Callable[[], float] = time.monotonic,
 ) -> ResearchResult:
     """Research *question* and return the evidence table with a verified report.
+
+    ``config`` is what the run does at every swappable step (``config.py``;
+    the default is the ``baseline`` preset, ``PRESETS['criteria']`` the
+    criteria arm); its hash is recorded on the run and the result.
+
+    ``frozen`` replays a snapshot (``frozen.capture``): its sub-questions and
+    candidates replace Plan and Search, and every source request is answered
+    from the store's cache or skipped, never sent (``source_client``, when
+    passed, must be offline: ``SourceClient(store, offline=True)``). The
+    question and mode must be the snapshot's; pass the store it was captured
+    over, or its cached texts and citations are not there to use.
 
     ``mode`` picks the sources: ``web`` (SearxNG; ``sources.searxng_url`` is
     required), ``scholarly`` (``sources.scholarly``) or ``both``. ``model`` is
@@ -535,6 +629,17 @@ async def research(
     """
     if source_client is not None and source_client.store is not store:
         raise ValueError("source_client must belong to the open store passed as store")
+    if frozen is not None:
+        if frozen.question != question or frozen.mode != mode:
+            raise ValueError(
+                "frozen inputs are for another question or mode: "
+                f"{frozen.question!r} ({frozen.mode}), not {question!r} ({mode})"
+            )
+        if source_client is not None and not source_client.offline:
+            raise ValueError(
+                "a frozen run needs an offline source client: "
+                "SourceClient(store, offline=True), or none"
+            )
     owns_store = not isinstance(store, ResearchStore)
     opened: ResearchStore = (
         store
@@ -543,7 +648,7 @@ async def research(
         if store is not None
         else ResearchStore.in_memory()
     )
-    client = source_client or SourceClient(opened)
+    client = source_client or SourceClient(opened, offline=frozen is not None)
     handle: DecisionModel | None = None
     try:
         handle = (
@@ -559,7 +664,9 @@ async def research(
             decision_model=handle,
             store=opened,
             budget=budget,
-            config=sources,
+            sources=sources,
+            config=config,
+            frozen=frozen,
             source_set=source_set,
             progress=progress or (lambda _line: None),
             clock=clock,
@@ -581,7 +688,9 @@ async def _run(
     decision_model: DecisionModel | None,
     store: ResearchStore,
     budget: Budget,
-    config: SourceConfig,
+    sources: SourceConfig,
+    config: ResearchConfig,
+    frozen: FrozenInputs | None,
     source_set: SourceSet,
     progress: Callable[[str], None],
     clock: Callable[[], float],
@@ -589,7 +698,7 @@ async def _run(
     run_id = store.start_run(
         question=question,
         mode=mode,
-        config=_run_config(budget, config),
+        config=_run_config(budget, sources, config=config, frozen=frozen),
         models={
             "model": _model_id(model),
             "decision_model": decision_model.id if decision_model else None,
@@ -604,6 +713,7 @@ async def _run(
         budget=budget,
         stats=stats,
         decision_model=decision_model,
+        model_settings=config.model_settings(),
     )
     screener = Screener(asker=asker)
     client = source_set.client
@@ -622,15 +732,23 @@ async def _run(
             crossref=source_set.crossref,
             providers=source_set.text,
             fetched_bytes=lambda: client.fetched_bytes - fetched,
+            select=config.passage_strategy,
+            passages_per_work=config.passages_per_work,
         ),
         verify_http=ReferenceHttp(
-            client=client.http, cache=store.reference_cache(), mailto=config.mailto
+            client=client.http,
+            cache=client.reference_cache(),
+            mailto=sources.mailto,
+            url_check=offline_url_check if client.offline else None,
         ),
         budget=budget,
-        results_per_query=config.results_per_query,
+        results_per_query=sources.results_per_query,
         started=started,
         clock=clock,
         progress=progress,
+        config=config,
+        frozen=frozen,
+        offline_before=dict(client.offline_misses),
     )
 
     def finish_stats() -> RunStats:

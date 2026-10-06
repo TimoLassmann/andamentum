@@ -39,8 +39,14 @@ from ..sources.base import SourceConfig
 from ..types import Mode
 from .arms import AnswerArm, LegacyArm, V2Arm
 from .download import DatasetMissing, Downloader, write_atomic
+from .experiment import Experiment, load_experiment
+from .experiment_report import report_from_registry
+from .experiment_run import DataDirs, InfrastructureDown, Services, run_experiment
+from .freeze import SnapshotMissing, freeze_set
+from .health import SearxDown, require_searxng
 from .judging import ClaimJudge, UrlChecker
 from .litsearch import DEFAULT_SEED, DEFAULT_SUBSET, download_litsearch, load_litsearch
+from .registry import RegistryMismatch
 from .results import (
     LitSearchRun,
     RunConfig,
@@ -58,6 +64,8 @@ from .web_set import WEB_QUESTIONS, fetch_page, verify_sources
 AnswerArmName = Literal["legacy", "v2"]
 ANSWER_ARMS: tuple[AnswerArmName, ...] = ("legacy", "v2")
 SCREENING_ARMS = (
+    "baseline+decision",
+    "baseline+llm",
     "generic+decision",
     "generic+llm",
     "criteria+decision",
@@ -144,6 +152,52 @@ def build_parser() -> argparse.ArgumentParser:
     report = commands.add_parser("report", help="markdown tables from results files")
     report.add_argument("files", nargs="+", type=Path)
     report.add_argument("--out", type=Path, default=None)
+
+    freeze = commands.add_parser(
+        "freeze",
+        help="run Plan and Search once per item and keep the result as a snapshot",
+    )
+    freeze.add_argument("set", choices=("litsearch", "web"))
+    freeze.add_argument("--snapshots", type=Path, required=True)
+    freeze.add_argument("--dir", type=Path, default=None, help="litsearch download dir")
+    freeze.add_argument("--model", required=True)
+    freeze.add_argument("--decision-model", default=None)
+    freeze.add_argument("--n", type=int, default=None, help="subset size")
+    freeze.add_argument("--seed", type=int, default=DEFAULT_SEED)
+    freeze.add_argument("--searxng-url", default=DEFAULT_SEARXNG_URL)
+    freeze.add_argument(
+        "--prefetch-cap",
+        type=int,
+        default=None,
+        help="cache the text of only the first N candidates of each sub-question "
+        "(default: every candidate; a cap is recorded in meta.json)",
+    )
+
+    experiment = commands.add_parser("experiment", help="pre-registered comparisons")
+    actions = experiment.add_subparsers(dest="experiment_command", required=True)
+    run = actions.add_parser("run", help="run every arm of an experiment file")
+    run.add_argument("file", type=Path)
+    run.add_argument("--out-dir", type=Path, required=True)
+    run.add_argument("--snapshots", type=Path, default=None)
+    run.add_argument("--litsearch-dir", type=Path, default=None)
+    run.add_argument("--synergy-dir", type=Path, default=None)
+    run.add_argument("--searxng-url", default=DEFAULT_SEARXNG_URL)
+    run.add_argument(
+        "--only-sets",
+        nargs="+",
+        default=None,
+        help="run only these sets of the file (the rest wait for a later run of "
+        "the same command; the file and its registry are unchanged)",
+    )
+    run.add_argument(
+        "--check-links",
+        action="store_true",
+        help="probe each answer's links over the network (URL integrity)",
+    )
+    summary = actions.add_parser("report", help="the experiment's markdown report")
+    summary.add_argument("file", type=Path)
+    summary.add_argument("--out-dir", type=Path, required=True)
+    summary.add_argument("--out", type=Path, default=None)
     return parser
 
 
@@ -405,7 +459,113 @@ async def _cmd_report(args: argparse.Namespace) -> int:
     return 0
 
 
+async def _cmd_freeze(args: argparse.Namespace) -> int:
+    async with AsyncExitStack() as stack:
+        decision = await _open_decision(stack, args.decision_model)
+        frozen = await freeze_set(
+            args.set,
+            snapshots=args.snapshots,
+            data_dir=args.dir,
+            model=args.model,
+            decision_model=decision,
+            decision_label=args.decision_model,
+            n=args.n,
+            seed=args.seed,
+            source_config=_source_config(args.searxng_url),
+            progress=lambda line: print(line, file=sys.stderr),
+            prefetch_per_subquestion=args.prefetch_cap,
+        )
+    for line in frozen.lines():
+        print(line)
+    return EXIT_ITEM_FAILED if frozen.failed else 0
+
+
+def _live_web(exp: Experiment, only_sets: Sequence[str] | None = None) -> bool:
+    """Does any arm search the web live (the legacy arm, or a live v2 arm on a web set)?"""
+    names = {s.name for s in exp.sets if only_sets is None or s.name in only_sets}
+    for arm in exp.arms:
+        if arm.system == "legacy" and arm.runs_on("web") and "web" in names:
+            return True
+        if arm.system == "v2" and not arm.frozen:
+            if any(arm.runs_on(n) and n != "litsearch" for n in names):
+                return True
+    return False
+
+
+async def _cmd_experiment_run(args: argparse.Namespace) -> int:
+    exp = load_experiment(args.file)
+    if _live_web(exp, args.only_sets):
+        health = await require_searxng(args.searxng_url)
+        print(health.explain(), file=sys.stderr)
+    async with AsyncExitStack() as stack:
+        opened: dict[str, DecisionModel] = {}
+        for name in sorted({a.decision_model for a in exp.arms if a.decision_model}):
+            handle = await _open_decision(stack, name)
+            if handle is not None:
+                opened[name] = handle
+        # the judge is part of the registered file, never a command-line choice
+        judge: ClaimJudge | None = None
+        judge_label: str | None = None
+        judge_digest: str | None = None
+        if exp.judge is not None:
+            handle = await _open_decision(stack, exp.judge.decision_model)
+            judge = ClaimJudge(model=exp.judge.model, decision_model=handle)
+            judge_label = exp.judge.label
+            judge_digest = handle.digest if handle is not None else None
+        checker = await _url_checker(args, stack)
+        services = Services(
+            decisions=opened,
+            source_config=_source_config(args.searxng_url),
+            judge=judge,
+            judge_label=judge_label,
+            judge_digest=judge_digest,
+            url_checker=checker,
+            check_searxng=require_searxng,
+        )
+        written = await run_experiment(
+            exp,
+            out_dir=args.out_dir,
+            dirs=DataDirs(
+                snapshots=args.snapshots,
+                litsearch=args.litsearch_dir,
+                synergy=args.synergy_dir,
+            ),
+            services=services,
+            progress=lambda line: print(line, file=sys.stderr),
+            only_sets=args.only_sets,
+        )
+    failed = [r for r in written if r.error]
+    print(
+        f"{len(written)} runs recorded in {args.out_dir / 'experiments.jsonl'}, "
+        f"{len(failed)} failed",
+        file=sys.stderr,
+    )
+    for record in failed:
+        print(
+            f"  {record.arm} {record.set}/{record.item_id} #{record.repeat}: {record.error}",
+            file=sys.stderr,
+        )
+    return EXIT_ITEM_FAILED if failed else 0
+
+
+async def _cmd_experiment_report(args: argparse.Namespace) -> int:
+    text = report_from_registry(load_experiment(args.file), args.out_dir)
+    if args.out is not None:
+        write_atomic(args.out, text.encode("utf-8"))
+    else:
+        print(text)
+    return 0
+
+
+async def _cmd_experiment(args: argparse.Namespace) -> int:
+    if args.experiment_command == "run":
+        return await _cmd_experiment_run(args)
+    return await _cmd_experiment_report(args)
+
+
 _HANDLERS: dict[str, Callable[[argparse.Namespace], Coroutine[Any, Any, int]]] = {
+    "freeze": _cmd_freeze,
+    "experiment": _cmd_experiment,
     "download": _cmd_download,
     "verify-web-set": _cmd_verify,
     "web": _cmd_web,
@@ -420,6 +580,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         return asyncio.run(_HANDLERS[args.command](args))
-    except DatasetMissing as error:
+    except (
+        DatasetMissing,
+        InfrastructureDown,
+        SearxDown,
+        SnapshotMissing,
+        RegistryMismatch,
+        FileNotFoundError,
+        ValueError,
+    ) as error:
         print(str(error), file=sys.stderr)
         return 1

@@ -80,7 +80,15 @@ def merge_pair(first: Candidate, second: Candidate) -> Candidate:
         queries=_union(first.queries, second.queries),
         subquestion_ids=_union(first.subquestion_ids, second.subquestion_ids),
         rank=min(ranks) if ranks else None,
+        source_ranks=_best_ranks(first.source_ranks, second.source_ranks),
     )
+
+
+def _best_ranks(first: dict[str, int], second: dict[str, int]) -> dict[str, int]:
+    best = dict(first)
+    for name, position in second.items():
+        best[name] = min(position, best.get(name, position))
+    return best
 
 
 def _union(first: list[str], second: list[str]) -> list[str]:

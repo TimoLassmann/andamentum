@@ -3,10 +3,13 @@
 ``research(question, *, mode, model, ...)`` runs the engine and returns a
 ``ResearchResult``: sub-questions, criteria, works, verbatim passages, findings
 with checked quotes, coverage, conflicts, and a report that cites findings by
-id, verified. See ``CLAUDE.md`` for the design and what each module owns.
+id, verified. ``config`` (a ``ResearchConfig``, default ``PRESETS['baseline']``)
+names every swappable strategy; ``frozen`` (``FrozenInputs`` from
+``capture_frozen``) replays a captured plan and search offline. See ``CLAUDE.md`` for the design and what each module owns.
 """
 
 from .ask import MODEL_ERRORS, Asker, AskError, BudgetExhausted
+from .config import PRESETS, ResearchConfig, config_hash
 from .coverage import compute_coverage, decide_stop, find_conflicts, record_coverage
 from .criteria import (
     CriteriaError,
@@ -19,6 +22,8 @@ from .criteria import (
     compile_criteria,
     score_candidates,
 )
+from .frozen import FrozenInputs
+from .frozen import capture as capture_frozen
 from .graph import research
 from .identity import merge
 from .novelty import NoveltyResearch, run_novelty_check_v2
@@ -44,6 +49,8 @@ from .types import (
 
 __all__ = [
     "MODEL_ERRORS",
+    "PRESETS",
+    "FrozenInputs",
     "NoveltyResearch",
     "AskError",
     "Asker",
@@ -61,6 +68,7 @@ __all__ = [
     "ReadDeps",
     "ReadTarget",
     "Refinement",
+    "ResearchConfig",
     "ResearchResult",
     "ResearchStore",
     "RunStats",
@@ -74,9 +82,11 @@ __all__ = [
     "SubQuestion",
     "VerifyFlag",
     "build_sources",
+    "capture_frozen",
     "combine",
     "compile_criteria",
     "compute_coverage",
+    "config_hash",
     "decide_stop",
     "find_conflicts",
     "load_work",

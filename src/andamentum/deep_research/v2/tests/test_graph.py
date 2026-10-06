@@ -14,6 +14,7 @@ from pydantic_graph.paths import DestinationMarker
 from andamentum.core import fetch_gate, url_safety
 
 from .. import research
+from ..config import PRESETS, ResearchConfig
 from ..graph import graph
 from ..sources import SourceConfig
 from ..store import ResearchStore
@@ -51,6 +52,7 @@ async def _run(
     decision: bool = False,
     budget: Budget | None = None,
     store: ResearchStore | None = None,
+    config: ResearchConfig = PRESETS["baseline"],
 ) -> tuple[ResearchResult, ResearchStore, World]:
     world = world or World()
     store = store or ResearchStore.in_memory()
@@ -63,6 +65,7 @@ async def _run(
         store=store,
         budget=budget or Budget(),
         sources=SourceConfig(searxng_url=SEARXNG, scholarly=SCHOLARLY_ONLY),
+        config=config,
         source_client=world.client(store),
     )
     return result, store, world
@@ -88,9 +91,13 @@ def _assert_evidence_is_sound(result: ResearchResult) -> None:
     assert not [f for f in result.verification if f.kind == "unsupported"]
 
 
+@pytest.mark.parametrize("preset", ["baseline", "criteria"])
 @pytest.mark.parametrize("decision", [False, True], ids=["llm", "decision-model"])
-async def test_scholarly_mode_end_to_end(decision: bool) -> None:
-    result, store, _ = await _run("scholarly", decision=decision)
+async def test_scholarly_mode_end_to_end(decision: bool, preset: str) -> None:
+    config = PRESETS[preset]
+    result, store, _ = await _run("scholarly", decision=decision, config=config)
+    assert result.config_name == preset
+    assert result.config_hash == config.config_hash()
 
     assert result.stop_reason == "covered"
     assert result.degraded == []
@@ -112,11 +119,16 @@ async def test_scholarly_mode_end_to_end(decision: bool) -> None:
     # the run is in the store, finished, with its rows
     record = store.get_run(result.run_id)
     assert record is not None and record.finished_at is not None
+    assert record.config["config_hash"] == config.config_hash()
     kinds = {i.kind for i in store.run_items(result.run_id)}
-    assert {"subquestion", "criterion", "candidate", "finding", "coverage"} <= kinds
+    assert {"subquestion", "candidate", "finding", "coverage"} <= kinds
+    # only the criteria preset compiles criteria (and scores passages by them)
+    assert ("criterion" in kinds) == (preset == "criteria")
+    assert bool(result.criteria) == (preset == "criteria")
     if decision:
         steps = {d.step for d in store.decisions(result.run_id)}
-        assert {"plan_kind", "screen", "passage", "claim_support"} <= steps
+        assert {"plan_kind", "screen", "claim_support"} <= steps
+        assert ("passage" in steps) == (preset == "criteria")
     assert result.stats.llm_calls > 0
     assert result.stats.per_source.get("openalex", 0) > 0
     assert result.to_csl()

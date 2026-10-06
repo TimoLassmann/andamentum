@@ -26,6 +26,8 @@ from andamentum.deep_research.orchestrator import run_research
 from andamentum.references import Work
 from andamentum.references.works import canonical_url
 
+from ..config import PRESETS, ResearchConfig
+from ..frozen import FrozenInputs
 from ..graph import research
 from ..sources.base import SourceClient, SourceConfig
 from ..store import ResearchStore
@@ -54,6 +56,13 @@ class ArmOutput(BaseModel):
     degraded: list[str] = Field(default_factory=list)
     stop_reason: str = ""
     cost: Cost
+    result: ResearchResult | None = Field(
+        default=None,
+        description=(
+            "v2 only: the run's evidence table (passages and criteria left out), "
+            "which the stability and planted-source measures read."
+        ),
+    )
 
 
 class AnswerArm(Protocol):
@@ -64,6 +73,23 @@ class AnswerArm(Protocol):
     returns_pages: bool
 
     async def run(self, question: str) -> ArmOutput: ...
+
+
+class ExperimentArm(AnswerArm, Protocol):
+    """An answer arm an experiment can run on frozen inputs.
+
+    ``frozen`` is the snapshot to replay (None: run live) and ``store`` the
+    path of the run's own working store; the legacy pipeline accepts both and
+    refuses a snapshot.
+    """
+
+    async def run(  # type: ignore[override]
+        self,
+        question: str,
+        *,
+        frozen: FrozenInputs | None = None,
+        store: Path | None = None,
+    ) -> ArmOutput: ...
 
 
 # -- legacy -------------------------------------------------------------------------
@@ -161,7 +187,17 @@ class LegacyArm:
         self.max_results = max_results
         self.max_pages = max_pages
 
-    async def run(self, question: str) -> ArmOutput:
+    async def run(
+        self,
+        question: str,
+        *,
+        frozen: FrozenInputs | None = None,
+        store: Path | None = None,
+    ) -> ArmOutput:
+        if frozen is not None:
+            raise ValueError(
+                "the legacy pipeline cannot take frozen inputs; run it live"
+            )
         started = time.monotonic()
         result = await run_research(
             question,
@@ -241,6 +277,7 @@ def map_v2(result: ResearchResult) -> ArmOutput:
             output_tokens=stats.output_tokens,
             decision_calls=stats.decision_calls,
         ),
+        result=result.model_copy(update={"passages": [], "criteria": {}}),
     )
 
 
@@ -250,7 +287,10 @@ class V2Arm:
     ``decision_model`` is a name (opened and closed by each run) or an opened
     handle (shared by every run). ``store`` defaults to ``None``: nothing
     persists between questions. ``source_client`` is for offline tests (it
-    must belong to ``store``).
+    must belong to ``store``). ``config`` is the strategy preset (the
+    baseline unless one is given). A run may be given ``frozen`` inputs (Plan and Search
+    from a snapshot) and the ``store`` path that holds the snapshot's cache;
+    both override the arm's own for that run.
     """
 
     returns_pages = False
@@ -265,8 +305,10 @@ class V2Arm:
         budget: Budget | None = None,
         store: Path | ResearchStore | None = None,
         source_client: SourceClient | None = None,
+        config: ResearchConfig = PRESETS["baseline"],
+        name: str | None = None,
     ) -> None:
-        self.name = f"v2-{mode}"
+        self.name = name or f"v2-{mode}"
         self.mode: Mode = mode
         self.model = model
         self.decision_model = decision_model
@@ -274,16 +316,25 @@ class V2Arm:
         self.budget = budget or Budget()
         self.store = store
         self.source_client = source_client
+        self.config = config
 
-    async def run(self, question: str) -> ArmOutput:
+    async def run(
+        self,
+        question: str,
+        *,
+        frozen: FrozenInputs | None = None,
+        store: Path | None = None,
+    ) -> ArmOutput:
         result = await research(
             question,
             mode=self.mode,
             model=self.model,
             decision_model=self.decision_model,
-            store=self.store,
+            store=store if store is not None else self.store,
             budget=self.budget,
             sources=self.sources,
+            config=self.config,
+            frozen=frozen,
             source_client=self.source_client,
         )
         return map_v2(result)
