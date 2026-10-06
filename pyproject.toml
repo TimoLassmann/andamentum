@@ -144,15 +144,15 @@ vlm = [
     # docling still resolves to its own floor above.
     "mlx-vlm>=0.6.4,<0.7; sys_platform == 'darwin' and platform_machine == 'arm64'",
 ]
-# Cross-encoder reranking in andamentum.document_store.rerank. sentence-
-# transformers (Apache-2.0) pulls a transformers runtime; torch is already a
-# core dep (docling's backend), so the marginal install is the
-# sentence-transformers wheel plus a one-time model download cached by the
-# HuggingFace hub. Kept optional because `search()` never calls the reranker
-# and a caller that does not rerank must not pay a 0.6B model's import,
-# load time, or resident memory.
+# Cross-encoder reranking in andamentum.document_store.rerank. The reranker
+# loads the model with transformers (Apache-2.0) directly, because it must
+# control the padding itself (fixed input shapes; see reranking.py); torch is
+# already a core dep (docling's backend). The range matches the `vlm` extra so
+# the two never pull transformers in different directions. Kept optional
+# because `search()` never calls the reranker and a caller that does not rerank
+# must not pay a 0.6B model's import, load time, or resident memory.
 rerank = [
-    "sentence-transformers>=5.0,<7",
+    "transformers>=4.45,<6",
 ]
 dev = [
     "pytest>=8.0.0,<9",
@@ -162,8 +162,9 @@ dev = [
     "fastapi>=0.109,<1",
     "uvicorn>=0.27,<1",
     "trafilatura>=2.0.0,<3",   # dev install gets every backend for full-suite tests
-    # Same reason: the dev install type-checks and exercises the rerank path.
-    # It adds no transitive dependency — torch and transformers are already here.
+    # The dev install exercises the rerank path, and its real-model test checks
+    # the fixed-shape scores against sentence-transformers' CrossEncoder.
+    "transformers>=4.45,<6",
     "sentence-transformers>=5.0,<7",
 ]
 # The SciFact calibration benchmark (paper/scifact/) is orchestrated by

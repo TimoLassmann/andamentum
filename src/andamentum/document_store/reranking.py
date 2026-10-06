@@ -21,7 +21,7 @@ passages scored 0.02 and up.
 Two functions, split on purpose:
 
 - :func:`rerank` needs the model. It is the only thing here that imports
-  ``sentence_transformers`` and it does so lazily, inside the call.
+  ``torch`` and ``transformers`` and it does so lazily, inside the call.
 - :func:`select_relevant` needs nothing but arithmetic. It is importable, and
   testable, on an install with no ``rerank`` extra — which matters, because it
   is the half that decides what a caller actually sees.
@@ -39,71 +39,244 @@ which is real memory on a unified-memory machine and is a separate budget from
 the Ollama-served models (nothing in ``ollama ps`` accounts for it). Scoring is
 compute-bound and scales with the number of candidates. andamentum resolves
 torch from PyTorch's CPU index, so outside macOS this runs on CPU.
+
+Fixed input shapes, by construction. On Apple silicon, PyTorch's GPU backend
+keeps a compiled graph for every distinct input shape it sees and never frees
+it (pytorch/pytorch#181213, open at the time of writing; ``torch.mps.empty_cache``
+does not reach that memory). The usual way to run a cross-encoder pads each
+batch to its own longest pair, so almost every batch has a new shape and a long
+run grows without bound: measured here, about 0.5 GB per question until the
+process hit the device limit, while the same 40 questions at one fixed shape
+held a flat 5.9 GB footprint. So this module never sends a shape the model has
+not seen before: every pair is padded to the smallest of a fixed set of length
+buckets, and every batch is filled to that bucket's fixed size. The set of
+shapes is finite and known before the first call, which bounds the memory on
+every backend. Padding is masked out by the attention mask, so a pair scores
+the same as it would padded to its own length.
 """
 
 from __future__ import annotations
 
 import asyncio
+import sys
 from collections.abc import Sequence
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:  # pragma: no cover - typing only
-    from sentence_transformers import CrossEncoder
+from dataclasses import dataclass
+from typing import Any, Protocol
 
 _EXTRA_HINT = (
     "Cross-encoder reranking needs the 'rerank' extra. "
     "Install it with: uv sync --extra rerank  (or: pip install 'andamentum[rerank]')"
 )
 
+#: Pair lengths are padded up to one of these token counts (each capped at the
+#: model's own maximum, which is always the last bucket). Powers of two, so a
+#: pair never carries more than twice its own length in padding.
+_LENGTH_BUCKETS = (64, 128, 256, 512, 1024, 2048, 4096, 8192)
+
+#: Tokens per batch. A bucket's batch size is this divided by its length, so
+#: every batch does about the same work and holds about the same activations:
+#: 128 pairs at 64 tokens, 16 at 512, 1 at 8192.
+_TOKENS_PER_BATCH = 8192
+
+
+class _Scorer(Protocol):
+    """What :func:`_score` needs from a model. :class:`_CrossEncoder` is the
+    real one; tests pass a stub, so the batching logic runs without torch."""
+
+    buckets: tuple[int, ...]
+
+    def token_lengths(self, query: str, texts: Sequence[str]) -> list[int]: ...
+
+    def score_batch(
+        self, query: str, texts: Sequence[str], *, length: int
+    ) -> list[float]: ...
+
+
+@dataclass(frozen=True)
+class _Batch:
+    length: int  # every pair in the batch is padded to exactly this many tokens
+    size: int  # the batch always holds exactly this many pairs
+    indices: list[int]  # positions of the real pairs; the rest repeat the last one
+
+
+def _buckets_for(max_length: int) -> tuple[int, ...]:
+    """The length buckets for a model whose input limit is ``max_length``."""
+    if max_length < 1:
+        raise ValueError(f"model input limit must be positive, got {max_length}")
+    return tuple(b for b in _LENGTH_BUCKETS if b < max_length) + (max_length,)
+
+
+def _batch_size(length: int) -> int:
+    return max(1, _TOKENS_PER_BATCH // length)
+
+
+def _allowed_shapes(buckets: Sequence[int]) -> set[tuple[int, int]]:
+    """Every (batch size, length) a model with these buckets can ever receive."""
+    return {(_batch_size(b), b) for b in buckets}
+
+
+def _plan_batches(lengths: Sequence[int], *, buckets: Sequence[int]) -> list[_Batch]:
+    """Group pairs into fixed-shape batches by the smallest bucket that fits.
+
+    ``lengths`` are token counts after truncation, so none exceeds the last
+    bucket. Raises rather than invent a new shape if one somehow does.
+    """
+    groups: dict[int, list[int]] = {}
+    for i, n in enumerate(lengths):
+        bucket = next((b for b in buckets if n <= b), None)
+        if bucket is None:
+            raise ValueError(
+                f"pair of {n} tokens exceeds the model limit {buckets[-1]}; "
+                "the tokenizer should have truncated it"
+            )
+        groups.setdefault(bucket, []).append(i)
+    batches: list[_Batch] = []
+    for bucket in sorted(groups):
+        size = _batch_size(bucket)
+        members = groups[bucket]
+        for start in range(0, len(members), size):
+            batches.append(_Batch(bucket, size, members[start : start + size]))
+    return batches
+
+
+def _score(model: _Scorer, query: str, texts: Sequence[str]) -> list[float]:
+    """Scores for ``texts`` in input order, computed only at fixed shapes."""
+    lengths = model.token_lengths(query, texts)
+    if len(lengths) != len(texts):
+        raise RuntimeError("tokenizer returned a different number of pairs")
+    scores: list[float | None] = [None] * len(texts)
+    for batch in _plan_batches(lengths, buckets=model.buckets):
+        # Fill a short batch with copies of its last real pair, so its shape is
+        # the bucket's fixed shape; their scores are discarded below.
+        rows = batch.indices + [batch.indices[-1]] * (batch.size - len(batch.indices))
+        out = model.score_batch(query, [texts[i] for i in rows], length=batch.length)
+        if len(out) != batch.size:
+            raise RuntimeError(
+                f"model returned {len(out)} scores for {batch.size} pairs"
+            )
+        for i, value in zip(batch.indices, out):
+            scores[i] = value
+    if any(v is None for v in scores):  # pragma: no cover - guarded by the planner
+        raise RuntimeError("a pair was left unscored")
+    return [float(v) for v in scores if v is not None]
+
+
+class _CrossEncoder:
+    """A single-logit sequence-classification model that only sees fixed shapes.
+
+    Loaded with ``transformers`` directly rather than through a wrapper that
+    pads each batch to its own longest pair, because the padding is exactly
+    what this class has to control. Scores are ``sigmoid(logit)``: the selection
+    rule below applies an absolute floor, and a floor is only meaningful on a
+    bounded scale.
+    """
+
+    def __init__(self, model_name: str) -> None:
+        try:
+            import torch
+            from transformers import AutoModelForSequenceClassification, AutoTokenizer
+        except ImportError as exc:  # pragma: no cover - depends on install shape
+            raise ImportError(f"{_EXTRA_HINT} ({exc})") from exc
+
+        self._torch = torch
+        self.device = "mps" if torch.backends.mps.is_available() else "cpu"
+        self.tokenizer: Any = AutoTokenizer.from_pretrained(model_name)
+        net: Any = AutoModelForSequenceClassification.from_pretrained(model_name)
+        if net.config.num_labels != 1:
+            raise ValueError(
+                f"{model_name} has {net.config.num_labels} output labels; "
+                "reranking needs a cross-encoder with a single relevance logit"
+            )
+        self.net = net.to(self.device).eval()
+        self.max_length = self._input_limit(model_name)
+        self.buckets = _buckets_for(self.max_length)
+
+    def _input_limit(self, model_name: str) -> int:
+        """The model's token limit, from the tokenizer, checked against the model."""
+        limit = int(self.tokenizer.model_max_length)
+        positions = getattr(self.net.config, "max_position_embeddings", None)
+        if limit > 1_000_000:  # transformers' sentinel for "not recorded"
+            if positions is None:
+                raise ValueError(f"{model_name} records no input length limit")
+            limit = int(positions)
+        if positions is not None and limit > positions:
+            raise ValueError(
+                f"{model_name}: tokenizer limit {limit} exceeds the model's "
+                f"{positions} position embeddings"
+            )
+        return limit
+
+    def token_lengths(self, query: str, texts: Sequence[str]) -> list[int]:
+        encoded = self.tokenizer(
+            [query] * len(texts),
+            list(texts),
+            truncation=True,
+            max_length=self.max_length,
+        )
+        return [len(ids) for ids in encoded["input_ids"]]
+
+    def score_batch(
+        self, query: str, texts: Sequence[str], *, length: int
+    ) -> list[float]:
+        torch = self._torch
+        # A pair's truncated length never exceeds its bucket (the planner put it
+        # there), so truncating at ``length`` cuts exactly what token_lengths
+        # cut, and padding="max_length" pads every row to the bucket.
+        features = self.tokenizer(
+            [query] * len(texts),
+            list(texts),
+            truncation=True,
+            max_length=length,
+            padding="max_length",
+            return_tensors="pt",
+        )
+        shape = tuple(features["input_ids"].shape)
+        if shape != (len(texts), length):
+            raise RuntimeError(
+                f"tokenizer produced shape {shape}, expected {(len(texts), length)}"
+            )
+        with torch.inference_mode():
+            logits = self.net(
+                **{k: v.to(self.device) for k, v in features.items()}
+            ).logits
+        return torch.sigmoid(logits[:, 0].float()).cpu().tolist()
+
+
 # Keyed by model name so switching models inside one process reloads rather
 # than silently scoring with the previous one. Loading weights costs tens of
 # seconds, which is worth paying once per process and not once per call.
-_model: CrossEncoder | None = None
+_model: _CrossEncoder | None = None
 _model_name: str | None = None
 
 
-def _reranker(model_name: str) -> CrossEncoder:
+def _reranker(model_name: str) -> _CrossEncoder:
     """The process-lifetime cross-encoder for ``model_name``."""
     global _model, _model_name
     if _model is not None and _model_name == model_name:
         return _model
-
-    try:
-        import torch
-        from sentence_transformers import CrossEncoder
-    except ImportError as exc:  # pragma: no cover - depends on install shape
-        raise ImportError(f"{_EXTRA_HINT} ({exc})") from exc
-
-    device = "mps" if torch.backends.mps.is_available() else "cpu"
-    # Sigmoid, not the model's raw logits: the selection rule below applies an
-    # absolute floor, and a floor is only meaningful on a bounded scale.
-    _model = CrossEncoder(model_name, device=device, activation_fn=torch.nn.Sigmoid())
+    _model = _CrossEncoder(model_name)
     _model_name = model_name
     return _model
 
 
 def _release_gpu_cache() -> None:
-    """Hand the GPU memory PyTorch cached for the last batch back to the system.
+    """Return the tensor memory PyTorch cached for the last call to the system.
 
-    On Apple silicon the MPS allocator otherwise keeps every buffer it ever
-    allocated. Each batch has a different shape (pairs are padded to the
-    longest in the batch), so a long run grows without bound: measured, one
-    process grew to 47 GB in another project, and a benchmark run here failed
-    at the 88 GB MPS limit. Emptying the cache after each call holds a process
-    near 10 GB.
+    This frees cached *tensor* buffers only. It does not free the per-shape
+    graph memory described in the module docstring; the fixed shapes are what
+    bound that. Looks torch up rather than importing it: a model that ran has
+    already imported it, and a stub model must not pull torch in.
     """
-    import torch
-
-    if torch.backends.mps.is_available():
+    torch = sys.modules.get("torch")
+    if torch is not None and torch.backends.mps.is_available():
         torch.mps.empty_cache()
 
 
-def _predict(model: CrossEncoder, pairs: list[tuple[str, str]]) -> list[float]:
+def _predict(model: _Scorer, query: str, texts: Sequence[str]) -> list[float]:
     try:
-        scores = model.predict(pairs, show_progress_bar=False)
+        return _score(model, query, texts)
     finally:
         _release_gpu_cache()
-    return [float(score) for score in scores]
 
 
 def reset_reranker_cache() -> None:
@@ -132,9 +305,10 @@ async def rerank(
     text. Pair it with :func:`select_relevant` to turn the scores into a
     decision.
 
-    ``reranker_model`` is any ``sentence_transformers`` cross-encoder id. There
-    is no default: which model produced a score is part of what the score means,
-    and the absolute floor a caller passes to :func:`select_relevant` is
+    ``reranker_model`` is any Hugging Face cross-encoder id with a single
+    relevance logit (a sequence-classification model with ``num_labels=1``).
+    There is no default: which model produced a score is part of what the score
+    means, and the absolute floor a caller passes to :func:`select_relevant` is
     calibrated against one specific model. See :data:`SUGGESTED_RERANKER_MODEL`
     for a starting point that is a suggestion and not a fallback.
 
@@ -144,10 +318,9 @@ async def rerank(
     if not texts:
         return []
     model = _reranker(reranker_model)
-    pairs = [(query, text) for text in texts]
-    # predict() is compute-bound, not I/O-bound. Off the event loop thread so
-    # it does not block whatever else the process is running concurrently.
-    return await asyncio.to_thread(_predict, model, pairs)
+    # Compute-bound, not I/O-bound. Off the event loop thread so it does not
+    # block whatever else the process is running concurrently.
+    return await asyncio.to_thread(_predict, model, query, list(texts))
 
 
 # A starting point, not a default: no function here reads it. BAAI/bge-reranker-v2-m3

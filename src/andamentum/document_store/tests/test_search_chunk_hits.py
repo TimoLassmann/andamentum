@@ -157,7 +157,7 @@ async def test_search_never_loads_a_cross_encoder(store):
     make every search pay for a model most callers never asked for.
     """
     await _document_with_chunks(store, "muscle", ["mitochondrial one"])
-    already_loaded = "sentence_transformers" in sys.modules
+    already_loaded = "transformers" in sys.modules
 
     await search_unified(
         db_path=str(store.db_path),
@@ -167,6 +167,6 @@ async def test_search_never_loads_a_cross_encoder(store):
     )
 
     if not already_loaded:
-        assert "sentence_transformers" not in sys.modules
+        assert "transformers" not in sys.modules
 
     assert reranking._model is None, "search must not populate the reranker cache"

@@ -180,19 +180,28 @@ def test_evenly_declining_scores_keep_everything_above_the_floor():
 
 
 class _StubCrossEncoder:
-    """Scores by how many query words a text contains. Deterministic, no weights."""
+    """Scores by how many query words a text contains. Deterministic, no weights.
+
+    Implements the same two methods the real model exposes, and records the
+    shape of every batch it is asked to score.
+    """
+
+    buckets = rerank_module._buckets_for(512)
 
     def __init__(self) -> None:
-        self.calls: list[list[tuple[str, str]]] = []
+        self.shapes: list[tuple[int, int]] = []
 
-    def predict(self, pairs, show_progress_bar=False):  # noqa: ANN001
-        self.calls.append(list(pairs))
-        scores = []
-        for query, text in pairs:
-            words = set(query.lower().split())
-            hits = sum(1 for word in text.lower().split() if word in words)
-            scores.append(hits / 10.0)
-        return scores
+    def token_lengths(self, query, texts):  # noqa: ANN001
+        # Two special tokens plus one per word, truncated like a tokenizer would.
+        return [min(2 + len(query.split()) + len(t.split()), 512) for t in texts]
+
+    def score_batch(self, query, texts, *, length):  # noqa: ANN001
+        self.shapes.append((len(texts), length))
+        words = set(query.lower().split())
+        return [
+            sum(1 for word in text.lower().split() if word in words) / 10.0
+            for text in texts
+        ]
 
 
 @pytest.fixture
@@ -218,7 +227,7 @@ async def test_rerank_never_sorts_or_filters(stub_model):
 
 async def test_rerank_on_empty_input_never_loads_a_model(stub_model):
     assert await rerank("anything", [], reranker_model="stub") == []
-    assert stub_model.calls == []
+    assert stub_model.shapes == []
 
 
 async def test_rerank_returns_plain_floats(stub_model):
@@ -237,8 +246,8 @@ async def test_rerank_and_select_compose(stub_model):
 
 
 async def test_rerank_releases_the_gpu_cache_after_every_call(stub_model, monkeypatch):
-    """Regression: without this the MPS allocator kept every batch's buffers
-    and a benchmark run failed at the 88 GB limit."""
+    """The cached tensor buffers go back after each call (the shape-keyed graph
+    memory is bounded separately, by the fixed shapes tested below)."""
     released: list[int] = []
     monkeypatch.setattr(rerank_module, "_release_gpu_cache", lambda: released.append(1))
     await rerank("q", ["a", "b"], reranker_model="stub")
@@ -247,8 +256,8 @@ async def test_rerank_releases_the_gpu_cache_after_every_call(stub_model, monkey
 
 
 async def test_rerank_releases_the_gpu_cache_even_when_predict_fails(monkeypatch):
-    class Broken:
-        def predict(self, pairs, show_progress_bar=False):
+    class Broken(_StubCrossEncoder):
+        def score_batch(self, query, texts, *, length):  # noqa: ANN001
             raise RuntimeError("MPS backend out of memory")
 
     released: list[int] = []
@@ -259,6 +268,77 @@ async def test_rerank_releases_the_gpu_cache_even_when_predict_fails(monkeypatch
     assert released == [1]
 
 
+# ── fixed input shapes (pytorch/pytorch#181213) ──────────────────────────
+
+
+def test_buckets_end_at_the_model_limit():
+    assert rerank_module._buckets_for(512) == (64, 128, 256, 512)
+    assert rerank_module._buckets_for(300) == (64, 128, 256, 300)
+    assert rerank_module._buckets_for(8192)[-1] == 8192
+    assert rerank_module._buckets_for(40) == (40,)
+    with pytest.raises(ValueError):
+        rerank_module._buckets_for(0)
+
+
+def test_planner_uses_only_the_allowed_shapes_and_covers_every_pair_once():
+    buckets = rerank_module._buckets_for(8192)
+    allowed = rerank_module._allowed_shapes(buckets)
+    rng = random.Random(7)
+    for _ in range(200):
+        lengths = [rng.randint(1, 8192) for _ in range(rng.randint(1, 300))]
+        batches = rerank_module._plan_batches(lengths, buckets=buckets)
+        assert {(b.size, b.length) for b in batches} <= allowed
+        covered = sorted(i for b in batches for i in b.indices)
+        assert covered == list(range(len(lengths)))
+        for b in batches:
+            assert 1 <= len(b.indices) <= b.size
+            assert all(lengths[i] <= b.length for i in b.indices)
+            smaller = [x for x in buckets if x < b.length]
+            assert all(lengths[i] > smaller[-1] for i in b.indices) if smaller else True
+
+
+def test_planner_refuses_a_pair_longer_than_the_model_limit():
+    with pytest.raises(ValueError, match="exceeds the model limit"):
+        rerank_module._plan_batches([10, 513], buckets=(64, 512))
+
+
+async def test_many_calls_of_varying_length_only_ever_send_the_fixed_shapes(stub_model):
+    """The regression that matters: shapes must not grow with the input."""
+    rng = random.Random(11)
+    words = ["query", "other", "text", "word"]
+    for _ in range(300):
+        texts = [
+            " ".join(rng.choice(words) for _ in range(rng.randint(1, 600)))
+            for _ in range(rng.randint(1, 60))
+        ]
+        await rerank("query words", texts, reranker_model="stub")
+    seen = set(stub_model.shapes)
+    assert seen <= rerank_module._allowed_shapes(stub_model.buckets)
+    assert len(seen) <= len(stub_model.buckets)
+
+
+async def test_filler_rows_are_scored_but_never_returned(stub_model):
+    texts = [
+        "query",
+        "nothing",
+        "query query",
+    ]  # one short batch of 3 in a 128-row shape
+    scores = await rerank("query", texts, reranker_model="stub")
+    assert scores == [0.1, 0.0, 0.2]
+    assert stub_model.shapes == [(128, 64)]
+
+
+async def test_a_wrong_number_of_scores_is_an_error_not_a_misalignment(monkeypatch):
+    class Short(_StubCrossEncoder):
+        def score_batch(self, query, texts, *, length):  # noqa: ANN001
+            return [0.5] * (len(texts) - 1)
+
+    monkeypatch.setattr(rerank_module, "_reranker", lambda _name: Short())
+    monkeypatch.setattr(rerank_module, "_release_gpu_cache", lambda: None)
+    with pytest.raises(RuntimeError, match="scores for"):
+        await rerank("q", ["a", "b"], reranker_model="stub")
+
+
 def test_missing_extra_raises_an_error_that_names_the_extra(
     monkeypatch: pytest.MonkeyPatch,
 ):
@@ -267,12 +347,12 @@ def test_missing_extra_raises_an_error_that_names_the_extra(
 
     real_import = builtins.__import__
 
-    def fail_on_sentence_transformers(name, *args, **kwargs):
-        if name == "sentence_transformers":
-            raise ImportError("No module named 'sentence_transformers'")
+    def fail_on_transformers(name, *args, **kwargs):
+        if name == "transformers":
+            raise ImportError("No module named 'transformers'")
         return real_import(name, *args, **kwargs)
 
-    monkeypatch.setattr(builtins, "__import__", fail_on_sentence_transformers)
+    monkeypatch.setattr(builtins, "__import__", fail_on_transformers)
     with pytest.raises(ImportError, match="rerank"):
         rerank_module._reranker("BAAI/bge-reranker-v2-m3")
 
@@ -333,3 +413,72 @@ async def test_a_real_cross_encoder_separates_junk_from_relevant_content():
         [("junk", junk_score), ("relevant", relevant_score)],
         min_relevance=0.01,
     ) == ["relevant"]
+
+
+def _varied_texts(rng: random.Random, n: int, *, max_words: int) -> list[str]:
+    words = "the muscle cell protein energy repair signal pathway loss of mass".split()
+    return [
+        " ".join(rng.choice(words) for _ in range(rng.randint(1, max_words)))
+        for _ in range(n)
+    ]
+
+
+@pytest.mark.rerank
+async def test_fixed_shape_scores_equal_the_library_cross_encoder():
+    """Padding to a bucket must not change a score: the attention mask hides it.
+
+    Compares against sentence-transformers' CrossEncoder, which pads each batch
+    to its own longest pair, on pairs that straddle several bucket borders.
+    """
+    import torch
+    from sentence_transformers import CrossEncoder
+
+    query = "What is the role of mitochondrial dysfunction in muscle wasting?"
+    texts = _varied_texts(random.Random(3), 60, max_words=700)
+    ours = await rerank(query, texts, reranker_model=SUGGESTED_RERANKER_MODEL)
+
+    model = rerank_module._reranker(SUGGESTED_RERANKER_MODEL)
+    library = CrossEncoder(
+        SUGGESTED_RERANKER_MODEL, device=model.device, activation_fn=torch.nn.Sigmoid()
+    )
+    theirs = library.predict([(query, t) for t in texts], show_progress_bar=False)
+    lengths = model.token_lengths(query, texts)
+    assert (
+        len(
+            {
+                b.length
+                for b in rerank_module._plan_batches(lengths, buckets=model.buckets)
+            }
+        )
+        >= 3
+    )
+    worst = max(abs(a - float(b)) for a, b in zip(ours, theirs, strict=True))
+    assert worst < 1e-4, worst
+
+
+@pytest.mark.rerank
+async def test_gpu_memory_stays_flat_over_many_calls_of_varying_length():
+    """The regression for pytorch/pytorch#181213 on the real model and device.
+
+    Before fixed shapes, each question of varying length added about 0.5 GB of
+    GPU driver memory that empty_cache could not return.
+    """
+    import torch
+
+    if not torch.backends.mps.is_available():
+        pytest.skip("the shape-keyed graph cache is an Apple GPU (MPS) issue")
+    rng = random.Random(5)
+    query = "What is the role of mitochondrial dysfunction in muscle wasting?"
+    model = rerank_module._reranker(SUGGESTED_RERANKER_MODEL)
+    # Warm up: one call per bucket up to 1024 tokens, so every shape used below
+    # has been compiled once.
+    for bucket in [b for b in model.buckets if b <= 1024]:
+        await rerank(
+            query, ["word " * (bucket - 30)], reranker_model=SUGGESTED_RERANKER_MODEL
+        )
+    before = torch.mps.driver_allocated_memory()
+    for _ in range(150):
+        texts = _varied_texts(rng, rng.randint(1, 50), max_words=600)
+        await rerank(query, texts, reranker_model=SUGGESTED_RERANKER_MODEL)
+    growth = torch.mps.driver_allocated_memory() - before
+    assert growth < 0.5 * 2**30, f"driver memory grew {growth / 2**30:.2f} GB"
