@@ -1114,6 +1114,23 @@ def test_the_registered_items_are_changed_only_by_a_search_only_freeze(
     assert seen.setup.plan_profile is None
 
 
+def test_plan_from_is_refused_without_search_only(tmp_path: Path) -> None:
+    file = write_experiment_file(tmp_path / "x.yaml")
+    with pytest.raises(ValueError, match="only together with --search-only"):
+        cli.resolve_freeze(
+            freeze_args(
+                "--experiment",
+                str(file),
+                "--inputs",
+                "base",
+                "--model",
+                "m",
+                "--plan-from",
+                "R2",
+            )
+        )
+
+
 def test_a_profile_freeze_refuses_what_does_not_fit(tmp_path: Path) -> None:
     file = write_experiment_file(tmp_path / "x.yaml")
     with pytest.raises(ValueError, match="--inputs needs --experiment"):

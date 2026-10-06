@@ -44,6 +44,7 @@ report counts it.
 from __future__ import annotations
 
 import functools
+import json
 import shutil
 import time
 from collections.abc import Awaitable, Callable, Mapping, Sequence
@@ -63,6 +64,7 @@ from .concurrency import resolve_concurrency, run_bounded
 from .arms import ArmOutput, ExperimentArm, LegacyArm, V2Arm
 from .experiment import ArmSpec, Experiment, SetSpec
 from .freeze import (
+    META_FILE,
     STORE_FILE,
     SnapshotMissing,
     SnapshotSearchOnly,
@@ -548,6 +550,60 @@ def search_only_snapshots(
     ]
 
 
+class SnapshotMismatch(SnapshotMissing):
+    """A snapshot was not taken with the inputs profile the experiment names."""
+
+
+def mismatched_snapshots(
+    exp: Experiment,
+    items: Mapping[str, Sequence[Item]],
+    snapshots: Path | None,
+    only_arms: Sequence[str] | None = None,
+) -> list[str]:
+    """What is wrong with the needed snapshots of an inputs profile: each entry
+    names a snapshot and the check it failed. A snapshot must record the
+    profile's name and hash and the experiment's keylessness, and, when the
+    profile takes its plan from another, the digest of that profile's snapshot
+    of the same item (so every arm reads the same sub-questions and queries).
+    Snapshots of ``existing`` profiles are used as they are."""
+    problems: list[str] = []
+    for label, folder in _needed_snapshots(exp, items, snapshots, only_arms):
+        parts = label.split("/")
+        if folder is None or len(parts) != 3:
+            continue
+        profile_name = parts[0]
+        profile = exp.inputs.get(profile_name)
+        if profile is None or profile.existing:
+            continue
+        try:
+            meta = json.loads((folder / META_FILE).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            problems.append(f"{label}: no readable {META_FILE}")
+            continue
+        recorded = meta.get("inputs") or {}
+        if recorded.get("profile") != profile_name:
+            problems.append(f"{label}: taken for profile {recorded.get('profile')!r}")
+        elif recorded.get("hash") != profile.profile_hash():
+            problems.append(f"{label}: taken with another definition of the profile")
+        if bool(meta.get("keyless")) != exp.keyless:
+            problems.append(f"{label}: keyless is {meta.get('keyless')!r}")
+        if profile.plan != "live":
+            plan_folder = folder.parents[2] / profile.plan / parts[1] / parts[2]
+            try:
+                plan_meta = json.loads(
+                    (plan_folder / META_FILE).read_text(encoding="utf-8")
+                )
+            except (OSError, ValueError):
+                problems.append(f"{label}: its plan snapshot {profile.plan} is missing")
+                continue
+            used = (meta.get("plan_from") or {}).get("digest")
+            if used is None or used != plan_meta.get("digest"):
+                problems.append(
+                    f"{label}: its queries are not those of the {profile.plan} snapshot"
+                )
+    return problems
+
+
 # -- the run ------------------------------------------------------------------------
 
 
@@ -683,6 +739,11 @@ async def run_experiment(
     if missing:
         raise SnapshotMissing(
             f"no snapshot for {', '.join(missing)}: run `bench freeze` for those sets"
+        )
+    mismatched = mismatched_snapshots(exp, items, dirs.snapshots, only_arms)
+    if mismatched:
+        raise SnapshotMismatch(
+            "snapshots that do not match the experiment: " + "; ".join(mismatched)
         )
     search_only = search_only_snapshots(exp, items, dirs.snapshots, only_arms)
     if search_only:

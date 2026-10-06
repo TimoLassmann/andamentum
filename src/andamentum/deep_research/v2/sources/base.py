@@ -109,6 +109,11 @@ MAX_RETRY_WAIT_S = 30.0  # a longer Retry-After or reset is an error, not a slee
 PATIENT_RETRY_WAITS_S: tuple[float, ...] = (5, 10, 20, 40, 60, 60, 60, 60)
 PATIENT_MAX_RETRY_AFTER_S = 120.0
 PATIENT_GIVE_UP_AFTER = 3
+# Total seconds a process may spend waiting on one patient source. A pool that
+# answers about one request in five never trips the "in a row" rule, so this
+# bounds it: past the cap the source is refused like a give-up and its
+# remaining searches count as failed (the experiment's rule H1 judges them).
+PATIENT_MAX_TOTAL_WAIT_S = 2700.0
 DEFAULT_TIMEOUT_S = 60.0  # OpenAlex's semantic search takes about ten seconds
 DEFAULT_RESULTS_PER_QUERY = 20
 MIN_FULL_TEXT_CHARS = 200  # shorter is an error page or a stub, not a paper
@@ -316,6 +321,8 @@ class SharedPacing:
     # sources that are no longer asked in this process
     patient_failures: dict[str, int] = field(default_factory=dict)
     gave_up: set[str] = field(default_factory=set)
+    # seconds spent waiting on each patient source in this process
+    patient_waited: dict[str, float] = field(default_factory=dict)
 
 
 _PROCESS_PACING: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, SharedPacing] = (
@@ -433,6 +440,7 @@ class SourceClient:
         self._patient = frozenset(patient)
         self._patient_failures = shared.patient_failures
         self._gave_up = shared.gave_up
+        self._patient_waited = shared.patient_waited
         self.rate_info: dict[str, RateInfo] = {}
         self.requests: Counter[str] = Counter()
         self.spent_usd: defaultdict[str, float] = defaultdict(float)
@@ -610,10 +618,13 @@ class SourceClient:
                 )
             except httpx.HTTPError as exc:
                 reason = f"{type(exc).__name__}: {exc}"
-                if attempt < retries:
-                    await self._sleep(
-                        scheduled if patient else min(scheduled, self._max_wait_s)
-                    )
+                if attempt < retries and not (
+                    patient and self._patient_budget_spent(source, scheduled)
+                ):
+                    if patient:
+                        await self._patient_sleep(source, scheduled)
+                    else:
+                        await self._sleep(min(scheduled, self._max_wait_s))
                     continue
                 if patient:
                     self._patient_exhausted(source)
@@ -627,22 +638,24 @@ class SourceClient:
             reason = _http_reason(response)
             if response.status_code in RETRY_STATUSES and attempt < retries:
                 if patient:
+                    # A Retry-After beyond the cap is the server saying "not
+                    # before then": do not ask earlier, count the request as
+                    # exhausted.
+                    asked = info.retry_after_s
+                    if asked is None or asked <= PATIENT_MAX_RETRY_AFTER_S:
+                        wait = scheduled if asked is None else max(scheduled, asked)
+                        if not self._patient_budget_spent(source, wait):
+                            await self._patient_sleep(source, wait)
+                            continue
+                else:
                     wait = (
-                        scheduled
-                        if info.retry_after_s is None
-                        else min(
-                            max(scheduled, info.retry_after_s),
-                            PATIENT_MAX_RETRY_AFTER_S,
-                        )
+                        info.retry_after_s
+                        if info.retry_after_s is not None
+                        else scheduled
                     )
-                    await self._sleep(wait)
-                    continue
-                wait = (
-                    info.retry_after_s if info.retry_after_s is not None else scheduled
-                )
-                if wait <= self._max_wait_s:
-                    await self._sleep(wait)
-                    continue
+                    if wait <= self._max_wait_s:
+                        await self._sleep(wait)
+                        continue
             if patient and response.status_code in RETRY_STATUSES:
                 self._patient_exhausted(source)
             raise SourceError(
@@ -654,6 +667,19 @@ class SourceClient:
                 retry_after_s=info.retry_after_s,
             )
         raise SourceError(source, reason or "no attempt made", url=url)  # unreachable
+
+    def _patient_budget_spent(self, source: str, next_wait_s: float) -> bool:
+        """Whether waiting *next_wait_s* more would pass the source's total
+        wait cap; if so the source is refused for the rest of the process."""
+        waited = self._patient_waited.get(source, 0.0)
+        if waited + next_wait_s > PATIENT_MAX_TOTAL_WAIT_S:
+            self._gave_up.add(source)
+            return True
+        return False
+
+    async def _patient_sleep(self, source: str, wait_s: float) -> None:
+        self._patient_waited[source] = self._patient_waited.get(source, 0.0) + wait_s
+        await self._sleep(wait_s)
 
     def _patient_exhausted(self, source: str) -> None:
         """A patient source's request ran out of retries: count it, and stop

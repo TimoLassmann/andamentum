@@ -4,6 +4,7 @@ the shared decision cache of the cells. Offline, with stand-in arms."""
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 from typing import Any
@@ -621,7 +622,18 @@ def web_experiment(*, with_inputs: bool = True, keyless: bool = False) -> Experi
     return Experiment.model_validate(data)
 
 
-async def make_snapshot(root: Path, *, setup: InputsSetup = InputsSetup()) -> Path:
+async def make_snapshot(root: Path, *, setup: InputsSetup | None = None) -> Path:
+    """Freeze W01 under *root*; a folder named ``plain`` is taken as the
+    ``plain`` profile of ``web_experiment`` (its name and hash recorded)."""
+    if setup is None:
+        setup = (
+            InputsSetup(
+                profile="plain",
+                profile_hash=web_experiment().inputs["plain"].profile_hash(),
+            )
+            if root.name == "plain"
+            else InputsSetup()
+        )
     world = World()
     import httpx
 
@@ -872,7 +884,14 @@ async def test_the_profile_names_and_hashes_and_keyless_reach_the_registry(
     tmp_path: Path, web_world: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     snapshots = tmp_path / "snap"
-    await make_snapshot(snapshots / "plain")
+    await make_snapshot(
+        snapshots / "plain",
+        setup=InputsSetup(
+            profile="plain",
+            profile_hash=web_experiment().inputs["plain"].profile_hash(),
+            keyless=True,
+        ),
+    )
     await make_snapshot(snapshots / "taken")
     monkeypatch.setattr(experiment_run, "build_answer_arm", Recorder())
     exp = web_experiment(keyless=True)
@@ -1163,3 +1182,99 @@ def test_a_report_of_a_file_without_profiles_is_what_the_earlier_code_wrote() ->
     # the old records have none of the new fields, and they still load
     starts = [r for r in records if isinstance(r, StartRecord)]
     assert starts[0].keyless is False and starts[0].inputs == {}
+
+
+async def run_plain(snapshots: Path, tmp_path: Path, exp: Experiment) -> None:
+    await run_experiment(
+        exp,
+        out_dir=tmp_path / "out",
+        dirs=DataDirs(snapshots=snapshots),
+        services=Services(
+            source_config=SourceConfig(searxng_url=SEARXNG), decision_cache=None
+        ),
+        only_arms=["base"],
+    )
+
+
+async def test_a_snapshot_of_another_profile_or_definition_is_refused(
+    tmp_path: Path, web_world: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(experiment_run, "build_answer_arm", Recorder())
+    snapshots = tmp_path / "snap"
+    await make_snapshot(
+        snapshots / "plain",
+        setup=InputsSetup(profile="plain", profile_hash="0" * 64),
+    )
+    with pytest.raises(experiment_run.SnapshotMismatch, match="another definition"):
+        await run_plain(snapshots, tmp_path, web_experiment())
+    other = tmp_path / "snap2"
+    await make_snapshot(
+        other / "plain", setup=InputsSetup(profile="elsewhere", profile_hash="x")
+    )
+    with pytest.raises(experiment_run.SnapshotMismatch, match="taken for profile"):
+        await run_plain(other, tmp_path, web_experiment())
+
+
+async def test_a_keyless_experiment_refuses_a_snapshot_taken_with_keys(
+    tmp_path: Path, web_world: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(experiment_run, "build_answer_arm", Recorder())
+    snapshots = tmp_path / "snap"
+    await make_snapshot(snapshots / "plain")  # recorded keyless: False
+    with pytest.raises(experiment_run.SnapshotMismatch, match="keyless"):
+        await run_plain(snapshots, tmp_path, web_experiment(keyless=True))
+
+
+async def test_a_profile_that_takes_its_plan_refuses_other_queries(
+    tmp_path: Path,
+) -> None:
+    exp = web_experiment()
+    exp.inputs["plain"] = exp.inputs["plain"].model_copy(update={"plan": "taken"})
+    exp.inputs["taken"] = exp.inputs["taken"].model_copy(update={"existing": False})
+    base = tmp_path / "snap"
+    folder = base / "plain" / "web" / "W01"
+    plan = base / "taken" / "web" / "W01"
+    for place, meta in (
+        (
+            folder,
+            {
+                "inputs": {
+                    "profile": "plain",
+                    "hash": exp.inputs["plain"].profile_hash(),
+                },
+                "plan_from": {"digest": "aaa"},
+            },
+        ),
+        (
+            plan,
+            {
+                "inputs": {
+                    "profile": "taken",
+                    "hash": exp.inputs["taken"].profile_hash(),
+                },
+                "digest": "bbb",
+            },
+        ),
+    ):
+        place.mkdir(parents=True)
+        (place / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+    item = Item("web", "W01", QUESTION, web=WORLD_QUESTION)
+    problems = experiment_run.mismatched_snapshots(exp, {"web": [item]}, base, ["base"])
+    assert problems == [
+        "plain/web/W01: its queries are not those of the taken snapshot"
+    ]
+    (folder / "meta.json").write_text(
+        json.dumps(
+            {
+                "inputs": {
+                    "profile": "plain",
+                    "hash": exp.inputs["plain"].profile_hash(),
+                },
+                "plan_from": {"digest": "bbb"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert (
+        experiment_run.mismatched_snapshots(exp, {"web": [item]}, base, ["base"]) == []
+    )

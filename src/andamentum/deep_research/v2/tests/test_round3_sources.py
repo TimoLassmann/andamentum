@@ -11,6 +11,7 @@ import pytest
 from andamentum.deep_research.v2.sources.base import (
     DEFAULT_RETRIES,
     PATIENT_GIVE_UP_AFTER,
+    PATIENT_MAX_TOTAL_WAIT_S,
     PATIENT_RETRY_WAITS_S,
     SourceClient,
     SourceError,
@@ -88,7 +89,7 @@ async def test_a_patient_source_succeeds_after_some_429s_with_the_scheduled_wait
     assert kit.time.sleeps == [5, 10, 20]
 
 
-async def test_a_longer_retry_after_is_honoured_up_to_two_minutes() -> None:
+async def test_a_retry_after_up_to_two_minutes_is_honoured() -> None:
     kit, client, server = clients()
     server.retry_after = "90"
     with pytest.raises(SourceError):
@@ -98,10 +99,49 @@ async def test_a_longer_retry_after_is_honoured_up_to_two_minutes() -> None:
     assert max(kit.time.sleeps) == 90
 
     kit, client, server = clients()
-    server.retry_after = "500"
+    server.retry_after = "120"
     with pytest.raises(SourceError):
         await search(client, "semantic_scholar", 1)
-    assert set(kit.time.sleeps) == {120}  # honoured, but never beyond 120 s
+    assert set(kit.time.sleeps) == {120}
+
+
+async def test_a_retry_after_beyond_two_minutes_is_not_asked_earlier() -> None:
+    kit, client, server = clients()
+    server.retry_after = "500"
+    with pytest.raises(SourceError) as error:
+        await search(client, "semantic_scholar", 1)
+    assert error.value.retry_after_s == 500
+    assert kit.time.sleeps == []  # never sleeps less than the server said
+    assert len(kit.requests) == 1
+
+
+async def test_the_total_wait_cap_refuses_a_slow_pool_that_never_trips_the_row_rule() -> (
+    None
+):
+    kit, client, server = clients()
+    answered = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        answered["n"] += 1
+        if answered["n"] % 5 == 0:  # about one answer in five
+            return httpx.Response(200, content=b'{"data": []}')
+        return httpx.Response(429, content=b"slow down")
+
+    kit._handler = handler  # noqa: SLF001
+    refused = False
+    for n in range(200):
+        try:
+            await search(client, "semantic_scholar", n)
+        except SourceError as exc:
+            if "refused for the rest of this process" in str(exc):
+                refused = True
+                break
+    assert refused
+    assert sum(kit.time.sleeps) <= PATIENT_MAX_TOTAL_WAIT_S
+    sent = len(kit.requests)
+    with pytest.raises(SourceError, match="refused for the rest of this process"):
+        await search(client, "semantic_scholar", 999)
+    assert len(kit.requests) == sent
 
 
 async def test_a_request_that_runs_out_of_retries_raises_and_counts() -> None:

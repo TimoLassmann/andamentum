@@ -752,6 +752,11 @@ def resolve_freeze(args: argparse.Namespace) -> FreezePlan:
             plan_root = args.snapshots / profile.plan
             plan_profile = profile.plan
     if args.plan_from is not None:
+        if not args.search_only:
+            raise ValueError(
+                "--plan-from is allowed only together with --search-only: a "
+                "registered profile takes its plan from the profile it names"
+            )
         plan_root, plan_profile = args.plan_from, None
     if plan_root is None and not args.model:
         raise ValueError("--model is required: this freeze plans with a model")
