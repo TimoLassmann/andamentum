@@ -156,7 +156,7 @@ def test_goal_figure_model_without_goal_check_figures_is_refused(
                 "--goal",
                 "the flow is correct",
                 "--goal-figure-model",
-                "ollama:qwen3.8:27b-mlx",
+                "ollama:qwen3.8",
             ]
         )
     assert exc.value.code == 1
@@ -175,7 +175,7 @@ def test_goal_check_figures_needs_at_least_one_goal_figure(
                 "--goal-check",
                 "figures",
                 "--goal-figure-model",
-                "ollama:qwen3.8:27b-mlx",
+                "ollama:qwen3.8",
             ]
         )
     assert exc.value.code == 1
@@ -217,7 +217,7 @@ def test_goal_figure_with_a_missing_file_is_refused(
                 "--goal-figure",
                 "Figure 1=does/not/exist.png",
                 "--goal-figure-model",
-                "ollama:qwen3.8:27b-mlx",
+                "ollama:qwen3.8",
             ]
         )
     assert exc.value.code == 2
@@ -238,7 +238,7 @@ def test_goal_figure_needing_label_and_equals_is_refused(
                 "--goal-figure",
                 "not-a-label-path-pair",
                 "--goal-figure-model",
-                "ollama:qwen3.8:27b-mlx",
+                "ollama:qwen3.8",
             ]
         )
     assert exc.value.code == 2
@@ -258,7 +258,7 @@ def test_a_valid_goal_check_figures_run_is_accepted(tmp_path) -> None:
             "--goal-figure",
             f"Figure 1={figure}",
             "--goal-figure-model",
-            "ollama:qwen3.8:27b-mlx",
+            "ollama:qwen3.8",
         ]
     )
     cli_mod._validate_args(args)
