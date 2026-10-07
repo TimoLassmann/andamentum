@@ -267,7 +267,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--model",
         metavar="MODEL",
         help="pydantic-ai model id (e.g. openai:gpt-5.4-nano, "
-        "ollama:gemma4:31b-nvfp4). Required for the review, panel and "
+        "ollama:gemma4:31b). Required for the review, panel and "
         "checklist subcommands.",
     )
     # Shared by review and checklist: the same six types route to a criterion
@@ -644,7 +644,7 @@ def _validate_args(args: argparse.Namespace) -> None:
             1,
             "--model is required.\nExamples:\n"
             "  --model openai:gpt-5.4-nano\n"
-            "  --model ollama:gemma4:31b-nvfp4",
+            "  --model ollama:gemma4:31b",
         )
     # Parsed here rather than at run time: an unknown reviewer should cost you
     # nothing, and by run time the document has been loaded and, for a URL,

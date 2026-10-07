@@ -654,7 +654,7 @@ andamentum-whetstone draft.docx --model openai:gpt-5.4-nano \
     --out review.md --out review.html --out draft.reviewed.docx
 
 <span class="tok-com"># the standard check, on a local model, with progress</span>
-andamentum-whetstone checklist draft.docx --model ollama:gemma4:26b-nvfp4 \
+andamentum-whetstone checklist draft.docx --model ollama:gemma4:26b \
     --document-type academic --out checklist.md --verbose
 
 <span class="tok-com"># style only — no model involved</span>
@@ -751,7 +751,7 @@ andamentum-whetstone references draft.docx --out draft.refs.docx
 andamentum-whetstone references draft.docx --no-lookup --out refs.md
 
 <span class="tok-com"># a model for what the text leaves open — a local one keeps it local</span>
-andamentum-whetstone references draft.pdf --model ollama:gemma4:26b-nvfp4 \
+andamentum-whetstone references draft.pdf --model ollama:gemma4:26b \
     --out draft.refs.docx</code></pre>
 
   <p><strong>Every review runs it</strong> (section 01), before the review, so the editor answers its problems beside the review's own; each of its comments is signed by the reference checker. The <code>references</code> command runs it alone, and needs no model. It is also a goal for the loop in section 06 (<code>--goal-check citations</code>). In the loop it runs every round, without the Crossref lookup, because an edit cannot change what Crossref finds.</p>
@@ -973,7 +973,7 @@ andamentum-whetstone references draft.pdf --model ollama:gemma4:26b-nvfp4 \
 result = <span class="tok-kw">await</span> <span class="tok-fn">review_document</span>(<span class="tok-str">"draft.docx"</span>, model=<span class="tok-str">"openai:gpt-5.4-nano"</span>)
 
 <span class="tok-com"># probe bank over markdown you already have</span>
-result = <span class="tok-kw">await</span> <span class="tok-fn">run_checklist</span>(markdown, model=<span class="tok-str">"ollama:gemma4:26b-nvfp4"</span>,
+result = <span class="tok-kw">await</span> <span class="tok-fn">run_checklist</span>(markdown, model=<span class="tok-str">"ollama:gemma4:26b"</span>,
                              document_type=<span class="tok-str">"academic"</span>)
 
 <span class="tok-kw">for</span> finding <span class="tok-kw">in</span> result.findings:

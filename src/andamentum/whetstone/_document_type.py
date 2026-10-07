@@ -137,7 +137,7 @@ async def _classify_with_llm(
 ) -> DocumentType:
     """Classify document type via one LLM call.
 
-    *model* is a model id string (``"ollama:gemma4:26b-nvfp4"``,
+    *model* is a model id string (``"ollama:gemma4:26b"``,
     ``"openai:gpt-5.4-nano"``), resolved through
     :func:`~andamentum.core.models.resolve_model` exactly as every other
     agent in whetstone resolves its own. Handing the raw string to

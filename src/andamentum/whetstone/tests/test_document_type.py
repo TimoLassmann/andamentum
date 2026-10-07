@@ -140,12 +140,12 @@ class TestClassifyPureFunction:
         ) as resolver:
             with mock.patch("pydantic_ai.Agent", CapturingAgent):
                 await classify(
-                    model="ollama:gemma4:26b-nvfp4",
+                    model="ollama:gemma4:26b",
                     section_titles=["S"],
                     markdown="body",
                 )
 
-        resolver.assert_called_once_with("ollama:gemma4:26b-nvfp4")
+        resolver.assert_called_once_with("ollama:gemma4:26b")
         assert seen == [sentinel]  # the resolved model, never the raw string
 
     async def test_empty_section_titles_handled(self) -> None:

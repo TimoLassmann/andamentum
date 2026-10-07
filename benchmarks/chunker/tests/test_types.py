@@ -86,7 +86,7 @@ def test_case_run_carries_metrics_and_meta():
         wall_clock_seconds=1.0,
         model_calls=1,
     )
-    run = CaseRun(case=c, metrics=metrics, model="ollama:gemma4:31b-nvfp4", error=None)
+    run = CaseRun(case=c, metrics=metrics, model="ollama:gemma4:31b", error=None)
     assert run.passed_floor is True  # 0.6 >= 0.5
 
 
