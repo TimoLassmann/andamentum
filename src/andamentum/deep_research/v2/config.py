@@ -86,6 +86,16 @@ from .strategies import (
     VerifyStrategy,
 )
 
+# The ``hybrid`` preset's time budget (round-5 speed pass). Ten pilot runs spent
+# 87% of their time screening (~118 decision calls of ~3 s with a 27B decision
+# model) although 11 of the 12 correct papers already stood within the first 14
+# of the pre-screen order (one at 28): the screen asks about the best 30 works
+# of one pooled order, once each, shown the first 1200 characters of the
+# abstract, and the run does one search round (with its citation step).
+HYBRID_RERANK_DEPTH = 30
+HYBRID_SCREEN_STATE_CHARS = 1200
+HYBRID_MAX_ROUNDS = 1
+
 # The registries: a strategy name to its implementation, one per slot.
 SCREENS: dict[str, ScreenStrategy] = {
     "generic": GenericScreen(),
@@ -144,6 +154,9 @@ _UNHASHED_AT_DEFAULT: dict[str, object] = {
     "verify": "model",
     "queue": "arrival",
     "queries": "llm",
+    "rerank_depth": None,
+    "screen_state_chars": None,
+    "max_rounds": None,
 }
 
 
@@ -184,6 +197,13 @@ class ResearchConfig(BaseModel):
     expand_seeds: int = Field(default=MAX_EXPAND_SEEDS, ge=0)
     expand_per_round: int | None = Field(default=None, ge=0)
     passages_per_work: int | None = Field(default=None, ge=1)
+    # the ``rank_only`` screen: how many works of the pooled pre-screen order it
+    # asks about (None: ``strategies.RERANK_DEPTH``) and how much of a work's
+    # abstract it shows (None: ``criteria.MAX_STATE_CHARS``)
+    rerank_depth: int | None = Field(default=None, ge=1)
+    screen_state_chars: int | None = Field(default=None, ge=200)
+    # at most this many search rounds (None: the budget's ``max_rounds`` only)
+    max_rounds: int | None = Field(default=None, ge=1)
     temperature: float | None = Field(default=0.0, ge=0.0)
     seed: int | None = DEFAULT_SEED
 
@@ -358,6 +378,9 @@ PRESETS: dict[str, ResearchConfig] = {
         expand="citations",
         facets="off",
         queries="llm_plus_question",
+        rerank_depth=HYBRID_RERANK_DEPTH,
+        screen_state_chars=HYBRID_SCREEN_STATE_CHARS,
+        max_rounds=HYBRID_MAX_ROUNDS,
         drop_below=GENERIC_DROP_BELOW,
         screen_per_subquestion=25,
         read_per_subquestion=8,

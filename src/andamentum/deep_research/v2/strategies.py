@@ -143,6 +143,7 @@ class ScreenStrategy(Protocol):
         *,
         candidates: Mapping[str, Candidate],
         signals: RankSignals,
+        config: ResearchConfig,
     ) -> list[Pair]:
         """Which waiting pairs (in the queue's order) may be screened now, and
         in what order."""
@@ -278,16 +279,17 @@ def relevance_question(subquestion: SubQuestion | str) -> Question:
     )
 
 
-def item_state(candidate: Candidate) -> dict[str, object]:
+def item_state(
+    candidate: Candidate, *, max_chars: int = MAX_STATE_CHARS
+) -> dict[str, object]:
     """What the generic screen shows of a candidate: title, abstract (or the
-    search snippet), year and venue. The question is in the question itself."""
+    search snippet, at most *max_chars* of it), year and venue. The question
+    is in the question itself."""
     work = candidate.work
     text = work.abstract or candidate.snippet
     return {
         "title": work.title,
-        "abstract": text
-        if len(text) <= MAX_STATE_CHARS
-        else text[:MAX_STATE_CHARS] + " ...",
+        "abstract": text if len(text) <= max_chars else text[:max_chars] + " ...",
         "year": work.year,
         "venue": work.venue,
     }
@@ -351,6 +353,7 @@ class GenericScreen:
         *,
         candidates: Mapping[str, Candidate],
         signals: RankSignals,
+        config: ResearchConfig,
     ) -> list[Pair]:
         return list(pairs)
 
@@ -465,7 +468,14 @@ class RankOnlyScreen(GenericScreen):
                     f"candidate {candidate.work.title!r} has no work_id; "
                     "upsert it into the store before screening"
                 )
-            answers = await screener.ask(item_state(candidate), asked, step="screen")
+            answers = await screener.ask(
+                item_state(
+                    candidate,
+                    max_chars=config.screen_state_chars or MAX_STATE_CHARS,
+                ),
+                asked,
+                step="screen",
+            )
             p = answers[RELEVANT_KEY].p_true
             if p is None:
                 raise ScreeningError(
@@ -494,13 +504,27 @@ class RankOnlyScreen(GenericScreen):
         *,
         candidates: Mapping[str, Candidate],
         signals: RankSignals,
+        config: ResearchConfig,
     ) -> list[Pair]:
+        """The waiting pairs of the works among the best ``rerank_depth`` of ONE
+        pooled pre-screen order (a work's best fused value over its
+        sub-questions, sources and dense lists), best first. The question asked
+        is the same for every sub-question, so a work's other pairs are answered
+        from the decision cache: each work costs one decision call."""
+        depth = config.rerank_depth or RERANK_DEPTH
         rows = fusion_rows(
             {}, candidates=candidates, signals=signals, with_screen=False
         )
-        places = fused_places(rows, order=[*signals.pairs, *pairs])
-        eligible = [p for p in pairs if places.get(p, RERANK_DEPTH + 1) <= RERANK_DEPTH]
-        return sorted(eligible, key=lambda p: places[p])
+        first: dict[str, int] = {}
+        for position, (work_id, _sub) in enumerate([*signals.pairs, *pairs]):
+            first.setdefault(work_id, position)
+        best: dict[str, float] = {}
+        for (work_id, _sub), row in rows.items():
+            best[work_id] = max(best.get(work_id, 0.0), row.fused)
+        pooled = sorted(best, key=lambda w: (-best[w], first.get(w, len(first)), w))
+        place = {work_id: n for n, work_id in enumerate(pooled, start=1)}
+        eligible = [p for p in pairs if place.get(p[0], depth + 1) <= depth]
+        return sorted(eligible, key=lambda p: (place[p[0]], p[1]))
 
 
 class CriteriaScreen:
@@ -527,6 +551,7 @@ class CriteriaScreen:
         *,
         candidates: Mapping[str, Candidate],
         signals: RankSignals,
+        config: ResearchConfig,
     ) -> list[Pair]:
         return list(pairs)
 

@@ -97,11 +97,20 @@ def _score(work_id: str, p: float, *, kept: bool = True) -> CandidateScore:
 # -- the preset ----------------------------------------------------------------------
 
 
-def test_hybrid_is_the_baseline_with_three_strategies_swapped() -> None:
+def test_hybrid_is_the_baseline_with_three_strategies_and_a_time_budget() -> None:
     base = PRESETS["baseline"].model_dump(exclude={"name", "description"})
     hybrid = PRESETS["hybrid"].model_dump(exclude={"name", "description"})
     differ = {k for k in base if base[k] != hybrid[k]}
-    assert differ == {"screen", "rank", "queries"}
+    assert differ == {
+        "screen",
+        "rank",
+        "queries",
+        "rerank_depth",
+        "screen_state_chars",
+        "max_rounds",
+    }
+    assert (hybrid["rerank_depth"], hybrid["screen_state_chars"]) == (30, 1200)
+    assert hybrid["max_rounds"] == 1
     assert hybrid["screen"] == "rank_only"
     assert hybrid["rank"] == "rerank_dense"
     assert hybrid["queries"] == "llm_plus_question"
@@ -177,15 +186,51 @@ async def test_rank_only_asks_about_the_original_question_not_the_part() -> None
 
 
 def test_rank_only_offers_only_the_depth_best_first() -> None:
-    n = RERANK_DEPTH + 5
+    config = PRESETS["hybrid"]
+    depth = config.rerank_depth
+    assert depth is not None
+    n = depth + 5
     candidates = {f"w{i}": _candidate(i, {"openalex": i}) for i in range(1, n + 1)}
     pairs = [(f"w{i}", "Q1") for i in range(n, 0, -1)]  # worst first
     chosen = RankOnlyScreen().select(
-        pairs, candidates=candidates, signals=RankSignals(pairs=pairs)
+        pairs, candidates=candidates, signals=RankSignals(pairs=pairs), config=config
     )
-    assert len(chosen) == RERANK_DEPTH
+    assert len(chosen) == depth
     assert chosen[0] == ("w1", "Q1")
-    assert ("w51", "Q1") not in chosen  # beyond the depth: keeps its rank, not asked
+    assert (f"w{depth + 1}", "Q1") not in chosen  # beyond the depth: not asked
+    unset = config.model_copy(update={"rerank_depth": None})
+    every = RankOnlyScreen().select(
+        pairs, candidates=candidates, signals=RankSignals(pairs=pairs), config=unset
+    )
+    assert len(every) == min(n, RERANK_DEPTH)
+
+
+def test_rank_only_pools_the_sub_questions_into_one_order() -> None:
+    # w1 is best for Q1, w2 for Q2; one pooled order over works, with every
+    # waiting pair of a chosen work (the second pair is a decision-cache hit)
+    config = PRESETS["hybrid"].model_copy(update={"rerank_depth": 2})
+    candidates = {
+        "w1": _candidate(1, {"s": 1}),
+        "w2": _candidate(2, {"t": 1}),
+        "w3": _candidate(3, {"s": 9}),
+    }
+    pairs = [("w1", "Q1"), ("w3", "Q1"), ("w2", "Q2"), ("w3", "Q2"), ("w1", "Q2")]
+    chosen = RankOnlyScreen().select(
+        pairs, candidates=candidates, signals=RankSignals(pairs=pairs), config=config
+    )
+    assert {w for w, _ in chosen} == {"w1", "w2"}
+    assert ("w1", "Q2") in chosen
+
+
+def test_the_rank_only_screen_shows_a_shortened_abstract() -> None:
+    from ..strategies import item_state
+
+    long = _candidate(1)
+    long = long.model_copy(
+        update={"work": long.work.model_copy(update={"abstract": "x" * 5000})}
+    )
+    state = item_state(long, max_chars=1200)
+    assert state["abstract"] == "x" * 1200 + " ..."
 
 
 def test_p_ordering_moves_ranks() -> None:
@@ -369,6 +414,9 @@ async def test_the_hybrid_preset_runs_end_to_end() -> None:
     assert {w.work_id for w in result.works} == held
     ranks = [e.rank for e in result.screening if e.rank is not None]
     assert ranks and all(r <= len(result.works) for r in ranks)
+    # one search round, then the configuration's round cap ends the search
+    assert result.stop_reason in {"rounds", "covered", "unresolvable", "flat"}
+    assert sum(1 for e in result.log.events if e.event == "round_start") == 1
 
 
 async def test_the_run_log_covers_every_step_in_order() -> None:

@@ -544,7 +544,8 @@ class ResearchResult(BaseModel):
     ``queries`` are the searches that were run, in order. ``verification``
     lists every flag raised; ``degraded`` gives the reason for every source or
     model failure (empty means none occurred). ``stop_reason``
-    is why the run ended (``covered``, ``flat``, ``unresolvable``, or
+    is why the run ended (``covered``, ``flat``, ``unresolvable``, ``rounds``
+    (the configuration's ``max_rounds``), or
     ``budget:<name>``). ``config_name`` and ``config_hash`` name the
     ``ResearchConfig`` the run used (``config.config_hash``); ``frozen`` is the
     digest of the frozen inputs it ran on (empty for a live run), and

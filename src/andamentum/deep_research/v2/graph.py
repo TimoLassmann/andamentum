@@ -48,7 +48,13 @@ from . import runlog, steps
 from .ask import Asker
 from .config import DEFAULT_PRESET, PRESETS, ResearchConfig, config_hash
 from .decision_cache import CHECK_NAME, check_determinism
-from .coverage import PairKey, compute_coverage, decide_stop, record_coverage
+from .coverage import (
+    PairKey,
+    StopDecision,
+    compute_coverage,
+    decide_stop,
+    record_coverage,
+)
 from .criteria import Screener
 from .dense import Embedder, EmbeddingError, OllamaDenseEmbedder, similarities
 from .frozen import FrozenInputs
@@ -422,6 +428,7 @@ class Screen(BaseNode[ResearchState, ResearchDeps, ResearchResult]):
                         ),
                         candidates=state.candidates,
                         signals=signals,
+                        config=deps.config,
                     ),
                     candidates=state.candidates,
                     subquestions=state.subquestions,
@@ -698,6 +705,9 @@ class Coverage(BaseNode[ResearchState, ResearchDeps, ResearchResult]):
                 budget=deps.budget,
                 spent=spent or None,
             )
+            cap = deps.config.max_rounds
+            if not decision.stop and cap is not None and state.round >= cap:
+                decision = StopDecision(stop=True, reason="rounds")
             covered = sum(c.covered for c in state.coverage)
             deps.progress(
                 f"Coverage: round {state.round}, {covered}/{len(state.coverage)} covered, "
