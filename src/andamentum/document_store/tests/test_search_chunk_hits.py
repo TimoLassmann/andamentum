@@ -1,5 +1,5 @@
 """Tests for chunk hits travelling through the four-signal fusion, and for the
-promise that search never reranks.
+promise that the fusion never reranks.
 
 Two properties are load-bearing here.
 
@@ -10,11 +10,10 @@ one of those rows and discarding the other two would silently lose real
 passages, and the loss would be invisible because the document still ranks
 correctly.
 
-The second is that :func:`search` stays a pure retrieval call. A default rerank
-would charge every caller — CLIs, and pipelines that run search many times per
-task — a 0.6B model's import, its multi-second load and its resident memory, and
-would return different results depending on which optional extras happen to be
-installed. These tests fail if anyone wires the reranker into the search path.
+The second is that :func:`search_unified` stays a pure fusion call. The rerank
+lives one layer up, in :func:`~andamentum.document_store.public.search`, so
+``DocumentStore.search`` and the multi-database search never load a model.
+These tests fail if anyone wires the reranker into the fusion.
 """
 
 from __future__ import annotations
@@ -151,10 +150,10 @@ def test_chunks_defaults_to_empty_not_none():
 
 
 async def test_search_never_loads_a_cross_encoder(store):
-    """Search stays a pure retrieval call — no model import, no rerank.
+    """The fusion stays a pure retrieval call — no model import, no rerank.
 
-    Fails loudly if anyone wires the reranker into the search path, which would
-    make every search pay for a model most callers never asked for.
+    Fails loudly if anyone wires the reranker into the fusion; the rerank
+    belongs to ``public.search`` alone.
     """
     await _document_with_chunks(store, "muscle", ["mitochondrial one"])
     already_loaded = "sentence_transformers" in sys.modules
@@ -169,4 +168,4 @@ async def test_search_never_loads_a_cross_encoder(store):
     if not already_loaded:
         assert "sentence_transformers" not in sys.modules
 
-    assert reranking._model is None, "search must not populate the reranker cache"
+    assert reranking._model is None, "the fusion must not populate the reranker cache"

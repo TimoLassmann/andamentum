@@ -24,10 +24,11 @@ Public API:
     )
 
 Two-stage retrieval. ``search`` ranks DOCUMENTS by a Reciprocal Rank Fusion
-sum — an ordering, not a calibrated relevance, and not comparable between
-queries. When a caller needs to know which PASSAGE to read, or how many
-results are actually relevant rather than merely highest-ranked, it takes a
-second, deliberate step:
+sum, then reorders the top 50 with the cross-encoder named by
+``reranker_model``, scoring each document by its best passage. That loads a
+0.6B model into this process at the first search. When a caller needs to know
+which PASSAGE to read, or how many results are relevant rather than merely
+highest-ranked, it takes one more step:
 
     from andamentum.document_store import get_chunks, rerank, select_relevant
 
@@ -35,11 +36,6 @@ second, deliberate step:
     scores = await rerank(question, [h.content for h in hits], reranker_model=...)
     best = select_relevant(list(zip(hits, scores, strict=True)),
                            min_relevance=..., buffer=5)
-
-``search`` never does this for you. ``rerank`` needs the optional ``rerank``
-extra and loads a 0.6B cross-encoder into this process; making it a default
-would charge every caller that memory and that load time, and would change
-what ``search`` returns depending on which extras happen to be installed.
 
 Quick start:
 

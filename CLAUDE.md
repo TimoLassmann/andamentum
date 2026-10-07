@@ -20,7 +20,7 @@ Andamentum is a single Python package (`src/andamentum/`) of tightly-scoped sub-
 
 - `andamentum.epistemic` — formal epistemology: evidence/claims/uncertainty entities, deterministic stage gates, pattern-driven work scheduling, multi-agent verification
 - `andamentum.deep_research` — web research pipeline (search → fetch → extract → verify → synthesize) built on `pydantic-graph`
-- `andamentum.document_store` — SQLite + FTS5 + sqlite-vec knowledge base: 4-signal RRF search ranks documents; `get_chunks` / `get_chunk` read the passages, and an opt-in rerank (`rerank` extra) scores them
+- `andamentum.document_store` — SQLite + FTS5 + sqlite-vec knowledge base: 4-signal RRF search ranks documents and a cross-encoder reranks the top 50 by their best passage; `get_chunks` / `get_chunk` read the passages
 - `andamentum.whetstone` — criterion-cascade review of your own drafts → markdown / HTML / tracked-changes `.docx`; reviewer profiles, checklist and panel modes, the goal loop
 - `andamentum.figures` — publication-quality scientific figures: 10 chart types, journal palettes and the andamentum report look
 - `andamentum.chunker` — structural-first semantic chunking of long markdown into 2k–10k char self-contained units. Stage 1: split at markdown headings. Stage 2: embedding-based split for over-budget sections. Stage 3 (optional): small-LLM judge for grey-zone boundaries. The LLM is never the primary segmenter.
@@ -37,7 +37,7 @@ Andamentum is a single Python package (`src/andamentum/`) of tightly-scoped sub-
 
 **Each module's full notes** — design decisions, measured numbers, pitfalls, layering reasons — live in `src/andamentum/<module>/CLAUDE.md`, which Claude Code loads when it reads files in that directory. Read it before you change the module.
 
-Everything ships in one distribution. The default dependencies are the flat union of what the sub-modules need. Three optional extras add heavier, self-contained capabilities with graceful fallback when absent: `html-articles` (trafilatura, Apache-2.0 — falls back to docling), `pdf` (WeasyPrint, BSD-3 — `typeset` raises a clear ImportError without it), and `rerank` (sentence-transformers, Apache-2.0 — `document_store.rerank` raises an ImportError naming the extra; nothing in the store calls it, so an install without it behaves identically). A fourth, `vlm`, is documented under harvest.
+Everything ships in one distribution. The default dependencies are the flat union of what the sub-modules need. Two optional extras add heavier, self-contained capabilities with graceful fallback when absent: `html-articles` (trafilatura, Apache-2.0 — falls back to docling) and `pdf` (WeasyPrint, BSD-3 — `typeset` raises a clear ImportError without it). A third, `vlm`, is documented under harvest. sentence-transformers (Apache-2.0) is a core dependency, because `document_store.search` reranks every query.
 
 ## Commands
 
@@ -155,6 +155,6 @@ git branch -d <branch-name>  # after merging back
 - `pytest.ini_options.testpaths = ["src/andamentum"]` — tests live next to the code they test, not in a top-level `tests/` directory.
 - `asyncio_mode = "auto"` — async tests don't need `@pytest.mark.asyncio`.
 - Tests marked `@pytest.mark.ollama` or `@pytest.mark.benchmark` are deselected by default (`addopts = "-m 'not ollama and not benchmark'"`). Run explicitly with `uv run pytest -m benchmark`.
-- `@pytest.mark.rerank` is deselected for the same reason as `vlm`: those tests download a real cross-encoder (~2 GB) and need the `rerank` extra. Run them with `uv run pytest -m rerank`. Every other reranking test stubs the model, and `select_relevant` is tested with no model at all — it must keep working on an install without the extra.
+- `@pytest.mark.rerank` is deselected for the same reason as `vlm`: those tests download a real cross-encoder (~2 GB). Run them with `uv run pytest -m rerank`. Every other reranking test, including the `search()` rerank tests, stubs the model, and `select_relevant` is tested with no model at all.
 - `@pytest.mark.vlm` is deselected too: those tests run a local vision-language model for `harvest` accurate mode, downloading weights and holding over a GB. Run them explicitly with `uv run pytest -m vlm`. Keep new harvest tests out of that marker by stubbing the backend — the default suite has to stay cheap enough to run while other models are loaded on the same machine.
 - WeasyPrint's flex layout breaks when `<p>` tags are inside flex children. The typeset renderer strips `<p>` wrapping from item and reference bodies as a workaround.

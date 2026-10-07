@@ -22,17 +22,15 @@ Two functions, split on purpose:
 
 - :func:`rerank` needs the model. It is the only thing here that imports
   ``sentence_transformers`` and it does so lazily, inside the call.
-- :func:`select_relevant` needs nothing but arithmetic. It is importable, and
-  testable, on an install with no ``rerank`` extra — which matters, because it
-  is the half that decides what a caller actually sees.
+- :func:`select_relevant` needs nothing but arithmetic, so it is testable
+  without loading a model.
 
-**Nothing in the store calls either of these.** :func:`~.public.search` does
-not rerank and must not start: it is called by CLIs and by pipelines that run
-it many times per task, and a default rerank would silently charge every one of
-them a 0.6B model's import, its multi-second load, and its resident memory —
-and would return different results depending on whether an optional extra
-happened to be installed. Reranking is a step a caller takes deliberately,
-after search, on the candidates it chose.
+**Where the store calls them.** :func:`~.public.search` calls :func:`rerank`
+on its fused top candidates, scoring each document by its best passage, so
+every search pays for the model. That was a measured choice: on a multi-hop
+benchmark the rerank gave the largest single gain of anything tried.
+:func:`select_relevant` is never called by the store; deciding how many
+results are relevant stays with the caller.
 
 Cost, stated plainly. The model is resident in this process for its lifetime,
 which is real memory on a unified-memory machine and is a separate budget from
@@ -50,11 +48,6 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from sentence_transformers import CrossEncoder
 
-_EXTRA_HINT = (
-    "Cross-encoder reranking needs the 'rerank' extra. "
-    "Install it with: uv sync --extra rerank  (or: pip install 'andamentum[rerank]')"
-)
-
 # Keyed by model name so switching models inside one process reloads rather
 # than silently scoring with the previous one. Loading weights costs tens of
 # seconds, which is worth paying once per process and not once per call.
@@ -68,11 +61,10 @@ def _reranker(model_name: str) -> CrossEncoder:
     if _model is not None and _model_name == model_name:
         return _model
 
-    try:
-        import torch
-        from sentence_transformers import CrossEncoder
-    except ImportError as exc:  # pragma: no cover - depends on install shape
-        raise ImportError(f"{_EXTRA_HINT} ({exc})") from exc
+    # Imported here, not at module level: torch and the model load only when a
+    # search first reranks, never on ``import andamentum.document_store``.
+    import torch
+    from sentence_transformers import CrossEncoder
 
     device = "mps" if torch.backends.mps.is_available() else "cpu"
     # Sigmoid, not the model's raw logits: the selection rule below applies an
@@ -114,8 +106,6 @@ async def rerank(
     calibrated against one specific model. See :data:`SUGGESTED_RERANKER_MODEL`
     for a starting point that is a suggestion and not a fallback.
 
-    Raises:
-        ImportError: if the ``rerank`` extra is not installed.
     """
     if not texts:
         return []
@@ -209,8 +199,7 @@ def select_relevant[T](
     """Which of ``scored`` are relevant enough to act on, most relevant first.
 
     Generic over the item type: this is selection over precomputed
-    ``(item, score)`` pairs and knows nothing about chunks. It imports nothing
-    optional, so it works without the ``rerank`` extra.
+    ``(item, score)`` pairs and knows nothing about chunks or models.
 
     Two independent checks, and **both are required**:
 

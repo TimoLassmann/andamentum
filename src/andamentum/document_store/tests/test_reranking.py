@@ -1,8 +1,7 @@
 """Tests for cross-encoder reranking and the selection rule.
 
 The selection rule is tested exhaustively and with no model, because it is the
-half that decides what a caller sees and it must work on an install without
-the ``rerank`` extra. :func:`rerank` itself is tested against a stubbed
+half that decides what a caller sees. :func:`rerank` itself is tested against a stubbed
 cross-encoder — a real one downloads ~2 GB of weights, which the default suite
 must never do.
 """
@@ -234,24 +233,6 @@ async def test_rerank_and_select_compose(stub_model):
     )
     assert "copyright notice" not in kept
     assert kept[0] in {"mitochondrial dna repair", "dna repair mechanism"}
-
-
-def test_missing_extra_raises_an_error_that_names_the_extra(
-    monkeypatch: pytest.MonkeyPatch,
-):
-    """Loud failure with the remedy, never a silent fallback to no reranking."""
-    import builtins
-
-    real_import = builtins.__import__
-
-    def fail_on_sentence_transformers(name, *args, **kwargs):
-        if name == "sentence_transformers":
-            raise ImportError("No module named 'sentence_transformers'")
-        return real_import(name, *args, **kwargs)
-
-    monkeypatch.setattr(builtins, "__import__", fail_on_sentence_transformers)
-    with pytest.raises(ImportError, match="rerank"):
-        rerank_module._reranker("BAAI/bge-reranker-v2-m3")
 
 
 def test_suggested_model_is_a_suggestion_not_a_default():
