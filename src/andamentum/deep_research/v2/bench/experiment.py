@@ -25,7 +25,15 @@ from typing import Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-SetName = Literal["litsearch", "litsearch-local", "web", "web_planted", "synergy"]
+SetName = Literal[
+    "litsearch",
+    "litsearch-local",
+    "litsearch-web",
+    "web",
+    "web_planted",
+    "simpleqa",
+    "synergy",
+]
 System = Literal["legacy", "v2", "screening", "bm25"]
 Test = Literal[
     "noninferior", "superior", "no_harm", "reduced_by", "at_least", "at_most"
@@ -38,8 +46,17 @@ Outage = Literal["stop", "record"]
 
 # The sets an arm of each system can be run on.
 SYSTEM_SETS: dict[str, frozenset[str]] = {
-    "legacy": frozenset({"litsearch", "web"}),
-    "v2": frozenset({"litsearch", "litsearch-local", "web", "web_planted"}),
+    "legacy": frozenset({"litsearch", "litsearch-web", "web", "simpleqa"}),
+    "v2": frozenset(
+        {
+            "litsearch",
+            "litsearch-local",
+            "litsearch-web",
+            "web",
+            "web_planted",
+            "simpleqa",
+        }
+    ),
     "screening": frozenset({"synergy"}),
     "bm25": frozenset({"litsearch-local"}),
 }
@@ -120,7 +137,7 @@ class SetSpec(BaseModel):
         default=0,
         ge=0,
         description=(
-            "litsearch, litsearch-local and web: the items are the seeded order's positions "
+            "every set but web_planted and synergy: the items are the seeded order's positions "
             "skip+1 to skip+n (select_subset(ids, skip + n)[skip:])."
         ),
     )
@@ -137,9 +154,10 @@ class SetSpec(BaseModel):
             raise ValueError(f"{self.name}: reviews and records belong to synergy")
         if self.name == "synergy" and self.n is not None:
             raise ValueError("synergy: give reviews and records, not n")
-        if self.skip and self.name not in ("litsearch", "litsearch-local", "web"):
+        if self.skip and self.name in ("web_planted", "synergy"):
             raise ValueError(
-                f"{self.name}: skip belongs to litsearch and web (and litsearch-local)"
+                f"{self.name}: skip belongs to litsearch and web and the other "
+                "question sets, not to this one"
             )
         if self.skip and self.n is None:
             raise ValueError(
@@ -407,6 +425,13 @@ class Experiment(BaseModel):
     judge: JudgeSpec | None = Field(
         default=None, description="Judges claim support for the trust metrics."
     )
+    grader: str | None = Field(
+        default=None,
+        description=(
+            "simpleqa: the language model that grades each answer against the "
+            "gold answer (never an arm's own model)."
+        ),
+    )
     keyless: bool = Field(
         default=False,
         description=(
@@ -496,6 +521,15 @@ class Experiment(BaseModel):
                 "a rule or report metric reads claim support, so the file must "
                 "name its judge (judge: {decision_model: ...} or {model: ...})"
             )
+        if "simpleqa" in set_names:
+            if self.grader is None:
+                raise ValueError("the simpleqa set needs a grader (grader: <model>)")
+            graded = [a.name for a in self.arms if a.model == self.grader]
+            if graded:
+                raise ValueError(
+                    f"the grader {self.grader} is the model of {', '.join(graded)}; "
+                    "an arm must not grade itself"
+                )
         for arm in self.arms:
             if arm.system == "v2" and not any(arm.runs_on(s) for s in set_names):
                 raise ValueError(f"arm {arm.name} runs on none of the sets")
@@ -607,6 +641,8 @@ class Experiment(BaseModel):
             del data["keyless"]
         if not data["set_sources"]:
             del data["set_sources"]
+        if data["grader"] is None:
+            del data["grader"]
         for entry in data["sets"]:
             if not entry["skip"]:
                 del entry["skip"]

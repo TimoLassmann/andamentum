@@ -334,7 +334,7 @@ async def test_solo_arms_run_last_one_cell_at_a_time_on_their_first_items(
         services=Services(answer_arm=lambda spec, _m, _d: arms[spec.name]),
         concurrency=4,
     )
-    assert [r.arm for r in written] == ["base"] * 5 + ["other"] * 5 + ["timed"] * 2
+    assert [r.arm for r in written] == ["base", "other"] * 5 + ["timed"] * 2
     assert TrackingArm.peak["base"] > 1  # the others ran concurrently
     assert TrackingArm.peak["timed"] == 1  # the solo cells never overlapped
     items = experiment_run.load_items(exp.set("web"), DataDirs())

@@ -478,7 +478,8 @@ async def test_an_experiment_runs_cells_concurrently_and_states_it(
     )
     assert len(written) == 16  # 4 items x 2 repeats x 2 arms
     assert all(r.error is None for r in written)
-    assert base.peak == 4 and other.peak == 4
+    # the four slots are shared item by item: two cells of each arm at once
+    assert base.peak == 2 and other.peak == 2
     records = list(read_records(registry_path(tmp_path)))
     [start] = [r for r in records if isinstance(r, StartRecord)]
     assert start.concurrency == 4

@@ -70,6 +70,7 @@ from .freeze import (
 from .pool import load_pool_items, pool_comparison, pool_tables
 from .health import SearxDown, require_searxng
 from .judging import ClaimJudge, UrlChecker
+from .simpleqa import AnswerGrader
 from .litsearch import DEFAULT_SEED, DEFAULT_SUBSET, download_litsearch, load_litsearch
 from .registry import RegistryMismatch
 from .results import (
@@ -356,6 +357,12 @@ def build_parser() -> argparse.ArgumentParser:
         "(the same folder as --litsearch-local-dir)",
     )
     run.add_argument("--synergy-dir", type=Path, default=None)
+    run.add_argument(
+        "--simpleqa-dir",
+        type=Path,
+        default=None,
+        help="the folder that holds simple_qa_test_set.csv (the simpleqa set)",
+    )
     run.add_argument("--searxng-url", default=DEFAULT_SEARXNG_URL)
     run.add_argument(
         "--only-sets",
@@ -1006,6 +1013,7 @@ async def _run_with(
             decision_cache=shared_decisions,
             keyless=keyless,
             embedding_model=args.embedding_model,
+            grader=(AnswerGrader(model=exp.grader) if exp.grader is not None else None),
         )
         written = await run_experiment(
             exp,
@@ -1015,6 +1023,7 @@ async def _run_with(
                 litsearch=args.litsearch_dir,
                 litsearch_local=args.litsearch_local_dir,
                 synergy=args.synergy_dir,
+                simpleqa=args.simpleqa_dir,
             ),
             services=services,
             progress=lambda line: print(line, file=sys.stderr),

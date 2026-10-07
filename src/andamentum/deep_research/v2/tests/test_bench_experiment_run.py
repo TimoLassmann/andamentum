@@ -261,7 +261,7 @@ async def test_every_arm_runs_every_item_repeat_times_and_is_recorded(
     assert first.output.result.passages == []  # slimmed for the registry
 
 
-async def test_cells_run_sequentially_arm_by_arm(tmp_path: Path) -> None:
+async def test_cells_run_sequentially_item_by_item(tmp_path: Path) -> None:
     order: list[str] = []
 
     def make(name: str):  # noqa: ANN202
@@ -278,7 +278,7 @@ async def test_cells_run_sequentially_arm_by_arm(tmp_path: Path) -> None:
         dirs=DataDirs(),
         services=services(arms),
     )
-    assert order == ["base"] * 4 + ["other"] * 4
+    assert order == ["base", "other"] * 4
 
 
 async def test_a_second_invocation_resumes_and_runs_nothing_twice(

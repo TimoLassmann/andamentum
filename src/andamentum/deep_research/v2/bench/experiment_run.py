@@ -100,11 +100,12 @@ from .screening import ScreeningArm, parse_arm
 from .stability import GOOD_PLANTED_OUTCOMES, planted_outcome
 from .subsets import select_subset
 from .synergy import DEFAULT_REVIEWS, ScreeningReview, load_review, sample_records
+from .simpleqa import AnswerGrader, SimpleQAItem, load_simpleqa
 from .web_set import WEB_QUESTIONS, WebQuestion, answer_correct
 
 WORK_DIR = "work"
 # the sets scored by recall of gold papers
-LITSEARCH_SETS = ("litsearch", "litsearch-local")
+LITSEARCH_SETS = ("litsearch", "litsearch-local", "litsearch-web")
 NO_SNAPSHOT = "no snapshot"
 
 # Metrics where a failed item is a zero, not an absent value: a crashing arm
@@ -124,7 +125,15 @@ OUTCOME_METRICS: dict[str, tuple[str, ...]] = {
         "recall_at_50",
         "found_any",
     ),
+    "litsearch-web": (
+        "recall_at_5",
+        "recall_at_10",
+        "recall_at_20",
+        "recall_at_50",
+        "found_any",
+    ),
     "web": ("correct",),
+    "simpleqa": ("correct", "attempted"),
     # adopted_false_claim is not here: a crash is not "did not adopt", and the
     # rule that reads it needs every item to have a value
     "web_planted": ("correct", "good_planted_outcome"),
@@ -141,6 +150,7 @@ class Item:
     question: str
     litsearch: LitSearchItem | None = None
     web: WebQuestion | None = None
+    simpleqa: SimpleQAItem | None = None
     planted: PlantedSource | None = None
     review: ScreeningReview | None = None
 
@@ -153,6 +163,7 @@ class DataDirs:
     litsearch: Path | None = None
     litsearch_local: Path | None = None
     synergy: Path | None = None
+    simpleqa: Path | None = None
 
 
 def _web_questions(spec: SetSpec) -> list[WebQuestion]:
@@ -180,9 +191,12 @@ def load_items(spec: SetSpec, dirs: DataDirs) -> list[Item]:
             Item("litsearch", i.query.query_id, i.query.query, litsearch=i)
             for i in data.items
         ]
-    if spec.name == "litsearch-local":
+    if spec.name in ("litsearch-local", "litsearch-web"):
+        # litsearch-web: the same queries and gold papers, searched on the open
+        # web and literature; a gold paper is matched by title (its local id is
+        # in no live source)
         if dirs.litsearch_local is None:
-            raise ValueError("the litsearch-local set needs --litsearch-local-dir")
+            raise ValueError(f"the {spec.name} set needs --litsearch-local-dir")
         local = load_litsearch_local(
             dirs.litsearch_local,
             n=spec.n or DEFAULT_SUBSET,
@@ -190,8 +204,20 @@ def load_items(spec: SetSpec, dirs: DataDirs) -> list[Item]:
             skip=spec.skip,
         )
         return [
-            Item("litsearch-local", i.query.query_id, i.query.query, litsearch=i)
+            Item(spec.name, i.query.query_id, i.query.query, litsearch=i)
             for i in local.items
+        ]
+    if spec.name == "simpleqa":
+        if dirs.simpleqa is None:
+            raise ValueError("the simpleqa set needs --simpleqa-dir")
+        return [
+            Item("simpleqa", q.item_id, q.question, simpleqa=q)
+            for q in load_simpleqa(
+                dirs.simpleqa,
+                n=spec.n or DEFAULT_SUBSET,
+                seed=spec.seed,
+                skip=spec.skip,
+            )
         ]
     if spec.name == "web":
         return [
@@ -347,6 +373,8 @@ class Services:
     judge_label: str | None = None
     url_checker: UrlChecker | None = None
     judge_digest: str | None = None
+    # grades the simpleqa answers (the experiment file names its model)
+    grader: AnswerGrader | None = None
     # a shared read-through HTTP cache for the live v2 arms (frozen arms are offline)
     http_cache: ResearchStore | None = None
     # the local embedding model of the v2 arms whose preset ranks by dense
@@ -680,6 +708,18 @@ async def _answer_cell(
         )
         if frozen is not None and (share := failed_search_share(frozen)) is not None:
             metrics["inputs_failed_search_share"] = share
+    elif item.simpleqa is not None:
+        if services.grader is None:
+            raise ValueError("the simpleqa set needs the experiment's grader")
+        grade = await services.grader.grade(
+            question=item.simpleqa.question,
+            gold=item.simpleqa.answer,
+            answer=output.answer_text,
+        )
+        metrics: dict[str, float | None] = {
+            "correct": 1.0 if grade == "correct" else 0.0,
+            "attempted": 0.0 if grade == "not_attempted" else 1.0,
+        }
     elif item.web is not None:
         verdicts: list[bool] | None = None
         if services.judge is not None:
@@ -751,8 +791,10 @@ async def run_experiment(
     ``only_arms`` does the same for arms (snapshots are checked only for them;
     the order stays the file's, solo arms last).
 
-    ``concurrency`` is how many cells of one arm are in flight at once (arms
-    still run one after another). It is 1 unless every language model of the
+    The cells of the non-solo arms run item by item: every arm's cell of the
+    first item of each set, then of the second, and so on, so the arms meet the
+    same state of the network and the services and a stopped run leaves paired
+    cells behind. ``concurrency`` is how many cells are in flight at once. It is 1 unless every language model of the
     experiment (the arms' and the judge's) is an Ollama ``-cloud`` model
     (``concurrency.resolve_concurrency`` refuses anything else); the
     decision model's requests are serialised by ``core.decisions`` whatever the
@@ -762,6 +804,8 @@ async def run_experiment(
     models = [a.model for a in exp.arms]
     if exp.judge is not None:
         models.append(exp.judge.model)
+    if exp.grader is not None:
+        models.append(exp.grader)
     concurrency = resolve_concurrency(concurrency, models=models)
     if only_sets is not None:
         unknown = [n for n in only_sets if n not in {s.name for s in exp.sets}]
@@ -851,10 +895,12 @@ async def run_experiment(
         ),
     )
     done = {r.cell for r in runs_of(path, experiment_hash=exp.config_hash())}
-    written: list[RunRecord] = []
+    # (item position, set position, arm position) -> the cell's job
+    shared: list[tuple[tuple[int, int, int], Callable[[], Awaitable[RunRecord]]]] = []
+    solo: list[list[Callable[[], Awaitable[RunRecord]]]] = []
     # clean-timing (solo) arms go last, one cell at a time
     ordered = [a for a in exp.arms if not a.is_solo] + exp.solo_arms
-    for spec in ordered:
+    for arm_position, spec in enumerate(ordered):
         if only_arms is not None and spec.name not in only_arms:
             continue
         info = by_name[spec.name]
@@ -863,13 +909,13 @@ async def run_experiment(
         answer_arms: dict[tuple[Mode, str | None], ExperimentArm] = {}
         screening_arm: ScreeningArm | None = None
         jobs: list[Callable[[], Awaitable[RunRecord]]] = []
-        for set_spec in chosen:
+        for set_position, set_spec in enumerate(chosen):
             if not spec.runs_on(set_spec.name):
                 continue
             arm_items = items[set_spec.name]
             if spec.solo is not None:
                 arm_items = arm_items[: spec.solo]
-            for item in arm_items:
+            for item_position, item in enumerate(arm_items):
                 for repeat in range(1, exp.repeats_of(spec) + 1):
                     cell = (spec.name, item.set_name, item.item_id, repeat)
                     if cell in done:
@@ -893,26 +939,32 @@ async def run_experiment(
                                 ),
                             )
                         arm = answer_arms[built]
-                    jobs.append(
-                        functools.partial(
-                            _run_cell,
-                            exp=exp,
-                            spec=spec,
-                            info=info,
-                            arm=arm,
-                            item=item,
-                            repeat=repeat,
-                            path=path,
-                            out_dir=out_dir,
-                            dirs=dirs,
-                            services=services,
-                            progress=progress,
-                            clock=clock,
-                        )
+                    job = functools.partial(
+                        _run_cell,
+                        exp=exp,
+                        spec=spec,
+                        info=info,
+                        arm=arm,
+                        item=item,
+                        repeat=repeat,
+                        path=path,
+                        out_dir=out_dir,
+                        dirs=dirs,
+                        services=services,
+                        progress=progress,
+                        clock=clock,
                     )
-        written += await run_bounded(
-            jobs, concurrency=1 if spec.is_solo else concurrency
-        )
+                    if spec.is_solo:
+                        jobs.append(job)
+                    else:
+                        key = (item_position, set_position, arm_position)
+                        shared.append((key, job))
+        if jobs:
+            solo.append(jobs)
+    shared.sort(key=lambda entry: entry[0])
+    written = await run_bounded([job for _key, job in shared], concurrency=concurrency)
+    for jobs in solo:
+        written += await run_bounded(jobs, concurrency=1)
     return written
 
 

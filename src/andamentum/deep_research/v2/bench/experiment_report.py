@@ -79,7 +79,17 @@ DEFAULT_REPORT_METRICS: dict[str, list[str]] = {
         "kept_precision",
         "kept_n",
     ],
+    "litsearch-web": [
+        "recall_at_5",
+        "recall_at_10",
+        "recall_at_20",
+        "recall_at_50",
+        "found_any",
+        "kept_precision",
+        "kept_n",
+    ],
     "web": ["correct", "claim_precision", "unsourced_share", "link_integrity"],
+    "simpleqa": ["correct", "attempted"],
     "web_planted": [
         "correct",
         "adopted_false_claim",
@@ -99,7 +109,9 @@ COST_METRICS = (
 SPREAD_METRICS: dict[str, list[str]] = {
     "litsearch": ["recall_at_20", "kept_n"],
     "litsearch-local": ["recall_at_20", "kept_n"],
+    "litsearch-web": ["recall_at_20", "kept_n"],
     "web": ["correct", "claim_precision"],
+    "simpleqa": ["correct"],
     "web_planted": ["good_planted_outcome"],
     "synergy": ["kept_recall"],
 }
@@ -970,7 +982,11 @@ def _gold_by_item(
     exp: Experiment, litsearch_dir: Path, *, set_name: str = "litsearch"
 ) -> dict[str, list[Work]]:
     spec = exp.set(set_name)
-    load = load_litsearch_local if set_name == "litsearch-local" else load_litsearch
+    load = (
+        load_litsearch_local
+        if set_name in ("litsearch-local", "litsearch-web")
+        else load_litsearch
+    )
     data = load(litsearch_dir, n=spec.n or 30, seed=spec.seed, skip=spec.skip)
     return {item.query.query_id: list(item.gold) for item in data.items}
 
