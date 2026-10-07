@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import httpx
 import pytest
 
 from andamentum.core import fetch_gate, url_safety
+from andamentum.deep_research.v2.sources import browser_fetch
+from andamentum.deep_research.v2.sources.browser_fetch import BrowserPage
 from andamentum.deep_research.v2.sources import (
     ArxivSource,
     OpenAlexSource,
@@ -238,30 +242,236 @@ async def test_a_partial_answer_is_returned_with_a_warning() -> None:
     assert source.take_warnings() == []
 
 
-async def test_steps_record_a_blocked_search_as_degraded_and_a_partial_as_a_note() -> (
-    None
-):
-    from andamentum.deep_research.v2 import steps
-
-    blocked = SourceKit(lambda _r: httpx.Response(200, content=_RATE_LIMITED))
-    outcome = await steps.search(
-        {"q1": ["apollo"]}, sources=[web(blocked)], filters={}, limit=5
-    )
-    assert outcome.candidates == []
-    [reason] = outcome.degraded
-    assert "web search failed for 'apollo'" in reason and "brave" in reason
-
-    partial = SourceKit(lambda _r: httpx.Response(200, content=_PARTIAL))
-    outcome = await steps.search(
-        {"q1": ["apollo"]}, sources=[web(partial)], filters={}, limit=1
-    )
-    assert len(outcome.candidates) == 1 and outcome.degraded == []
-    assert len(outcome.notes) == 1 and "partial search" in outcome.notes[0]
-
-
 async def test_web_queries_are_spaced_by_the_shared_interval() -> None:
     kit = SourceKit(results, intervals={"web": 1.5})
     reader = web(kit)
     await reader.search("one", limit=1)
     await reader.search("two", limit=1)
     assert kit.time.sleeps == [1.5]
+
+
+# -- the Chrome fallback of fetch_text --------------------------------------------
+
+CDP = "http://127.0.0.1:9222"
+PAGE = "https://docs.example.net/apollo"
+PAGE_TEXT = "Apollo lattices are sampled sparsely in practice. " * 8
+
+
+class FakeBrowser:
+    """Stands in for ``browser_page_text``: counts the pages it was asked for."""
+
+    def __init__(
+        self, *, text: str = PAGE_TEXT, error: SourceError | None = None
+    ) -> None:
+        self.text = text
+        self.error = error
+        self.urls: list[str] = []
+        self.running = 0
+        self.peak = 0
+        self.hold: asyncio.Event | None = None
+
+    async def __call__(self, cdp_url: str, url: str) -> BrowserPage:
+        assert cdp_url == CDP
+        self.urls.append(url)
+        self.running += 1
+        self.peak = max(self.peak, self.running)
+        try:
+            if self.hold is not None:
+                await self.hold.wait()
+            if self.error is not None:
+                raise self.error
+            return BrowserPage(href=url, title="Apollo", text=self.text)
+        finally:
+            self.running -= 1
+
+
+def page_handler(status: int, *, body: bytes = b"blocked"):
+    def handle(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/robots.txt":
+            return httpx.Response(404)
+        return httpx.Response(
+            status, content=body, headers={"content-type": "text/plain"}
+        )
+
+    return handle
+
+
+def chrome_web(
+    kit: SourceKit,
+    browser: FakeBrowser,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    cdp: str | None = CDP,
+) -> WebSource:
+    monkeypatch.setattr(url_safety, "is_safe_url", lambda url, **_kw: (True, ""))
+    fetch_gate._robots_cache_clear()
+    monkeypatch.setattr(browser_fetch, "browser_page_text", browser)
+    return WebSource(searxng_url=SEARX, browser_cdp_url=cdp, client=kit.client)
+
+
+def apollo_page(url: str = PAGE) -> Work:
+    return Work(url=url, title="An invented documentation page")
+
+
+async def test_a_plain_fetch_that_works_never_opens_the_browser(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    kit = SourceKit(page_handler(200, body=PAGE_TEXT.encode()))
+    browser = FakeBrowser()
+    fetched = await chrome_web(kit, browser, monkeypatch).fetch_text(apollo_page())
+    assert fetched is not None and fetched.text == PAGE_TEXT
+    assert browser.urls == [] and "chrome-cdp" not in kit.client.extractions.values()
+
+
+async def test_a_403_is_read_through_the_browser_and_cached_for_replay(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    kit = SourceKit(page_handler(403))
+    browser = FakeBrowser()
+    source = chrome_web(kit, browser, monkeypatch)
+    before = kit.client.fetched_bytes
+    fetched = await source.fetch_text(apollo_page())
+    assert fetched is not None and fetched.text == PAGE_TEXT and fetched.source == "web"
+    assert "chrome-cdp" in fetched.content_type
+    assert browser.urls == [PAGE]
+    assert kit.client.extractions[PAGE] == "chrome-cdp"
+    assert kit.client.fetched_bytes == before + len(PAGE_TEXT.encode())
+    # replay: the text is in the cache under the web text key, no browser, no request
+    requests = len(kit.requests)
+    again = await source.fetch_text(apollo_page())
+    assert again is not None and again.text == PAGE_TEXT
+    assert browser.urls == [PAGE] and len(kit.requests) == requests
+
+
+@pytest.mark.parametrize(
+    ("status", "body"), [(404, b"gone"), (500, b"oops"), (403, b"blocked")]
+)
+async def test_http_errors_fall_back_to_the_browser(
+    monkeypatch: pytest.MonkeyPatch, status: int, body: bytes
+) -> None:
+    kit = SourceKit(page_handler(status, body=body), retries=0)
+    browser = FakeBrowser()
+    fetched = await chrome_web(kit, browser, monkeypatch).fetch_text(apollo_page())
+    assert fetched is not None and browser.urls == [PAGE]
+
+
+async def test_a_page_with_too_little_text_falls_back_to_the_browser(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    kit = SourceKit(page_handler(200, body=b"Enable JavaScript to view this page."))
+    browser = FakeBrowser()
+    fetched = await chrome_web(kit, browser, monkeypatch).fetch_text(apollo_page())
+    assert fetched is not None and fetched.text == PAGE_TEXT and browser.urls == [PAGE]
+
+
+async def test_a_bot_check_in_the_browser_is_an_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    kit = SourceKit(page_handler(403))
+    browser = FakeBrowser(
+        error=SourceError("web", "bot check", kind="http", status=403)
+    )
+    with pytest.raises(SourceError) as caught:
+        await chrome_web(kit, browser, monkeypatch).fetch_text(apollo_page())
+    assert caught.value.reason == "bot check" and caught.value.status == 403
+    assert list(kit.store.iter_cache()) == []  # nothing was kept
+
+
+async def test_an_unsafe_final_address_is_refused_and_nothing_is_kept(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    kit = SourceKit(page_handler(403))
+    browser = FakeBrowser(
+        error=SourceError("web", "ended on a refused address", kind="refused")
+    )
+    with pytest.raises(SourceError) as caught:
+        await chrome_web(kit, browser, monkeypatch).fetch_text(apollo_page())
+    assert caught.value.kind == "refused"
+    assert list(kit.store.iter_cache()) == []
+
+
+async def test_a_browser_transport_failure_keeps_the_plain_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    kit = SourceKit(page_handler(403))
+    browser = FakeBrowser(error=SourceError("web", "no Chrome", kind="transport"))
+    with pytest.raises(SourceError) as caught:
+        await chrome_web(kit, browser, monkeypatch).fetch_text(apollo_page())
+    assert caught.value.status == 403 and caught.value.kind == "http"
+
+
+async def test_a_pdf_never_goes_to_the_browser(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    kit = SourceKit(page_handler(403))
+    browser = FakeBrowser()
+    with pytest.raises(SourceError) as caught:
+        await chrome_web(kit, browser, monkeypatch).fetch_text(
+            apollo_page("https://docs.example.net/Paper.PDF")
+        )
+    assert caught.value.status == 403 and browser.urls == []
+
+
+async def test_no_browser_is_configured_so_the_plain_error_stands(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    kit = SourceKit(page_handler(403))
+    browser = FakeBrowser()
+    source = chrome_web(kit, browser, monkeypatch, cdp=None)
+    with pytest.raises(SourceError) as caught:
+        await source.fetch_text(apollo_page())
+    assert caught.value.status == 403 and browser.urls == []
+
+
+async def test_a_rate_limit_and_a_gate_refusal_never_go_to_the_browser(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    kit = SourceKit(page_handler(429), retries=0)
+    browser = FakeBrowser()
+    with pytest.raises(SourceError) as limited:
+        await chrome_web(kit, browser, monkeypatch).fetch_text(apollo_page())
+    assert limited.value.kind == "rate_limited" and browser.urls == []
+
+    kit = SourceKit(page_handler(200, body=PAGE_TEXT.encode()))
+    with pytest.raises(SourceError) as refused:  # a paywalled publisher is refused
+        await chrome_web(kit, browser, monkeypatch).fetch_text(
+            apollo_page("https://www.nature.com/articles/invented")
+        )
+    assert refused.value.kind == "refused" and browser.urls == []
+
+
+async def test_an_offline_client_never_opens_the_browser(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from andamentum.deep_research.v2.sources.base import SourceClient
+    from andamentum.deep_research.v2.store import ResearchStore
+
+    browser = FakeBrowser()
+    monkeypatch.setattr(browser_fetch, "browser_page_text", browser)
+    source = WebSource(
+        browser_cdp_url=CDP,
+        client=SourceClient(ResearchStore.in_memory(), offline=True),
+    )
+    with pytest.raises(SourceError) as caught:
+        await source.fetch_text(apollo_page())
+    assert caught.value.kind == "offline" and browser.urls == []
+
+
+async def test_at_most_three_tabs_are_open_at_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    kit = SourceKit(page_handler(403))
+    browser = FakeBrowser()
+    browser.hold = asyncio.Event()
+    source = chrome_web(kit, browser, monkeypatch)
+    pages = [apollo_page(f"https://docs.example.net/p{i}") for i in range(6)]
+    tasks = [asyncio.ensure_future(source.fetch_text(w)) for w in pages]
+    for _ in range(200):
+        await asyncio.sleep(0)
+        if browser.running == 3:
+            break
+    assert browser.running == 3
+    browser.hold.set()
+    results = await asyncio.gather(*tasks)
+    assert all(r is not None for r in results)
+    assert browser.peak == 3 and len(browser.urls) == 6

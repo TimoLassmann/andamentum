@@ -155,6 +155,20 @@ async def test_no_chrome_is_a_transport_error_that_names_the_fix() -> None:
     assert caught.value.kind == "transport"
 
 
+async def test_a_tab_failure_names_the_source_it_was_asked_for() -> None:
+    from andamentum.deep_research.searxng_search import SEARXNG_SOURCE
+
+    tab = browser_search._evaluate_in_new_tab
+    with pytest.raises(SourceError) as default:
+        await tab("http://127.0.0.1:9", url="https://example.org/", script="1")
+    assert default.value.source == SEARXNG_SOURCE
+    with pytest.raises(SourceError) as named:
+        await tab(
+            "http://127.0.0.1:9", url="https://example.org/", script="1", source="web"
+        )
+    assert named.value.source == "web" and named.value.kind == "transport"
+
+
 async def test_the_web_source_searches_through_the_browser_one_page(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

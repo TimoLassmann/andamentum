@@ -158,9 +158,12 @@ def read_page(raw: str) -> tuple[PageState, list[dict[str, JsonValue]]]:
     return state, results
 
 
-async def _evaluate_in_new_tab(cdp_url: str, *, url: str, script: str) -> str:
+async def _evaluate_in_new_tab(
+    cdp_url: str, *, url: str, script: str, source: str = SEARXNG_SOURCE
+) -> str:
     """Open *url* in a new tab of the Chrome at *cdp_url*, run *script* once the
-    page has loaded, close the tab and return the script's string value."""
+    page has loaded, close the tab and return the script's string value. A
+    failure is a ``SourceError`` named *source*."""
     import websockets
 
     from .v2.sources.base import SourceError
@@ -171,7 +174,7 @@ async def _evaluate_in_new_tab(cdp_url: str, *, url: str, script: str) -> str:
             tab = (await http.put(f"{base}/json/new?about:blank")).json()
     except (httpx.HTTPError, ValueError) as exc:
         raise SourceError(
-            SEARXNG_SOURCE,
+            source,
             f"no Chrome answers at {cdp_url} ({type(exc).__name__}); start Chrome "
             "with --remote-debugging-port and its own --user-data-dir",
             kind="transport",
@@ -210,7 +213,7 @@ async def _evaluate_in_new_tab(cdp_url: str, *, url: str, script: str) -> str:
                 )
     except (OSError, TimeoutError, RuntimeError, websockets.WebSocketException) as exc:
         raise SourceError(
-            SEARXNG_SOURCE,
+            source,
             f"the browser search page {url} failed: {type(exc).__name__}: {exc}",
             kind="transport",
             url=url,
@@ -225,7 +228,7 @@ async def _evaluate_in_new_tab(cdp_url: str, *, url: str, script: str) -> str:
     value = result.get("value") if isinstance(result, dict) else None
     if not isinstance(value, str):
         raise SourceError(
-            SEARXNG_SOURCE,
+            source,
             f"the search page {url} gave no reading",
             kind="parse",
             url=url,

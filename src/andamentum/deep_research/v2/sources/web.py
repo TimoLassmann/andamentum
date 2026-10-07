@@ -17,6 +17,7 @@ through the shared client and reuses the gate, the SSRF layer and the extractor.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Mapping
 from urllib.parse import urlparse
 
@@ -33,6 +34,7 @@ from andamentum.references.works import canonical_url
 
 from ..store import ResearchStore
 from ..types import Candidate
+from . import browser_fetch
 from ._util import as_mapping, squash, year_of_date
 from .base import (
     DEFAULT_RESULTS_PER_QUERY,
@@ -46,6 +48,11 @@ from .base import (
 NAME = "web"
 MAX_PAGES = 3  # SearxNG pages of ~10-20 results; three cover any sensible limit
 SNIPPET_CHARS = 1000
+# Tabs of the Chrome the page fallback may have open at once.
+BROWSER_TABS = 3
+# A plain fetch that failed this way may be tried again through the Chrome.
+BROWSER_FALLBACK_KINDS = frozenset({"http", "parse", "transport"})
+CHROME_EXTRACTION = "chrome-cdp"
 
 
 class WebSource:
@@ -75,6 +82,7 @@ class WebSource:
         self._endpoint = f"{(searxng_url or '').rstrip('/')}/search"
         self._tdm = tdm_allowed_hosts
         self._warnings: list[str] = []
+        self._tabs = asyncio.Semaphore(BROWSER_TABS)
 
     def take_warnings(self) -> list[str]:
         """The partial-search warnings since the last call (and forget them)."""
@@ -131,12 +139,45 @@ class WebSource:
         )
 
     async def fetch_text(self, work: Work) -> FetchedText | None:
-        """The text of the page at the work's URL, or None when it has no URL."""
+        """The text of the page at the work's URL, or None when it has no URL.
+
+        The plain fetch comes first (SSRF check, robots and paywall gate, size
+        cap, extractor, cache). When it fails with ``http``, ``parse`` or
+        ``transport``, a Chrome is configured and the URL is not a PDF, the
+        page is read through the Chrome (``browser_fetch``) and the text is
+        cached like any fetched text, so a replay reads it from the cache.
+        """
         if not work.url:
             return None
-        return await self._client.fetch_document(
-            NAME, work.url, tdm_allowed_hosts=self._tdm
+        try:
+            return await self._client.fetch_document(
+                NAME, work.url, tdm_allowed_hosts=self._tdm
+            )
+        except SourceError as plain:
+            if not self._browser or not _browser_may_retry(plain, work.url):
+                raise
+            try:
+                return await self._fetch_in_browser(self._browser, work.url)
+            except SourceError as browser:
+                if browser.kind == "refused" or browser.status == 403:
+                    raise browser from plain
+                raise plain from browser
+
+    async def _fetch_in_browser(self, cdp_url: str, url: str) -> FetchedText:
+        async with self._tabs:
+            page = await browser_fetch.browser_page_text(cdp_url, url)
+        fetched = self._client.keep_text(
+            NAME, url, page.text, content_type=browser_fetch.CONTENT_TYPE
         )
+        self._client.fetched_bytes += len(page.text.encode("utf-8"))
+        self._client.extractions[url] = CHROME_EXTRACTION
+        return fetched
+
+
+def _browser_may_retry(error: SourceError, url: str) -> bool:
+    return error.kind in BROWSER_FALLBACK_KINDS and not urlparse(
+        url
+    ).path.lower().endswith(".pdf")
 
 
 def _candidate(

@@ -1,9 +1,9 @@
-"""READ: passages, quote location, finding extraction, and one work end to end."""
+"""READ: passages, the window, quote location, the soft quote check, and one page
+end to end (text order, retraction, notes, events). Synthetic text, no network,
+no model beyond ``ScriptedLLM``."""
 
 from __future__ import annotations
 
-import itertools
-import json
 from typing import Literal
 
 import httpx
@@ -11,26 +11,29 @@ import pytest
 
 from andamentum.references import Work
 
-from ..ask import BudgetExhausted
-from ..criteria import Screener
+from .. import runlog
+from ..ask import UNTRUSTED, BudgetExhausted
 from ..read import (
+    MAX_FINDINGS_PER_PAGE,
     PASSAGE_MAX_CHARS,
-    QUOTE_MIN_CHARS,
+    SNIPPET_MIN_CHARS,
     ReadDeps,
-    ReadTarget,
-    extract_findings,
+    build_window,
+    check_quote,
+    check_retraction,
+    load_page,
     locate_quote,
-    prefilter,
-    quote_is_long_enough,
-    read_work,
-    read_works,
+    read_page,
     split_passages,
+    unreadable_degraded,
 )
+from ..runlog import RunLogger
 from ..sources.base import FetchedText, SearchFilters, SourceError
+from ..sources.browser_fetch import CONTENT_TYPE as CHROME_TYPE
 from ..sources.crossref import CrossrefSource
 from ..store import ResearchStore
-from ..types import Budget, Candidate, Criterion, Passage, SubQuestion
-from .llm_stub import ScriptedLLM, decisions, http, make_asker
+from ..types import Budget, Candidate, LogEvent, Passage, SubQuestion
+from .llm_stub import ScriptedLLM, http, make_asker
 
 SUBQ = SubQuestion(id="Q1", text="How does Apollo caching affect latency?")
 TEXT = (
@@ -43,6 +46,10 @@ TEXT = (
 QUOTE = (
     "enabling the Apollo cache reduced median latency from 120 ms to 45 ms "
     "across all tested workloads"
+)
+SNIPPET = (
+    "Apollo caching cut median latency from 120 ms to 45 ms in the benchmark, "
+    "across all of the tested workloads."
 )
 
 
@@ -65,174 +72,190 @@ def test_passages_are_exact_slices_of_the_text() -> None:
 def test_small_paragraphs_are_packed_up_to_the_target() -> None:
     text = "\n\n".join(f"Short paragraph number {i} says one thing." for i in range(5))
     passages = split_passages(text, work_id="W1")
-    assert len(passages) == 1
-    assert passages[0].text == text
-
-
-def test_long_paragraph_is_cut_at_sentence_ends() -> None:
-    sentence = "The cache holds the hot keys of the service in memory. "
-    text = (sentence * 60).strip()
-    passages = split_passages(text, work_id="W1")
-    assert len(passages) > 1
-    assert all(p.text.endswith(".") for p in passages)
-    assert all(len(p.text) <= PASSAGE_MAX_CHARS for p in passages)
+    assert len(passages) == 1 and passages[0].text == text
 
 
 def test_a_sentence_longer_than_the_maximum_is_cut_at_whitespace() -> None:
-    text = "word " * 1000
-    passages = split_passages(text.strip(), work_id="W1")
+    passages = split_passages(("word " * 1000).strip(), work_id="W1")
     assert len(passages) > 1
     assert all(len(p.text) <= PASSAGE_MAX_CHARS for p in passages)
-    assert "wor" not in {p.text.split()[-1] for p in passages}
 
 
 def test_repeated_text_is_one_passage_and_empty_text_none() -> None:
     assert split_passages("", work_id="W1") == []
     assert split_passages("  \n\n  ", work_id="W1") == []
-    twice = "Same boilerplate sentence appears here.\n\n" * 1
-    assert len(split_passages(twice * 2, work_id="W1")) == 1
+    assert (
+        len(split_passages("Same boilerplate sentence here.\n\n" * 2, work_id="W1"))
+        == 1
+    )
 
 
-def test_passage_ids_depend_on_the_work() -> None:
-    a = split_passages(TEXT, work_id="W1")
-    b = split_passages(TEXT, work_id="W2")
-    assert {p.passage_id for p in a}.isdisjoint({p.passage_id for p in b})
+# -- window ------------------------------------------------------------------
+
+
+def _paragraphs(count: int, *, marked: dict[int, str]) -> str:
+    """*count* paragraphs of about 1,000 characters, each its own passage; the
+    ones in *marked* carry a distinctive sentence."""
+    out = []
+    for i in range(count):
+        base = f"Paragraph {i} filler. " + "plain filler words go here. " * 35
+        out.append(base[:900] + (" " + marked[i] if i in marked else ""))
+    return "\n\n".join(out)
+
+
+def test_a_text_within_the_limit_is_one_whole_passage_with_exact_offsets() -> None:
+    text = "\n  Short page about Apollo.\n\nSecond paragraph.  \n"
+    [window] = build_window(text, work_id="W1", query="apollo", max_chars=5000)
+    assert window.text == text.strip()
+    assert text[window.start : window.end] == window.text
+    assert build_window("  \n ", work_id="W1", query="x", max_chars=5000) == []
+
+
+def test_the_window_takes_the_best_passages_in_document_order() -> None:
+    text = _paragraphs(
+        20,
+        marked={
+            3: "Zephyr turbine output rose strongly.",
+            14: "The zephyr turbine was tested.",
+        },
+    )
+    window = build_window(
+        text, work_id="W1", query="zephyr turbine output", max_chars=2200
+    )
+    assert [text[p.start : p.end] for p in window] == [p.text for p in window]
+    assert [p.start for p in window] == sorted(p.start for p in window)
+    joined = "\n".join(p.text for p in window)
+    assert (
+        "Zephyr turbine output rose" in joined and "zephyr turbine was tested" in joined
+    )
+    assert sum(len(p.text) for p in window) <= 2200 + 4
+    assert len(window) == 2  # far apart: two separate spans
+
+
+def test_adjacent_passages_are_merged_into_one_exact_slice() -> None:
+    text = _paragraphs(
+        12, marked={5: "Quasar lattice width measured.", 6: "Quasar lattice depth too."}
+    )
+    window = build_window(text, work_id="W1", query="quasar lattice", max_chars=2200)
+    assert len(window) == 1
+    [merged] = window
+    assert "width measured" in merged.text and "depth too" in merged.text
+    assert text[merged.start : merged.end] == merged.text
+    assert "\n\n" in merged.text  # the whitespace between them is inside the span
+
+
+def test_the_query_terms_drive_the_choice() -> None:
+    text = _paragraphs(
+        15, marked={2: "Alpha river flows north.", 11: "Beta mountain stands tall."}
+    )
+    river = build_window(text, work_id="W1", query="alpha river", max_chars=1100)
+    mountain = build_window(text, work_id="W1", query="beta mountain", max_chars=1100)
+    assert "Alpha river" in " ".join(p.text for p in river)
+    assert "Beta mountain" in " ".join(p.text for p in mountain)
+    assert "Beta mountain" not in " ".join(p.text for p in river)
 
 
 # -- quotes ------------------------------------------------------------------
 
 
-def test_locate_quote_exact() -> None:
+def test_locate_quote_exact_and_folded() -> None:
+    start = TEXT.index("median latency")
     assert locate_quote("median latency", TEXT) == (
-        TEXT.index("median latency"),
-        TEXT.index("median latency") + len("median latency"),
+        start,
+        start + len("median latency"),
     )
-
-
-def test_locate_quote_ignores_case_whitespace_and_typography() -> None:
     text = "The “Apollo” cache — in short bursts —\n reduced   latency."
     span = locate_quote('the "apollo" cache - in short bursts - reduced latency', text)
-    assert span is not None
-    assert text[span[0] : span[1]] == text[: len(text) - 1]
+    assert span is not None and text[span[0] : span[1]] == text[: len(text) - 1]
 
 
-def test_locate_quote_not_found_and_empty() -> None:
+def test_locate_quote_not_found_empty_and_no_false_match() -> None:
     assert locate_quote("a claim that is nowhere in the text", TEXT) is None
     assert locate_quote("   ", TEXT) is None
+    assert locate_quote("Apollo cache increased median latency", TEXT) is None
 
 
-def test_locate_quote_maps_back_through_expanding_characters() -> None:
-    text = "Die Straße war lang. Weitere Sätze folgen hier."
-    span = locate_quote("die STRASSE war lang", text)
+def test_literal_backslash_n_and_t_read_as_a_space() -> None:
+    text = "The Apollo cache holds hot keys.\nIt evicts the oldest first."
+    quote = r"holds hot keys.\nIt evicts\tthe oldest first."
+    span = locate_quote(quote, text)
     assert span is not None
-    assert text[span[0] : span[1]] == "Die Straße war lang"
+    assert text[span[0] : span[1]] == "holds hot keys.\nIt evicts the oldest first."
+    assert locate_quote(r"hot keys.\r\nIt evicts", text) is not None
 
 
-def test_short_quotes_are_too_little() -> None:
-    assert not quote_is_long_enough("x" * (QUOTE_MIN_CHARS - 1))
-    assert quote_is_long_enough("x" * QUOTE_MIN_CHARS)
+def test_a_literal_backslash_n_in_the_source_still_matches_exactly() -> None:
+    text = r"Split the lines on \n before parsing the header."
+    assert locate_quote(r"on \n before", text) is not None
 
 
-def test_prefilter_keeps_document_order_of_the_best_overlap() -> None:
-    passages = [_passage(f"filler text number {i} about nothing") for i in range(6)]
-    passages[4] = _passage("Apollo cache latency numbers", start=500)
-    kept = prefilter(passages, query="Apollo cache latency", cap=2)
-    assert passages[4] in kept
-    assert [p.start for p in kept] == sorted(p.start for p in kept)
-    assert prefilter(passages, query="anything", cap=10) == passages
-
-
-# -- extraction --------------------------------------------------------------
-
-
-async def test_extraction_keeps_only_findings_whose_quote_is_in_a_passage() -> None:
-    passages = split_passages(TEXT, work_id="W1")
-    assert len(passages) == 1
-    passage = passages[0]
-    criteria = [
-        Criterion(
-            id="Q1-C1",
-            text="Does it report a latency?",
-            kind="must",
-            applies_to="passage",
-        )
-    ]
-
-    def respond(instructions: str, prompt: str) -> dict[str, object]:
-        return {
-            "findings": [
-                {
-                    "passage": 1,
-                    "claim": "Apollo caching cut median latency from 120 ms to 45 ms.",
-                    "quote": QUOTE.upper(),  # same words, different case
-                    "criteria": ["Q1-C1", "not-a-criterion"],
-                },
-                {
-                    "passage": 1,
-                    "claim": "Apollo makes everything ten times faster.",
-                    "quote": "Apollo makes everything ten times faster in every case",
-                    "criteria": [],
-                },
-                {
-                    "passage": 1,
-                    "claim": "Too short.",
-                    "quote": "Apollo",
-                    "criteria": [],
-                },
-                {
-                    "passage": 7,  # a wrong passage number: found anyway
-                    "claim": "SaltLog adds about 3 ms per request in verbose mode.",
-                    "quote": "adds roughly 3 ms of overhead per request when verbose mode is on",
-                    "criteria": [],
-                },
-            ]
-        }
-
-    asker = make_asker(model=ScriptedLLM(respond))
-    findings, dropped = await extract_findings(
-        passages,
-        subquestion=SUBQ,
-        criteria=criteria,
-        asker=asker,
-        ids=itertools.count(12),
+def test_a_table_row_is_found_without_its_pipes() -> None:
+    text = (
+        "| Product | Year | Latency |\n| --- | :---: | ---: |\n"
+        "| Apollo | 2019 | 45 ms |\n| SaltLog | 2021 | 3 ms |\n"
     )
-
-    assert [f.finding_id for f in findings] == ["F12", "F13"]
-    first = findings[0]
-    assert first.quote == QUOTE  # the passage's own words, not the model's casing
-    assert passage.text[passage.text.index(first.quote) :].startswith(first.quote)
-    assert first.criterion_ids == ["Q1-C1"]
-    assert first.passage_id == passage.passage_id and first.work_id == "W1"
-    assert findings[1].quote.startswith("adds roughly 3 ms")
-    assert [d.kind for d in dropped] == ["quote_missing", "quote_missing"]
-    assert asker.stats.llm_calls == 1
-
-
-async def test_extraction_with_no_passages_asks_nothing() -> None:
-    asker = make_asker(model=ScriptedLLM(lambda *_: {"findings": []}))
-    assert await extract_findings(
-        [], subquestion=SUBQ, criteria=[], asker=asker, ids=itertools.count(1)
-    ) == ([], [])
-    assert asker.stats.llm_calls == 0
+    row = locate_quote("| Apollo | 2019 | 45 ms |", text)
+    assert row is not None and text[row[0] : row[1]] == "| Apollo | 2019 | 45 ms |"
+    cells = locate_quote("Apollo 2019 45 ms", text)
+    assert cells is not None and text[cells[0] : cells[1]] == "Apollo | 2019 | 45 ms"
+    # header, separator row and a row, as a model copies a table
+    block = locate_quote(
+        "Year | Latency |\n| --- | :---: | ---: |\n| Apollo | 2019", text
+    )
+    assert block is not None
+    assert text[block[0] : block[1]].startswith("Year") and text[
+        block[0] : block[1]
+    ].endswith("2019")
+    assert locate_quote("|---|:---:|---:|", text) is None  # a separator is no quote
+    assert locate_quote("Apollo | 2018", text) is None
 
 
-# -- one work, end to end ----------------------------------------------------
+def test_a_markdown_link_reads_as_its_text() -> None:
+    text = "The service uses [Apollo](https://example.org/apollo)for caching reads."
+    span = locate_quote("The service uses Apollo for caching reads.", text)
+    assert span is not None and span[0] == 0 and span[1] == len(text)
+
+
+def test_an_elided_quote_is_not_matched() -> None:
+    assert locate_quote("Apollo is a caching layer ... adds roughly 3 ms", TEXT) is None
+
+
+def test_check_quote_tries_the_named_passage_first_then_the_others() -> None:
+    a = _passage("Alpha says the cache is warm every morning.", start=0)
+    b = _passage("Beta says the cache is warm every morning.", start=100)
+    both = [a, b]
+    found = check_quote("says the cache is warm", both, named=2)
+    assert found is not None and found[0] is b
+    found = check_quote("says the cache is warm", both, named=1)
+    assert found is not None and found[0] is a
+    found = check_quote(
+        "Beta says the cache", both, named=1
+    )  # wrong number: found anyway
+    assert found is not None and found[0] is b and found[1] == "Beta says the cache"
+    assert check_quote("nothing like it", both, named=1) is None
+    assert check_quote("says the cache", both, named=99) is not None
+    assert check_quote("SAYS THE CACHE", both) is not None
+
+
+# -- doubles -----------------------------------------------------------------
 
 
 class FakeProvider:
-    """A text source: holds ``text`` (as ``access``), holds nothing, or fails."""
-
-    name = "fake"
+    """A text source: holds ``text``, holds nothing (None), or fails."""
 
     def __init__(
         self,
         text: str | None = TEXT,
         *,
+        name: str = "fake",
         access: Literal["full_text", "abstract"] = "full_text",
+        content_type: str = "",
         error: SourceError | None = None,
     ) -> None:
+        self.name = name
         self.text = text
         self.access: Literal["full_text", "abstract"] = access
+        self.content_type = content_type
         self.error = error
         self.calls = 0
 
@@ -252,6 +275,7 @@ class FakeProvider:
             url="https://example.org/p",
             text=self.text,
             access=self.access,
+            content_type=self.content_type,
         )
 
 
@@ -273,116 +297,296 @@ def _crossref(*, retracted: bool):
     return handler
 
 
-def _llm() -> ScriptedLLM:
-    def respond(instructions: str, prompt: str) -> dict[str, object]:
-        if "choose which passages" in instructions.lower():
-            return {"passages": [1]}
-        return {
-            "findings": [
-                {
-                    "passage": 1,
-                    "claim": "Apollo caching cut median latency from 120 ms to 45 ms.",
-                    "quote": QUOTE,
-                    "criteria": [],
-                }
-            ]
-        }
+def _finding(passage: int, claim: str, quote: str) -> dict[str, object]:
+    return {"passage": passage, "claim": claim, "quote": quote}
 
-    return ScriptedLLM(respond)
+
+def _llm(*findings: dict[str, object]) -> ScriptedLLM:
+    given = list(findings) or [
+        _finding(1, "Apollo caching cut median latency from 120 ms to 45 ms.", QUOTE)
+    ]
+    return ScriptedLLM(lambda _i, _p: {"findings": given})
 
 
 def _deps(
-    *,
-    provider: FakeProvider,
-    retracted: bool = False,
+    *providers: FakeProvider,
     llm: ScriptedLLM | None = None,
-    store: ResearchStore | None = None,
+    retracted: bool = False,
     budget: Budget | None = None,
-    decision_model=None,
+    window_chars: int = 12_000,
+    logged: bool = True,
 ) -> ReadDeps:
-    asker = make_asker(
-        model=llm or _llm(), store=store, budget=budget, decision_model=decision_model
-    )
+    asker = make_asker(model=llm or _llm(), budget=budget)
+    if logged:
+        asker.log = RunLogger(clock=lambda: 0.0)
     return ReadDeps(
-        screener=Screener(asker=asker),
+        asker=asker,
         crossref=CrossrefSource(
             store=asker.store, http=http(_crossref(retracted=retracted))
         ),
-        providers=[provider],
+        providers=list(providers) or [FakeProvider()],
+        window_chars=window_chars,
     )
 
 
-def _work(deps: ReadDeps, **fields: object) -> Work:
+def _candidate(deps: ReadDeps, *, snippet: str = "", **fields: object) -> Candidate:
     base: dict[str, object] = {
         "doi": "10.5555/apollo",
         "title": "Apollo caching",
         "year": 2024,
+        "url": "https://example.org/apollo",
     }
-    return deps.store.upsert_work(Work(**{**base, **fields}))  # type: ignore[arg-type]
+    work = deps.asker.store.upsert_work(Work(**{**base, **fields}))  # type: ignore[arg-type]
+    return Candidate(work=work, sources=["web"], snippet=snippet)
 
 
-async def test_a_work_is_read_into_stored_passages_and_a_verified_finding() -> None:
-    provider = FakeProvider()
-    deps = _deps(provider=provider)
-    work = _work(deps)
+def _events(deps: ReadDeps, name: str | None = None) -> list[LogEvent]:
+    assert deps.asker.log is not None
+    return [e for e in deps.asker.log.log.events if name is None or e.event == name]
 
-    reading = await read_work(
-        work, subquestions=[SUBQ], criteria={}, deps=deps, ids=itertools.count(1)
+
+# -- notes and the soft quote check ---------------------------------------------
+
+
+async def test_a_page_gives_a_verified_finding_in_the_passages_own_words() -> None:
+    llm = _llm(_finding(1, "  Apollo caching cut\nlatency. ", QUOTE.upper()))
+    deps = _deps(llm=llm)
+    reading = await read_page(
+        _candidate(deps), subquestion=SUBQ, queries=["apollo latency"], deps=deps
     )
+    [finding] = reading.findings
+    assert finding.quote_verified and finding.quote == QUOTE  # not the model's casing
+    assert finding.claim == "Apollo caching cut latency."
+    passage = deps.asker.store.get_passage(finding.passage_id)
+    assert passage is not None and finding.quote in passage.text
+    assert finding.work_id == reading.work.work_id and finding.subquestion_id == "Q1"
+    assert reading.via == "fetched" and reading.readable
+    assert deps.asker.stats.llm_calls == 1
+    assert deps.asker.stats.step_llm_calls == {"Notes": 1}
+    assert deps.asker.store.get_work(reading.work.work_id).access == "full_text"  # type: ignore[union-attr]
 
-    assert reading.excluded == "" and reading.done == ["Q1"]
-    assert [f.finding_id for f in reading.findings] == ["F1"]
-    finding = reading.findings[0]
-    stored = deps.store.get_passage(finding.passage_id)
-    assert stored is not None and finding.quote in stored.text
-    assert deps.store.get_work(work.work_id).retracted == "no"  # type: ignore[union-attr]
-    items = deps.store.run_items(deps.asker.run_id, "finding")
-    assert [i.ref_id for i in items] == ["F1"]
-    assert reading.work.access == "full_text"
-    assert deps.store.get_work(work.work_id).access == "full_text"  # type: ignore[union-attr]
-    assert provider.calls == 1
+
+async def test_an_unverified_finding_is_kept_not_dropped() -> None:
+    llm = _llm(
+        _finding(
+            1,
+            "Apollo makes everything ten times faster.",
+            "Apollo makes\n everything   ten times faster",
+        ),
+        _finding(
+            1,
+            "SaltLog adds about 3 ms.",
+            "adds roughly 3 ms of overhead per request when verbose mode is on",
+        ),
+        _finding(1, "Short quote that is located.", "Apollo is a caching layer"),
+        _finding(9, "A wrong passage number.", "nowhere to be found in the page"),
+    )
+    deps = _deps(llm=llm)
+    reading = await read_page(_candidate(deps), subquestion=SUBQ, queries=[], deps=deps)
+    first, second, third, fourth = reading.findings
+    assert not first.quote_verified
+    assert (
+        first.quote == "Apollo makes everything ten times faster"
+    )  # whitespace squashed
+    assert first.passage_id == reading.passages[0].passage_id
+    assert second.quote_verified and third.quote_verified
+    assert third.quote == "Apollo is a caching layer"  # a short, located quote counts
+    assert (
+        not fourth.quote_verified
+        and fourth.passage_id == reading.passages[0].passage_id
+    )
+    noted = _events(deps, "finding_noted")
+    assert [e.data["verified"] for e in noted] == [False, True, True, False]
+    [summary] = _events(deps, "notes")
+    assert summary.data["findings"] == 4 and summary.data["unverified"] == 2
+
+
+async def test_duplicates_are_dropped_and_findings_are_capped() -> None:
+    same = _finding(1, "One.", QUOTE)
+    again = _finding(1, "The same quote again.", QUOTE.lower())
+    many = [
+        _finding(1, f"Claim number {i}.", f"an invented quote number {i}")
+        for i in range(12)
+    ]
+    deps = _deps(llm=_llm(same, again, *many))
+    reading = await read_page(_candidate(deps), subquestion=SUBQ, queries=[], deps=deps)
+    assert len(reading.findings) == MAX_FINDINGS_PER_PAGE
+    assert reading.findings[0].claim == "One."
+    assert sum(1 for f in reading.findings if f.quote == QUOTE) == 1
+    assert any("beyond" in n for n in reading.notes)
+
+
+async def test_the_prompt_fences_the_passages_and_warns_about_them() -> None:
+    llm = _llm()
+    deps = _deps(llm=llm)
+    await read_page(_candidate(deps), subquestion=SUBQ, queries=[], deps=deps)
+    [(instructions, message)] = llm.calls
+    assert instructions.endswith(UNTRUSTED)
+    assert "character for character" in instructions and "No ellipsis" in instructions
+    assert "QUESTION: " + SUBQ.text in message
+    assert "[1]\n<<<\n" + TEXT + "\n>>>" in message
+
+
+async def test_a_model_failure_on_the_notes_is_degraded_and_the_page_has_no_findings() -> (
+    None
+):
+    llm = ScriptedLLM(lambda _i, _p: {"unexpected": 1})
+    deps = _deps(llm=llm)
+    reading = await read_page(_candidate(deps), subquestion=SUBQ, queries=[], deps=deps)
+    assert reading.findings == []
+    assert (
+        len(reading.degraded) == 1
+        and "notes for Apollo caching failed" in reading.degraded[0]
+    )
+    assert reading.passages  # the window was read and stored
+    [summary] = _events(deps, "notes")
+    assert summary.data["findings"] == 0 and summary.data["error"]
+
+
+async def test_a_spent_call_budget_propagates() -> None:
+    deps = _deps(budget=Budget(max_llm_calls=1))
+    deps.asker.stats.llm_calls = 1
+    with pytest.raises(BudgetExhausted) as spent:
+        await read_page(_candidate(deps), subquestion=SUBQ, queries=[], deps=deps)
+    assert spent.value.name == "max_llm_calls"
+
+
+async def test_an_unreadable_page_asks_the_model_nothing() -> None:
+    deps = _deps(FakeProvider(None))
+    reading = await read_page(_candidate(deps), subquestion=SUBQ, queries=[], deps=deps)
+    assert not reading.readable and reading.findings == []
+    assert deps.asker.stats.llm_calls == 0
+    assert _events(deps, "notes_input") == [] and _events(deps, "notes") == []
+
+
+# -- text order ---------------------------------------------------------------
 
 
 async def test_the_first_source_holding_text_wins_and_the_rest_are_not_asked() -> None:
-    nothing = FakeProvider(None)
-    wins = FakeProvider()
-    spare = FakeProvider()
-    deps = _deps(provider=nothing)
-    deps.providers = [nothing, wins, spare]
-    work = _work(deps)
-    await read_work(
-        work, subquestions=[SUBQ], criteria={}, deps=deps, ids=itertools.count(1)
-    )
+    nothing, wins, spare = FakeProvider(None), FakeProvider(), FakeProvider()
+    deps = _deps(nothing, wins, spare)
+    await load_page(_candidate(deps), subquestion=SUBQ, queries=[], deps=deps)
     assert (nothing.calls, wins.calls, spare.calls) == (1, 1, 0)
+
+
+async def test_text_beats_the_abstract_and_the_abstract_beats_the_snippet() -> None:
+    deps = _deps(FakeProvider(TEXT))
+    candidate = _candidate(deps, abstract="An abstract about Apollo.", snippet=SNIPPET)
+    reading = await load_page(candidate, subquestion=SUBQ, queries=[], deps=deps)
+    assert reading.via == "fetched" and reading.passages[0].text == TEXT
+
+    deps = _deps(FakeProvider(None))
+    candidate = _candidate(deps, abstract="An abstract about Apollo.", snippet=SNIPPET)
+    reading = await load_page(candidate, subquestion=SUBQ, queries=[], deps=deps)
+    assert reading.via == "abstract" and reading.work.access == "abstract"
+    assert reading.passages[0].text == "An abstract about Apollo."
+
+    deps = _deps(FakeProvider(None))
+    reading = await load_page(
+        _candidate(deps, snippet=SNIPPET), subquestion=SUBQ, queries=[], deps=deps
+    )
+    assert reading.via == "snippet" and reading.passages[0].text == SNIPPET
+    assert reading.readable
+
+
+async def test_a_short_snippet_is_nothing_and_a_failure_makes_the_page_unreadable() -> (
+    None
+):
+    short = "x" * (SNIPPET_MIN_CHARS - 1)
+    deps = _deps(FakeProvider(None))
+    reading = await load_page(
+        _candidate(deps, snippet=short), subquestion=SUBQ, queries=[], deps=deps
+    )
+    assert reading.via == "none" and not reading.readable
+    assert reading.work.access == "metadata"
+    assert _events(deps, "unreadable")
+
+    failing = FakeProvider(
+        error=SourceError("fake", "HTTP 403", kind="http", status=403)
+    )
+    deps = _deps(failing)
+    reading = await load_page(
+        _candidate(deps, snippet=short), subquestion=SUBQ, queries=[], deps=deps
+    )
+    assert reading.via == "none" and reading.work.access == "unreadable"
+    assert reading.status == 403 and reading.error == "HTTP 403"
+    assert any("403" in n for n in reading.failed_notes) and reading.degraded == []
+    [unreadable] = _events(deps, "unreadable")
+    assert any("403" in r for r in unreadable.data["reasons"])  # type: ignore[union-attr]
+
+
+async def test_a_failed_page_is_still_read_from_its_snippet() -> None:
+    failing = FakeProvider(
+        error=SourceError("fake", "HTTP 403", kind="http", status=403)
+    )
+    deps = _deps(failing)
+    reading = await read_page(
+        _candidate(deps, snippet=SNIPPET), subquestion=SUBQ, queries=[], deps=deps
+    )
+    assert reading.via == "snippet" and reading.failed_notes
+    assert reading.status is None and reading.error == ""
+    [finding] = reading.findings
+    assert finding.quote_verified is False  # QUOTE is not in the snippet
+    [fetched] = _events(deps, "fetched")
+    assert fetched.data["via"] == "snippet" and fetched.data["ok"] is True
+
+
+async def test_refused_and_offline_failures_are_not_failed_notes() -> None:
+    refused = FakeProvider(error=SourceError("fake", "paywall", kind="refused"))
+    offline = FakeProvider(error=SourceError("fake", "not cached", kind="offline"))
+    deps = _deps(refused, offline)
+    reading = await load_page(_candidate(deps), subquestion=SUBQ, queries=[], deps=deps)
+    assert reading.failed_notes == [] and reading.degraded == []
+    assert len(reading.notes) == 2
+    assert reading.work.access == "unreadable"  # a refusal is a failure, not degraded
+    deps = _deps(offline)
+    reading = await load_page(_candidate(deps), subquestion=SUBQ, queries=[], deps=deps)
+    assert reading.work.access == "metadata"  # offline only: nothing failed
+
+
+async def test_a_redistributable_abstract_only_and_the_chrome_marker() -> None:
+    deps = _deps(FakeProvider(TEXT, content_type=CHROME_TYPE))
+    reading = await load_page(_candidate(deps), subquestion=SUBQ, queries=[], deps=deps)
+    assert reading.via == "chrome"
+    deps = _deps(FakeProvider("Provider abstract text.", access="abstract"))
+    reading = await load_page(_candidate(deps), subquestion=SUBQ, queries=[], deps=deps)
+    assert reading.via == "abstract" and reading.work.access == "abstract"
 
 
 async def test_the_fetched_byte_budget_stops_reading_before_the_fetch() -> None:
     provider = FakeProvider()
-    deps = _deps(provider=provider, budget=Budget(max_fetch_bytes=100))
+    deps = _deps(provider, budget=Budget(max_fetch_bytes=100))
     deps.fetched_bytes = lambda: 250  # what the source client has fetched so far
-    work = _work(deps)
     with pytest.raises(BudgetExhausted) as spent:
-        await read_work(
-            work, subquestions=[SUBQ], criteria={}, deps=deps, ids=itertools.count(1)
-        )
+        await load_page(_candidate(deps), subquestion=SUBQ, queries=[], deps=deps)
     assert spent.value.name == "max_fetch_bytes"
     assert provider.calls == 0 and deps.asker.stats.fetched_bytes == 250
 
 
+async def test_fetched_bytes_are_synced_into_the_run_stats() -> None:
+    deps = _deps()
+    deps.fetched_bytes = lambda: 4096
+    await load_page(_candidate(deps), subquestion=SUBQ, queries=[], deps=deps)
+    assert deps.asker.stats.fetched_bytes == 4096
+
+
+# -- retraction ------------------------------------------------------------------
+
+
 async def test_a_retracted_work_is_excluded_and_never_read() -> None:
     provider = FakeProvider()
-    deps = _deps(provider=provider, retracted=True)
-    work = _work(deps)
-
-    reading = await read_work(
-        work, subquestions=[SUBQ], criteria={}, deps=deps, ids=itertools.count(1)
-    )
-
+    deps = _deps(provider, retracted=True)
+    candidate = _candidate(deps)
+    reading = await read_page(candidate, subquestion=SUBQ, queries=[], deps=deps)
     assert reading.excluded.startswith("retracted")
-    assert reading.findings == [] and reading.passages == []
-    assert provider.calls == 0
-    assert deps.asker.stats.llm_calls == 0
-    assert deps.store.get_work(work.work_id).retracted == "retracted"  # type: ignore[union-attr]
+    assert reading.findings == [] and reading.passages == [] and not reading.readable
+    assert provider.calls == 0 and deps.asker.stats.llm_calls == 0
+    assert deps.asker.store.get_work(candidate.work.work_id).retracted == "retracted"  # type: ignore[union-attr]
+    [excluded] = _events(deps, "excluded")
+    assert (
+        excluded.step == "Read" and excluded.data["work_id"] == candidate.work.work_id
+    )
+    assert _events(deps, "fetched") == []
 
 
 async def test_a_failed_retraction_check_is_reported_not_assumed_fine(
@@ -396,282 +600,108 @@ async def test_a_failed_retraction_check_is_reported_not_assumed_fine(
     def down(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("no route", request=request)
 
-    deps = _deps(provider=FakeProvider())
-    deps.crossref = CrossrefSource(store=deps.store, http=http(down))
-    work = _work(deps)
-    reading = await read_work(
-        work, subquestions=[SUBQ], criteria={}, deps=deps, ids=itertools.count(1)
-    )
+    deps = _deps()
+    deps.crossref = CrossrefSource(store=deps.asker.store, http=http(down))
+    candidate = _candidate(deps)
+    reading = await read_page(candidate, subquestion=SUBQ, queries=[], deps=deps)
     assert any("retraction check failed" in d for d in reading.degraded)
-    assert deps.store.get_work(work.work_id).retracted == "unknown"  # type: ignore[union-attr]
-    assert reading.findings  # the work is still read: unchecked is not retracted
+    assert reading.findings  # the page is still read: unchecked is not retracted
 
 
-def _refused() -> SourceError:
-    return SourceError("fake", "fetch refused: paywall", kind="refused")
+async def test_no_doi_means_no_retraction_check() -> None:
+    deps = _deps()
+    work = Work(title="No DOI here")
+    assert await check_retraction(work, crossref=deps.crossref) == (None, "")
 
 
-@pytest.mark.parametrize(
-    ("provider", "fields", "access", "note"),
-    [
-        (
-            FakeProvider(None),
-            {"abstract": "A short abstract about Apollo."},
-            "abstract",
-            False,
-        ),
-        (FakeProvider(None), {}, "metadata", False),
-        (FakeProvider(error=_refused()), {}, "unreadable", True),
-        (
-            FakeProvider(error=_refused()),
-            {"abstract": "A short abstract about Apollo."},
-            "abstract",
-            True,
-        ),
-    ],
-)
-async def test_access_records_what_we_could_read(
-    provider: FakeProvider, fields: dict[str, object], access: str, note: bool
-) -> None:
-    deps = _deps(provider=provider)
-    work = _work(deps, **fields)
-    reading = await read_work(
-        work, subquestions=[SUBQ], criteria={}, deps=deps, ids=itertools.count(1)
+def test_unreadable_pages_degrade_a_run_only_above_the_share() -> None:
+    assert unreadable_degraded(attempted=0, unreadable=0) == []
+    assert unreadable_degraded(attempted=10, unreadable=5) == []
+    [line] = unreadable_degraded(attempted=10, unreadable=6)
+    assert "6 of 10 pages" in line
+
+
+# -- events ----------------------------------------------------------------------
+
+
+async def test_every_event_is_emitted_with_its_documented_keys() -> None:
+    deps = _deps()
+    candidate = _candidate(deps)
+    reading = await read_page(
+        candidate, subquestion=SUBQ, queries=["apollo latency"], deps=deps
     )
-    assert reading.work.access == access
-    assert deps.store.get_work(work.work_id).access == access  # type: ignore[union-attr]
-    assert bool(reading.notes) is note
-    if access != "abstract":
-        assert reading.passages == [] and reading.findings == []
-
-
-async def test_a_routine_refusal_is_noted_and_other_failures_are_failed_notes() -> None:
-    refused = _deps(provider=FakeProvider(error=_refused()))
-    broken = _deps(
-        provider=FakeProvider(error=SourceError("fake", "HTTP 503", kind="http"))
-    )
-    results = []
-    for deps in (refused, broken):
-        results.append(
-            await read_work(
-                _work(deps),
-                subquestions=[SUBQ],
-                criteria={},
-                deps=deps,
-                ids=itertools.count(1),
-            )
-        )
-    assert results[0].notes and results[0].degraded == []
-    assert results[0].failed_notes == []
-    # a failing source is noted on the reading and in failed_notes; one
-    # unreadable page does not degrade the run (the run decides that by share)
-    assert results[1].notes and results[1].degraded == []
-    assert len(results[1].failed_notes) == 1
-    assert "HTTP 503" in results[1].failed_notes[0]
-
-
-async def test_an_abstract_from_a_source_is_not_read_under_a_no_redistribute_licence() -> (
-    None
-):
-    deps = _deps(provider=FakeProvider("Licensed abstract text.", access="abstract"))
-    work = _work(deps, licence="no_redistribute")
-    reading = await read_work(
-        work, subquestions=[SUBQ], criteria={}, deps=deps, ids=itertools.count(1)
-    )
-    assert reading.work.access == "metadata" and reading.passages == []
-
-
-async def test_an_abstract_under_a_no_redistribute_licence_is_never_read() -> None:
-    deps = _deps(provider=FakeProvider(None))
-    work = _work(
-        deps, abstract="Licensed abstract text about Apollo.", licence="no_redistribute"
-    )
-    reading = await read_work(
-        work, subquestions=[SUBQ], criteria={}, deps=deps, ids=itertools.count(1)
-    )
-    assert reading.work.access == "metadata"
-    assert reading.passages == [] and deps.asker.stats.llm_calls == 0
-
-
-async def test_findings_for_each_subquestion_get_consecutive_ids() -> None:
-    second = SubQuestion(id="Q2", text="What overhead does SaltLog add?")
-    deps = _deps(provider=FakeProvider())
-    work = _work(deps)
-    reading = await read_work(
-        work,
-        subquestions=[SUBQ, second],
-        criteria={},
-        deps=deps,
-        ids=itertools.count(5),
-    )
-    assert [(f.finding_id, f.subquestion_id) for f in reading.findings] == [
-        ("F5", "Q1"),
-        ("F6", "Q2"),
+    names = [(e.step, e.event) for e in _events(deps) if e.event != "llm_call"]
+    assert names == [
+        ("Read", "fetched"),
+        ("Notes", "notes_input"),
+        ("Notes", "finding_noted"),
+        ("Notes", "notes"),
     ]
-    assert reading.done == ["Q1", "Q2"]
+    [fetched] = _events(deps, "fetched")
+    assert set(fetched.data) == {
+        "work_id", "url", "title", "via", "ok", "chars", "status", "error",
+        "truncated", "text",
+    }  # fmt: skip
+    assert fetched.data["text"] == TEXT and fetched.data["truncated"] is False
+    assert fetched.data["via"] == "fetched" and fetched.data["ok"] is True
+    assert fetched.data["chars"] == len(TEXT)
+    [notes_input] = _events(deps, "notes_input")
+    assert set(notes_input.data) == {
+        "work_id", "url", "title", "subquestion", "source_chars", "window_chars",
+        "window_spans", "text",
+    }  # fmt: skip
+    assert notes_input.data["source_chars"] == len(TEXT)
+    assert notes_input.data["window_chars"] == len(TEXT)
+    assert notes_input.data["window_spans"] == [[0, len(TEXT)]]
+    assert TEXT in str(notes_input.data["text"])
+    [noted] = _events(deps, "finding_noted")
+    assert set(noted.data) == {
+        "subquestion",
+        "work_id",
+        "title",
+        "claim",
+        "quote",
+        "verified",
+    }
+    assert noted.data["quote"] == reading.findings[0].quote
+    [notes] = _events(deps, "notes")
+    assert notes.data["findings"] == 1 and notes.data["unverified"] == 0
+    assert notes.data["subquestion"] == "Q1"
 
 
-async def test_a_dropped_quote_is_recorded_as_a_flag_item() -> None:
-    def respond(instructions: str, prompt: str) -> dict[str, object]:
-        if "choose which passages" in instructions.lower():
-            return {"passages": [1]}
-        return {
-            "findings": [
-                {
-                    "passage": 1,
-                    "claim": "Invented.",
-                    "quote": "a sentence the source never contained at all",
-                    "criteria": [],
-                }
-            ]
-        }
+async def test_the_fetched_text_is_clipped_in_the_log_only() -> None:
+    long_text = "Apollo cache sentence number one. " * (runlog.TEXT_CHARS // 30)
+    assert len(long_text) > runlog.TEXT_CHARS
+    deps = _deps(FakeProvider(long_text))
+    reading = await load_page(_candidate(deps), subquestion=SUBQ, queries=[], deps=deps)
+    [fetched] = _events(deps, "fetched")
+    assert fetched.data["truncated"] is True
+    assert len(str(fetched.data["text"])) == runlog.TEXT_CHARS
+    assert fetched.data["chars"] == len(long_text)
+    assert sum(len(p.text) for p in reading.passages) <= 12_000 + 4
 
-    deps = _deps(provider=FakeProvider(), llm=ScriptedLLM(respond))
-    work = _work(deps)
-    reading = await read_work(
-        work, subquestions=[SUBQ], criteria={}, deps=deps, ids=itertools.count(1)
+
+async def test_the_unreadable_and_window_events_report_what_was_lost() -> None:
+    text = _paragraphs(20, marked={9: "Quasar lattice width measured."})
+    deps = _deps(FakeProvider(text), window_chars=2500)
+    reading = await read_page(
+        _candidate(deps), subquestion=SUBQ, queries=["quasar lattice"], deps=deps
     )
-    assert reading.findings == [] and len(reading.dropped) == 1
-    flags = deps.store.run_items(deps.asker.run_id, "flag")
-    assert len(flags) == 1 and flags[0].data["kind"] == "quote_missing"
+    [notes_input] = _events(deps, "notes_input")
+    assert notes_input.data["source_chars"] == len(text)
+    assert int(str(notes_input.data["window_chars"])) < len(text)
+    assert "Quasar lattice width" in str(notes_input.data["text"])
+    spans = notes_input.data["window_spans"]
+    assert spans == [[p.start, p.end] for p in reading.passages]
+    stored = deps.asker.store.passages_for_work(reading.work.work_id)
+    assert {p.passage_id for p in reading.passages} <= {p.passage_id for p in stored}
 
 
-async def test_with_a_decision_model_the_passage_criteria_pick_the_passages() -> None:
-    paragraphs = [
-        "SaltLog is the logging component and writes one line per request to disk.",
-        "Apollo caching reduced median latency from 120 ms to 45 ms across all "
-        "tested workloads in the benchmark we ran.",
-    ]
-    text = "\n\n".join(p + " " + "padding " * 150 for p in paragraphs)
-    seen: list[str] = []
-
-    def judge(state: object, instruction: str) -> float:
-        assert isinstance(state, dict)
-        seen.append(str(state["passage"])[:20])
-        return 0.9 if "Apollo caching" in str(state["passage"]) else 0.05
-
-    decision_model, stub = decisions(judge)
-
-    def respond(instructions: str, prompt: str) -> dict[str, object]:
-        assert "choose which passages" not in instructions.lower()
-        return {"findings": []}
-
-    llm = ScriptedLLM(respond)
-    deps = _deps(provider=FakeProvider(text), llm=llm, decision_model=decision_model)
-    work = _work(deps)
-    reading = await read_work(
-        work,
-        subquestions=[SUBQ],
-        criteria={},
-        deps=deps,
-        ids=itertools.count(1),
-        passages_per_work=1,
-    )
-    assert len(reading.passages) == 1
-    assert reading.passages[0].text.startswith("Apollo caching")
-    assert deps.asker.stats.decision_calls == len(seen) >= 2
-    # The passage the model preferred is what the language model was shown.
-    assert "Apollo caching reduced" in llm.calls[-1][1]
-    assert "SaltLog is the logging" not in llm.calls[-1][1]
-    assert len(stub.calls) == len(seen)
+async def test_no_logger_is_fine() -> None:
+    deps = _deps(logged=False)
+    reading = await read_page(_candidate(deps), subquestion=SUBQ, queries=[], deps=deps)
+    assert reading.findings
 
 
-async def test_read_works_skips_pairs_already_read_and_stops_on_a_spent_budget() -> (
-    None
-):
-    deps = _deps(provider=FakeProvider(), budget=Budget(max_llm_calls=2))
-    first = _work(deps)
-    other = _work(deps, doi="10.5555/other", title="Other Apollo paper", year=2023)
-    third = _work(deps, doi="10.5555/third", title="Third Apollo paper", year=2022)
-    targets = [ReadTarget(w, ["Q1"]) for w in (first, other, third)]
-
-    outcome = await read_works(
-        targets,
-        subquestions=[SUBQ],
-        criteria={},
-        deps=deps,
-        ids=itertools.count(1),
-        skip={(first.work_id, "Q1")},
-    )
-
-    # `first` was skipped; `other` used the two calls (pick, extract); `third` found none left.
-    assert [r.work.work_id for r in outcome.readings] == [other.work_id]
-    assert outcome.stopped == "max_llm_calls"
-    assert outcome.done == {(other.work_id, "Q1")}
-    assert [f.finding_id for f in outcome.findings] == ["F1"]
-
-
-async def test_a_model_failing_on_one_work_is_recorded_and_the_next_is_read() -> None:
-    picks = {"n": 0}
-
-    def flaky(instructions: str, prompt: str) -> dict[str, object]:
-        if "choose which passages" in instructions.lower():
-            picks["n"] += 1
-            return {"passages": [1]}
-        if picks["n"] == 1:  # every attempt at the first work's extraction fails
-            return {"findings": "not a list"}
-        return dict(_llm().respond(instructions, prompt))
-
-    deps = _deps(provider=FakeProvider(), llm=ScriptedLLM(flaky))
-    first = _work(deps)
-    other = _work(deps, doi="10.5555/other", title="Other Apollo paper", year=2023)
-    outcome = await read_works(
-        [ReadTarget(w, ["Q1"]) for w in (first, other)],
-        subquestions=[SUBQ],
-        criteria={},
-        deps=deps,
-        ids=itertools.count(1),
-    )
-    failed, read = outcome.readings
-    assert failed.work.work_id == first.work_id and failed.findings == []
-    assert failed.degraded and "failed" in failed.degraded[0]
-    assert outcome.done == {(other.work_id, "Q1")}  # the failed work may be retried
-    assert [f.work_id for f in read.findings] == [other.work_id]
-    assert outcome.stopped == ""
-
-
-async def test_a_budget_error_from_read_work_itself_is_not_swallowed() -> None:
-    deps = _deps(provider=FakeProvider(), budget=Budget(max_llm_calls=1))
-    work = _work(deps)
-    with pytest.raises(BudgetExhausted):
-        await read_work(
-            work, subquestions=[SUBQ], criteria={}, deps=deps, ids=itertools.count(1)
-        )
-
-
-def test_the_outcome_is_json_serialisable() -> None:
-    from ..read import ReadOutcome, WorkReading
-
-    outcome = ReadOutcome(readings=[WorkReading(work=Work(title="x"))], stopped="")
-    assert json.loads(outcome.model_dump_json())["readings"][0]["work"]["title"] == "x"
-
-
-def test_locate_quote_reads_markdown_links_as_their_text() -> None:
-    # a page converted to Markdown: a link, a lost space after it, a citation
-    # marker and bold text
-    text = (
-        "**Jane Doe** (1850 - 1910) was a ferry captain.\n\n"
-        "She entered\n\n[Apollo Nautical School](https://example.org/wiki/Apollo)in "
-        "1871, graduating and getting her licence in 1873.\n\n"
-        "[[3]](https://example.org#cite-3)Later she sailed the SaltLog route."
-    )
-    quote = (
-        "She entered Apollo Nautical School in 1871, graduating and getting her "
-        "licence in 1873."
-    )
-    span = locate_quote(quote, text)
-    assert span is not None
-    assert text[span[0] : span[1]].startswith("She entered")
-    assert text[span[0] : span[1]].endswith("licence in 1873.")
-    assert locate_quote("Jane Doe (1850 - 1910) was a ferry captain.", text) == (
-        2,
-        text.index("captain.") + len("captain."),
-    )
-    later = locate_quote("Later she sailed the SaltLog route.", text)
-    assert later is not None and text[later[0] : later[1]].startswith("Later")
-
-
-def test_locate_quote_still_refuses_words_the_text_does_not_hold() -> None:
-    text = "She entered [Apollo Nautical School](https://example.org)in 1871."
-    assert locate_quote("She entered Apollo Nautical School in 1872.", text) is None
-    assert locate_quote("She entered https://example.org in 1871.", text) is None
+def test_a_store_in_memory_is_not_shared_between_tests() -> None:
+    assert ResearchStore.in_memory() is not ResearchStore.in_memory()
