@@ -94,12 +94,16 @@ class HttpxSearchBackend:
         cache: "ResearchStore | None" = None,
         clock: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+        extract: Callable[[bytes, str, str], Awaitable[str]] | None = None,
     ):
         """``cache`` is an explicit store for SearxNG search answers (kept
         seven days, size-capped by the store). There is no default: without
         one, nothing is read from or written to any cache. ``clock`` and
         ``sleep`` time the shared query spacing and the blocked-engine
-        backoff, injectable so a test does not wait."""
+        backoff, injectable so a test does not wait. ``extract`` turns a
+        fetched body ``(data, content_type, url)`` into text (default:
+        ``content_extractor.extract_content``); it raises ``ExtractionError``
+        on failure."""
         self.searxng_url = searxng_url
         # One breaker per backend instance; ``run_research`` builds a backend
         # per run, so a failure streak never leaks into the next run.
@@ -118,6 +122,7 @@ class HttpxSearchBackend:
         self._cache = cache
         self._clock = clock
         self._sleep = sleep
+        self._extract = extract
         self._searx_client: SourceClient | None = None
 
     def _client(self) -> "SourceClient":
@@ -232,7 +237,9 @@ class HttpxSearchBackend:
         # extract_content is async (it delegates to harvest, which already
         # offloads CPU-bound docling work via asyncio.to_thread internally).
         try:
-            markdown = await extract_content(resp.content, content_type, str(resp.url))
+            markdown = await (self._extract or extract_content)(
+                resp.content, content_type, str(resp.url)
+            )
         except ExtractionError as e:
             raise RuntimeError(f"Content extraction failed for {url}: {e}") from e
 

@@ -199,3 +199,36 @@ def test_live_litsearch_reads_the_local_download_items(tmp_path: Path) -> None:
     )
     with pytest.raises(ValueError, match="--litsearch-local-dir"):
         load_items(exp.set("litsearch-web"), DataDirs())
+
+
+async def test_the_legacy_backend_reads_a_body_with_the_given_extractor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import httpx
+
+    from andamentum.deep_research import backends, text_utils
+    from andamentum.deep_research.backends import HttpxSearchBackend
+
+    async def allowed(url: str, **_kw: object) -> None:
+        return None
+
+    monkeypatch.setattr(text_utils, "is_safe_url", lambda url: (True, "ok"))
+    monkeypatch.setattr(backends, "check_fetch_allowed", allowed)
+    seen: list[str] = []
+
+    async def extract(data: bytes, content_type: str, url: str) -> str:
+        seen.append(content_type)
+        return "The invented Moonfish is teal. " * 5
+
+    client = httpx.AsyncClient(
+        transport=httpx.MockTransport(
+            lambda _r: httpx.Response(
+                200, content=b"%PDF-1.4", headers={"content-type": "application/pdf"}
+            )
+        )
+    )
+    backend = HttpxSearchBackend(http_client=client, extract=extract)
+    page = await backend.fetch_page("https://8.8.8.8/fish.pdf")
+    await client.aclose()
+    assert seen == ["application/pdf"]
+    assert "Moonfish" in page.content

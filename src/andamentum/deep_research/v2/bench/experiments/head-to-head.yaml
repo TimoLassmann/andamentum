@@ -121,6 +121,12 @@ notes:
     So the LitSearch rule compares the two tools, not the two engines on the same
     sources.
   - >-
+    Both arms read a fetched PDF the same way, from its text layer (the bench's
+    pdf_extraction "fast"; a scan with no text layer is unreadable for both). The
+    legacy pipeline's own default is docling with OCR, which took 14 minutes on one
+    scanned PDF in the first attempt; that cell was discarded before the rules were
+    applied and the run started again.
+  - >-
     The legacy pipeline counts no tokens or model calls, so cost is compared by wall
     time only.
   - >-

@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field
 from pydantic_ai.models import Model
 
 from andamentum.core.decisions import DecisionModel
+from andamentum.deep_research.backends import HttpxSearchBackend
 from andamentum.deep_research.models import ResearchResult as LegacyResult
 from andamentum.deep_research.orchestrator import run_research
 from andamentum.references import Work
@@ -30,6 +31,7 @@ from ..config import PRESETS, ResearchConfig
 from ..frozen import FrozenInputs
 from ..graph import research
 from ..sources.base import SourceClient, SourceConfig
+from ..sources.extraction import DEFAULT_PDF_EXTRACTION, PdfExtraction, extract_body
 from ..sources.local_corpus import LocalCorpusSource
 from ..store import ResearchStore
 from ..dense import Embedder
@@ -183,7 +185,10 @@ def map_legacy(result: LegacyResult, *, wall_s: float) -> ArmOutput:
 
 
 class LegacyArm:
-    """The legacy ``run_research`` pipeline, web only."""
+    """The legacy ``run_research`` pipeline, web only.
+
+    ``pdf_extraction`` is how a fetched PDF becomes text, as for the v2 arm
+    (``SourceConfig.pdf_extraction``), so both arms read a PDF the same way."""
 
     name = "legacy"
     returns_pages = True
@@ -197,7 +202,9 @@ class LegacyArm:
         max_iterations: int = 3,
         max_results: int = 10,
         max_pages: int = 5,
+        pdf_extraction: PdfExtraction = DEFAULT_PDF_EXTRACTION,
     ) -> None:
+        self.pdf_extraction: PdfExtraction = pdf_extraction
         self.model = model
         self.searxng_url = searxng_url
         self.decision_model = decision_model
@@ -217,15 +224,26 @@ class LegacyArm:
                 "the legacy pipeline cannot take frozen inputs; run it live"
             )
         started = time.monotonic()
-        result = await run_research(
-            question,
-            model=self.model,
-            searxng_url=self.searxng_url,
-            max_iterations=self.max_iterations,
-            max_results=self.max_results,
-            max_pages=self.max_pages,
-            decision_model=self.decision_model,
-        )
+        pdf_extraction = self.pdf_extraction
+
+        async def extract(data: bytes, content_type: str, url: str) -> str:
+            return await extract_body(
+                data, content_type, url, pdf_extraction=pdf_extraction
+            )
+
+        async with HttpxSearchBackend(
+            searxng_url=self.searxng_url, extract=extract
+        ) as backend:
+            result = await run_research(
+                question,
+                model=self.model,
+                searxng_url=self.searxng_url,
+                max_iterations=self.max_iterations,
+                max_results=self.max_results,
+                max_pages=self.max_pages,
+                decision_model=self.decision_model,
+                backend=backend,
+            )
         return map_legacy(result, wall_s=time.monotonic() - started)
 
 

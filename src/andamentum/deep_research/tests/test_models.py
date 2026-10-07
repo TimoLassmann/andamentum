@@ -296,6 +296,7 @@ class TestFetchedPageTruncationVisibility:
             )
             backend._owns_client = True
             backend._tdm_allowed_hosts = frozenset()
+            backend._extract = None
 
             # Public-IP host so the SSRF check passes without a DNS lookup.
             result = await backend.fetch_page("https://8.8.8.8/page")
@@ -355,6 +356,7 @@ class TestFetchedPageTruncationVisibility:
             )
             backend._owns_client = True
             backend._tdm_allowed_hosts = frozenset()
+            backend._extract = None
 
             # Public-IP host so the SSRF check passes without a DNS lookup.
             result = await backend.fetch_page("https://8.8.8.8/short")

@@ -439,6 +439,7 @@ def build_answer_arm(
             model=spec.model,
             searxng_url=services.source_config.searxng_url,
             decision_model=decision,
+            pdf_extraction=services.source_config.pdf_extraction,
         )
     return V2Arm(
         mode=mode,
