@@ -615,8 +615,9 @@ _TOOLS: dict[str, tuple[type[_Params], Handler, str]] = {
         ResearchParams,
         lambda t, p: t.research(p),
         "Run the whole research engine on a question and return the result: "
-        "findings with quotes, coverage, conflicts, the cited report and its "
-        "verification flags. Needs a model.",
+        "findings with quotes, coverage, conflicts, the cited report, its "
+        "verification flags and the run log (`log`: what happened at each step, "
+        "also kept in the store as the run item log/run). Needs a model.",
     ),
 }
 

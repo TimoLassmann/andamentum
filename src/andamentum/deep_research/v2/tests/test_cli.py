@@ -26,6 +26,12 @@ def _result(*, degraded: list[str] | None = None) -> ResearchResult:
     )
 
 
+@pytest.fixture(autouse=True)
+def _in_tmp(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every run writes its log; without --out it lands in the current directory."""
+    monkeypatch.chdir(tmp_path)
+
+
 @pytest.fixture
 def calls(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
     seen: list[dict[str, Any]] = []

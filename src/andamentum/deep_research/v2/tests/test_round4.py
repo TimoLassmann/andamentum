@@ -573,6 +573,7 @@ def test_the_research_command_takes_the_local_corpus(
 
     monkeypatch.setattr(cli, "research", research)
     monkeypatch.setattr(cli, "load_dotenv", lambda: None)
+    monkeypatch.chdir(tmp_path)  # the run log lands in the working directory
     cli.main(
         [
             "q",

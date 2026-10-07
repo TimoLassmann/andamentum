@@ -138,9 +138,9 @@ def test_a_store_of_version_three_gains_the_local_id_column(
     )
     raw.commit()
     raw.close()
-    assert SCHEMA_VERSION == 4
+    assert SCHEMA_VERSION == 5  # version 5 adds the embedding cache
     with ResearchStore(path) as store:
-        assert store.schema_version() == 4
+        assert store.schema_version() == 5
         assert store.find_work(Work(doi="10.5555/kept")) is not None
         stored = store.upsert_work(Work(local_id="local:7", title="Seven"))
         assert stored.local_id == "local:7"

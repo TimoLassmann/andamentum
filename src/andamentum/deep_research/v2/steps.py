@@ -395,6 +395,15 @@ class SearchOutcome:
     failures: dict[str, int] = field(default_factory=dict)
     failed_lines: dict[str, list[str]] = field(default_factory=dict)
     result_counts: dict[str, dict[str, int]] = field(default_factory=dict)
+    # Per query and source, for the run log: the result count (or the error)
+    # and the first ``HIT_TITLES`` titles with their place.
+    hits: list[dict[str, object]] = field(default_factory=list)
+    # Searches an offline (frozen) run could not answer from its snapshot.
+    skipped: list[str] = field(default_factory=list)
+
+
+# Titles kept per query and source for the run log.
+HIT_TITLES = 5
 
 
 async def search(
@@ -421,6 +430,20 @@ async def search(
                     )
                 except SourceError as error:
                     line = f"{source.name} search failed for {query!r}: {error.reason}"
+                    outcome.hits.append(
+                        {
+                            "subquestion": subquestion_id,
+                            "query": query,
+                            "source": source.name,
+                            "count": 0,
+                            "top": [],
+                            "error": error.reason,
+                        }
+                    )
+                    if error.kind == "offline":
+                        # a frozen run's cache miss: not searched, never degraded
+                        outcome.skipped.append(line)
+                        continue
                     outcome.degraded.append(line)
                     outcome.failures[source.name] = (
                         outcome.failures.get(source.name, 0) + 1
@@ -428,6 +451,18 @@ async def search(
                     outcome.failed_lines.setdefault(source.name, []).append(line)
                     continue
                 outcome.result_counts.setdefault(source.name, {})[query] = len(results)
+                outcome.hits.append(
+                    {
+                        "subquestion": subquestion_id,
+                        "query": query,
+                        "source": source.name,
+                        "count": len(results),
+                        "top": [
+                            {"rank": place, "title": c.work.title}
+                            for place, c in enumerate(results[:HIT_TITLES], start=1)
+                        ],
+                    }
+                )
                 if isinstance(source, WarningSource):
                     outcome.notes += source.take_warnings()
                 found += [
@@ -440,6 +475,38 @@ async def search(
                     for position, c in enumerate(results, start=1)
                 ]
     outcome.candidates = merge(found)
+    return outcome
+
+
+async def search_question(
+    question: str,
+    *,
+    subquestion_ids: Sequence[str],
+    sources: Sequence[Source],
+    limit: int,
+    suffix: str,
+) -> SearchOutcome:
+    """The raw *question* searched once on every source (no filters): its
+    results count for every sub-question in *subquestion_ids*, and each
+    source's list is its own ranked list, named ``<source><suffix>``."""
+    if not subquestion_ids:
+        return SearchOutcome([])
+    outcome = await search(
+        {subquestion_ids[0]: [question]}, sources=sources, filters={}, limit=limit
+    )
+    outcome.candidates = [
+        c.model_copy(
+            update={
+                "subquestion_ids": list(subquestion_ids),
+                "source_ranks": {
+                    f"{name}{suffix}": place for name, place in c.source_ranks.items()
+                },
+            }
+        )
+        for c in outcome.candidates
+    ]
+    for hit in outcome.hits:
+        hit["subquestion"] = "question"
     return outcome
 
 

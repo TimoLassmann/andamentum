@@ -22,6 +22,7 @@ event loop and a worker thread cannot interleave a write. All SQL is here.
 from __future__ import annotations
 
 import hashlib
+from array import array
 import json
 import os
 import re
@@ -47,7 +48,7 @@ from andamentum.references.works import ID_FIELDS, title_key
 
 from .types import Passage
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 TTL_SEARCH_S = 7 * 86_400
 TTL_METADATA_S = 30 * 86_400
@@ -68,6 +69,7 @@ RunItemKind = Literal[
     "coverage",
     "flag",
     "check",
+    "log",
 ]
 
 _DIGEST = re.compile(r"[0-9a-f]{64}")
@@ -221,12 +223,23 @@ ALTER TABLE works ADD COLUMN local_id TEXT;
 CREATE UNIQUE INDEX works_local_id ON works(local_id) WHERE local_id IS NOT NULL;
 """
 
+# Embedding vectors by (model digest or name, sha256 of the text), float32 bytes.
+_SCHEMA_V5 = """
+CREATE TABLE embeddings (
+    model TEXT NOT NULL,
+    text_sha TEXT NOT NULL,
+    vector BLOB NOT NULL,
+    PRIMARY KEY (model, text_sha)
+);
+"""
+
 # Migrations by the version they produce. Development: no shims for old files.
 _MIGRATIONS: dict[int, str] = {
     1: _SCHEMA_V1,
     2: _SCHEMA_V2,
     3: _SCHEMA_V3,
     4: _SCHEMA_V4,
+    5: _SCHEMA_V5,
 }
 
 
@@ -1229,6 +1242,61 @@ class ResearchStore:
                 "INSERT OR REPLACE INTO decision_cache VALUES (?, ?, ?, ?)",
                 (digest, question_hash, state_hash, json.dumps(dict(answers))),
             )
+
+    # -- embedding cache --------------------------------------------------
+
+    def _own_embeddings(
+        self, *, model: str, shas: Sequence[str]
+    ) -> dict[str, list[float]]:
+        found: dict[str, list[float]] = {}
+        with self._lock:
+            for start in range(0, len(shas), 500):
+                chunk = list(shas[start : start + 500])
+                marks = ",".join("?" * len(chunk))
+                rows = self._conn.execute(
+                    f"SELECT text_sha, vector FROM embeddings "
+                    f"WHERE model = ? AND text_sha IN ({marks})",
+                    (model, *chunk),
+                ).fetchall()
+                for row in rows:
+                    found[row["text_sha"]] = array("f", row["vector"]).tolist()
+        return found
+
+    def cached_embeddings(
+        self, *, model: str, shas: Sequence[str]
+    ) -> dict[str, list[float]]:
+        """The vectors held for *model* (digest or name) and these text
+        sha256s. An own miss reads through to the shared cache (``shared_cache=``)
+        and the vector found there is copied into this store."""
+        found = self._own_embeddings(model=model, shas=shas)
+        missing = [s for s in shas if s not in found]
+        if missing and self._shared is not None:
+            shared = self._shared._own_embeddings(model=model, shas=missing)
+            if shared:
+                self._put_embeddings(model=model, vectors=shared)
+                found.update(shared)
+        return found
+
+    def _put_embeddings(
+        self, *, model: str, vectors: Mapping[str, Sequence[float]]
+    ) -> None:
+        with self._lock:
+            self._conn.executemany(
+                "INSERT OR REPLACE INTO embeddings VALUES (?, ?, ?)",
+                [
+                    (model, sha, array("f", vector).tobytes())
+                    for sha, vector in vectors.items()
+                ],
+            )
+
+    def cache_embeddings(
+        self, *, model: str, vectors: Mapping[str, Sequence[float]]
+    ) -> None:
+        """Remember vectors by text sha256 for *model*, here and in the shared
+        cache when there is one."""
+        self._put_embeddings(model=model, vectors=vectors)
+        if self._shared is not None:
+            self._shared._put_embeddings(model=model, vectors=vectors)
 
     def determinism_of(self, digest: str) -> tuple[bool, str] | None:
         """What the determinism check found for this model digest: whether

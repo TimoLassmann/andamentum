@@ -43,19 +43,33 @@ from pydantic_graph import BaseNode, End, GraphBuilder, GraphRunContext
 from andamentum.core.decisions import DecisionModel
 from andamentum.references import ReferenceHttp, Work
 
-from . import steps
+from . import runlog, steps
 from .ask import Asker
 from .config import PRESETS, ResearchConfig, config_hash
 from .decision_cache import CHECK_NAME, check_determinism
 from .coverage import PairKey, compute_coverage, decide_stop, record_coverage
 from .criteria import Screener
+from .dense import Embedder, EmbeddingError, OllamaDenseEmbedder, similarities
 from .frozen import FrozenInputs
 from .identity import merge
-from .read import ReadDeps, ReadTarget, read_works, unreadable_degraded
+from .read import (
+    ReadDeps,
+    ReadTarget,
+    WorkReading,
+    read_works,
+    unreadable_degraded,
+)
 from .sources import SourceClient, SourceConfig, SourceSet, build_sources
 from .sources.base import offline_url_check
 from .store import ResearchStore
-from .strategies import screen_one
+from .runlog import RunLogger
+from .strategies import (
+    QUESTION_LIST_SUFFIX,
+    RankSignals,
+    fused_places,
+    fusion_rows,
+    screen_one,
+)
 from .types import Coverage as SubQuestionCoverage
 from .types import (
     Budget,
@@ -100,6 +114,10 @@ class ResearchDeps:
     config: ResearchConfig = PRESETS["baseline"]
     frozen: FrozenInputs | None = None
     offline_before: dict[str, int] = field(default_factory=dict)
+    # the run log every node writes to (``runlog``); always present
+    log: RunLogger = field(default_factory=lambda: RunLogger(clock=time.monotonic))
+    # the embedding model of a configuration that ranks by dense similarity
+    embedder: Embedder | None = None
 
 
 @dataclass
@@ -138,6 +156,10 @@ class ResearchState:
     stop_reason: str = ""
     report: str = ""
     verification: list[VerifyFlag] = field(default_factory=list)
+    # dense cosine similarities (``rank: rrf_dense``): per pair against its
+    # sub-question, per work against the question
+    dense_subquestion: dict[Pair, float] = field(default_factory=dict)
+    dense_question: dict[str, float] = field(default_factory=dict)
 
 
 Ctx = GraphRunContext[ResearchState, ResearchDeps]
@@ -149,12 +171,18 @@ def _timed(ctx: Ctx, step: str) -> Iterator[None]:
     while it runs under *step* in the run's stats (``RunStats.step_*``)."""
     deps = ctx.deps
     deps.asker.phase = step
+    deps.log.step = step  # type: ignore[assignment]  # one of types.STEPS
+    before = deps.asker.stats.model_copy(deep=True)
     began = deps.clock()
     try:
         yield
     finally:
+        took = deps.clock() - began
         seconds = deps.asker.stats.step_seconds
-        seconds[step] = seconds.get(step, 0.0) + (deps.clock() - began)
+        seconds[step] = seconds.get(step, 0.0) + took
+        runlog.step_done(
+            deps.log, step=step, seconds=took, before=before, after=deps.asker.stats
+        )
 
 
 def _spent(ctx: Ctx) -> str:
@@ -171,17 +199,36 @@ def _spent(ctx: Ctx) -> str:
     return ""
 
 
-def _note(state: ResearchState, *, degraded: list[str], spent: str = "") -> None:
+def _note(ctx: Ctx, *, degraded: list[str], spent: str = "") -> None:
+    state = ctx.state
     state.degraded += degraded
+    runlog.records(ctx.deps.log, degraded=degraded)
     if spent and not state.spent:
         state.spent = spent
+        ctx.deps.log.event("budget_spent", f"budget spent: {spent}", bound=spent)
+
+
+def _notes(
+    ctx: Ctx, *, notes: Sequence[str] = (), skipped: Sequence[str] = ()
+) -> None:
+    ctx.state.notes += list(notes)
+    ctx.state.skipped += list(skipped)
+    runlog.records(ctx.deps.log, notes=notes, skipped=skipped)
+
+
+def _signals(state: ResearchState) -> RankSignals:
+    return RankSignals(
+        pairs=list(state.arrivals),
+        dense_subquestion=state.dense_subquestion,
+        dense_question=state.dense_question,
+    )
 
 
 def _kept(ctx: Ctx) -> dict[str, tuple[float, list[str]]]:
     """Each kept work's ranking value (the config's rank strategy) and the
     sub-questions it was kept for."""
     return ctx.deps.config.rank_strategy.kept(
-        ctx.state.scores, candidates=ctx.state.candidates
+        ctx.state.scores, candidates=ctx.state.candidates, signals=_signals(ctx.state)
     )
 
 
@@ -194,14 +241,22 @@ def _works(state: ResearchState) -> dict[str, Work]:
     return {work_id: c.work for work_id, c in state.candidates.items()}
 
 
-def _admit(ctx: Ctx, found: list[Candidate]) -> None:
+def _admit(ctx: Ctx, found: list[Candidate], *, via: str) -> None:
     state = ctx.state
+    held = len(state.candidates)
     admitted = steps.admit(found, store=ctx.deps.store, known=state.candidates)
     state.candidates = admitted.candidates
     waiting = set(state.pending) | state.screened
     fresh = [p for p in admitted.pairs if p not in waiting]
     state.pending += fresh
     state.arrivals += fresh
+    runlog.admitted(
+        ctx.deps.log,
+        before=held,
+        after=len(state.candidates),
+        pairs=len(fresh),
+        via=via,
+    )
 
 
 @dataclass
@@ -218,8 +273,9 @@ class Plan(BaseNode[ResearchState, ResearchDeps, ResearchResult]):
             else:
                 deps.progress("Plan: sub-questions")
                 planned = await steps.plan(deps.question, asker=deps.asker)
-                _note(state, degraded=planned.degraded, spent=planned.spent)
+                _note(ctx, degraded=planned.degraded, spent=planned.spent)
                 state.subquestions = planned.subquestions
+            runlog.subquestions(deps.log, state.subquestions)
             for subquestion in state.subquestions:
                 deps.store.add_run_item(
                     deps.asker.run_id, "subquestion", subquestion.id, subquestion
@@ -231,7 +287,7 @@ class Plan(BaseNode[ResearchState, ResearchDeps, ResearchResult]):
             compiled = await steps.compile_all(
                 state.subquestions, screener=deps.screener, question=deps.question
             )
-            _note(state, degraded=compiled.degraded, spent=compiled.spent)
+            _note(ctx, degraded=compiled.degraded, spent=compiled.spent)
             state.criteria = compiled.criteria
             return Search()
 
@@ -251,6 +307,12 @@ class Search(BaseNode[ResearchState, ResearchDeps, ResearchResult]):
             }
             targets = [s for s in state.subquestions if s.id not in closed]
             state.round_targets = [s.id for s in targets]
+            deps.log.event(
+                "round_start",
+                f"round {state.round}: {len(targets)} open sub-questions",
+                round=state.round,
+                targets=state.round_targets,
+            )
             if _spent(ctx) or not targets:
                 return Screen()
             if deps.frozen is not None:
@@ -264,7 +326,9 @@ class Search(BaseNode[ResearchState, ResearchDeps, ResearchResult]):
                         steps.restore_licensed_text(
                             deps.frozen.candidates, store=deps.store
                         ),
+                        via="frozen inputs",
                     )
+                    await _search_question(ctx, targets)
                 return Screen()
             deps.progress(f"Search: round {state.round}, {len(targets)} sub-questions")
             written = await steps.write_queries(
@@ -275,18 +339,57 @@ class Search(BaseNode[ResearchState, ResearchDeps, ResearchResult]):
                 per_subquestion=deps.budget.queries_per_subq,
                 asker=deps.asker,
             )
-            _note(state, degraded=written.degraded, spent=written.spent)
+            _note(ctx, degraded=written.degraded, spent=written.spent)
+            queries = await _search_question(ctx, targets, written=written.queries)
             searched = await steps.search(
-                written.queries,
+                queries,
                 sources=deps.sources.search,
                 filters={s.id: steps.filters_for(s) for s in targets},
                 limit=deps.results_per_query,
             )
             state.queries_done += searched.queries_run
-            _note(state, degraded=searched.degraded)
-            state.notes += searched.notes
-            _admit(ctx, searched.candidates)
+            runlog.query_hits(deps.log, searched.hits, raw_question=False)
+            _note(ctx, degraded=searched.degraded)
+            _notes(ctx, notes=searched.notes, skipped=searched.skipped)
+            _admit(ctx, searched.candidates, via=f"search round {state.round}")
             return Screen()
+
+
+async def _search_question(
+    ctx: Ctx,
+    targets: Sequence[SubQuestion],
+    *,
+    written: dict[str, list[str]] | None = None,
+) -> dict[str, list[str]]:
+    """The query strategy's raw-question search (``llm_plus_question``: round 1,
+    once, first, its results for every open sub-question); returns *written*
+    without a query identical to the question."""
+    state, deps = ctx.state, ctx.deps
+    written = dict(written or {})
+    query = deps.config.query_strategy.question_query(
+        deps.question, round_number=state.round, done=state.queries_done
+    )
+    if query is None:
+        return written
+    key = " ".join(query.casefold().split())
+    written = {
+        sid: [q for q in own if " ".join(q.casefold().split()) != key]
+        for sid, own in written.items()
+    }
+    deps.progress("Search: the question itself")
+    searched = await steps.search_question(
+        query,
+        subquestion_ids=[s.id for s in targets],
+        sources=deps.sources.search,
+        limit=deps.results_per_query,
+        suffix=QUESTION_LIST_SUFFIX,
+    )
+    state.queries_done += searched.queries_run
+    runlog.query_hits(deps.log, searched.hits, raw_question=True)
+    _note(ctx, degraded=searched.degraded)
+    _notes(ctx, notes=searched.notes, skipped=searched.skipped)
+    _admit(ctx, searched.candidates, via="the question searched")
+    return written
 
 
 @dataclass
@@ -297,13 +400,29 @@ class Screen(BaseNode[ResearchState, ResearchDeps, ResearchResult]):
         with _timed(ctx, "Screen"):
             state, deps = ctx.state, ctx.deps
             waiting = [p for p in state.pending if p not in state.screened]
+            await _dense(ctx)
             if waiting and not _spent(ctx):
                 deps.progress(f"Screen: {len(waiting)} candidates waiting")
+                signals = _signals(state)
+                places_before = fused_places(
+                    fusion_rows(
+                        {},
+                        candidates=state.candidates,
+                        signals=signals,
+                        with_screen=False,
+                    ),
+                    order=state.arrivals,
+                )
                 outcome = await steps.screen(
-                    # the queue strategy orders what a round's caps may take;
+                    # the queue strategy orders what a round's caps may take,
+                    # the screen strategy what it may screen at all;
                     # ``pending`` below stays in arrival order
-                    deps.config.queue_strategy.order(
-                        waiting, candidates=state.candidates
+                    deps.config.screen_strategy.select(
+                        deps.config.queue_strategy.order(
+                            waiting, candidates=state.candidates
+                        ),
+                        candidates=state.candidates,
+                        signals=signals,
                     ),
                     candidates=state.candidates,
                     subquestions=state.subquestions,
@@ -316,7 +435,7 @@ class Screen(BaseNode[ResearchState, ResearchDeps, ResearchResult]):
                     limit=deps.budget.candidates_per_round,
                     per_subquestion=deps.config.screen_per_subquestion,
                 )
-                _note(state, degraded=outcome.degraded, spent=outcome.spent)
+                _note(ctx, degraded=outcome.degraded, spent=outcome.spent)
                 for score in outcome.scores:
                     pair = (score.work_id, score.subquestion_id)
                     before = state.scores.get(pair)
@@ -329,6 +448,25 @@ class Screen(BaseNode[ResearchState, ResearchDeps, ResearchResult]):
                 state.criteria.update({k: v for k, v in outcome.criteria.items() if v})
                 state.screened |= set(outcome.screened)
                 state.pending = [p for p in waiting if p not in state.screened]
+                runlog.screened(
+                    deps.log,
+                    outcome.scores,
+                    candidates=state.candidates,
+                    subquestions=state.subquestions,
+                    before=places_before,
+                    after=runlog.kept_places(_kept(ctx)),
+                )
+                deps.log.event(
+                    "screen_round",
+                    f"round {state.round}: {len(waiting)} waiting, "
+                    f"{len(outcome.screened)} screened, "
+                    f"{sum(s.kept for s in outcome.scores)} kept",
+                    round=state.round,
+                    waiting=len(waiting),
+                    screened=len(outcome.screened),
+                    kept=sum(s.kept for s in outcome.scores),
+                    still_waiting=len(state.pending),
+                )
             expands = (
                 deps.mode != "web"
                 and not state.expanded_this_round
@@ -337,6 +475,47 @@ class Screen(BaseNode[ResearchState, ResearchDeps, ResearchResult]):
                 and bool(deps.sources.expand)
             )
             return Expand() if expands else Read()
+
+
+async def _dense(ctx: Ctx) -> None:
+    """Dense similarities for every pair that has none yet, when the
+    configuration ranks by them; a failing embedding model is degraded (the
+    pairs keep no dense rank and are tried again at the next Screen)."""
+    state, deps = ctx.state, ctx.deps
+    if deps.embedder is None or not deps.config.needs_embeddings:
+        return
+    try:
+        update = await similarities(
+            state.arrivals,
+            question=deps.question,
+            subquestions=state.subquestions,
+            candidates=state.candidates,
+            known=state.dense_subquestion,
+            embedder=deps.embedder,
+            store=deps.store,
+            stats=deps.asker.stats,
+            phase=deps.asker.phase,
+            clock=deps.clock,
+        )
+    except EmbeddingError as error:
+        _note(ctx, degraded=[f"dense similarity failed: {error}"])
+        return
+    state.dense_subquestion.update(update.subquestion)
+    state.dense_question.update(update.question)
+    if update.subquestion:
+        embedded = update.embed
+        deps.log.event(
+            "embedded",
+            f"dense similarity for {len(update.subquestion)} pairs: "
+            f"{embedded.embedded} texts embedded in {embedded.requests} requests, "
+            f"{embedded.cache_hits} from the cache",
+            model=deps.embedder.name,
+            pairs=len(update.subquestion),
+            requests=embedded.requests,
+            embedded=embedded.embedded,
+            cache_hits=embedded.cache_hits,
+            batches=embedded.batches,
+        )
 
 
 def _expand_limit(deps: ResearchDeps) -> int:
@@ -367,11 +546,21 @@ class Expand(BaseNode[ResearchState, ResearchDeps, ResearchResult]):
             outcome = await steps.expand(
                 seeds, sources=deps.sources.expand, limit=_expand_limit(deps)
             )
-            _note(state, degraded=outcome.degraded)
-            state.skipped += outcome.skipped
-            state.notes += outcome.notes
+            _note(ctx, degraded=outcome.degraded)
+            _notes(ctx, notes=outcome.notes, skipped=outcome.skipped)
             state.expanded |= set(outcome.expanded)
-            _admit(ctx, merge(outcome.candidates))
+            found = merge(outcome.candidates)
+            deps.log.event(
+                "expanded",
+                f"citations of {len(seeds)} seeds brought {len(found)} candidates",
+                seeds=[{"work_id": w.work_id, "title": w.title} for w, _ in seeds],
+                candidates=len(found),
+                top=[
+                    {"rank": place, "title": c.work.title}
+                    for place, c in enumerate(found[:5], start=1)
+                ],
+            )
+            _admit(ctx, found, via="citation expansion")
             return Screen()
 
 
@@ -399,6 +588,17 @@ class Read(BaseNode[ResearchState, ResearchDeps, ResearchResult]):
             if not chosen:
                 return Coverage()
             deps.progress(f"Read: {len(chosen)} works")
+            places = runlog.kept_places(_kept(ctx))
+            for work_id, ids in chosen:
+                deps.log.event(
+                    "read_chosen",
+                    f"read {state.candidates[work_id].work.title!r} (rank "
+                    f"{places.get(work_id)}) for {', '.join(ids)}",
+                    work_id=work_id,
+                    title=state.candidates[work_id].work.title,
+                    rank=places.get(work_id),
+                    subquestions=ids,
+                )
             outcome = await read_works(
                 [
                     ReadTarget(work=state.candidates[w].work, subquestion_ids=ids)
@@ -410,8 +610,9 @@ class Read(BaseNode[ResearchState, ResearchDeps, ResearchResult]):
                 ids=state.finding_ids,
                 skip=state.read_done,
             )
-            _note(state, degraded=outcome.degraded, spent=outcome.stopped)
-            state.notes += outcome.failed_notes
+            _note(ctx, degraded=outcome.degraded, spent=outcome.stopped)
+            _notes(ctx, notes=outcome.failed_notes)
+            _log_readings(ctx, outcome.readings)
             state.read_attempted += outcome.attempted
             state.read_unreadable += outcome.unreadable
             for reading in outcome.readings:
@@ -425,6 +626,48 @@ class Read(BaseNode[ResearchState, ResearchDeps, ResearchResult]):
             state.read_done |= outcome.done
             state.excluded.update(dict(outcome.excluded))
             return Coverage()
+
+
+def _log_readings(ctx: Ctx, readings: Sequence[WorkReading]) -> None:
+    log = ctx.deps.log
+    for reading in readings:
+        work = reading.work
+        if reading.excluded:
+            log.event(
+                "excluded",
+                f"{work.title!r} excluded: {reading.excluded}",
+                work_id=work.work_id,
+                reason=reading.excluded,
+            )
+        elif work.access == "unreadable" or not reading.passages:
+            log.event(
+                "unreadable",
+                f"{work.title!r}: nothing read ({work.access})",
+                work_id=work.work_id,
+                access=work.access,
+                reasons=[*reading.notes, *reading.failed_notes, *reading.degraded],
+            )
+        texts = {p.passage_id: p.text for p in reading.passages}
+        for chosen in reading.selected:
+            log.event(
+                "passage",
+                f"{chosen.subquestion_id}: passage {chosen.place} of {work.title!r}",
+                work_id=work.work_id,
+                title=work.title,
+                subquestion=chosen.subquestion_id,
+                passage_id=chosen.passage_id,
+                place=chosen.place,
+                score=chosen.score,
+                text=texts.get(chosen.passage_id, "")[: runlog.PASSAGE_CHARS],
+            )
+        log.event(
+            "read",
+            f"{work.title!r}: {len(reading.findings)} findings, "
+            f"{len(reading.dropped)} quotes dropped",
+            work_id=work.work_id,
+            findings=len(reading.findings),
+            dropped=len(reading.dropped),
+        )
 
 
 @dataclass
@@ -448,6 +691,7 @@ class Coverage(BaseNode[ResearchState, ResearchDeps, ResearchResult]):
                 new_kept_last_round=new_kept,
             )
             record_coverage(deps.asker, state.coverage)
+            runlog.coverage(deps.log, state.coverage)
             decision = decide_stop(
                 state.coverage,
                 round_number=state.round,
@@ -460,6 +704,22 @@ class Coverage(BaseNode[ResearchState, ResearchDeps, ResearchResult]):
                 f"Coverage: round {state.round}, {covered}/{len(state.coverage)} covered, "
                 f"{len(state.findings)} findings"
             )
+            open_ids = [
+                c.subquestion_id
+                for c in state.coverage
+                if not (c.covered or c.unresolvable)
+            ]
+            deps.log.event(
+                "stop_decision",
+                f"stop: {decision.reason}"
+                if decision.stop
+                else f"continue: {len(open_ids)} sub-questions still open "
+                f"({', '.join(open_ids)}); {len(state.findings)} findings",
+                stop=decision.stop,
+                reason=decision.reason,
+                open=open_ids,
+                findings=len(state.findings),
+            )
             if not decision.stop:
                 return Search()
             state.stop_reason = decision.reason
@@ -469,7 +729,7 @@ class Coverage(BaseNode[ResearchState, ResearchDeps, ResearchResult]):
                 asker=deps.asker,
                 checked=state.conflict_memory,
             )
-            _note(state, degraded=found.degraded)
+            _note(ctx, degraded=found.degraded)
             state.conflicts = found.conflicts
             return Write()
 
@@ -492,8 +752,23 @@ class Write(BaseNode[ResearchState, ResearchDeps, ResearchResult]):
                 works=_works(state),
                 asker=deps.asker,
             )
-            _note(state, degraded=report.degraded)
+            _note(ctx, degraded=report.degraded)
             state.report = report.markdown
+            cited = ResearchResult(
+                run_id="",
+                question="",
+                mode=deps.mode,
+                findings=state.findings,
+                report_markdown=state.report,
+            ).cited_work_ids()
+            deps.log.event(
+                "report",
+                f"report written: {len(state.report)} characters citing "
+                f"{len(cited)} works",
+                chars=len(state.report),
+                cited_works=len(cited),
+                findings=len(state.findings),
+            )
             return Verify()
 
 
@@ -514,9 +789,10 @@ class Verify(BaseNode[ResearchState, ResearchDeps, ResearchResult]):
                 http=deps.verify_http,
                 code_first=deps.config.verify_strategy.code_first,
             )
-            _note(state, degraded=outcome.degraded)
+            _note(ctx, degraded=outcome.degraded)
             state.report = outcome.report_markdown
             state.verification = outcome.flags
+            runlog.flags(deps.log, outcome.flags)
             return Finish()
 
 
@@ -537,7 +813,9 @@ class Finish(BaseNode[ResearchState, ResearchDeps, ResearchResult]):
             findings=state.findings,
             report_markdown=state.report,
         )
-        ordered = draft.cited_work_ids()
+        deps.log.step = "Finish"
+        rank = deps.config.rank_strategy
+        ordered = draft.cited_work_ids() if rank.cited_first else []
         by_score = sorted(_kept(ctx).items(), key=lambda item: (-item[1][0], item[0]))
         ordered += [w for w, _ in by_score if w not in ordered]
         result = draft.model_copy(
@@ -567,18 +845,33 @@ class Finish(BaseNode[ResearchState, ResearchDeps, ResearchResult]):
             }
         )
         result = result.model_copy(
-            update={"screening": _screening_record(state, result.works)}
+            update={
+                "screening": _screening_record(
+                    state, result.works, ranks_unscreened=not rank.cited_first
+                )
+            }
+        )
+        runlog.final_ranking(
+            deps.log,
+            works=[w.work_id for w in result.works],
+            titles={w.work_id: w.title for w in result.works},
+            rows=fusion_rows(
+                state.scores, candidates=state.candidates, signals=_signals(state)
+            ),
+            stop_reason=state.stop_reason,
         )
         deps.progress(f"Finish: {state.stop_reason}")
         return End(result)
 
 
 def _screening_record(
-    state: ResearchState, works: Sequence[Work]
+    state: ResearchState, works: Sequence[Work], *, ranks_unscreened: bool = False
 ) -> list[ScreeningEntry]:
     """One entry per pair the run found, in arrival order, with the screen's
     score (``None`` for a pair never screened), its decision and the work's
-    final rank among the result's works."""
+    final rank among the result's works (for a kept pair; with
+    *ranks_unscreened*, a rank strategy that ranks every held pair, for an
+    unscreened one too)."""
     place = {w.work_id: position for position, w in enumerate(works, start=1)}
     entries: list[ScreeningEntry] = []
     for arrival, pair in enumerate(state.arrivals):
@@ -597,7 +890,9 @@ def _screening_record(
                 source_ranks=dict(candidate.source_ranks),
                 p=None if score is None else score.score,
                 kept=kept,
-                rank=place.get(work_id) if kept else None,
+                rank=place.get(work_id)
+                if kept or (ranks_unscreened and score is None)
+                else None,
                 title=work.title,
                 year=work.year,
                 doi=work.doi,
@@ -688,6 +983,7 @@ async def research(
     mode: Mode,
     model: str | Model,
     decision_model: str | DecisionModel | None = None,
+    embedding_model: str | Embedder | None = None,
     store: Path | ResearchStore | None = None,
     budget: Budget = Budget(),
     sources: SourceConfig = SourceConfig(),
@@ -751,11 +1047,27 @@ async def research(
     the answer a request would get. Allowed with ``frozen``; ignored without a
     decision model or while the cache is off or disabled for the model.
 
-    A spent budget ends the search with ``stop_reason='budget:<name>'`` and
-    still writes and verifies the report from what was found. A failing source
-    or model is recorded in ``degraded``. Anything else raises: the run is
-    recorded as failed in the store first.
+    ``embedding_model`` is the local embedding model of a configuration that
+    ranks by dense similarity (``rank: rrf_dense``, the ``hybrid`` preset): a
+    name (an Ollama model, opened here and closed at the end) or an
+    ``dense.Embedder``. Such a configuration refuses to run without one; any
+    other configuration does not use it (the log says so).
+
+    Every run fills ``result.log`` (``RunLog``: what happened at each step);
+    with a store it is also saved as the run item ``log/run``. A spent budget
+    ends the search with ``stop_reason='budget:<name>'`` and still writes and
+    verifies the report from what was found. A failing source or model is
+    recorded in ``degraded``. Anything else raises: the run is recorded as
+    failed in the store first, and the log so far is the error's
+    ``run_log`` attribute.
     """
+    if config.needs_embeddings and embedding_model is None:
+        raise ValueError(
+            f"the {config.name!r} configuration ranks by dense similarity "
+            f"(rank {config.rank!r}) and needs an embedding model: pass "
+            "embedding_model= (CLI --embedding-model NAME, a local Ollama "
+            "embedding model)"
+        )
     if source_client is not None and source_client.store is not store:
         raise ValueError("source_client must belong to the open store passed as store")
     if frozen is not None:
@@ -788,18 +1100,34 @@ async def research(
         opened, offline=frozen is not None, pdf_extraction=sources.pdf_extraction
     )
     handle: DecisionModel | None = None
+    embedder: Embedder | None = None
+    opened_embedder: OllamaDenseEmbedder | None = None
     try:
         handle = (
             await DecisionModel.open(decision_model)
             if isinstance(decision_model, str)
             else decision_model
         )
+        if config.needs_embeddings and embedding_model is not None:
+            if isinstance(embedding_model, str):
+                opened_embedder = await OllamaDenseEmbedder.open(embedding_model)
+                embedder = opened_embedder
+            else:
+                embedder = embedding_model
         source_set = build_sources(sources, store=opened, mode=mode, client=client)
         return await _run(
             question,
             mode=mode,
             model=model,
             decision_model=handle,
+            embedder=embedder,
+            embedding_unused=(
+                None
+                if embedding_model is None or config.needs_embeddings
+                else embedding_model
+                if isinstance(embedding_model, str)
+                else embedding_model.name
+            ),
             store=opened,
             budget=budget,
             sources=sources,
@@ -812,6 +1140,8 @@ async def research(
             clock=clock,
         )
     finally:
+        if opened_embedder is not None:
+            await opened_embedder.aclose()
         if isinstance(decision_model, str) and handle is not None:
             await handle.aclose()
         if source_client is None:
@@ -826,6 +1156,8 @@ async def _run(
     mode: Mode,
     model: str | Model,
     decision_model: DecisionModel | None,
+    embedder: Embedder | None,
+    embedding_unused: str | None,
     store: ResearchStore,
     budget: Budget,
     sources: SourceConfig,
@@ -845,7 +1177,23 @@ async def _run(
             "model": _model_id(model),
             "decision_model": decision_model.id if decision_model else None,
             "decision_digest": decision_model.digest if decision_model else None,
+            "embedding_model": embedder.name if embedder else None,
+            "embedding_digest": embedder.digest if embedder else None,
         },
+    )
+    log = RunLogger(clock=clock, run_id=run_id)
+    _log_setup(
+        log,
+        question=question,
+        mode=mode,
+        model=_model_id(model),
+        decision_model=decision_model,
+        embedder=embedder,
+        embedding_unused=embedding_unused,
+        budget=budget,
+        sources=source_set,
+        config=config,
+        frozen=frozen,
     )
     stats = RunStats()
     asker = Asker(
@@ -857,6 +1205,7 @@ async def _run(
         decision_model=decision_model,
         model_settings=config.model_settings(),
         shared_decisions=shared_decisions,
+        log=log,
     )
     screener = Screener(asker=asker)
     client = source_set.client
@@ -892,6 +1241,8 @@ async def _run(
         config=config,
         frozen=frozen,
         offline_before=dict(client.offline_misses),
+        log=log,
+        embedder=embedder,
     )
 
     def finish_stats() -> RunStats:
@@ -929,18 +1280,117 @@ async def _run(
                     "reused": check.reused,
                 },
             )
+            log.event(
+                "decision_cache",
+                f"decision cache {'enabled' if check.enabled else 'disabled'}: "
+                f"{check.detail}",
+                enabled=check.enabled,
+                detail=check.detail,
+                probe_calls=check.probe_calls,
+            )
             if not check.enabled:
                 state.notes.append(f"decision cache disabled: {check.detail}")
         result = await graph.run(state=state, deps=deps, inputs=Plan())
     except BaseException as error:
+        stats_now = finish_stats()
+        log.event(
+            "failed",
+            f"the run failed: {type(error).__name__}: {error}",
+            step=log.step,
+            error=f"{type(error).__name__}: {error}",
+            wall_s=round(stats_now.wall_s, 3),
+        )
         store.finish_run(
             run_id,
-            stats=finish_stats().model_dump(mode="json"),
+            stats=stats_now.model_dump(mode="json"),
             degraded=[f"run failed: {type(error).__name__}: {error}"],
         )
+        store.add_run_item(run_id, "log", "run", log.log)
+        try:
+            error.run_log = log.snapshot()  # type: ignore[attr-defined]
+        except (AttributeError, TypeError):  # an exception that takes no attribute
+            pass
         raise
     result = result.model_copy(update={"stats": finish_stats()})
+    log.event(
+        "finished",
+        f"finished in {result.stats.wall_s:.1f} s: {result.stats.llm_calls} "
+        f"language-model, {result.stats.decision_calls} decision and "
+        f"{result.stats.embedding_calls} embedding calls; {len(result.findings)} "
+        f"findings, {len(result.works)} ranked works",
+        step="Finish",
+        stop_reason=result.stop_reason,
+        wall_s=round(result.stats.wall_s, 3),
+        llm_calls=result.stats.llm_calls,
+        decision_calls=result.stats.decision_calls,
+        embedding_calls=result.stats.embedding_calls,
+        degraded=len(result.degraded),
+    )
+    result = result.model_copy(update={"log": log.snapshot()})
     store.finish_run(
         run_id, stats=result.stats.model_dump(mode="json"), degraded=result.degraded
     )
+    store.add_run_item(run_id, "log", "run", result.log)
     return result
+
+
+def _log_setup(
+    log: RunLogger,
+    *,
+    question: str,
+    mode: Mode,
+    model: str,
+    decision_model: DecisionModel | None,
+    embedder: Embedder | None,
+    embedding_unused: str | None,
+    budget: Budget,
+    sources: SourceSet,
+    config: ResearchConfig,
+    frozen: FrozenInputs | None,
+) -> None:
+    log.event(
+        "config",
+        f"configuration {config.name} ({config_hash(config)[:12]}): screen "
+        f"{config.screen}, rank {config.rank}, queries {config.queries}, queue "
+        f"{config.queue}, expand {config.expand}, passages {config.passages}",
+        name=config.name,
+        hash=config_hash(config),
+        config=config.model_dump(mode="json"),
+        question=question,
+        mode=mode,
+        frozen=frozen.digest() if frozen is not None else None,
+    )
+    log.event(
+        "models",
+        f"language model {model}; decision model "
+        f"{decision_model.id if decision_model else 'none'}; embedding model "
+        f"{embedder.name if embedder else 'none'}",
+        llm=model,
+        decision_model=decision_model.id if decision_model else None,
+        decision_digest=decision_model.digest if decision_model else None,
+        embedding_model=embedder.name if embedder else None,
+        embedding_digest=embedder.digest if embedder else None,
+    )
+    if embedding_unused is not None:
+        log.event(
+            "note",
+            f"note: the embedding model {embedding_unused} was given but the "
+            f"{config.name} configuration does not use it",
+            text=f"embedding model {embedding_unused} not used",
+        )
+    log.event(
+        "budget",
+        "budget: "
+        + ", ".join(f"{k} {v}" for k, v in budget.model_dump(mode="json").items()),
+        **budget.model_dump(mode="json"),
+    )
+    log.event(
+        "sources",
+        "search sources: "
+        + (", ".join(s.name for s in sources.search) or "none")
+        + "; expansion: "
+        + (", ".join(s.name for s in sources.expand) or "none"),
+        search=[s.name for s in sources.search],
+        expand=[s.name for s in sources.expand],
+        text=[getattr(s, "name", type(s).__name__) for s in sources.text],
+    )

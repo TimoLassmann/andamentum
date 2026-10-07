@@ -59,7 +59,8 @@ from ..config import ResearchConfig, config_hash, preset
 from ..frozen import FrozenInputs
 from ..sources.base import SourceConfig
 from ..store import ResearchStore
-from ..types import Mode
+from ..runlog import write_log
+from ..types import Mode, RunLog
 from .concurrency import resolve_concurrency, run_bounded
 from .arms import ArmOutput, Bm25Arm, ExperimentArm, LegacyArm, V2Arm
 from .experiment import ArmSpec, Experiment, SetSpec
@@ -347,6 +348,9 @@ class Services:
     judge_digest: str | None = None
     # a shared read-through HTTP cache for the live v2 arms (frozen arms are offline)
     http_cache: ResearchStore | None = None
+    # the local embedding model of the v2 arms whose preset ranks by dense
+    # similarity (``hybrid``); other arms are not given it
+    embedding_model: str | None = None
     # a store the cells' decision caches read through to and write to as well
     # (``research(shared_decisions=)``); a solo (clean-timing) cell never uses it
     decision_cache: ResearchStore | None = None
@@ -416,6 +420,9 @@ def build_answer_arm(
         name=spec.name,
         http_cache=services.http_cache,
         shared_decisions=None if spec.is_solo else services.decision_cache,
+        embedding_model=services.embedding_model
+        if preset_of(spec).needs_embeddings
+        else None,
     )
 
 
@@ -475,6 +482,9 @@ def arm_record(exp: Experiment, spec: ArmSpec, services: Services) -> ArmRecord:
         model=spec.model,
         decision_model=decision.id if decision else spec.decision_model,
         decision_digest=decision.digest if decision else None,
+        embedding_model=services.embedding_model
+        if spec.system == "v2" and preset_of(spec).needs_embeddings
+        else None,
         frozen=spec.is_frozen,
         repeats=exp.repeats_of(spec),
         solo=spec.solo,
@@ -784,6 +794,19 @@ async def run_experiment(
             "the litsearch-local set needs --local-corpus (the corpus folder its "
             "arms search)"
         )
+    if services.answer_arm is None and services.embedding_model is None:
+        dense = [
+            a.name
+            for a in exp.arms
+            if a.system == "v2"
+            and (only_arms is None or a.name in only_arms)
+            and preset_of(a).needs_embeddings
+        ]
+        if dense:
+            raise ValueError(
+                f"{', '.join(dense)} rank by dense similarity and need "
+                "--embedding-model (a local Ollama embedding model)"
+            )
     path = registry_path(out_dir)
     check_same_experiment(path, experiment=exp.name, experiment_hash=exp.config_hash())
     items = {s.name: load_items(s, dirs) for s in chosen}
@@ -892,6 +915,24 @@ async def run_experiment(
     return written
 
 
+LOG_DIR = "logs"
+
+
+def cell_log_path(out_dir: Path, *, arm: str, item_id: str, repeat: int) -> Path:
+    """Where a cell's run log goes: ``<out-dir>/logs/<arm>/<item>-r<repeat>.log.md``
+    (the ``.jsonl`` beside it)."""
+    return out_dir / LOG_DIR / arm / f"{item_id}-r{repeat}.log.md"
+
+
+def write_cell_log(log: RunLog, *, out_dir: Path, cell: RunRecord) -> None:
+    write_log(
+        log,
+        md_path=cell_log_path(
+            out_dir, arm=cell.arm, item_id=cell.item_id, repeat=cell.repeat
+        ),
+    )
+
+
 async def _run_cell(
     *,
     exp: Experiment,
@@ -963,6 +1004,8 @@ async def _run_cell(
                 frozen=frozen,
                 store=store,
             )
+            if output.log is not None:
+                write_cell_log(output.log, out_dir=out_dir, cell=record)
             if live and (note := infrastructure_failure(output)):
                 raise InfrastructureDown(
                     f"{spec.name} {item.set_name}/{item.item_id} "
@@ -980,6 +1023,9 @@ async def _run_cell(
         record.outage = True
         record.metrics = {}
     except Exception as error:  # recorded and counted, never dropped
+        partial = getattr(error, "run_log", None)
+        if isinstance(partial, RunLog):
+            write_cell_log(partial, out_dir=out_dir, cell=record)
         record.error = _error_text(error)
         if spec.outage == "record":
             # a failed legacy cell has no metric values: it drops out of the

@@ -37,6 +37,9 @@ class ArmRecord(BaseModel):
     model: str | None = None
     decision_model: str | None = None
     decision_digest: str | None = None
+    embedding_model: str | None = Field(
+        default=None, description="v2 arms that rank by dense similarity."
+    )
     frozen: bool = False
     repeats: int = 1
     solo: int | None = None

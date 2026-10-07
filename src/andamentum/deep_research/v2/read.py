@@ -137,6 +137,16 @@ class ReadTarget:
     subquestion_ids: Sequence[str]
 
 
+class SelectedPassage(BaseModel):
+    """One passage chosen for one sub-question: its place in the selection and
+    its lexical (BM25) score against the sub-question."""
+
+    subquestion_id: str
+    passage_id: str
+    place: int
+    score: float
+
+
 class WorkReading(BaseModel):
     """What reading one work produced."""
 
@@ -146,6 +156,9 @@ class WorkReading(BaseModel):
     findings: list[Finding] = Field(default_factory=list)
     dropped: list[VerifyFlag] = Field(default_factory=list)
     done: list[str] = Field(default_factory=list)
+    # The passages chosen per sub-question, best first, with their BM25 score
+    # against the sub-question among the work's passages (for the run log).
+    selected: list[SelectedPassage] = Field(default_factory=list)
     notes: list[str] = Field(default_factory=list)
     # A text source that failed on this work (not a routine refusal): a note
     # of the run, never degraded by itself.
@@ -726,6 +739,7 @@ async def read_work(
             limit=limit,
             work_titles={work.work_id: work.title},
         )
+        reading.selected += _scored(selected, all_passages, subquestion=subquestion)
         findings, dropped = await extract_findings(
             selected, subquestion=subquestion, criteria=own, asker=asker, ids=ids
         )
@@ -744,6 +758,29 @@ async def read_work(
         used.update({p.passage_id: p for p in selected})
     reading.passages = list(used.values())
     return reading
+
+
+def _scored(
+    selected: Sequence[Passage],
+    passages: Sequence[Passage],
+    *,
+    subquestion: SubQuestion,
+) -> list[SelectedPassage]:
+    """The chosen passages with their BM25 score against the sub-question over
+    all of the work's passages (the lexical strategy's own score)."""
+    from .strategies import bm25_scores  # strategies imports this module
+
+    scores = bm25_scores(subquestion.text, [p.text for p in passages])
+    by_id = {p.passage_id: score for p, score in zip(passages, scores, strict=True)}
+    return [
+        SelectedPassage(
+            subquestion_id=subquestion.id,
+            passage_id=p.passage_id,
+            place=place,
+            score=round(by_id.get(p.passage_id, 0.0), 4),
+        )
+        for place, p in enumerate(selected, start=1)
+    ]
 
 
 async def read_works(

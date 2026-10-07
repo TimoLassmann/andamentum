@@ -17,6 +17,14 @@ Slots and the strategies that exist:
   title and abstract (or snippet) against the sub-question, in code (the
   passages' BM25), and only the best ``PREFILTER_TOP`` are put to the generic
   question; the rest are dropped as "below lexical pre-filter".
+  ``rank_only``: the generic question over the best ``RERANK_DEPTH``
+  candidates of each sub-question by their pre-screen fused rank (sources and
+  dense lists); no candidate is ever dropped, p is one more ranked list.
+- **queries** — ``llm``: the language model writes every query (as built);
+  ``llm_plus_question``: in round 1 the original question is also searched,
+  verbatim, once per run and first, on every source; its results count for
+  every sub-question and form their own ranked list per source
+  (``<source>:question``).
 - **queue** — the order in which waiting (work, sub-question) pairs are
   admitted to screening when a round cannot screen them all: ``arrival``
   (the order they were found in, as built; the default) or ``source_rank``
@@ -28,7 +36,12 @@ Slots and the strategies that exist:
 - **refine** — ``off``; ``on``: ``Screener.refine`` as built (needs criteria).
 - **rank** — ``score``: a kept work's best screen score, as built; ``rrf``:
   reciprocal-rank fusion of each source's search rank and the screen score's
-  rank, per sub-question.
+  rank, per sub-question. ``rrf_dense``: reciprocal-rank fusion, per
+  sub-question, over every candidate the run holds (screened or not, never a
+  dropped or retracted one): each source's list, the dense cosine list against
+  the sub-question and against the question (``dense.py``; needs an embedding
+  model), and the screen probability list; the result's works are this fused
+  order (not cited works first).
 - **passages** — ``lexical``: BM25 over the work's passages against the
   sub-question, in code (no model call); ``criteria``: ``read.select_passages``
   as built (the decision model scores the passage criteria, else one LLM pick).
@@ -45,6 +58,7 @@ from __future__ import annotations
 
 import math
 from collections import Counter
+from dataclasses import dataclass, field
 from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Protocol
 
@@ -70,11 +84,34 @@ RELEVANT_KEY = "relevant"
 # The constant of reciprocal-rank fusion (Cormack et al. 2009): each list adds
 # 1 / (RRF_K + rank). Large enough that one list's top place does not dominate.
 RRF_K = 60
+# The ``rank_only`` screen asks the generic question of the best this many
+# candidates of a sub-question by pre-screen fused rank; the rest keep that rank.
+RERANK_DEPTH = 50
+# The names of the lists ``fusion_rows`` adds to a candidate's source lists.
+LIST_DENSE_SUBQUESTION = "dense:subquestion"
+LIST_DENSE_QUESTION = "dense:question"
+LIST_SCREEN = "screen:p"
+# The suffix of the list a source's results for the raw question form.
+QUESTION_LIST_SUFFIX = ":question"
 # BM25 parameters (the usual defaults).
 BM25_K1 = 1.5
 BM25_B = 0.75
 
 Kept = dict[str, tuple[float, list[str]]]
+
+
+@dataclass(frozen=True)
+class RankSignals:
+    """What a rank strategy may read besides the screen scores: every pair the
+    run holds, in arrival order, and the dense cosine similarities (empty
+    unless the configuration ranks by them)."""
+
+    pairs: Sequence[Pair] = ()
+    dense_subquestion: Mapping[Pair, float] = field(default_factory=dict)
+    dense_question: Mapping[str, float] = field(default_factory=dict)
+
+
+NO_SIGNALS = RankSignals()
 
 
 # -- protocols -------------------------------------------------------------------
@@ -95,6 +132,17 @@ class ScreenStrategy(Protocol):
         screener: Screener,
         config: ResearchConfig,
     ) -> list[CandidateScore]: ...
+
+    def select(
+        self,
+        pairs: Sequence[Pair],
+        *,
+        candidates: Mapping[str, Candidate],
+        signals: RankSignals,
+    ) -> list[Pair]:
+        """Which waiting pairs (in the queue's order) may be screened now, and
+        in what order."""
+        ...
 
 
 class RefineStrategy(Protocol):
@@ -121,13 +169,29 @@ class RankStrategy(Protocol):
     a higher value is read, expanded and listed first."""
 
     name: str
+    # whether the run must compute dense similarities (an embedding model)
+    needs_embeddings: bool
+    # True: the result lists the cited works first, then the rest by value;
+    # False: the result is the ranking itself
+    cited_first: bool
 
     def kept(
         self,
         scores: Mapping[Pair, CandidateScore],
         *,
         candidates: Mapping[str, Candidate],
+        signals: RankSignals = NO_SIGNALS,
     ) -> Kept: ...
+
+
+class QueryStrategy(Protocol):
+    """Whether the raw question is searched too, besides the written queries."""
+
+    name: str
+
+    def question_query(
+        self, question: str, *, round_number: int, done: Sequence[str]
+    ) -> str | None: ...
 
 
 class QueueStrategy(Protocol):
@@ -274,6 +338,15 @@ class GenericScreen:
             scores.append(score)
         return scores
 
+    def select(
+        self,
+        pairs: Sequence[Pair],
+        *,
+        candidates: Mapping[str, Candidate],
+        signals: RankSignals,
+    ) -> list[Pair]:
+        return list(pairs)
+
 
 def prefilter_text(candidate: Candidate) -> str:
     """What the lexical pre-filter reads of a candidate: title and abstract (or
@@ -350,6 +423,69 @@ class GenericPrefilterScreen(GenericScreen):
         return scores
 
 
+class RankOnlyScreen(GenericScreen):
+    """The generic question as a ranker: every screened candidate is kept, its
+    p is one more ranked list of the fusion. Only the best ``RERANK_DEPTH``
+    candidates of a sub-question by pre-screen fused rank (sources and dense
+    lists, ``fusion_rows`` without the screen) are offered, best first; the
+    others keep their pre-screen rank. The round's caps still apply."""
+
+    name = "rank_only"
+
+    async def screen(
+        self,
+        subquestion: SubQuestion,
+        candidates: list[Candidate],
+        *,
+        criteria: list[Criterion],
+        screener: Screener,
+        config: ResearchConfig,
+    ) -> list[CandidateScore]:
+        question = {RELEVANT_KEY: relevance_question(subquestion)}
+        scores: list[CandidateScore] = []
+        for candidate in candidates:
+            work_id = candidate.work.work_id
+            if not work_id:
+                raise ValueError(
+                    f"candidate {candidate.work.title!r} has no work_id; "
+                    "upsert it into the store before screening"
+                )
+            answers = await screener.ask(item_state(candidate), question, step="screen")
+            p = answers[RELEVANT_KEY].p_true
+            if p is None:
+                raise ScreeningError(
+                    f"a noul answer without a probability: {answers!r}"
+                )
+            score = CandidateScore(
+                work_id=work_id,
+                subquestion_id=subquestion.id,
+                criterion_p={RELEVANT_KEY: p},
+                score=p,
+                kept=True,
+                reason=f"ranked: p(relevant)={p:.2f} (rank_only: never dropped)",
+            )
+            screener.store.add_run_item(
+                screener.run_id,
+                "candidate",
+                f"{subquestion.id}/generic/{work_id}",
+                {**score.model_dump(mode="json"), "screen": self.name},
+            )
+            scores.append(score)
+        return scores
+
+    def select(
+        self,
+        pairs: Sequence[Pair],
+        *,
+        candidates: Mapping[str, Candidate],
+        signals: RankSignals,
+    ) -> list[Pair]:
+        rows = fusion_rows({}, candidates=candidates, signals=signals, with_screen=False)
+        places = fused_places(rows, order=[*signals.pairs, *pairs])
+        eligible = [p for p in pairs if places.get(p, RERANK_DEPTH + 1) <= RERANK_DEPTH]
+        return sorted(eligible, key=lambda p: places[p])
+
+
 class CriteriaScreen:
     """The compiled rubric, scored as built (``Screener.score_candidates``)."""
 
@@ -366,6 +502,15 @@ class CriteriaScreen:
         config: ResearchConfig,
     ) -> list[CandidateScore]:
         return await screener.score_candidates(subquestion, criteria, candidates)
+
+    def select(
+        self,
+        pairs: Sequence[Pair],
+        *,
+        candidates: Mapping[str, Candidate],
+        signals: RankSignals,
+    ) -> list[Pair]:
+        return list(pairs)
 
 
 # -- refine ----------------------------------------------------------------------
@@ -483,12 +628,15 @@ class ScoreRank:
     """A kept work's best screen score over its sub-questions, as built."""
 
     name = "score"
+    needs_embeddings = False
+    cited_first = True
 
     def kept(
         self,
         scores: Mapping[Pair, CandidateScore],
         *,
         candidates: Mapping[str, Candidate],
+        signals: RankSignals = NO_SIGNALS,
     ) -> Kept:
         kept: Kept = {}
         for (work_id, subquestion_id), score in scores.items():
@@ -535,12 +683,15 @@ class RrfRank:
     sub-question; a work kept for several takes its best."""
 
     name = "rrf"
+    needs_embeddings = False
+    cited_first = True
 
     def kept(
         self,
         scores: Mapping[Pair, CandidateScore],
         *,
         candidates: Mapping[str, Candidate],
+        signals: RankSignals = NO_SIGNALS,
     ) -> Kept:
         by_subquestion: dict[str, list[CandidateScore]] = {}
         ids: dict[str, list[str]] = {}
@@ -557,6 +708,156 @@ class RrfRank:
             work_id: (best[work_id], subquestion_ids)
             for work_id, subquestion_ids in ids.items()
         }
+
+
+@dataclass(frozen=True)
+class FusionRow:
+    """One (work, sub-question) pair in the fusion: its fused value, its
+    1-based place in every list it is in (by list name), its screen p
+    (``None``: not screened) and whether the screen dropped it."""
+
+    fused: float
+    ranks: dict[str, int]
+    p: float | None = None
+    dropped: bool = False
+
+
+def fusion_rows(
+    scores: Mapping[Pair, CandidateScore],
+    *,
+    candidates: Mapping[str, Candidate],
+    signals: RankSignals,
+    with_screen: bool = True,
+) -> dict[Pair, FusionRow]:
+    """Reciprocal-rank fusion of every pair the run holds (``signals.pairs``
+    and the screened ones), per sub-question: the sum of ``1 / (RRF_K + rank)``
+    over each source's list (``Candidate.source_ranks``), the dense cosine list
+    against the sub-question (``dense:subquestion``) and against the question
+    (``dense:question``), ranked among the sub-question's pairs, and (with
+    *with_screen*) the screen probability list (``screen:p``) among its
+    screened pairs. Equal values share a rank. A list a pair is not in adds
+    nothing."""
+    pairs = list(dict.fromkeys([*signals.pairs, *scores.keys()]))
+    by_subquestion: dict[str, list[str]] = {}
+    for work_id, subquestion_id in pairs:
+        if work_id in candidates:
+            by_subquestion.setdefault(subquestion_id, []).append(work_id)
+    rows: dict[Pair, FusionRow] = {}
+    for subquestion_id, works in by_subquestion.items():
+        dense_s = _competition_ranks(
+            {
+                w: signals.dense_subquestion[(w, subquestion_id)]
+                for w in works
+                if (w, subquestion_id) in signals.dense_subquestion
+            }
+        )
+        dense_q = _competition_ranks(
+            {w: signals.dense_question[w] for w in works if w in signals.dense_question}
+        )
+        screen = _competition_ranks(
+            {
+                w: scores[(w, subquestion_id)].score
+                for w in works
+                if (w, subquestion_id) in scores
+            }
+        )
+        for work_id in works:
+            pair = (work_id, subquestion_id)
+            ranks = dict(candidates[work_id].source_ranks)
+            if work_id in dense_s:
+                ranks[LIST_DENSE_SUBQUESTION] = dense_s[work_id]
+            if work_id in dense_q:
+                ranks[LIST_DENSE_QUESTION] = dense_q[work_id]
+            score = scores.get(pair)
+            if with_screen and work_id in screen:
+                ranks[LIST_SCREEN] = screen[work_id]
+            rows[pair] = FusionRow(
+                fused=sum(1.0 / (RRF_K + r) for r in ranks.values()),
+                ranks=ranks,
+                p=None if score is None else score.score,
+                dropped=score is not None and not score.kept,
+            )
+    return rows
+
+
+def fused_places(
+    rows: Mapping[Pair, FusionRow], *, order: Sequence[Pair] = ()
+) -> dict[Pair, int]:
+    """Each pair's 1-based place within its sub-question, best fused first;
+    equal values keep the pairs' place in *order* (arrival), then work id."""
+    first: dict[Pair, int] = {}
+    for position, pair in enumerate(order):
+        first.setdefault(pair, position)
+    by_subquestion: dict[str, list[Pair]] = {}
+    for pair in rows:
+        by_subquestion.setdefault(pair[1], []).append(pair)
+    places: dict[Pair, int] = {}
+    for own in by_subquestion.values():
+        ranked = sorted(
+            own,
+            key=lambda p: (-rows[p].fused, first.get(p, len(first)), p[0]),
+        )
+        places.update({pair: place for place, pair in enumerate(ranked, start=1)})
+    return places
+
+
+class RrfDenseRank:
+    """Reciprocal-rank fusion over every candidate the run holds (screened or
+    not; never a dropped or retracted one), per sub-question, of the source
+    lists, the two dense lists and the screen probability list
+    (``fusion_rows``); a work held for several sub-questions takes its best.
+    The result's works are this order."""
+
+    name = "rrf_dense"
+    needs_embeddings = True
+    cited_first = False
+
+    def kept(
+        self,
+        scores: Mapping[Pair, CandidateScore],
+        *,
+        candidates: Mapping[str, Candidate],
+        signals: RankSignals = NO_SIGNALS,
+    ) -> Kept:
+        kept: Kept = {}
+        rows = fusion_rows(scores, candidates=candidates, signals=signals)
+        for (work_id, subquestion_id), row in rows.items():
+            if row.dropped or candidates[work_id].work.retracted == "retracted":
+                continue
+            best, ids = kept.get(work_id, (0.0, []))
+            kept[work_id] = (max(best, row.fused), [*ids, subquestion_id])
+        return kept
+
+
+# -- queries ---------------------------------------------------------------------
+
+
+class LlmQueries:
+    """Every query is written by the language model (as built)."""
+
+    name = "llm"
+
+    def question_query(
+        self, question: str, *, round_number: int, done: Sequence[str]
+    ) -> str | None:
+        return None
+
+
+class LlmPlusQuestion:
+    """The written queries, and in round 1 the question itself, verbatim,
+    searched once per run (unless an identical query already ran)."""
+
+    name = "llm_plus_question"
+
+    def question_query(
+        self, question: str, *, round_number: int, done: Sequence[str]
+    ) -> str | None:
+        text = " ".join(question.split())
+        if round_number != 1 or not text:
+            return None
+        if text.casefold() in {" ".join(q.casefold().split()) for q in done}:
+            return None
+        return text
 
 
 # -- passages --------------------------------------------------------------------

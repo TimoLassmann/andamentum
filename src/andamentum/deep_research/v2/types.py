@@ -11,6 +11,7 @@ against the quote behind it instead of trusting the prose.
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 from typing import Literal
 
@@ -282,6 +283,208 @@ class RunStats(BaseModel):
     # Of ``decision_cache_hits``, the answers a store shared between runs held
     # (``research(shared_decisions=)``); the rest were the run's own.
     decision_shared_hits: int = Field(default=0, ge=0)
+    # The embedding model (``rank: rrf_dense``): requests sent (one batch of
+    # texts each), per step, and texts whose vector the store already held.
+    embedding_calls: int = Field(default=0, ge=0)
+    step_embedding_calls: dict[str, int] = Field(default_factory=dict)
+    embedding_cache_hits: int = Field(default=0, ge=0)
+
+
+LogStep = Literal[
+    "Setup",
+    "Plan",
+    "Search",
+    "Screen",
+    "Expand",
+    "Read",
+    "Coverage",
+    "Write",
+    "Verify",
+    "Finish",
+]
+LOG_STEPS: tuple[LogStep, ...] = (
+    "Setup",
+    "Plan",
+    "Search",
+    "Screen",
+    "Expand",
+    "Read",
+    "Coverage",
+    "Write",
+    "Verify",
+    "Finish",
+)
+
+
+class LogEvent(BaseModel):
+    """One thing that happened in a run: ``t`` is seconds since the run began
+    (on the run's clock), ``event`` a short snake_case name, ``message`` one
+    sentence for a reader, ``data`` the details as JSON."""
+
+    seq: int = Field(ge=0)
+    t: float = Field(ge=0)
+    step: LogStep
+    event: str = Field(pattern=r"^[a-z][a-z0-9_]*$")
+    message: str
+    data: dict[str, JsonValue] = Field(default_factory=dict)
+
+
+# Events the markdown rendering shows as table rows (consecutive events of one
+# kind form one table): event -> (column header, data key) pairs.
+_LOG_TABLES: dict[str, tuple[tuple[str, str], ...]] = {
+    "query": (
+        ("sub-question", "subquestion"),
+        ("query", "query"),
+        ("source", "source"),
+        ("results", "count"),
+        ("top titles", "top"),
+    ),
+    "screened": (
+        ("sub-question", "subquestion"),
+        ("title", "title"),
+        ("p", "p"),
+        ("kept", "kept"),
+        ("rank before", "rank_before"),
+        ("rank after", "rank_after"),
+        ("reason", "reason"),
+    ),
+    "llm_call": (
+        ("purpose", "purpose"),
+        ("model", "model"),
+        ("prompt chars", "prompt_chars"),
+        ("seconds", "seconds"),
+        ("output", "output"),
+    ),
+    "passage": (
+        ("work", "title"),
+        ("sub-question", "subquestion"),
+        ("passage", "passage_id"),
+        ("score", "score"),
+        ("text", "text"),
+    ),
+    "verify_flag": (("kind", "kind"), ("ref", "ref"), ("detail", "detail")),
+}
+_CELL_CHARS = 160
+
+
+def _cell(value: JsonValue) -> str:
+    if isinstance(value, float):
+        text = f"{value:.3f}"
+    elif isinstance(value, list):
+        parts: list[str] = []
+        for item in value:
+            if isinstance(item, dict):
+                rank = item.get("rank")
+                parts.append(f"{rank}. {item.get('title', '')}" if rank else str(item))
+            else:
+                parts.append(str(item))
+        text = "; ".join(parts)
+    elif value is None:
+        text = ""
+    else:
+        text = str(value)
+    text = " ".join(text.split()).replace("|", "\\|")
+    return text if len(text) <= _CELL_CHARS else text[: _CELL_CHARS - 3] + "..."
+
+
+def _table(columns: tuple[tuple[str, str], ...], rows: list[LogEvent]) -> list[str]:
+    lines = [
+        "| t (s) | " + " | ".join(h for h, _ in columns) + " |",
+        "|---" * (len(columns) + 1) + "|",
+    ]
+    for event in rows:
+        cells = [_cell(event.data.get(key)) for _, key in columns]
+        lines.append(f"| {event.t:.2f} | " + " | ".join(cells) + " |")
+    return lines
+
+
+def _final_ranking(event: LogEvent) -> list[str]:
+    works = event.data.get("works")
+    if not isinstance(works, list) or not works:
+        return []
+    lines = [
+        "",
+        "| rank | title | fused | signal ranks | p |",
+        "|---|---|---|---|---|",
+    ]
+    for entry in works:
+        if not isinstance(entry, dict):
+            continue
+        ranks = entry.get("ranks")
+        shown = (
+            ", ".join(f"{k} {v}" for k, v in ranks.items())
+            if isinstance(ranks, dict)
+            else ""
+        )
+        lines.append(
+            f"| {_cell(entry.get('rank'))} | {_cell(entry.get('title'))} | "
+            f"{_cell(entry.get('fused'))} | {_cell(shown)} | {_cell(entry.get('p'))} |"
+        )
+    return lines
+
+
+class RunLog(BaseModel):
+    """What a run did, step by step, in order (``LogEvent``). Every run fills
+    one (``ResearchResult.log``); ``to_jsonl`` and ``to_markdown`` write it."""
+
+    run_id: str = ""
+    events: list[LogEvent] = Field(default_factory=list)
+
+    def to_jsonl(self) -> str:
+        """One event per line, as JSON; ``from_jsonl`` reads it back."""
+        header = json.dumps({"run_id": self.run_id})
+        return "\n".join([header, *(e.model_dump_json() for e in self.events)]) + "\n"
+
+    @classmethod
+    def from_jsonl(cls, text: str) -> RunLog:
+        lines = [line for line in text.splitlines() if line.strip()]
+        if not lines:
+            return cls()
+        header = json.loads(lines[0])
+        return cls(
+            run_id=str(header.get("run_id", "")),
+            events=[LogEvent.model_validate_json(line) for line in lines[1:]],
+        )
+
+    def to_markdown(self) -> str:
+        """A readable timeline: a heading each time the step changes, tables
+        for queries, screening, model calls, passages and verification flags,
+        the final ranking as a table, every other event as a line."""
+        total = self.events[-1].t if self.events else 0.0
+        out = [
+            f"# Run log {self.run_id}".rstrip(),
+            "",
+            f"{len(self.events)} events over {total:.1f} s.",
+        ]
+        step: str | None = None
+        index = 0
+        events = self.events
+        while index < len(events):
+            event = events[index]
+            if event.step != step:
+                step = event.step
+                out += ["", f"## {step}", ""]
+            columns = _LOG_TABLES.get(event.event)
+            if columns is not None:
+                rows = [event]
+                while (
+                    index + 1 < len(events)
+                    and events[index + 1].event == event.event
+                    and events[index + 1].step == step
+                ):
+                    index += 1
+                    rows.append(events[index])
+                if out[-1] != "":
+                    out.append("")
+                out += _table(columns, rows)
+                out.append("")
+            else:
+                out.append(f"- [{event.t:.2f} s] {event.message}")
+                if event.event == "final_ranking":
+                    out += _final_ranking(event)
+                    out.append("")
+            index += 1
+        return "\n".join(out).rstrip() + "\n"
 
 
 class ScreeningEntry(BaseModel):
@@ -376,6 +579,8 @@ class ResearchResult(BaseModel):
     # Every (work, sub-question) pair the run held and what became of it, in
     # the order the run found them (``ScreeningEntry``).
     screening: list[ScreeningEntry] = Field(default_factory=list)
+    # What happened at each step, in order (always filled; ``RunLog``).
+    log: RunLog = Field(default_factory=RunLog)
 
     def cited_work_ids(self) -> list[str]:
         """Work ids behind the findings the report cites, in order of first citation.

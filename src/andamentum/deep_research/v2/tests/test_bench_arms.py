@@ -249,6 +249,7 @@ async def test_the_v2_arm_calls_research_with_the_spec_arguments(
         "mode": "both",
         "model": "ollama:stub",
         "decision_model": "nimble:9b",
+        "embedding_model": None,  # only a dense-ranking preset is given one
         "store": None,  # nothing persists
         "budget": Budget(max_rounds=1),
         "sources": sources,

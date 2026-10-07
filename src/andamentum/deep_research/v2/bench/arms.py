@@ -32,7 +32,8 @@ from ..graph import research
 from ..sources.base import SourceClient, SourceConfig
 from ..sources.local_corpus import LocalCorpusSource
 from ..store import ResearchStore
-from ..types import _FINDING_REFERENCE, Budget, Mode, ResearchResult
+from ..dense import Embedder
+from ..types import _FINDING_REFERENCE, Budget, Mode, ResearchResult, RunLog
 from .judging import ClaimEvidence, best_window
 from .metrics import Cost, extract_urls
 
@@ -68,8 +69,16 @@ class ArmOutput(BaseModel):
     result: ResearchResult | None = Field(
         default=None,
         description=(
-            "v2 only: the run's evidence table (passages and criteria left out), "
-            "which the stability and planted-source measures read."
+            "v2 only: the run's evidence table (passages, criteria and the log "
+            "left out), which the stability and planted-source measures read."
+        ),
+    )
+    log: RunLog | None = Field(
+        default=None,
+        exclude=True,
+        description=(
+            "v2 only: the run log, kept out of every dump (the registry would "
+            "grow by megabytes); an experiment writes it as files of its own."
         ),
     )
 
@@ -286,7 +295,10 @@ def map_v2(result: ResearchResult) -> ArmOutput:
             output_tokens=stats.output_tokens,
             decision_calls=stats.decision_calls,
         ),
-        result=result.model_copy(update={"passages": [], "criteria": {}}),
+        result=result.model_copy(
+            update={"passages": [], "criteria": {}, "log": RunLog(run_id=result.run_id)}
+        ),
+        log=result.log,
     )
 
 
@@ -303,6 +315,8 @@ class V2Arm:
     read-through HTTP cache for the live runs (not for a frozen one, which
     reads only its snapshot). ``shared_decisions`` is a store the runs share
     their decision answers through (``research(shared_decisions=)``).
+    ``embedding_model`` goes to a configuration that ranks by dense
+    similarity (the ``hybrid`` preset needs one).
     """
 
     returns_pages = False
@@ -321,8 +335,10 @@ class V2Arm:
         name: str | None = None,
         http_cache: ResearchStore | None = None,
         shared_decisions: ResearchStore | None = None,
+        embedding_model: str | Embedder | None = None,
     ) -> None:
         self.name = name or f"v2-{mode}"
+        self.embedding_model = embedding_model
         self.http_cache = http_cache
         self.shared_decisions = shared_decisions
         self.mode: Mode = mode
@@ -353,6 +369,7 @@ class V2Arm:
             mode=self.mode,
             model=self.model,
             decision_model=self.decision_model,
+            embedding_model=self.embedding_model,
             store=use_store,
             budget=self.budget,
             sources=self.sources,

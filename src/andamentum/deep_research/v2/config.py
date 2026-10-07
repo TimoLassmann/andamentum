@@ -24,6 +24,13 @@ Four presets (``PRESETS``):
 - ``recall``: the baseline with the ``source_rank`` queue (waiting candidates
   are screened best-by-source-rank first instead of in arrival order) and
   nothing else (round 3).
+- ``hybrid`` (round 5): the baseline with three strategies swapped: the
+  ``llm_plus_question`` queries (the raw question searched too, once, in round
+  1), the ``rrf_dense`` rank (dense similarity against the question and the
+  sub-question as two more lists of the fusion, over every candidate held; the
+  result is the fused order) and the ``rank_only`` screen (the generic
+  question's p is a ranked list, nothing is dropped). It needs an embedding
+  model (``research(embedding_model=)``).
 - ``criteria``: the behaviour built first (LLM-compiled criteria scored by the
   decision model, refinement, criteria passage scoring, criteria facets, the
   budget's caps), kept as an arm to compare against the baseline.
@@ -56,14 +63,19 @@ from .strategies import (
     GenericPrefilterScreen,
     GenericScreen,
     LexicalPassages,
+    LlmPlusQuestion,
+    LlmQueries,
     ModelVerify,
     NoExpand,
     NoFacets,
     NoRefine,
     PassageStrategy,
+    QueryStrategy,
     QueueStrategy,
+    RankOnlyScreen,
     RankStrategy,
     RefineStrategy,
+    RrfDenseRank,
     RrfRank,
     ScoreRank,
     ScreenStrategy,
@@ -76,9 +88,14 @@ SCREENS: dict[str, ScreenStrategy] = {
     "generic": GenericScreen(),
     "generic_prefilter": GenericPrefilterScreen(),
     "criteria": CriteriaScreen(),
+    "rank_only": RankOnlyScreen(),
 }
 REFINES: dict[str, RefineStrategy] = {"off": NoRefine(), "on": CriteriaRefine()}
-RANKS: dict[str, RankStrategy] = {"rrf": RrfRank(), "score": ScoreRank()}
+RANKS: dict[str, RankStrategy] = {
+    "rrf": RrfRank(),
+    "score": ScoreRank(),
+    "rrf_dense": RrfDenseRank(),
+}
 PASSAGES: dict[str, PassageStrategy] = {
     "lexical": LexicalPassages(),
     "criteria": CriteriaPassages(),
@@ -95,6 +112,11 @@ QUEUES: dict[str, QueueStrategy] = {
     "source_rank": SourceRankQueue(),
 }
 
+QUERIES: dict[str, QueryStrategy] = {
+    "llm": LlmQueries(),
+    "llm_plus_question": LlmPlusQuestion(),
+}
+
 _SLOTS: dict[str, Mapping[str, object]] = {
     "screen": SCREENS,
     "refine": REFINES,
@@ -104,6 +126,7 @@ _SLOTS: dict[str, Mapping[str, object]] = {
     "facets": FACETS,
     "verify": VERIFIES,
     "queue": QUEUES,
+    "queries": QUERIES,
 }
 
 # The fixed seed both presets send with every language-model call.
@@ -113,7 +136,11 @@ _UNHASHED = frozenset({"name", "description"})
 # Fields added after the first presets were hashed: left out of the hash while
 # they hold the value every earlier configuration had, so a configuration that
 # predates the field keeps its hash (the recorded hashes keep their meaning).
-_UNHASHED_AT_DEFAULT: dict[str, object] = {"verify": "model", "queue": "arrival"}
+_UNHASHED_AT_DEFAULT: dict[str, object] = {
+    "verify": "model",
+    "queue": "arrival",
+    "queries": "llm",
+}
 
 
 class ResearchConfig(BaseModel):
@@ -146,6 +173,7 @@ class ResearchConfig(BaseModel):
     facets: str
     verify: str = "model"
     queue: str = "arrival"
+    queries: str = "llm"
     drop_below: float = Field(default=GENERIC_DROP_BELOW, ge=0.0, le=1.0)
     screen_per_subquestion: int | None = Field(default=None, ge=1)
     read_per_subquestion: int | None = Field(default=None, ge=1)
@@ -206,6 +234,15 @@ class ResearchConfig(BaseModel):
     @property
     def queue_strategy(self) -> QueueStrategy:
         return QUEUES[self.queue]
+
+    @property
+    def query_strategy(self) -> QueryStrategy:
+        return QUERIES[self.queries]
+
+    @property
+    def needs_embeddings(self) -> bool:
+        """Whether the run needs an embedding model (dense similarity)."""
+        return self.rank_strategy.needs_embeddings
 
     @property
     def needs_criteria(self) -> bool:
@@ -297,6 +334,25 @@ PRESETS: dict[str, ResearchConfig] = {
         expand="citations",
         facets="off",
         queue="source_rank",
+        drop_below=GENERIC_DROP_BELOW,
+        screen_per_subquestion=25,
+        read_per_subquestion=8,
+        expand_seeds=3,
+        expand_per_round=20,
+        passages_per_work=4,
+    ),
+    "hybrid": ResearchConfig(
+        name="hybrid",
+        description="the baseline with the raw question searched too, dense "
+        "similarity in the rank fusion and the generic screen as a ranker that "
+        "drops nothing (needs an embedding model)",
+        screen="rank_only",
+        refine="off",
+        rank="rrf_dense",
+        passages="lexical",
+        expand="citations",
+        facets="off",
+        queries="llm_plus_question",
         drop_below=GENERIC_DROP_BELOW,
         screen_per_subquestion=25,
         read_per_subquestion=8,

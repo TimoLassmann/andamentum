@@ -334,6 +334,14 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--snapshots", type=Path, default=None)
     run.add_argument("--litsearch-dir", type=Path, default=None)
     run.add_argument(
+        "--embedding-model",
+        default=None,
+        metavar="NAME",
+        help="a local Ollama embedding model (e.g. embeddinggemma:latest) for the "
+        "v2 arms whose preset ranks by dense similarity (hybrid); required when "
+        "the experiment has one",
+    )
+    run.add_argument(
         "--litsearch-local-dir",
         type=Path,
         default=None,
@@ -997,6 +1005,7 @@ async def _run_with(
             http_cache=cache,
             decision_cache=shared_decisions,
             keyless=keyless,
+            embedding_model=args.embedding_model,
         )
         written = await run_experiment(
             exp,

@@ -23,6 +23,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal, TypeVar, cast
@@ -35,6 +36,8 @@ from andamentum.core.agents import run_agent_with_usage
 from andamentum.core.decisions import Answer, DecisionModel, Question, question_hash
 from andamentum.core.decisions.errors import DecisionError
 
+from . import runlog
+from .runlog import RunLogger
 from .store import ResearchStore
 from .types import Budget, RunStats
 
@@ -170,6 +173,9 @@ class Asker:
     # (``research(shared_decisions=)``): several runs over the same candidates
     # then answer one request once. Used only while ``decision_cache`` is on.
     shared_decisions: ResearchStore | None = None
+    # The run's log: every language-model call and every yes/no batch is
+    # recorded there (None: not logged, e.g. a capture or a one-off screen).
+    log: RunLogger | None = None
 
     # -- language model ----------------------------------------------------
 
@@ -186,13 +192,37 @@ class Asker:
             raise BudgetExhausted("max_llm_calls")
         self.stats.llm_calls += 1
         _count(self.stats.step_llm_calls, self.phase)
-        output, usage = await run_agent_with_usage(
-            self.model,
-            instructions=instructions,
-            output_type=output_type,
-            user_message=user_message,
-            validators=validators,
-            model_settings=self.model_settings,
+        clock = self.log.clock if self.log is not None else time.monotonic
+        began = clock()
+        purpose = output_type.__name__
+        prompt = f"{instructions}\n\n{user_message}"
+        try:
+            output, usage = await run_agent_with_usage(
+                self.model,
+                instructions=instructions,
+                output_type=output_type,
+                user_message=user_message,
+                validators=validators,
+                model_settings=self.model_settings,
+            )
+        except MODEL_ERRORS as error:
+            runlog.llm_call(
+                self.log,
+                purpose=purpose,
+                model=_model_label(self.model),
+                prompt=prompt,
+                output=None,
+                seconds=clock() - began,
+                error=f"{type(error).__name__}: {error}",
+            )
+            raise
+        runlog.llm_call(
+            self.log,
+            purpose=purpose,
+            model=_model_label(self.model),
+            prompt=prompt,
+            output=cast(BaseModel, output),
+            seconds=clock() - began,
         )
         self.stats.input_tokens += int(getattr(usage, "input_tokens", 0) or 0)
         self.stats.output_tokens += int(getattr(usage, "output_tokens", 0) or 0)
@@ -354,10 +384,14 @@ class Asker:
             return []
         if self.decision_model is not None:
             question = Question(type="noul", instructions=instruction)
-            return [
+            answered = [
                 (await self._decide(step, state, {_ONE: question}))[_ONE]
                 for state in states
             ]
+            runlog.decision_batch(
+                self.log, step=step, instruction=instruction, probabilities=answered
+            )
+            return answered
         probabilities: list[float] = []
         for batch in _batches([render_state(s) for s in states]):
             probabilities.extend(await self._judge_batch(instruction, batch))
@@ -385,6 +419,12 @@ class Asker:
         )
         by_item = {v.item: v.answer for v in out.verdicts}
         return [1.0 if by_item[n] == "yes" else 0.0 for n in range(1, len(items) + 1)]
+
+
+def _model_label(model: Any) -> str:
+    if isinstance(model, str):
+        return model
+    return f"{getattr(model, 'system', '')}:{getattr(model, 'model_name', model)}"
 
 
 def _batches(items: Sequence[str]) -> list[list[str]]:
