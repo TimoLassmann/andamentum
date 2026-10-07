@@ -1,22 +1,37 @@
-"""VERIFY: report sentences, and every check run on them."""
+"""VERIFY: report sentences, and every check run on them (code only, no model)."""
 
 from __future__ import annotations
 
 import httpx
+import pytest
 
 from andamentum.references import Work
 
-from ..types import Budget, Finding, Passage
+from .. import read
+from ..types import Finding, Passage
 from ..verify import (
-    UNSUPPORTED_MARK,
+    UNVERIFIED_MARK,
     check_links,
     check_quotes,
     links_in,
     report_units,
     verify_report,
 )
-from ..write import LIMITED_EVIDENCE_PREFIX, NO_EVIDENCE_LINE
-from .llm_stub import ScriptedLLM, decisions, http, make_asker
+from ..write import NO_EVIDENCE_LINE
+from .llm_stub import http
+
+
+@pytest.fixture(autouse=True)
+def _simple_locate(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Reading is another package: a plain substring search stands in for it."""
+
+    def locate(quote: str, text: str) -> tuple[int, int] | None:
+        start = text.find(quote)
+        return None if start < 0 else (start, start + len(quote))
+
+    monkeypatch.setattr(read, "locate_quote", locate)
+    monkeypatch.setattr("andamentum.deep_research.v2.verify.locate_quote", locate)
+
 
 # -- sentences ---------------------------------------------------------------
 
@@ -34,7 +49,6 @@ def test_sentences_end_at_their_citation() -> None:
         ("SaltLog adds overhead", ("F2", "F3")),
         ("Both were tested", ("F1", "F4")),
     ]
-    # Each unit ends after its citation and the full stop that follows it.
     assert report[units[0].end - 5 : units[0].end] == "[F1]."
 
 
@@ -78,13 +92,19 @@ PASSAGES = {p.passage_id: p for p in (P1, P2)}
 
 
 def _finding(
-    number: int, passage: Passage, quote: str, *, work_id: str | None = None
+    number: int,
+    passage: Passage,
+    quote: str,
+    *,
+    work_id: str | None = None,
+    verified: bool = True,
 ) -> Finding:
     return Finding(
         finding_id=f"F{number}",
         subquestion_id="Q1",
         claim=f"claim {number}",
         quote=quote,
+        quote_verified=verified,
         passage_id=passage.passage_id,
         work_id=work_id or passage.work_id,
     )
@@ -93,6 +113,8 @@ def _finding(
 F1 = _finding(1, P1, "reduced median latency from 120 ms to 45 ms")
 F2 = _finding(2, P2, "adds roughly 3 ms of overhead per request")
 F3 = _finding(3, P1, "reduced median latency from 120 ms to 45 ms", work_id="W3")
+U4 = _finding(4, P2, "a quote the page does not hold", verified=False)
+U5 = _finding(5, P2, "another lost quote", verified=False)
 WORKS = {
     "W1": Work(work_id="W1", title="Apollo caching", authors=["Jane Doe"], year=2024),
     "W2": Work(work_id="W2", title="SaltLog costs", authors=["Max Muster"], year=2023),
@@ -110,21 +132,10 @@ def _ok(request: httpx.Request) -> httpx.Response:
     return httpx.Response(200, json={"message": {}})
 
 
-def _judge_by_overlap(state: object, instruction: str) -> float:
-    """A stand-in for the decision model: yes when every number of the statement
-    appears in the quotes."""
-    assert isinstance(state, dict)
-    import re
-
-    numbers = set(re.findall(r"\d+", str(state["statement"])))
-    quotes = " ".join(state["quotes"])  # type: ignore[arg-type]
-    return 0.9 if all(n in quotes for n in numbers) else 0.1
-
-
 # -- quotes ------------------------------------------------------------------
 
 
-def test_a_quote_that_is_not_in_its_passage_is_flagged() -> None:
+def test_a_verified_quote_that_is_not_in_its_passage_is_flagged() -> None:
     forged = _finding(9, P1, "reduced median latency from 120 ms to 4 ms")
     orphan = Finding(
         finding_id="F10",
@@ -134,7 +145,8 @@ def test_a_quote_that_is_not_in_its_passage_is_flagged() -> None:
         passage_id="nope",
         work_id="W1",
     )
-    flags = check_quotes([F1, forged, orphan], PASSAGES)
+    flags = check_quotes([F1, forged, orphan, U4], PASSAGES)
+    # The unverified finding is skipped here.
     assert [(f.kind, f.ref) for f in flags] == [
         ("quote_missing", "F9"),
         ("quote_missing", "F10"),
@@ -144,140 +156,134 @@ def test_a_quote_that_is_not_in_its_passage_is_flagged() -> None:
 # -- the whole report ----------------------------------------------------------
 
 
-REPORT = (
-    "# Does Apollo help?\n\n"
-    "## Latency\n\n"
-    "Apollo cut median latency from 120 ms to 45 ms [F1]. "
-    "SaltLog adds 30 ms of overhead [F2]. "
-    "Latency fell for two groups [F1, F2].\n\n"
-    f"{NO_EVIDENCE_LINE}\n\n"
-    f"{LIMITED_EVIDENCE_PREFIX} 1 independent source found for this question.\n\n"
-    "## Sources\n\n- [F1] Doe (2024). Apollo caching.\n"
-)
-
-
-async def test_unsupported_sentences_are_flagged_and_marked() -> None:
-    decision_model, _ = decisions(_judge_by_overlap)
-    asker = make_asker(decision_model=decision_model)
-    outcome = await verify_report(
-        REPORT,
-        findings=[F1, F2],
-        passages=PASSAGES,
-        works=WORKS,
-        asker=asker,
-        http=http(_ok),
-    )
-
-    unsupported = [f for f in outcome.flags if f.kind == "unsupported"]
-    assert [f.ref for f in unsupported] == ["SaltLog adds 30 ms of overhead"]
-    assert (
-        "SaltLog adds 30 ms of overhead [F2]." + UNSUPPORTED_MARK
-        in outcome.report_markdown
-    )
-    assert outcome.report_markdown.count(UNSUPPORTED_MARK) == 1
-    assert outcome.sentences_checked == 3
-    # The fixed lines of the writer need no id and raise nothing.
-    assert not any(NO_EVIDENCE_LINE in f.ref for f in outcome.flags)
-    assert not any(LIMITED_EVIDENCE_PREFIX in f.ref for f in outcome.flags)
-    assert asker.stats.decision_calls == 3
-    assert len(asker.store.decisions(asker.run_id, "claim_support")) == 3
-
-
-async def test_single_source_sentences_are_flagged() -> None:
-    decision_model, _ = decisions(lambda *_: 0.9)
-    outcome = await verify_report(
-        REPORT,
-        findings=[F1, F2],
-        passages=PASSAGES,
-        works=WORKS,
-        asker=make_asker(decision_model=decision_model),
-        http=http(_ok),
-    )
-    single = [f.ref for f in outcome.flags if f.kind == "single_source"]
-    # Only the sentence citing F1 and F2 (two origins) is not single-source.
-    assert single == [
-        "Apollo cut median latency from 120 ms to 45 ms",
-        "SaltLog adds 30 ms of overhead",
-    ]
-
-
-async def test_unknown_uncited_and_retracted_citations() -> None:
+async def test_a_clean_report_passes_unchanged() -> None:
     report = (
-        "## Q\n\nA claim [F99].\n\nA claim with no source at all.\n\n"
-        "A retracted claim [F3].\n"
+        "# Q\n\n## Latency\n\nApollo cut latency [F1]. SaltLog adds overhead [F2].\n\n"
+        f"## Empty\n\n{NO_EVIDENCE_LINE}\n"
     )
-    decision_model, _ = decisions(lambda *_: 0.9)
-    asker = make_asker(decision_model=decision_model)
+    outcome = await verify_report(
+        report,
+        findings=[F1, F2],
+        passages=PASSAGES,
+        works=WORKS,
+        http=http(_ok),
+    )
+    assert outcome.flags == [] and outcome.unchecked == []
+    assert outcome.report_markdown == report
+    assert outcome.degraded == []
+
+
+async def test_unknown_and_retracted_citations() -> None:
+    report = "## Q\n\nA claim [F99]. A retracted claim [F3]. Again [F3].\n"
     outcome = await verify_report(
         report,
         findings=[F1, F3],
         passages=PASSAGES,
         works=WORKS,
-        asker=asker,
         http=http(_ok),
     )
     kinds = [(f.kind, f.ref) for f in outcome.flags]
-    assert ("unknown_finding", "F99") in kinds
-    assert ("retracted", "W3") in kinds
-    unsupported = {f.ref: f.detail for f in outcome.flags if f.kind == "unsupported"}
-    assert unsupported == {
-        "A claim": "cites no known finding",
-        "A claim with no source at all.": "cites no finding",
-    }
-    assert outcome.report_markdown.count(UNSUPPORTED_MARK) == 2
-    # Every flag is written to the run.
-    items = asker.store.run_items(asker.run_id, "flag")
-    assert len(items) == len(outcome.flags)
+    assert kinds == [("unknown_finding", "F99"), ("retracted", "W3")]
+    assert outcome.report_markdown == report  # retraction is flagged, not marked
 
 
-async def test_without_a_decision_model_the_language_model_checks_support() -> None:
-    def respond(instructions: str, prompt: str) -> dict[str, object]:
-        body = prompt.split("ITEMS:")[1].strip()
-        items = body.split("\n\n[")
-        verdicts = []
-        for number, item in enumerate(items, start=1):
-            verdicts.append(
-                {"item": number, "answer": "no" if "30 ms" in item else "yes"}
+async def test_an_unverified_quote_is_flagged_once_per_finding() -> None:
+    report = "## Q\n\nOne [F4]. Two [F4, F5]. Three [F4].\n"
+    outcome = await verify_report(
+        report,
+        findings=[F4_ := U4, U5],
+        passages=PASSAGES,
+        works=WORKS,
+        http=http(_ok),
+    )
+    assert F4_.finding_id == "F4"
+    assert [(f.kind, f.ref) for f in outcome.flags] == [
+        ("unverified_quote", "F4"),
+        ("unverified_quote", "F5"),
+    ]
+
+
+async def test_the_mark_goes_on_sentences_whose_findings_are_all_unverified() -> None:
+    report = (
+        "## Q\n\nBoth lost [F4, F5]. One lost, one fine [F1, F4]. Fine [F1].\n\n"
+        "## Sources\n\n- [F4] A source line.\n"
+    )
+    outcome = await verify_report(
+        report,
+        findings=[F1, U4, U5],
+        passages=PASSAGES,
+        works=WORKS,
+        http=http(_ok),
+    )
+    assert f"Both lost [F4, F5].{UNVERIFIED_MARK} One lost" in outcome.report_markdown
+    assert outcome.report_markdown.count(UNVERIFIED_MARK) == 1
+    assert "Fine [F1]. " not in outcome.report_markdown.replace("Fine [F1].\n", "")
+    assert outcome.report_markdown.endswith("- [F4] A source line.\n")
+    # Marking is idempotent: verifying the marked report adds nothing.
+    again = await verify_report(
+        outcome.report_markdown,
+        findings=[F1, U4, U5],
+        passages=PASSAGES,
+        works=WORKS,
+        http=http(_ok),
+    )
+    assert again.report_markdown == outcome.report_markdown
+
+
+async def test_dead_links_dois_and_unchecked_in_the_report() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if request.url.host == "api.crossref.org":
+            if "10.5555/gone" in url:
+                return httpx.Response(404)
+            return httpx.Response(200, json={"message": {}})
+        if request.url.host == "doi.org":
+            return httpx.Response(404)
+        if "dead" in url:
+            return httpx.Response(404)
+        if "slow" in url:
+            return httpx.Response(503)
+        return httpx.Response(200)
+
+    report = (
+        "## Q\n\nFine [F1].\n\n## Sources\n\n"
+        "- [F1] https://example.org/ok https://example.org/dead "
+        "https://example.org/slow 10.5555/gone\n"
+    )
+    outcome = await verify_report(
+        report,
+        findings=[F1],
+        passages=PASSAGES,
+        works=WORKS,
+        http=http(handler),
+    )
+    assert sorted((f.kind, f.ref) for f in outcome.flags) == [
+        ("dead_link", "https://example.org/dead"),
+        ("doi_unresolved", "10.5555/gone"),
+    ]
+    assert len(outcome.unchecked) == 1
+    assert outcome.unchecked[0].startswith("https://example.org/slow")
+
+
+async def test_a_retracted_doi_in_the_report_is_flagged() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "api.crossref.org":
+            return httpx.Response(
+                200,
+                json={
+                    "message": {"updated-by": [{"type": "retraction", "DOI": "10.1/n"}]}
+                },
             )
-        return {"verdicts": verdicts}
+        return httpx.Response(200)
 
-    llm = ScriptedLLM(respond)
-    asker = make_asker(model=llm)
     outcome = await verify_report(
-        REPORT,
-        findings=[F1, F2],
+        "## Q\n\nFine [F1].\n\n## Sources\n\n- [F1] https://doi.org/10.5555/old\n",
+        findings=[F1],
         passages=PASSAGES,
         works=WORKS,
-        asker=asker,
-        http=http(_ok),
+        http=http(handler),
     )
-    assert asker.stats.llm_calls == 1  # three sentences, one batch
-    assert [f.ref for f in outcome.flags if f.kind == "unsupported"] == [
-        "SaltLog adds 30 ms of overhead"
-    ]
-    assert "statement: SaltLog adds 30 ms of overhead" in llm.calls[0][1]
-    assert "quotes:" in llm.calls[0][1]
-
-
-async def test_a_spent_budget_is_reported_not_treated_as_support() -> None:
-    decision_model, _ = decisions(lambda *_: 0.9)
-    asker = make_asker(
-        decision_model=decision_model, budget=Budget(max_decision_calls=1)
-    )
-    outcome = await verify_report(
-        REPORT,
-        findings=[F1, F2],
-        passages=PASSAGES,
-        works=WORKS,
-        asker=asker,
-        http=http(_ok),
-    )
-    # All three sentences were in one chunk, which the budget could not finish.
-    assert outcome.sentences_checked == 0
-    assert outcome.degraded == [
-        "claim support not checked for 3 sentences: budget:max_decision_calls"
-    ]
-    assert not [f for f in outcome.flags if f.kind == "unsupported"]
+    assert [(f.kind, f.ref) for f in outcome.flags] == [("retracted", "10.5555/old")]
 
 
 # -- links and DOIs ----------------------------------------------------------
@@ -294,9 +300,7 @@ def test_links_in_a_report() -> None:
     assert dois == ["10.5555/abc.1", "10.5555/xyz-2"]
 
 
-async def test_dead_links_and_unresolved_dois_are_flags_and_the_rest_is_unchecked() -> (
-    None
-):
+async def test_check_links_separates_flags_from_unchecked() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         url = str(request.url)
         host = request.url.host
@@ -331,5 +335,4 @@ async def test_dead_links_and_unresolved_dois_are_flags_and_the_rest_is_unchecke
         ("doi_unresolved", "10.5555/gone"),
         ("retracted", "10.5555/retracted"),
     ]
-    # A bot block settles nothing about the link: it is listed, not flagged.
     assert len(unchecked) == 1 and unchecked[0].startswith("https://example.org/teapot")

@@ -1,33 +1,24 @@
-"""WRITE: a report built from findings, with every sentence cited."""
+"""WRITE: one call over all sub-questions, every sentence cited by construction."""
 
 from __future__ import annotations
 
-import re
-
-import httpx
-
 from andamentum.references import Work
 
-from ..types import Budget, Conflict, Coverage, Criterion, Finding, Passage, SubQuestion
-from ..verify import verify_report
+from ..ask import UNTRUSTED
+from ..types import Budget, Finding, Passage, SubQuestion, SubQuestionResult
 from ..write import (
-    DISAGREEMENTS_HEADING,
-    LIMITED_EVIDENCE_PREFIX,
+    CODE_LINE_PREFIXES,
     MAX_FINDINGS_PER_SECTION,
     NO_EVIDENCE_LINE,
     SOURCES_HEADING,
+    WRITE_INSTRUCTIONS,
     write_report,
 )
-from .llm_stub import ScriptedLLM, decisions, http, make_asker
+from .llm_stub import ScriptedLLM, make_asker
 
 Q1 = SubQuestion(id="Q1", text="Does Apollo cut latency?")
 Q2 = SubQuestion(id="Q2", text="What does SaltLog cost?")
 Q3 = SubQuestion(id="Q3", text="Is Apollo free to use?")
-CRITERIA = {
-    "Q1": [
-        Criterion(id="Q1-C1", text="Is it measured?", kind="must", applies_to="passage")
-    ]
-}
 
 P1 = Passage.make(
     work_id="W1", start=0, text="Apollo cut median latency from 120 ms to 45 ms."
@@ -38,259 +29,398 @@ P2 = Passage.make(
 P3 = Passage.make(
     work_id="W3", start=0, text="SaltLog verbose mode adds roughly 3 ms per request."
 )
-PASSAGES = {p.passage_id: p for p in (P1, P2, P3)}
 
 
 def _finding(
-    number: int, passage: Passage, quote: str, claim: str, subq: str = "Q1"
+    number: int,
+    passage: Passage,
+    claim: str,
+    *,
+    subq: str = "Q1",
+    verified: bool = True,
 ) -> Finding:
     return Finding(
         finding_id=f"F{number}",
         subquestion_id=subq,
         claim=claim,
-        quote=quote,
+        quote=passage.text,
+        quote_verified=verified,
         passage_id=passage.passage_id,
         work_id=passage.work_id,
-        criterion_ids=["Q1-C1"] if subq == "Q1" else [],
     )
 
 
-F1 = _finding(
-    1, P1, "cut median latency from 120 ms to 45 ms", "Apollo cut median latency."
-)
-F2 = _finding(
-    2, P2, "raised median latency from 45 ms to 80 ms", "Apollo raised median latency."
-)
-F3 = _finding(3, P3, "adds roughly 3 ms per request", "SaltLog adds 3 ms.", subq="Q2")
+F1 = _finding(1, P1, "Apollo cut median latency.")
+F2 = _finding(2, P2, "Apollo raised median latency.", verified=False)
+F3 = _finding(3, P3, "SaltLog adds 3 ms per request.", subq="Q2")
 WORKS = {
     "W1": Work(
         work_id="W1",
-        doi="10.5555/apollo",
         title="Apollo caching",
         authors=["Jane Doe"],
         year=2024,
         venue="Journal of Caches",
+        doi="10.5555/apollo.1",
     ),
     "W2": Work(
-        work_id="W2",
-        url="https://example.org/apollo-review",
-        title="Apollo review",
-        authors=["Max Muster", "Ann Roe", "A B", "C D"],
-        year=2023,
+        work_id="W2", title="A blog on Apollo", url="https://blog.example.org/apollo"
     ),
     "W3": Work(
         work_id="W3",
-        url="https://example.net/saltlog",
         title="SaltLog costs",
-        year=2022,
+        authors=["Max Muster"],
+        year=2023,
+        url="https://example.net/saltlog",
     ),
+    "W4": Work(
+        work_id="W4",
+        title="A retracted study",
+        authors=["Ann Roe"],
+        retracted="retracted",
+    ),
+}
+ANSWERS = {
+    "Q1": SubQuestionResult(subquestion_id="Q1", answer="Apollo likely cuts latency."),
 }
 
 
-def _respond(instructions: str, prompt: str) -> dict[str, object]:
-    if "QUESTION: Does Apollo" in prompt:
-        return {
-            "sentences": [
-                {
-                    "text": "Apollo cut median latency in one benchmark [F9].",
-                    "finding_ids": ["F1"],
-                },
-                {
-                    "text": "Another benchmark found it raised latency.",
-                    "finding_ids": ["F2"],
-                },
-            ]
-        }
-    return {
-        "sentences": [
-            {"text": "SaltLog adds about 3 ms per request.", "finding_ids": ["F3"]}
-        ]
-    }
+def _writer(seen: list[str] | None = None):
+    """A model that writes one sentence per section, citing its first finding."""
 
-
-def _coverage(subq: str, sources: int) -> Coverage:
-    return Coverage(
-        subquestion_id=subq, independent_sources=sources, covered=sources >= 2
-    )
-
-
-async def _report(llm: ScriptedLLM, **overrides: object):
-    asker = make_asker(model=llm, budget=overrides.pop("budget", None))  # type: ignore[arg-type]
-    arguments: dict[str, object] = {
-        "subquestions": [Q1, Q2, Q3],
-        "criteria": CRITERIA,
-        "findings": [F1, F2, F3],
-        "conflicts": [
-            Conflict(
-                subquestion_id="Q1", finding_ids=["F1", "F2"], note="language model"
+    def respond(instructions: str, prompt: str) -> dict[str, object]:
+        if seen is not None:
+            seen.append(prompt)
+        sections = []
+        for sub_id in ("Q1", "Q2", "Q3"):
+            marker = f"SUB-QUESTION {sub_id}:"
+            if marker not in prompt:
+                continue
+            block = prompt.split(marker)[1].split("SUB-QUESTION")[0]
+            first = next(
+                line.split()[0]
+                for line in block.splitlines()
+                if line.startswith("F") and line[1:2].isdigit()
             )
-        ],
-        "coverage": [_coverage("Q1", 2), _coverage("Q2", 1), _coverage("Q3", 0)],
-        "works": WORKS,
-        "asker": asker,
-    }
-    arguments.update(overrides)
-    return await write_report("Does Apollo help?", **arguments)  # type: ignore[arg-type]
+            sections.append(
+                {
+                    "subquestion": sub_id,
+                    "sentences": [
+                        {"text": f"Statement for {sub_id}.", "finding_ids": [first]}
+                    ],
+                }
+            )
+        return {"sections": sections}
+
+    return respond
 
 
-async def test_every_sentence_ends_with_its_finding_ids() -> None:
-    llm = ScriptedLLM(_respond)
-    report = await _report(llm)
-    md = report.markdown
-
-    assert md.startswith("# Does Apollo help?\n")
-    assert "## Does Apollo cut latency?" in md
-    # The stray id the model wrote into the text is gone; the code's ids stand.
-    assert "Apollo cut median latency in one benchmark [F1]." in md
-    assert "Another benchmark found it raised latency [F2]." in md
-    assert "SaltLog adds about 3 ms per request [F3]." in md
-    assert "[F9]" not in md
-    # The sub-question without findings says so, in a fixed line.
-    assert f"## Is Apollo free to use?\n\n{NO_EVIDENCE_LINE}" in md
-    # An uncovered one states how thin the evidence is.
-    assert f"{LIMITED_EVIDENCE_PREFIX} 1 independent source found" in md
-    assert report.cited_finding_ids == ["F1", "F2", "F3"]
-    assert llm.calls and len(llm.calls) == 2  # Q3 has nothing to write
-
-
-async def test_conflicts_are_stated_from_the_two_claims() -> None:
-    report = await _report(ScriptedLLM(_respond))
-    section = report.markdown.split(DISAGREEMENTS_HEADING)[1].split(SOURCES_HEADING)[0]
-    assert (
-        "- Sources disagree. One reports: Apollo cut median latency [F1]; "
-        "another reports: Apollo raised median latency [F2]." in section
-    )
-
-
-async def test_sources_lists_each_cited_work_with_its_link() -> None:
-    report = await _report(ScriptedLLM(_respond))
-    sources = report.markdown.split(SOURCES_HEADING)[1]
-    assert (
-        "- [F1] Jane Doe (2024). Apollo caching. Journal of Caches. https://doi.org/10.5555/apollo"
-        in sources
-    )
-    assert (
-        "- [F2] Max Muster, Ann Roe, A B et al. (2023). Apollo review. https://example.org/apollo-review"
-        in sources
-    )
-    assert "- [F3] (2022). SaltLog costs. https://example.net/saltlog" in sources
-
-
-async def test_the_model_sees_the_findings_with_their_quotes_and_the_criteria() -> None:
-    llm = ScriptedLLM(_respond)
-    await _report(llm)
-    prompt = llm.calls[0][1]
-    assert "F1 [criteria: Q1-C1]\n<<<\nsource: Apollo caching, 2024\n" in prompt
-    assert 'quote: "cut median latency from 120 ms to 45 ms"' in prompt
-    assert "- Q1-C1: Is it measured?" in prompt
-    assert "SaltLog" not in prompt  # the other sub-question's findings stay out
-
-
-async def test_an_id_that_is_not_a_finding_of_the_section_is_sent_back() -> None:
-    attempts = 0
-
-    def respond(instructions: str, prompt: str) -> dict[str, object]:
-        nonlocal attempts
-        attempts += 1
-        ids = ["F7"] if attempts == 1 else ["F1"]
-        return {
-            "sentences": [{"text": "Apollo cut median latency.", "finding_ids": ids}]
-        }
-
-    llm = ScriptedLLM(respond)
-    report = await _report(
-        llm, subquestions=[Q1], findings=[F1], conflicts=[], coverage=[]
-    )
-    assert attempts == 2
-    assert "Apollo cut median latency [F1]." in report.markdown
-
-
-async def test_a_retracted_works_findings_are_not_used() -> None:
-    retracted = {
-        **WORKS,
-        "W2": WORKS["W2"].model_copy(update={"retracted": "retracted"}),
-    }
-
-    # With W2 retracted, F2 is not offered to the model at all.
-    def respond(instructions: str, prompt: str) -> dict[str, object]:
-        assert "F2" not in prompt
-        if "SaltLog" in prompt:
-            return {
-                "sentences": [{"text": "SaltLog adds 3 ms.", "finding_ids": ["F3"]}]
-            }
-        return {
-            "sentences": [{"text": "Apollo cut median latency.", "finding_ids": ["F1"]}]
-        }
-
-    llm = ScriptedLLM(respond)
-    report = await _report(llm, works=retracted)
-    assert report.excluded_finding_ids == ["F2"]
-    assert "F2" not in report.markdown
-    # A conflict that involves an excluded finding is not stated.
-    assert DISAGREEMENTS_HEADING not in report.markdown
-
-
-async def test_one_source_cannot_fill_the_prompt() -> None:
-    many = [
-        _finding(n, P1, "cut median latency from 120 ms to 45 ms", f"Apollo claim {n}.")
-        for n in range(1, 41)
-    ]
-    other = _finding(
-        41, P2, "raised median latency from 45 ms to 80 ms", "Apollo claim 41."
-    )
-    seen: list[str] = []
-
-    def respond(instructions: str, prompt: str) -> dict[str, object]:
-        seen.extend(re.findall(r"^F\d+", prompt, flags=re.MULTILINE))
-        return {"sentences": [{"text": "Claim.", "finding_ids": ["F41"]}]}
-
-    await _report(
-        ScriptedLLM(respond),
-        subquestions=[Q1],
-        findings=[*many, other],
-        conflicts=[],
-        coverage=[],
-    )
-    assert len(seen) == MAX_FINDINGS_PER_SECTION
-    assert "F41" in seen  # the second origin is not crowded out
-
-
-async def test_a_spent_budget_lists_the_claims_of_the_sections_left() -> None:
-    report = await _report(ScriptedLLM(_respond), budget=Budget(max_llm_calls=1))
-    assert report.degraded and all("budget:max_llm_calls" in d for d in report.degraded)
-    for finding_id in report.cited_finding_ids:
-        assert (
-            f"[{finding_id}" in report.markdown or f", {finding_id}" in report.markdown
-        )
-
-
-async def test_a_failing_writer_lists_the_claims_and_says_so() -> None:
-    def broken(instructions: str, prompt: str) -> dict[str, object]:
-        return {"sentences": "not a list"}
-
-    report = await _report(ScriptedLLM(broken))
-    assert report.degraded and "the writer failed" in report.degraded[0]
-    assert F1.claim.rstrip(".") in report.markdown
-
-
-async def test_a_written_report_passes_verification_structurally() -> None:
-    """Every sentence the writer produces is one VERIFY recognises, with ids."""
-    report = await _report(ScriptedLLM(_respond))
-    decision_model, _ = decisions(lambda *_: 0.9)
-    asker = make_asker(decision_model=decision_model)
-
-    def ok(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, json={"message": {}})
-
-    outcome = await verify_report(
-        report.markdown,
+async def test_one_call_over_all_sections_with_cited_sentences() -> None:
+    llm = ScriptedLLM(_writer())
+    asker = make_asker(model=llm)
+    report = await write_report(
+        "Is Apollo worth it?",
+        subquestions=[Q1, Q2],
+        answers=ANSWERS,
         findings=[F1, F2, F3],
-        passages=PASSAGES,
         works=WORKS,
         asker=asker,
-        http=http(ok),
     )
-    kinds = {f.kind for f in outcome.flags}
-    assert kinds <= {"single_source"}
-    assert outcome.sentences_checked == 5  # 3 section sentences + 2 disagreement halves
-    assert "[unsupported]" not in outcome.report_markdown
+    assert len(llm.calls) == 1
+    assert asker.stats.llm_calls == 1
+    assert asker.stats.step_llm_calls == {"Write": 1}
+    md = report.markdown
+    assert md.startswith("# Is Apollo worth it?\n")
+    assert md.index("## Does Apollo cut latency?") < md.index("## What does SaltLog")
+    assert "Statement for Q1 [F1]." in md
+    assert "Statement for Q2 [F3]." in md
+    assert report.cited_finding_ids == ["F1", "F3"]
+    assert report.degraded == []
+    assert report.excluded_finding_ids == []
+
+
+async def test_the_prompt_carries_rules_origins_markers_and_the_draft_answer() -> None:
+    seen: list[str] = []
+    llm = ScriptedLLM(_writer(seen))
+    await write_report(
+        "Is Apollo worth it?",
+        subquestions=[Q1, Q2],
+        answers=ANSWERS,
+        findings=[F1, F2, F3],
+        works=WORKS,
+        asker=make_asker(model=llm),
+    )
+    instructions, prompt = llm.calls[0]
+    for rule in (
+        "best-supported answer",
+        "primary, official and encyclopedic",
+        "independent origins",
+        "time scope",
+        "disagreement",
+        "quote not verified",
+        "Never state anything the findings do not say",
+        "how sure",
+    ):
+        assert rule in instructions
+    assert instructions == WRITE_INSTRUCTIONS
+    assert UNTRUSTED in instructions
+    # Origin labels and metadata of each finding, fenced.
+    assert "origin: doe" in prompt
+    assert "origin: blog.example.org" not in prompt  # the registrable domain
+    assert "origin: example.org" in prompt
+    assert "origin: muster" in prompt
+    assert "year: 2024" in prompt and "venue: Journal of Caches" in prompt
+    assert "<<<" in prompt and ">>>" in prompt
+    # The unverified marker sits on F2 only.
+    assert prompt.count("(quote not verified)") == 1
+    assert "F2 (quote not verified)" in prompt
+    # The research's draft answer is labelled as unverified.
+    assert "Apollo likely cuts latency." in prompt
+    assert "unverified" in prompt
+    assert "Independent origins among the findings below: 2" in prompt
+
+
+async def test_sources_section_lists_the_cited_works() -> None:
+    report = await write_report(
+        "Is Apollo worth it?",
+        subquestions=[Q1, Q2],
+        answers={},
+        findings=[F1, F2, F3],
+        works=WORKS,
+        asker=make_asker(model=ScriptedLLM(_writer())),
+    )
+    head, sources = report.markdown.split(SOURCES_HEADING)
+    assert "https://doi.org/10.5555/apollo.1" in sources
+    assert "[F1] Jane Doe (2024). Apollo caching. Journal of Caches." in sources
+    assert "https://example.net/saltlog" in sources
+    assert "blog.example.org" not in sources  # F2 was not cited
+    assert "[F3]" in sources
+
+
+async def test_ids_written_into_the_text_are_stripped() -> None:
+    def respond(instructions: str, prompt: str) -> dict[str, object]:
+        return {
+            "sections": [
+                {
+                    "subquestion": "Q1",
+                    "sentences": [
+                        {"text": "Apollo helps [F2], they say.", "finding_ids": ["F1"]}
+                    ],
+                }
+            ]
+        }
+
+    report = await write_report(
+        "q",
+        subquestions=[Q1],
+        answers={},
+        findings=[F1],
+        works=WORKS,
+        asker=make_asker(model=ScriptedLLM(respond)),
+    )
+    assert "Apollo helps, they say [F1]." in report.markdown
+    assert "[F2]" not in report.markdown
+
+
+async def test_the_validator_rejects_unknown_ids_no_ids_and_a_missing_section() -> None:
+    attempts: list[dict[str, object]] = [
+        # Unknown id.
+        {
+            "sections": [
+                {
+                    "subquestion": "Q1",
+                    "sentences": [{"text": "A.", "finding_ids": ["F99"]}],
+                },
+                {
+                    "subquestion": "Q2",
+                    "sentences": [{"text": "B.", "finding_ids": ["F3"]}],
+                },
+            ]
+        },
+        # A sentence without ids.
+        {
+            "sections": [
+                {"subquestion": "Q1", "sentences": [{"text": "A.", "finding_ids": []}]},
+                {
+                    "subquestion": "Q2",
+                    "sentences": [{"text": "B.", "finding_ids": ["F3"]}],
+                },
+            ]
+        },
+        # A missing section (Q2).
+        {
+            "sections": [
+                {
+                    "subquestion": "Q1",
+                    "sentences": [{"text": "A.", "finding_ids": ["F1"]}],
+                }
+            ]
+        },
+        # Good.
+        {
+            "sections": [
+                {
+                    "subquestion": "Q1",
+                    "sentences": [{"text": "A.", "finding_ids": ["F1"]}],
+                },
+                {
+                    "subquestion": "Q2: What does SaltLog cost?",
+                    "sentences": [{"text": "B.", "finding_ids": ["F3"]}],
+                },
+            ]
+        },
+    ]
+    queue = list(attempts)
+    llm = ScriptedLLM(lambda *_: queue.pop(0))
+    report = await write_report(
+        "q",
+        subquestions=[Q1, Q2],
+        answers={},
+        findings=[F1, F3],
+        works=WORKS,
+        asker=make_asker(model=llm),
+    )
+    # The repairs are retries of one call, not extra calls of the run.
+    assert len(llm.calls) == 4
+    assert queue == []
+    assert "A. [F1]." not in report.markdown  # the sentence ends "A [F1]."
+    assert "A [F1]." in report.markdown and "B [F3]." in report.markdown
+    assert report.degraded == []
+
+
+async def test_a_failing_model_lists_the_claims() -> None:
+    def respond(instructions: str, prompt: str) -> dict[str, object]:
+        return {"sections": []}  # always rejected: the sections are missing
+
+    llm = ScriptedLLM(respond)
+    report = await write_report(
+        "q",
+        subquestions=[Q1, Q2],
+        answers={},
+        findings=[F1, F2, F3],
+        works=WORKS,
+        asker=make_asker(model=llm),
+    )
+    assert "Apollo cut median latency. [F1]." not in report.markdown
+    assert "Apollo cut median latency [F1]." in report.markdown
+    assert "Apollo raised median latency [F2]." in report.markdown
+    assert "SaltLog adds 3 ms per request [F3]." in report.markdown
+    assert [d.split(":")[0] for d in report.degraded] == [
+        "section Q1 lists its findings' claims",
+        "section Q2 lists its findings' claims",
+    ]
+    assert all("the writer failed" in d for d in report.degraded)
+    assert report.cited_finding_ids == ["F1", "F2", "F3"]
+
+
+async def test_a_spent_budget_lists_the_claims_without_a_call() -> None:
+    llm = ScriptedLLM(_writer())
+    asker = make_asker(model=llm, budget=Budget(max_llm_calls=1))
+    asker.stats.llm_calls = 1
+    report = await write_report(
+        "q",
+        subquestions=[Q1, Q2],
+        answers={},
+        findings=[F1, F3],
+        works=WORKS,
+        asker=asker,
+    )
+    assert llm.calls == []
+    assert "Apollo cut median latency [F1]." in report.markdown
+    assert "SaltLog adds 3 ms per request [F3]." in report.markdown
+    assert report.degraded == [
+        "section Q1 lists its findings' claims: budget:max_llm_calls",
+        "section Q2 lists its findings' claims: budget:max_llm_calls",
+    ]
+
+
+async def test_a_question_without_findings_gets_the_fixed_line_and_no_call() -> None:
+    llm = ScriptedLLM(_writer())
+    report = await write_report(
+        "q",
+        subquestions=[Q1, Q3],
+        answers={},
+        findings=[F1],
+        works=WORKS,
+        asker=make_asker(model=llm),
+    )
+    assert len(llm.calls) == 1
+    assert "SUB-QUESTION Q3" not in llm.calls[0][1]
+    assert report.markdown.count(NO_EVIDENCE_LINE) == 1
+    assert f"## {Q3.text}\n\n{NO_EVIDENCE_LINE}" in report.markdown
+    assert NO_EVIDENCE_LINE in CODE_LINE_PREFIXES
+
+
+async def test_no_findings_at_all_means_no_model_call() -> None:
+    llm = ScriptedLLM(_writer())
+    asker = make_asker(model=llm)
+    report = await write_report(
+        "q",
+        subquestions=[Q1, Q2],
+        answers={},
+        findings=[],
+        works=WORKS,
+        asker=asker,
+    )
+    assert llm.calls == [] and asker.stats.llm_calls == 0
+    assert report.markdown.count(NO_EVIDENCE_LINE) == 2
+    assert SOURCES_HEADING not in report.markdown
+    assert report.degraded == [] and report.cited_finding_ids == []
+
+
+async def test_findings_of_a_retracted_work_are_never_offered() -> None:
+    retracted_passage = Passage.make(work_id="W4", start=0, text="Apollo is useless.")
+    bad = _finding(4, retracted_passage, "Apollo is useless.")
+    llm = ScriptedLLM(_writer())
+    report = await write_report(
+        "q",
+        subquestions=[Q1],
+        answers={},
+        findings=[F1, bad],
+        works=WORKS,
+        asker=make_asker(model=llm),
+    )
+    assert "Apollo is useless" not in llm.calls[0][1]
+    assert report.excluded_finding_ids == ["F4"]
+    assert "F4" not in report.cited_finding_ids
+
+    only_bad = await write_report(
+        "q",
+        subquestions=[Q1],
+        answers={},
+        findings=[bad],
+        works=WORKS,
+        asker=make_asker(model=ScriptedLLM(_writer())),
+    )
+    assert NO_EVIDENCE_LINE in only_bad.markdown
+    assert only_bad.excluded_finding_ids == ["F4"]
+
+
+async def test_at_most_the_cap_is_offered_one_origin_at_a_time() -> None:
+    works = {
+        f"W{n}": Work(work_id=f"W{n}", title=f"T{n}", authors=[f"Author{n}"])
+        for n in range(1, 4)
+    }
+    findings: list[Finding] = []
+    for n in range(1, 41):  # W1 holds 40 findings, W2 and W3 one each
+        passage = Passage.make(work_id="W1", start=n, text=f"Fact number {n}.")
+        findings.append(_finding(n, passage, f"claim {n}"))
+    for n, work_id in ((41, "W2"), (42, "W3")):
+        passage = Passage.make(work_id=work_id, start=0, text=f"Other {n}.")
+        findings.append(_finding(n, passage, f"claim {n}"))
+    seen: list[str] = []
+    await write_report(
+        "q",
+        subquestions=[Q1],
+        answers={},
+        findings=findings,
+        works=works,
+        asker=make_asker(model=ScriptedLLM(_writer(seen))),
+    )
+    prompt = seen[0]
+    offered = [
+        line
+        for line in prompt.splitlines()
+        if line.startswith("F") and line[1:2].isdigit()
+    ]
+    assert len(offered) == MAX_FINDINGS_PER_SECTION
+    assert "F41" in prompt and "F42" in prompt
