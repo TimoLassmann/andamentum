@@ -102,11 +102,11 @@ def test_both_presets_send_the_same_determinism_knobs() -> None:
     assert loose.model_settings() is None
 
 
-def test_research_defaults_to_the_baseline() -> None:
+def test_research_defaults_to_hybrid() -> None:
     import inspect
 
     default = inspect.signature(research).parameters["config"].default
-    assert default is PRESETS["baseline"]
+    assert default is PRESETS["hybrid"]
 
 
 def test_unknown_strategies_and_impossible_combinations_are_refused() -> None:
@@ -157,6 +157,7 @@ async def test_the_hash_is_on_the_run_and_the_result() -> None:
         store=store,
         sources=SourceConfig(searxng_url=engine_world.SEARXNG),
         source_client=world.client(store),
+        config=PRESETS["baseline"],
     )
     assert result.config_name == "baseline"
     assert result.config_hash == PRESETS["baseline"].config_hash()

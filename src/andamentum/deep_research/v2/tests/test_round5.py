@@ -119,11 +119,25 @@ def test_the_queries_slot_leaves_every_earlier_hash_alone() -> None:
     assert config_hash(PRESETS["hybrid"]) != config_hash(PRESETS["baseline"])
 
 
-async def test_hybrid_without_an_embedding_model_is_refused() -> None:
-    with pytest.raises(ValueError, match="needs an embedding model"):
+async def test_hybrid_without_an_embedding_model_opens_the_standard_one(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from andamentum.core.embeddings import DEFAULT_EMBEDDING_MODEL
+
+    from .. import graph
+
+    opened: list[str] = []
+
+    async def fake_open(name: str, **_kw: object) -> FakeEmbedder:
+        opened.append(name)
+        raise RuntimeError("stop here")
+
+    monkeypatch.setattr(graph.OllamaDenseEmbedder, "open", fake_open)
+    with pytest.raises(RuntimeError, match="stop here"):
         await research(
             QUESTION, mode="scholarly", model="test", config=PRESETS["hybrid"]
         )
+    assert opened == [DEFAULT_EMBEDDING_MODEL]
 
 
 # -- rank_only ------------------------------------------------------------------------

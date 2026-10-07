@@ -41,11 +41,12 @@ from pydantic_ai.models import Model
 from pydantic_graph import BaseNode, End, GraphBuilder, GraphRunContext
 
 from andamentum.core.decisions import DecisionModel
+from andamentum.core.embeddings import DEFAULT_EMBEDDING_MODEL
 from andamentum.references import ReferenceHttp, Work
 
 from . import runlog, steps
 from .ask import Asker
-from .config import PRESETS, ResearchConfig, config_hash
+from .config import DEFAULT_PRESET, PRESETS, ResearchConfig, config_hash
 from .decision_cache import CHECK_NAME, check_determinism
 from .coverage import PairKey, compute_coverage, decide_stop, record_coverage
 from .criteria import Screener
@@ -111,7 +112,7 @@ class ResearchDeps:
     started: float
     clock: Callable[[], float]
     progress: Callable[[str], None]
-    config: ResearchConfig = PRESETS["baseline"]
+    config: ResearchConfig = PRESETS[DEFAULT_PRESET]
     frozen: FrozenInputs | None = None
     offline_before: dict[str, int] = field(default_factory=dict)
     # the run log every node writes to (``runlog``); always present
@@ -208,9 +209,7 @@ def _note(ctx: Ctx, *, degraded: list[str], spent: str = "") -> None:
         ctx.deps.log.event("budget_spent", f"budget spent: {spent}", bound=spent)
 
 
-def _notes(
-    ctx: Ctx, *, notes: Sequence[str] = (), skipped: Sequence[str] = ()
-) -> None:
+def _notes(ctx: Ctx, *, notes: Sequence[str] = (), skipped: Sequence[str] = ()) -> None:
     ctx.state.notes += list(notes)
     ctx.state.skipped += list(skipped)
     runlog.records(ctx.deps.log, notes=notes, skipped=skipped)
@@ -990,7 +989,7 @@ async def research(
     store: Path | ResearchStore | None = None,
     budget: Budget = Budget(),
     sources: SourceConfig = SourceConfig(),
-    config: ResearchConfig = PRESETS["baseline"],
+    config: ResearchConfig = PRESETS[DEFAULT_PRESET],
     frozen: FrozenInputs | None = None,
     source_client: SourceClient | None = None,
     http_cache: ResearchStore | None = None,
@@ -1051,9 +1050,11 @@ async def research(
     decision model or while the cache is off or disabled for the model.
 
     ``embedding_model`` is the local embedding model of a configuration that
-    ranks by dense similarity (``rank: rrf_dense``, the ``hybrid`` preset): a
-    name (an Ollama model, opened here and closed at the end) or an
-    ``dense.Embedder``. Such a configuration refuses to run without one; any
+    ranks by dense similarity (``rank: rerank_dense`` or ``rrf_dense``; the
+    ``hybrid`` preset, the default): a name (an Ollama model, opened here and
+    closed at the end) or an ``dense.Embedder``. Without one such a
+    configuration opens the package's standard embedding model
+    (``core.embeddings.DEFAULT_EMBEDDING_MODEL``, the document store's); any
     other configuration does not use it (the log says so).
 
     Every run fills ``result.log`` (``RunLog``: what happened at each step);
@@ -1065,12 +1066,8 @@ async def research(
     ``run_log`` attribute.
     """
     if config.needs_embeddings and embedding_model is None:
-        raise ValueError(
-            f"the {config.name!r} configuration ranks by dense similarity "
-            f"(rank {config.rank!r}) and needs an embedding model: pass "
-            "embedding_model= (CLI --embedding-model NAME, a local Ollama "
-            "embedding model)"
-        )
+        # the package's standard embedding model, the one the document store uses
+        embedding_model = DEFAULT_EMBEDDING_MODEL
     if source_client is not None and source_client.store is not store:
         raise ValueError("source_client must belong to the open store passed as store")
     if frozen is not None:

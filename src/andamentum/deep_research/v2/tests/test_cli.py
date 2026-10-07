@@ -87,7 +87,7 @@ def test_flags_become_the_research_arguments(
     assert sources.searxng_url == "http://127.0.0.1:4070"
     assert sources.tdm_allowed_hosts == frozenset({"journals.example"})
     assert sources.openalex_api_key is None
-    assert call["config"] is PRESETS["baseline"]  # the default preset
+    assert call["config"] is PRESETS["hybrid"]  # the default preset
     out = capsys.readouterr()
     assert out.out == "# Why Apollo?\n\nIt is fast [F1].\n"
     assert "stop: covered" in out.err

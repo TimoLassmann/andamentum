@@ -167,6 +167,7 @@ async def test_a_frozen_run_uses_the_citations_and_texts_the_store_holds(
     frozen = await _capture(store, world)
     await research(
         QUESTION,
+        config=PRESETS["baseline"],
         mode="scholarly",
         model=world_llm().model,
         decision_model=world_decisions()[0],

@@ -50,7 +50,7 @@ from andamentum.core.decisions import DecisionModel
 
 from . import steps
 from .ask import Asker
-from .config import PRESETS, ResearchConfig
+from .config import DEFAULT_PRESET, PRESETS, ResearchConfig
 from .sources import SourceClient, SourceConfig, SourceError, build_sources
 from .store import ResearchStore
 from .types import Budget, Candidate, Mode, RunStats, SubQuestion
@@ -151,7 +151,7 @@ async def capture(
     decision_model: str | DecisionModel | None = None,
     budget: Budget = Budget(),
     sources: SourceConfig = SourceConfig(),
-    config: ResearchConfig = PRESETS["baseline"],
+    config: ResearchConfig = PRESETS[DEFAULT_PRESET],
     source_client: SourceClient | None = None,
     progress: Callable[[str], None] | None = None,
     clock: Callable[[], float] = time.time,

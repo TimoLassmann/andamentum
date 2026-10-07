@@ -378,7 +378,7 @@ PRESETS: dict[str, ResearchConfig] = {
         expand_seeds=MAX_EXPAND_SEEDS,
     ),
 }
-DEFAULT_PRESET = "baseline"
+DEFAULT_PRESET = "hybrid"
 
 
 def preset(name: str) -> ResearchConfig:
