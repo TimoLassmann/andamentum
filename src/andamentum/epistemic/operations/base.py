@@ -60,9 +60,10 @@ class OperationInput:
 WorkItem = OperationInput
 
 # Cosine similarity threshold for deduplication across all sites.
-# The embedding model (embeddinggemma) produces within-group similarities
-# of 0.6-0.75 for texts that are clearly about the same topic, so 0.7
-# catches most true duplicates while staying above noise.
+# Measured with the first embeddinggemma model (not re-measured since the
+# default moved to embeddinggemma-2): within-group similarities of 0.6-0.75
+# for texts that are clearly about the same topic, so 0.7 caught most true
+# duplicates while staying above noise.
 # The LLM validation pass (validate_groups) is the safety net for
 # any false merges this threshold produces.
 DEDUP_SIMILARITY_THRESHOLD = 0.7

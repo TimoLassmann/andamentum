@@ -55,7 +55,7 @@ powered run lives.
 
 ```bash
 # gate
-uv run python benchmarks/judge_scoring/run.py peek  --model ollama:gemma4:12b-mxfp8 --limit 6
+uv run python benchmarks/judge_scoring/run.py peek  --model ollama:gemma4:12b --limit 6
 
 # powered dataset (balanced: 50/class compare, 50/class score)
 uv run python benchmarks/judge_scoring/run.py dataset --n 50

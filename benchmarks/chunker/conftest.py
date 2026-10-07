@@ -5,7 +5,7 @@ Model selection:
         export CHUNKER_BENCH_MODEL=openai:gpt-5.4-nano
         export CHUNKER_BENCH_MODEL=ollama:qwen3.5:9b
 
-    Default: ollama:gemma4:31b-nvfp4
+    Default: ollama:gemma4:31b
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ import pytest
 from andamentum.chunker.extractor import make_runner_executor
 from andamentum.core.agents import AgentRunner
 
-DEFAULT_MODEL = "ollama:gemma4:31b-nvfp4"
+DEFAULT_MODEL = "ollama:gemma4:31b"
 
 
 def get_bench_model() -> str:

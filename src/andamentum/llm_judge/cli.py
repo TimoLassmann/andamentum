@@ -87,7 +87,7 @@ def _build_parser() -> argparse.ArgumentParser:
             help=(
                 "Required. Repeatable, or comma-separated, for a panel. "
                 "One value = fast single judge (temperature 0). "
-                "Examples: anthropic:claude-haiku-4-5, ollama:gemma4:31b-nvfp4."
+                "Examples: anthropic:claude-haiku-4-5, ollama:gemma4:31b."
             ),
         )
         sp.add_argument(

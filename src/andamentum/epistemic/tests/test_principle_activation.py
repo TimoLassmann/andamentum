@@ -15,7 +15,7 @@ runs, never a single outcome, because labels flip on 10–27% of identical runs.
 
 Marker: ``ollama`` — the run resolves its LLM through the local Ollama endpoint
 (``ollama:gemma4:31b-cloud``) and its embeddings through
-``embeddinggemma:latest`` on the same daemon, so the test is deselected by the
+``embeddinggemma-2:latest`` on the same daemon, so the test is deselected by the
 default ``uv run pytest`` and selected explicitly with ``-m ollama``. Runs are
 STRICTLY SEQUENTIAL inside the runner (never two model calls at once).
 

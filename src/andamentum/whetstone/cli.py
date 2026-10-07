@@ -271,7 +271,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--model",
         metavar="MODEL",
         help="pydantic-ai model id (e.g. openai:gpt-5.4-nano, "
-        "ollama:gemma4:31b-nvfp4). Required for the review, panel and "
+        "ollama:gemma4:31b). Required for the review, panel and "
         "checklist subcommands.",
     )
     # Shared by review and checklist: the same six types route to a criterion
@@ -581,7 +581,7 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="MODEL",
         help="A multimodal pydantic-ai model id for --goal-check figures "
-        "(e.g. ollama:qwen3.8:27b-mlx). Required with --goal-check "
+        "(e.g. ollama:qwen3.8). Required with --goal-check "
         "figures; refused otherwise.",
     )
 
@@ -672,7 +672,7 @@ def _validate_args(args: argparse.Namespace) -> None:
             1,
             "--model is required.\nExamples:\n"
             "  --model openai:gpt-5.4-nano\n"
-            "  --model ollama:gemma4:31b-nvfp4",
+            "  --model ollama:gemma4:31b",
         )
     # Parsed here rather than at run time: an unknown reviewer should cost you
     # nothing, and by run time the document has been loaded and, for a URL,
@@ -915,7 +915,7 @@ def _validate_goal_args(args: argparse.Namespace) -> None:
                 1,
                 "--goal-check figures needs --goal-figure-model (a "
                 "multimodal pydantic-ai model id, e.g. "
-                "ollama:qwen3.8:27b-mlx).",
+                "ollama:qwen3.8).",
             )
         args.goal_figures = _parse_goal_figures(args.goal_figure)
     else:

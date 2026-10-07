@@ -16,14 +16,14 @@ the whole module — accuracy split by the ``needs_review`` gate.
 This calls a real LLM. Pick a model explicitly (no default):
 
     # fast single judge (local)
-    uv run python benchmarks/llm_judge/benchmark.py --model ollama:gemma4:31b-nvfp4
+    uv run python benchmarks/llm_judge/benchmark.py --model ollama:gemma4:31b
 
     # panel of three (an agreement gate)
     uv run python benchmarks/llm_judge/benchmark.py \\
-        --model ollama:gemma4:31b-nvfp4 --model ollama:gpt-oss:20b --model ollama:gemma4:26b-nvfp4
+        --model ollama:gemma4:31b --model ollama:gpt-oss:20b --model ollama:gemma4:26b
 
     # same model repeated as a panel (sampling-temperature agreement gate)
-    uv run python benchmarks/llm_judge/benchmark.py --model ollama:gemma4:31b-nvfp4 --repeat 3
+    uv run python benchmarks/llm_judge/benchmark.py --model ollama:gemma4:31b --repeat 3
 
     # a quick two-example smoke of each task
     uv run python benchmarks/llm_judge/benchmark.py --model openai:gpt-5.4-nano --limit 2

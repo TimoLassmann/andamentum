@@ -58,7 +58,7 @@ Architecture:
   chunks + embeddings stored in background (repairable if interrupted)
 
 Requires:
-- Ollama running locally with embeddinggemma:latest (for embeddings)
+- Ollama running locally with embeddinggemma-2:latest (for embeddings)
 - pydantic-ai for query planning in search() (installed as part of andamentum).
   Ingest needs no LLM; the store does not author metadata.
 """

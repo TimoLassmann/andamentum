@@ -1,6 +1,6 @@
 # Chunker benchmark
 
-Tracks boundary accuracy of `andamentum.chunker.extract_units` across diverse text types. Defaults to local model `ollama:gemma4:31b-nvfp4`; override via the `CHUNKER_BENCH_MODEL` env var or `--model` flag.
+Tracks boundary accuracy of `andamentum.chunker.extract_units` across diverse text types. Defaults to local model `ollama:gemma4:31b`; override via the `CHUNKER_BENCH_MODEL` env var or `--model` flag.
 
 ## Running
 
@@ -16,7 +16,7 @@ uv run python -m benchmarks.chunker.cli --case academic_short
 
 # Compare two models
 uv run python -m benchmarks.chunker.cli --model openai:gpt-5.4-nano --output gpt.md
-uv run python -m benchmarks.chunker.cli --model ollama:gemma4:31b-nvfp4 --output gemma.md
+uv run python -m benchmarks.chunker.cli --model ollama:gemma4:31b --output gemma.md
 
 # Visual case-authoring helper (FastAPI app at http://127.0.0.1:8765)
 uv run python -m benchmarks.chunker.app

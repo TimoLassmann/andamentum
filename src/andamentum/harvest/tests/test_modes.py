@@ -257,7 +257,7 @@ def test_unreachable_ollama_names_the_remedy(monkeypatch):
     """The default depends on an external service, so its absence must be clear."""
     monkeypatch.setattr(backend.urllib.request, "urlopen", _unreachable)
     with pytest.raises(backend.OllamaUnavailableError) as exc_info:
-        backend._check_ollama_model("qwen3.8:27b-mlx")
+        backend._check_ollama_model("qwen3.8")
     message = str(exc_info.value)
     assert "ollama serve" in message
     assert "smolvlm" in message
@@ -269,17 +269,24 @@ def test_missing_model_is_an_error_not_a_substitution(monkeypatch):
         backend, "_installed_ollama_models", lambda: {"llama3:8b", "minicpm-v4.6:1b"}
     )
     with pytest.raises(backend.OllamaUnavailableError) as exc_info:
-        backend._check_ollama_model("qwen3.8:27b-mlx")
+        backend._check_ollama_model("qwen3.8")
     message = str(exc_info.value)
-    assert "ollama pull qwen3.8:27b-mlx" in message
+    assert "ollama pull qwen3.8" in message
     assert "minicpm-v4.6:1b" in message  # reports what IS there
 
 
 def test_installed_model_passes_the_preflight(monkeypatch):
-    monkeypatch.setattr(
-        backend, "_installed_ollama_models", lambda: {"qwen3.8:27b-mlx"}
-    )
-    backend._check_ollama_model("qwen3.8:27b-mlx")  # must not raise
+    # Ollama lists a model pulled as "qwen3.8" under its implied tag.
+    monkeypatch.setattr(backend, "_installed_ollama_models", lambda: {"qwen3.8:latest"})
+    backend._check_ollama_model("qwen3.8")  # must not raise
+    backend._check_ollama_model("qwen3.8:latest")  # must not raise
+
+
+def test_another_tag_of_the_same_model_is_not_installed(monkeypatch):
+    """A bare name means ':latest' and nothing else; never a different build."""
+    monkeypatch.setattr(backend, "_installed_ollama_models", lambda: {"qwen3.8:27b-q4"})
+    with pytest.raises(backend.OllamaUnavailableError):
+        backend._check_ollama_model("qwen3.8")
 
 
 def test_ollama_unavailable_is_an_extraction_error():

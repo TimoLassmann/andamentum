@@ -54,11 +54,11 @@ def test_discover_input_budget_chars_parses_context_length(
 
         def post(self, url: str, json: dict) -> _FakeResponse:
             assert url.endswith("/api/show")
-            assert json == {"name": "embeddinggemma:latest"}
+            assert json == {"name": "embeddinggemma-2:latest"}
             return _FakeResponse()
 
     monkeypatch.setattr(httpx, "Client", _FakeClient)
-    budget = discover_input_budget_chars("embeddinggemma:latest")
+    budget = discover_input_budget_chars("embeddinggemma-2:latest")
     # 2048 tokens × 2 chars/token = 4096 (conservative for dense scientific text)
     assert budget == 4096
 

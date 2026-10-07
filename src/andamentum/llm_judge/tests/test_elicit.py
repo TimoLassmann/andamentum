@@ -94,11 +94,11 @@ async def test_the_resolved_model_is_cached_so_no_client_is_minted_per_call(
             "out",
             Criterion(name=f"c{i}", description=f"d{i}"),
             None,
-            model="ollama:gemma4:31b-nvfp4",
+            model="ollama:gemma4:31b",
             temperature=0.0,
         )
 
-    assert resolved == ["ollama:gemma4:31b-nvfp4"], (
+    assert resolved == ["ollama:gemma4:31b"], (
         f"resolved the model {len(resolved)} times — each one is a fresh, "
         "never-closed HTTP client"
     )

@@ -346,7 +346,7 @@ async def run_checklist_v3(
         PDF / DOCX / URL, or call :func:`checklist_document_v3`).
     model:
         pydantic-ai model id (e.g. "openai:gpt-5.4-nano",
-        "ollama:gemma4:31b-nvfp4").
+        "ollama:gemma4:31b").
     sections:
         Pre-resolved sections, when the caller knows the document's structure.
         A Word document declares its headings in their paragraph styles, which

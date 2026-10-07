@@ -48,7 +48,7 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help=(
             "Run stage 3, the LLM judge for grey-zone boundaries, with this "
-            "model (e.g. anthropic:claude-haiku-4-5, ollama:gemma4:26b-nvfp4). "
+            "model (e.g. anthropic:claude-haiku-4-5, ollama:gemma4:26b). "
             "Omitted: stage 3 is skipped and no LLM is called."
         ),
     )

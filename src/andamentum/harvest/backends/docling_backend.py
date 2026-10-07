@@ -74,7 +74,7 @@ _VLM_CONVERT_PRESET = "granite_docling"
 #: Measured on a bar chart with known values, same prompt for each, scoring
 #: eight facts a correct description must recover:
 #:
-#:     ollama:qwen3.8:27b-mlx   8/8   27.3 s   1.8 GB in this process
+#:     ollama:qwen3.8           8/8   27.3 s   1.8 GB in this process
 #:     ollama:minicpm-v4.6:1b   6/8   27.7 s   1.8 GB
 #:     smolvlm (256M, bundled)  4/8   12.0 s   2.7 GB
 #:
@@ -88,7 +88,7 @@ _VLM_CONVERT_PRESET = "granite_docling"
 #: it fails; `_check_ollama_model` makes that failure say exactly what is
 #: wrong and what to do. A caller wanting no external service passes a
 #: preset id instead — at the accuracy shown above.
-DEFAULT_FIGURE_MODEL = "ollama:qwen3.8:27b-mlx"
+DEFAULT_FIGURE_MODEL = "ollama:qwen3.8"
 
 _OLLAMA_PREFIX = "ollama:"
 
@@ -405,6 +405,16 @@ def _installed_ollama_models() -> set[str]:
     return {entry.get("name", "") for entry in payload.get("models", [])}
 
 
+def _ollama_name(model: str) -> str:
+    """Ollama's own reading of a model name: no tag means ``:latest``.
+
+    ``ollama list`` reports ``qwen3.8:latest`` for a model pulled as
+    ``qwen3.8``, so an exact string comparison would call an installed model
+    missing.
+    """
+    return model if ":" in model else f"{model}:latest"
+
+
 def _check_ollama_model(model: str) -> None:
     """Fail early and specifically when Ollama cannot serve `model`.
 
@@ -429,7 +439,7 @@ def _check_ollama_model(model: str) -> None:
             attempted=["ollama"],
         ) from exc
 
-    if model not in installed:
+    if _ollama_name(model) not in {_ollama_name(name) for name in installed}:
         raise OllamaUnavailableError(
             f"Ollama is running but does not have {model!r}.\n"
             f"Pull it with 'ollama pull {model}', pick one it does have "

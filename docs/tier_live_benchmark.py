@@ -44,7 +44,7 @@ SCIFACT_DIR = (
     Path(__file__).resolve().parents[1]
     / "experiments/dirichlet_confidence/data/scifact"
 )
-MODEL = "ollama:gemma4:12b-mxfp8"
+MODEL = "ollama:gemma4:12b"
 N = 12
 LABEL_ID = {"supports": 0, "contradicts": 1, "no_bearing": 2}
 GOLD_NAME = {0: "SUPPORT", 1: "CONTRADICT", 2: "NOINFO"}

@@ -164,7 +164,7 @@ def test_has_issues_false_on_clean_figure() -> None:
 # not recommendable as a vision-critique default until it is on this list
 # and passing. ``gemma4:e2b`` is deliberately absent — it fails the
 # fixture, confidently reporting that the figure is fine.
-CALIBRATION_MODELS = ("ollama:qwen3.8:27b-mlx",)
+CALIBRATION_MODELS = ("ollama:qwen3.8",)
 
 
 def _ollama_serves(model_id: str) -> bool:

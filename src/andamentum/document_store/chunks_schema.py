@@ -2,7 +2,7 @@
 
 The chunks table stores document chunks for semantic search. The
 chunk_embeddings vec0 virtual table stores the corresponding
-``EMBEDDING_DIM``-wide embeddings (sized for ``embeddinggemma:latest``).
+``EMBEDDING_DIM``-wide embeddings (sized for ``embeddinggemma-2:latest``).
 """
 
 from __future__ import annotations

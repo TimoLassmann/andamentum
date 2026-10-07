@@ -98,7 +98,7 @@ async def top_n_representatives(
         )
         return ranked[:n]
 
-    # Embed claim + every candidate in one batch. embeddinggemma at
+    # Embed claim + every candidate in one batch. embeddinggemma-2 at
     # 768-dim is fast enough that batching all evidence per call is fine.
     from ..embeddings import embed_texts
     from ..similarity import cosine_similarity
