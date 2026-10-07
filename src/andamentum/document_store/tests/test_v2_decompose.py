@@ -10,7 +10,6 @@ from pydantic import ValidationError
 from pydantic_ai.messages import ModelMessage, ModelResponse, ToolCallPart
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
-from andamentum.document_store.bench import arms
 from andamentum.document_store.v2 import Decomposition, Hit, retrieve_decomposed
 from andamentum.document_store.v2.decompose import decompose
 
@@ -140,9 +139,3 @@ async def test_decompose_returns_usage() -> None:
 def test_more_than_four_sub_questions_is_rejected() -> None:
     with pytest.raises(ValidationError):
         Decomposition(sub_questions=["a", "b", "c", "d", "e"])
-
-
-async def test_arm_needs_driver_model() -> None:
-    arm = arms.ARMS["v2_decompose"]
-    with pytest.raises(ValueError, match="driver-model"):
-        await arm.rank(None, None, None)  # type: ignore[arg-type]

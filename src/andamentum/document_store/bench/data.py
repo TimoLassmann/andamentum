@@ -9,8 +9,15 @@ distractors of all the others.
 
 The sample is drawn once (``freeze``) and written to ``suites/<name>.json``,
 which is committed. Every later run reads the same question ids and checks the
-pooled corpus against the recorded sha256, so a changed download fails loudly
-instead of quietly moving the numbers.
+raw file and the pooled corpus against the recorded sha256, so a changed
+download fails loudly instead of quietly moving the numbers.
+
+Dev and test are split by linked group, not by question: two questions are
+linked when they share a supporting passage, and a whole group goes to one
+side. Dev and test therefore share no question and no supporting passage. A
+test question's supporting passage can still appear in the dev pool as a
+distractor: linking on every shared passage puts most of MuSiQue into one
+group, so that stricter split cannot be drawn.
 """
 
 from __future__ import annotations
@@ -19,7 +26,7 @@ import hashlib
 import json
 import random
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Callable, Iterable
 
@@ -27,18 +34,19 @@ import httpx
 
 SUITES_DIR = Path(__file__).parent / "suites"
 
-#: Tier name -> number of questions. ``smoke`` is the first 20 of the frozen
-#: ``standard`` sample, so a smoke run is a strict subset of a standard run.
-TIERS: dict[str, int] = {"smoke": 20, "standard": 200}
+#: Split name -> number of questions. Design choices are made on ``dev``;
+#: ``test`` only reports. No question that shapes the store also scores it.
+SPLITS: dict[str, int] = {"dev": 200, "test": 300}
 
-#: The dev sample: drawn after, and disjoint from, the test questions above.
-#: Thresholds, fusion weights and other design choices are made on ``dev``;
-#: ``smoke`` / ``standard`` only report. No question that shapes the store
-#: also scores it.
-DEV_SIZE = 200
-RUN_TIERS = (*TIERS, "dev")
+#: ``smoke`` is the first 20 dev questions: it checks that an arm runs, and its
+#: numbers are never reported.
+SMOKE_SIZE = 20
+RUN_TIERS = ("smoke", *SPLITS)
 
-_SEED = 17
+#: Version of the frozen-sample format; a run records it.
+SUITE_VERSION = 2
+
+_SEED = 1234
 
 # HotpotQA distractor dev, served as JSON by the Hugging Face dataset viewer
 # (the parquet files need pyarrow, which is not a dependency).
@@ -70,6 +78,7 @@ class Question:
     answers: tuple[
         str, ...
     ] = ()  # accepted answer strings (never used by retrieval arms)
+    cluster: str = ""  # linked group; the resampling unit of the bootstrap
 
 
 @dataclass(frozen=True)
@@ -216,6 +225,14 @@ def dataset_path(suite: str, *, workdir: Path) -> Path:
     return workdir / "datasets" / SOURCES[suite].filename
 
 
+def file_sha256(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for block in iter(lambda: f.read(1 << 20), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
 def fetch(suite: str, *, workdir: Path) -> Path:
     """Download a suite's raw dev set into ``workdir/datasets`` unless present."""
     dest = dataset_path(suite, workdir=workdir)
@@ -248,8 +265,8 @@ def load_records(
 # ---------------------------------------------------------------------------
 
 
-def suite_file(suite: str) -> Path:
-    return SUITES_DIR / f"{suite}.json"
+def suite_file(suite: str, *, suites_dir: Path = SUITES_DIR) -> Path:
+    return suites_dir / f"{suite}.json"
 
 
 def pool(
@@ -257,11 +274,14 @@ def pool(
     tier: str,
     records: dict[str, tuple[Question, list[Passage]]],
     qids: list[str],
+    clusters: dict[str, str] | None = None,
 ) -> Corpus:
     questions: list[Question] = []
     by_pid: dict[str, Passage] = {}
     for qid in qids:
         q, ps = records[qid]
+        if clusters is not None:
+            q = replace(q, cluster=clusters[qid])
         questions.append(q)
         for p in ps:
             by_pid.setdefault(p.pid, p)
@@ -275,80 +295,158 @@ def pool(
     )
 
 
-def freeze(suite: str, *, workdir: Path) -> Path:
-    """Draw the sample and record it. Refuses to redraw an existing sample."""
-    path = suite_file(suite)
+def link_groups(questions: Iterable[Question]) -> dict[str, str]:
+    """Question id -> linked-group id; questions sharing a supporting passage link.
+
+    The group id is the smallest question id in the group, so it does not
+    depend on the order of the input.
+    """
+    qs = sorted(questions, key=lambda q: q.qid)
+    parent = {q.qid: q.qid for q in qs}
+
+    def find(x: str) -> str:
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    first_with: dict[str, str] = {}
+    for q in qs:
+        for pid in sorted(q.gold):
+            if pid in first_with:
+                a, b = find(first_with[pid]), find(q.qid)
+                if a != b:
+                    parent[max(a, b)] = min(a, b)
+            else:
+                first_with[pid] = q.qid
+    return {q.qid: find(q.qid) for q in qs}
+
+
+def draw_splits(
+    questions: Iterable[Question], *, seed: int = _SEED
+) -> tuple[list[str], list[str], dict[str, str]]:
+    """Draw (dev ids, test ids, groups); a linked group never spans both splits.
+
+    Groups are shuffled and dealt to the test side until it holds half the
+    eligible questions, the rest to the dev side; each split's sample is then
+    drawn from its own side.
+    """
+    eligible = [q for q in questions if q.gold]
+    groups = link_groups(eligible)
+    members: dict[str, list[str]] = {}
+    for qid, g in sorted(groups.items()):
+        members.setdefault(g, []).append(qid)
+    order = sorted(members)
+    rng = random.Random(seed)
+    rng.shuffle(order)
+    test_side: list[str] = []
+    dev_side: list[str] = []
+    for g in order:
+        side = test_side if len(test_side) < len(eligible) / 2 else dev_side
+        side.extend(members[g])
+    for name, side in (("dev", dev_side), ("test", test_side)):
+        if len(side) < SPLITS[name]:
+            raise ValueError(
+                f"only {len(side)} eligible questions on the {name} side; "
+                f"{SPLITS[name]} needed"
+            )
+    dev = rng.sample(sorted(dev_side), SPLITS["dev"])
+    test = rng.sample(sorted(test_side), SPLITS["test"])
+    return dev, test, {qid: groups[qid] for qid in dev + test}
+
+
+def check_splits(
+    spec: dict, records: dict[str, tuple[Question, list[Passage]]]
+) -> None:
+    """Raise unless dev and test share no question, group or supporting passage."""
+    dev, test = spec["dev_ids"], spec["test_ids"]
+    shared = set(dev) & set(test)
+    if shared:
+        raise ValueError(f"{len(shared)} questions are in both dev and test")
+    groups = spec["groups"]
+    shared_groups = {groups[q] for q in dev} & {groups[q] for q in test}
+    if shared_groups:
+        raise ValueError(f"{len(shared_groups)} linked groups span dev and test")
+    gold_dev = set().union(*(records[q][0].gold for q in dev))
+    gold_test = set().union(*(records[q][0].gold for q in test))
+    if gold_dev & gold_test:
+        raise ValueError(
+            f"{len(gold_dev & gold_test)} supporting passages are in dev and test"
+        )
+
+
+def _tier_ids(spec: dict, tier: str) -> list[str]:
+    if tier == "smoke":
+        return spec["dev_ids"][:SMOKE_SIZE]
+    return spec[f"{tier}_ids"]
+
+
+def freeze(suite: str, *, workdir: Path, suites_dir: Path = SUITES_DIR) -> Path:
+    """Draw dev and test and record them. Refuses to redraw an existing sample."""
+    path = suite_file(suite, suites_dir=suites_dir)
     if path.exists():
         raise FileExistsError(
             f"{path} already exists; a frozen sample is never redrawn. "
             "Bump the suite version deliberately by deleting it in a reviewed commit."
         )
     records = load_records(suite, workdir=workdir)
-    # Questions without a supporting passage cannot be scored on retrieval.
-    eligible = sorted(qid for qid, (q, _) in records.items() if q.gold)
-    sample = random.Random(_SEED).sample(eligible, TIERS["standard"])
-    tiers = {}
-    for tier, n in TIERS.items():
-        corpus = pool(suite, tier, records, sample[:n])
-        tiers[tier] = {
-            "n_questions": n,
+    dev, test, groups = draw_splits(q for q, _ in records.values())
+    spec: dict = {
+        "suite": suite,
+        "version": SUITE_VERSION,
+        "source": SOURCES[suite].filename,
+        "source_sha256": file_sha256(dataset_path(suite, workdir=workdir)),
+        "seed": _SEED,
+        "eligible_questions": sum(1 for q, _ in records.values() if q.gold),
+        "split_rule": "linked groups (shared supporting passage) never span dev and test",
+        "dev_ids": dev,
+        "test_ids": test,
+        "groups": groups,
+    }
+    check_splits(spec, records)
+    spec["tiers"] = {}
+    for tier in RUN_TIERS:
+        corpus = pool(suite, tier, records, _tier_ids(spec, tier))
+        spec["tiers"][tier] = {
+            "n_questions": len(corpus.questions),
             "n_passages": len(corpus.passages),
             "corpus_sha256": corpus.sha256,
         }
-    spec = {
-        "suite": suite,
-        "version": 1,
-        "source": SOURCES[suite].filename,
-        "seed": _SEED,
-        "eligible_questions": len(eligible),
-        "tiers": tiers,
-        "sample_ids": sample,
-    }
-    SUITES_DIR.mkdir(parents=True, exist_ok=True)
+    suites_dir.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(spec, indent=1) + "\n")
     return path
 
 
-def freeze_dev(suite: str, *, workdir: Path) -> Path:
-    """Draw the dev sample from the questions the test sample did not take."""
-    path = suite_file(suite)
-    spec = json.loads(path.read_text())
-    if "dev_ids" in spec:
-        raise FileExistsError(f"{path} already has a dev sample; it is never redrawn")
+def load_spec(suite: str, *, suites_dir: Path = SUITES_DIR) -> dict:
+    spec = json.loads(suite_file(suite, suites_dir=suites_dir).read_text())
+    if spec.get("version") != SUITE_VERSION:
+        raise ValueError(
+            f"{suite}: frozen sample version {spec.get('version')} is not "
+            f"{SUITE_VERSION}; freeze it again"
+        )
+    return spec
+
+
+def load_corpus(
+    suite: str, tier: str, *, workdir: Path, suites_dir: Path = SUITES_DIR
+) -> tuple[Corpus, dict]:
+    """The frozen sample's pooled corpus for one tier, checked against its hashes."""
+    spec = load_spec(suite, suites_dir=suites_dir)
+    raw = dataset_path(suite, workdir=workdir)
+    if raw.exists() and file_sha256(raw) != spec["source_sha256"]:
+        raise ValueError(
+            f"{raw} sha256 does not match the frozen {spec['source_sha256']}; "
+            "the downloaded data changed"
+        )
     records = load_records(suite, workdir=workdir)
-    taken = set(spec["sample_ids"])
-    eligible = sorted(
-        qid for qid, (q, _) in records.items() if q.gold and qid not in taken
-    )
-    dev = random.Random(_SEED + 1).sample(eligible, DEV_SIZE)
-    corpus = pool(suite, "dev", records, dev)
-    spec["tiers"]["dev"] = {
-        "n_questions": DEV_SIZE,
-        "n_passages": len(corpus.passages),
-        "corpus_sha256": corpus.sha256,
-    }
-    spec["dev_ids"] = dev
-    path.write_text(json.dumps(spec, indent=1) + "\n")
-    return path
-
-
-def _tier_ids(spec: dict, tier: str) -> list[str]:
-    if tier == "dev":
-        return spec["dev_ids"]
-    return spec["sample_ids"][: spec["tiers"][tier]["n_questions"]]
-
-
-def load_corpus(suite: str, tier: str, *, workdir: Path) -> tuple[Corpus, dict]:
-    """The frozen sample's pooled corpus for one tier, checked against its hash."""
-    spec = json.loads(suite_file(suite).read_text())
+    check_splits(spec, records)
     ids = _tier_ids(spec, tier)
-    records = load_records(suite, workdir=workdir)
     missing = [q for q in ids if q not in records]
     if missing:
         raise ValueError(
             f"{suite}: {len(missing)} frozen question ids not in the dataset"
         )
-    corpus = pool(suite, tier, records, ids)
+    corpus = pool(suite, tier, records, ids, spec["groups"])
     expected = spec["tiers"][tier]["corpus_sha256"]
     if corpus.sha256 != expected:
         raise ValueError(

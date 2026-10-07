@@ -46,7 +46,12 @@ _ARMS: dict[str, Any] = dict(arms.ARMS)
 @pytest.fixture(autouse=True)
 def _frozen_corpus(monkeypatch):
     monkeypatch.setattr(
-        runner, "load_corpus", lambda *_a, **_kw: (_corpus(), {"version": 1})
+        runner, "load_corpus", lambda *_a, **_kw: (_corpus(), {"version": 2})
+    )
+    monkeypatch.setattr(
+        runner,
+        "git_state",
+        lambda: {"commit": "c0ffee", "dirty": False, "diff_sha256": None},
     )
 
 
@@ -73,7 +78,7 @@ def test_normalisation_strips_case_punctuation_articles_and_spaces():
 
 def test_exact_match_and_f1_take_the_best_answer():
     m = answer_metrics("the Jane Doe.", ["J. Doe", "Jane Doe"])
-    assert m == {"em": 1.0, "f1": 1.0}
+    assert m == {"em": 1.0, "f1": 1.0, "unknown": 0.0}
 
 
 def test_partial_overlap_gives_token_f1_without_exact_match():
@@ -83,8 +88,14 @@ def test_partial_overlap_gives_token_f1_without_exact_match():
 
 
 def test_no_overlap_and_empty_prediction_score_zero():
-    assert answer_metrics("Bob", ["Jane Doe"]) == {"em": 0.0, "f1": 0.0}
-    assert answer_metrics("", ["Jane Doe"]) == {"em": 0.0, "f1": 0.0}
+    zero = {"em": 0.0, "f1": 0.0, "unknown": 0.0}
+    assert answer_metrics("Bob", ["Jane Doe"]) == zero
+    assert answer_metrics("", ["Jane Doe"]) == zero
+
+
+def test_an_unknown_answer_is_flagged_and_scores_zero():
+    m = answer_metrics("Unknown.", ["Jane Doe"])
+    assert m == {"em": 0.0, "f1": 0.0, "unknown": 1.0}
 
 
 def test_scoring_without_answers_is_an_error():
@@ -114,6 +125,7 @@ class _AnsweringArm:
     name = "answering"
     store_kind = "current"
     needs_embeddings = False
+    answers = True
     seen_run_ids: list[str | None] = []
 
     async def rank(self, built, q, emb, *, driver_model=None, run_id=None):
@@ -138,6 +150,7 @@ async def _run(tmp_path, monkeypatch, arm, **kw):
         tier="smoke",
         arm_name=arm.name,
         workdir=tmp_path,
+        out_dir=tmp_path / "run",
         embedding_model=None,
         **kw,
     )
@@ -160,6 +173,8 @@ async def test_rows_carry_answers_costs_and_manifest_records_the_run(
     assert "seconds" in r1
     manifest = json.loads((run_dir / "manifest.json").read_text())
     assert manifest["driver_model"] == "m" and manifest["concurrency"] == 3
+    assert manifest["driver_settings"] == {"temperature": 0.0}
+    assert len(manifest["prompts_sha256"]) == 64
     assert manifest["mean_llm_calls"] == 2
     assert manifest["mean_tokens_in"] == 100
     assert "mean_seconds" in manifest
@@ -177,6 +192,7 @@ async def test_plain_list_arms_still_work_and_have_no_answer_fields(
         name = "plain"
         store_kind = "current"
         needs_embeddings = False
+        answers = False
 
         async def rank(self, built, q, emb, **_kw):
             return ["p1"]
@@ -186,23 +202,37 @@ async def test_plain_list_arms_still_work_and_have_no_answer_fields(
     assert all("answer" not in r and "em" not in r for r in rows)
     manifest = json.loads((run_dir / "manifest.json").read_text())
     assert manifest["driver_model"] is None and manifest["concurrency"] == 1
+    assert manifest["driver_settings"] is None
     assert "mean_llm_calls" not in manifest
 
 
-async def test_compare_prints_em_f1_and_cost_lines(tmp_path, monkeypatch):
+async def test_an_answering_arm_without_an_answer_fails_the_run(tmp_path, monkeypatch):
+    class Silent:
+        name = "silent"
+        store_kind = "current"
+        needs_embeddings = False
+        answers = True
+
+        async def rank(self, built, q, emb, **_kw):
+            return ArmResult(ranked=["p1"])
+
+    with pytest.raises(ValueError, match="returned no answer"):
+        await _run(tmp_path, monkeypatch, Silent())
+
+
+async def test_compare_prints_em_f1_and_unknown(tmp_path, monkeypatch):
     arm = _AnsweringArm()
     arm.seen_run_ids = []
     a = await _run(tmp_path / "a", monkeypatch, arm, driver_model="m")
     b = await _run(tmp_path / "b", monkeypatch, arm, driver_model="m")
     text = runner.compare(a, b)
-    assert " em " in text and " f1 " in text
-    assert "cost A: llm_calls 2.00" in text and "cost B: llm_calls 2.00" in text
+    assert " em " in text and " f1 " in text and " unknown " in text
 
 
 # -- the agent arms --------------------------------------------------------
 
 
-@pytest.mark.parametrize("name", ["v2_rag", "v2_agent"])
+@pytest.mark.parametrize("name", ["closed_book", "v2_rag", "v2_agent", "v2_agent_lex"])
 async def test_agent_arms_refuse_a_missing_driver_model(name):
     with pytest.raises(ValueError, match="driver-model"):
         await _ARMS[name].rank(object(), QUESTIONS[0], object())
@@ -219,9 +249,10 @@ async def test_v2_rag_answers_from_the_top_ten_after_rerank(monkeypatch):
         async def rerank(self, text, hs, *, reranker_model):
             return list(reversed(hs))
 
-    async def answer_from_hits(question, hs, *, model, store=None):
+    async def answer_from_hits(question, hs, *, model, store=None, model_settings):
         assert store is not None  # the arm passes its store, so citations are checked
         assert len(hs) == 10 and model == "m"
+        assert model_settings == {"temperature": 0.0}
         return SimpleNamespace(text="Jane Doe"), SimpleNamespace(
             requests=1, input_tokens=50, output_tokens=5
         )
@@ -248,9 +279,19 @@ async def test_v2_agent_maps_the_result_and_passes_cached_embedder(monkeypatch):
     seen = {}
 
     async def run_agentic(
-        question, *, store, model, embed_fn, reranker_model, run_id, budget
+        question,
+        *,
+        store,
+        model,
+        embed_fn,
+        reranker_model,
+        run_id,
+        budget,
+        model_settings,
     ):
-        seen.update(embed_fn=embed_fn, run_id=run_id, model=model)
+        seen.update(
+            embed_fn=embed_fn, run_id=run_id, model=model, settings=model_settings
+        )
         return SimpleNamespace(
             answer=SimpleNamespace(text="Jane Doe"),
             ranked_paths=["p2", "p1"],
@@ -277,7 +318,47 @@ async def test_v2_agent_maps_the_result_and_passes_cached_embedder(monkeypatch):
         run_id="r:q0",
     )
     assert seen["embed_fn"] == emb.get_or_compute and seen["run_id"] == "r:q0"
+    assert seen["settings"] == {"temperature": 0.0}
     assert (
         out.ranked == ["p2", "p1"] and out.entered_loop is True and out.llm_calls == 5
     )
     assert out.trace == [{"step": 0}]
+
+
+async def test_v2_agent_lex_runs_without_an_embedder(monkeypatch):
+    seen = {}
+
+    async def run_agentic(question, *, embed_fn, **_kw):
+        seen["embed_fn"] = embed_fn
+        return SimpleNamespace(
+            answer=SimpleNamespace(text="Jane Doe"),
+            ranked_paths=["p1"],
+            llm_calls=2,
+            tokens_in=10,
+            tokens_out=1,
+            seconds=0.1,
+            entered_loop=False,
+            trace=[],
+        )
+
+    _fake_agent_module(monkeypatch, run_agentic=run_agentic)
+    arm = _ARMS["v2_agent_lex"]
+    assert arm.needs_embeddings is False
+    out = await arm.rank(
+        SimpleNamespace(store=object()), QUESTIONS[0], None, driver_model="m"
+    )
+    assert seen["embed_fn"] is None and out.answer == "Jane Doe"
+
+
+async def test_closed_book_answers_without_a_store(monkeypatch):
+    async def answer_closed_book(question, *, model, model_settings):
+        assert model == "m" and model_settings == {"temperature": 0.0}
+        return SimpleNamespace(text="Jane Doe"), SimpleNamespace(
+            requests=1, input_tokens=20, output_tokens=3
+        )
+
+    _fake_agent_module(monkeypatch, answer_closed_book=answer_closed_book)
+    out = await _ARMS["closed_book"].rank(
+        arms.BuiltPool(["p1"]), QUESTIONS[0], None, driver_model="m"
+    )
+    assert out.ranked == [] and out.answer == "Jane Doe" and out.llm_calls == 1

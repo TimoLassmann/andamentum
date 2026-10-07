@@ -377,9 +377,11 @@ async def test_fallback_answers_from_noted_evidence_first(monkeypatch) -> None:
     given: list[list[str]] = []
     real = agent_module.answer_from_hits
 
-    async def spy(question, hits, *, model, store=None):
+    async def spy(question, hits, *, model, store=None, model_settings=None):
         given.append([h.citation for h in hits])
-        return await real(question, hits, model=model, store=store)
+        return await real(
+            question, hits, model=model, store=store, model_settings=model_settings
+        )
 
     monkeypatch.setattr(agent_module, "answer_from_hits", spy)
     await _run(model, store, budget=AgentBudget(max_tool_calls=2, max_requests=5))
@@ -479,3 +481,44 @@ async def test_answer_from_hits_returns_usage() -> None:
     model = FunctionModel(lambda messages, info: _answer(info, text="x"))
     answer, usage = await answer_from_hits("q?", [_hit(_SECTIONS[0])], model=model)  # type: ignore[arg-type]
     assert isinstance(answer, Answer) and usage.requests == 1
+
+
+async def test_without_embeddings_round0_is_lexical_and_similar_is_not_offered() -> (
+    None
+):
+    store = FakeStore()
+    seen: dict[str, Any] = {}
+    original = store.round0
+
+    def round0(query: str, *, query_embedding: Any, **kw: Any) -> list[Hit]:
+        seen["query_embedding"] = query_embedding
+        return original(query, query_embedding=query_embedding, **kw)
+
+    store.round0 = round0  # type: ignore[method-assign]
+    tools: list[set[str]] = []
+    inner = scripted(enough=False, steps=[lambda info: _answer(info)])
+
+    def fn(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        if info.function_tools:
+            tools.append({t.name for t in info.function_tools})
+        return inner.function(messages, info)  # type: ignore[misc]
+
+    result = await run_agentic(
+        "When did Apollo launch?",
+        store=store,  # type: ignore[arg-type]
+        model=FunctionModel(fn),
+        embed_fn=None,
+        reranker_model=None,
+        run_id="r1",
+    )
+    assert seen["query_embedding"] is None
+    assert tools and all("similar" not in names for names in tools)
+    assert "search" in tools[0]
+    assert result.entered_loop is True
+
+
+def test_prompts_fingerprint_is_stable() -> None:
+    from andamentum.document_store.v2.agent import prompts_sha256
+
+    assert prompts_sha256() == prompts_sha256()
+    assert len(prompts_sha256()) == 64

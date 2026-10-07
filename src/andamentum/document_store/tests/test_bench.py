@@ -170,44 +170,118 @@ def _musique_rows(n: int) -> list[dict]:
     return rows
 
 
+def _shared_gold_rows(n_pairs: int) -> list[dict]:
+    """Pairs of questions that share their supporting paragraph."""
+    rows = []
+    for i in range(n_pairs):
+        for j in (0, 1):
+            rows.append(
+                {
+                    "id": f"2hop__{i}_{j}",
+                    "question": f"What is item {i}, asked way {j}?",
+                    "answer": f"item {i}",
+                    "paragraphs": [
+                        {
+                            "idx": 0,
+                            "title": f"Item {i}",
+                            "paragraph_text": f"Item {i} is a widget.",
+                            "is_supporting": True,
+                        },
+                        {
+                            "idx": 1,
+                            "title": f"Other {i} {j}",
+                            "paragraph_text": f"Other {i} {j} is not.",
+                            "is_supporting": False,
+                        },
+                    ],
+                }
+            )
+    return rows
+
+
+def _small_splits(monkeypatch, *, dev: int, test: int, smoke: int = 2) -> None:
+    monkeypatch.setattr(data, "SPLITS", {"dev": dev, "test": test})
+    monkeypatch.setattr(data, "SMOKE_SIZE", smoke)
+
+
 def test_freeze_never_redraws_and_load_detects_changed_data(tmp_path, monkeypatch):
-    monkeypatch.setattr(data, "SUITES_DIR", tmp_path / "suites")
-    monkeypatch.setattr(data, "TIERS", {"smoke": 2, "standard": 5})
-    _write_dataset(tmp_path, _musique_rows(8))
+    _small_splits(monkeypatch, dev=3, test=3)
+    suites = tmp_path / "suites"
+    _write_dataset(tmp_path, _musique_rows(12))
 
-    data.freeze("musique", workdir=tmp_path)
+    data.freeze("musique", workdir=tmp_path, suites_dir=suites)
     with pytest.raises(FileExistsError):
-        data.freeze("musique", workdir=tmp_path)
+        data.freeze("musique", workdir=tmp_path, suites_dir=suites)
 
-    corpus, spec = data.load_corpus("musique", "smoke", workdir=tmp_path)
-    assert [q.qid for q in corpus.questions] == spec["sample_ids"][:2]
+    corpus, spec = data.load_corpus(
+        "musique", "smoke", workdir=tmp_path, suites_dir=suites
+    )
+    assert [q.qid for q in corpus.questions] == spec["dev_ids"][:2]
+    assert all(q.cluster == spec["groups"][q.qid] for q in corpus.questions)
+    test, _ = data.load_corpus("musique", "test", workdir=tmp_path, suites_dir=suites)
+    assert [q.qid for q in test.questions] == spec["test_ids"]
 
-    rows = _musique_rows(8)
+    rows = _musique_rows(12)
     for r in rows:
         r["paragraphs"][1]["paragraph_text"] += " Changed."
     data.dataset_path("musique", workdir=tmp_path).write_text(
         "".join(json.dumps(r) + "\n" for r in rows)
     )
     with pytest.raises(ValueError, match="downloaded data changed"):
-        data.load_corpus("musique", "smoke", workdir=tmp_path)
+        data.load_corpus("musique", "smoke", workdir=tmp_path, suites_dir=suites)
 
 
-def test_dev_sample_is_disjoint_from_test_and_never_redrawn(tmp_path, monkeypatch):
-    monkeypatch.setattr(data, "SUITES_DIR", tmp_path / "suites")
-    monkeypatch.setattr(data, "TIERS", {"smoke": 2, "standard": 4})
-    monkeypatch.setattr(data, "DEV_SIZE", 3)
-    _write_dataset(tmp_path, _musique_rows(9))
-    data.freeze("musique", workdir=tmp_path)
-    test_ids = json.loads(data.suite_file("musique").read_text())["sample_ids"]
+def test_linked_questions_never_span_dev_and_test(tmp_path, monkeypatch):
+    _small_splits(monkeypatch, dev=4, test=4)
+    suites = tmp_path / "suites"
+    _write_dataset(tmp_path, _shared_gold_rows(10))
+    data.freeze("musique", workdir=tmp_path, suites_dir=suites)
+    spec = data.load_spec("musique", suites_dir=suites)
 
-    data.freeze_dev("musique", workdir=tmp_path)
-    spec = json.loads(data.suite_file("musique").read_text())
-    assert spec["sample_ids"] == test_ids
-    assert not set(spec["dev_ids"]) & set(test_ids)
-    corpus, _ = data.load_corpus("musique", "dev", workdir=tmp_path)
-    assert [q.qid for q in corpus.questions] == spec["dev_ids"]
-    with pytest.raises(FileExistsError):
-        data.freeze_dev("musique", workdir=tmp_path)
+    def pair(qid: str) -> str:
+        return qid.rsplit("_", 1)[0]
+
+    dev_pairs = {pair(q) for q in spec["dev_ids"]}
+    test_pairs = {pair(q) for q in spec["test_ids"]}
+    assert not dev_pairs & test_pairs
+    for qid, group in spec["groups"].items():
+        assert group == f"{pair(qid)}_0"  # each pair is one linked group
+
+
+def test_link_groups_joins_questions_that_share_a_supporting_passage():
+    questions = [data.parse_musique(r)[0] for r in _shared_gold_rows(2)]
+    groups = data.link_groups(reversed(questions))
+    assert groups == {
+        "2hop__0_0": "2hop__0_0",
+        "2hop__0_1": "2hop__0_0",
+        "2hop__1_0": "2hop__1_0",
+        "2hop__1_1": "2hop__1_0",
+    }
+
+
+def test_check_splits_refuses_a_shared_supporting_passage():
+    records = {}
+    for row in _shared_gold_rows(1):
+        q, ps = data.parse_musique(row)
+        records[q.qid] = (q, ps)
+    spec = {
+        "dev_ids": ["2hop__0_0"],
+        "test_ids": ["2hop__0_1"],
+        "groups": {"2hop__0_0": "a", "2hop__0_1": "b"},  # wrongly split
+    }
+    with pytest.raises(ValueError, match="supporting passages"):
+        data.check_splits(spec, records)
+    spec["groups"] = {"2hop__0_0": "a", "2hop__0_1": "a"}
+    with pytest.raises(ValueError, match="linked groups"):
+        data.check_splits(spec, records)
+
+
+def test_an_old_frozen_sample_is_refused(tmp_path):
+    suites = tmp_path / "suites"
+    suites.mkdir()
+    (suites / "musique.json").write_text(json.dumps({"version": 1}))
+    with pytest.raises(ValueError, match="freeze it again"):
+        data.load_spec("musique", suites_dir=suites)
 
 
 # ── metrics ──────────────────────────────────────────────────────────────
@@ -224,6 +298,25 @@ def test_question_metrics_on_a_known_ranking():
 
 def test_paired_bootstrap_of_identical_runs_is_exactly_zero():
     assert paired_bootstrap([0.1, 0.5, 1.0], [0.1, 0.5, 1.0]) == (0.0, 0.0, 0.0)
+
+
+def test_cluster_bootstrap_resamples_whole_clusters():
+    a = [0.0] * 8
+    b = [1.0] * 4 + [0.0] * 4
+    _, lo_q, hi_q = paired_bootstrap(a, b)
+    # Two clusters that each hold one value: every resample mean is 0, 0.5 or 1.
+    _, lo_c, hi_c = paired_bootstrap(a, b, clusters=["x"] * 4 + ["y"] * 4)
+    assert (lo_c, hi_c) == (0.0, 1.0)
+    assert hi_c - lo_c > hi_q - lo_q
+
+
+def test_bootstrap_p_value_is_small_for_a_clear_difference_and_one_for_none():
+    from andamentum.document_store.bench.metrics import paired_bootstrap_test
+
+    _, _, _, p_clear = paired_bootstrap_test([0.0] * 40, [1.0] * 30 + [0.0] * 10)
+    assert p_clear < 0.001
+    _, _, _, p_none = paired_bootstrap_test([0.5] * 10, [0.5] * 10)
+    assert p_none == 1.0
 
 
 # ── embedding cache ──────────────────────────────────────────────────────
@@ -353,9 +446,9 @@ def _corpus() -> Corpus:
     )
 
 
-async def test_bm25_or_arm_ranks_the_supporting_passages_first(tmp_path):
+async def test_bm25_arm_ranks_the_supporting_passages_first(tmp_path):
     built = await arms.build_current_store(_corpus(), workdir=tmp_path, emb=None)
-    ranked = _ranked(await arms.ARMS["bm25_or"].rank(built, QUESTIONS[0], None))
+    ranked = _ranked(await arms.ARMS["bm25"].rank(built, QUESTIONS[0], None))
     assert set(ranked[:2]) == {"p-salt", "p-river"}
 
 
@@ -363,19 +456,47 @@ async def test_store_is_built_once_and_reused(tmp_path):
     first = await arms.build_current_store(_corpus(), workdir=tmp_path, emb=None)
     second = await arms.build_current_store(_corpus(), workdir=tmp_path, emb=None)
     assert first.doc_to_pid == second.doc_to_pid
+    assert first.info is not None and second.info is not None
+    assert first.info.reused is False and second.info.reused is True
+    assert second.info.build["layout"] == arms.CURRENT_LAYOUT
 
 
-async def test_unified_arm_runs_on_cached_vectors(tmp_path):
+@pytest.mark.parametrize("builder", ["build_current_store", "build_v2_store"])
+async def test_a_store_built_for_another_layout_is_refused(tmp_path, builder):
+    build = getattr(arms, builder)
+    first = await build(_corpus(), workdir=tmp_path, emb=None)
+    assert first.info is not None
+    meta_path = next((tmp_path / "stores").glob("*.meta.json"))
+    meta = json.loads(meta_path.read_text())
+    meta["layout"] = 0
+    meta_path.write_text(json.dumps(meta))
+    with pytest.raises(ValueError, match="built for a different run"):
+        await build(_corpus(), workdir=tmp_path, emb=None)
+
+
+async def test_v2_store_has_the_agent_tables(tmp_path):
+    built = await arms.build_v2_store(_corpus(), workdir=tmp_path, emb=None)
+    with sqlite3.connect(built.store.path) as db:
+        tables = {r[0] for r in db.execute("SELECT name FROM sqlite_master")}
+    assert {"collections", "evidence", "decisions"} <= tables
+
+
+async def test_store_names_carry_the_embedding_digest(tmp_path):
+    emb = _cache(tmp_path)
+    await arms.build_v2_store(_corpus(), workdir=tmp_path, emb=emb)
+    [meta] = (tmp_path / "stores").glob("*.meta.json")
+    assert emb.digest in meta.name and f"v2_{arms.V2_LAYOUT}" in meta.name
+
+
+async def test_v1_arm_runs_on_cached_vectors(tmp_path):
     emb = _cache(tmp_path)
     built = await arms.build_current_store(_corpus(), workdir=tmp_path, emb=emb)
-    ranked = _ranked(await arms.ARMS["unified"].rank(built, QUESTIONS[0], emb))
+    ranked = _ranked(await arms.ARMS["v1"].rank(built, QUESTIONS[0], emb))
     assert set(ranked) <= {p.pid for p in PASSAGES}
     assert ranked
 
 
-async def test_unified_rerank_arm_reorders_the_pool_by_reranker_score(
-    tmp_path, monkeypatch
-):
+async def test_v1_rerank_arm_reorders_the_pool_by_reranker_score(tmp_path, monkeypatch):
     from andamentum.document_store import reranking
 
     seen: dict[str, list[str]] = {}
@@ -391,8 +512,8 @@ async def test_unified_rerank_arm_reorders_the_pool_by_reranker_score(
     await arms.build_current_store(_corpus(), workdir=tmp_path, emb=emb)
     # Reopened from disk: the passage texts must still be there.
     built = await arms.build_current_store(_corpus(), workdir=tmp_path, emb=emb)
-    arm = arms.ARMS["unified_rerank"]
-    plain = _ranked(await arms.ARMS["unified"].rank(built, QUESTIONS[0], emb))
+    arm = arms.ARMS["v1_rerank"]
+    plain = _ranked(await arms.ARMS["v1"].rank(built, QUESTIONS[0], emb))
     ranked = _ranked(await arm.rank(built, QUESTIONS[0], emb))
 
     texts = {arms.document_content(p) for p in PASSAGES}
@@ -432,72 +553,129 @@ async def test_ollama_cache_sends_one_embedding_request_at_a_time(
     ]
 
 
-async def test_runner_records_a_rejected_store_query_instead_of_crashing(
-    tmp_path, monkeypatch
+_CLEAN_GIT = {"commit": "c0ffee", "dirty": False, "diff_sha256": None}
+
+
+@pytest.fixture
+def synthetic_runs(monkeypatch):
+    monkeypatch.setattr(
+        runner, "load_corpus", lambda *_a, **_kw: (_corpus(), {"version": 2})
+    )
+    monkeypatch.setattr(runner, "git_state", lambda: dict(_CLEAN_GIT))
+
+
+async def _run_arm(tmp_path, name, out="run"):
+    return await runner.run(
+        suite="synthetic",
+        tier="smoke",
+        arm_name=name,
+        workdir=tmp_path,
+        out_dir=tmp_path / out,
+        embedding_model=None,
+    )
+
+
+async def test_any_error_fails_the_run_and_leaves_a_failed_record(
+    tmp_path, monkeypatch, synthetic_runs
 ):
-    class RejectingArm:
-        name = "rejecting"
-        store_kind = "current"
+    class BrokenArm:
+        name = "broken"
+        store_kind = "none"
         needs_embeddings = False
+        answers = False
 
         async def rank(self, built, q, emb, **_kw):
             if q.qid == "q2":
-                raise sqlite3.OperationalError('fts5: syntax error near "?"')
+                raise sqlite3.OperationalError("no such table: decisions")
             return ["p-salt"]
 
-    monkeypatch.setattr(
-        runner, "load_corpus", lambda *_a, **_kw: (_corpus(), {"version": 1})
-    )
-    monkeypatch.setitem(runner.ARMS, "rejecting", RejectingArm())
-    run_dir = await runner.run(
-        suite="synthetic",
-        tier="smoke",
-        arm_name="rejecting",
-        workdir=tmp_path,
-        embedding_model=None,
-    )
-    rows = [json.loads(line) for line in (run_dir / "questions.jsonl").open()]
-    by_qid = {r["qid"]: r for r in rows}
-    assert by_qid["q1"]["error"] is None
-    assert by_qid["q2"]["error"].startswith("OperationalError")
-    assert by_qid["q2"]["ranked"] == []
+    monkeypatch.setitem(runner.ARMS, "broken", BrokenArm())
+    with pytest.raises(sqlite3.OperationalError):
+        await _run_arm(tmp_path, "broken")
+    manifest = json.loads((tmp_path / "run" / "manifest.json").read_text())
+    assert manifest["status"] == "failed"
+    assert "no such table" in manifest["error"]
+    assert not (tmp_path / "run" / "summary.json").exists()
+    with pytest.raises(ValueError, match="did not complete"):
+        runner.load_run(tmp_path / "run")
+
+
+async def test_a_ranking_outside_the_pool_fails_the_run(
+    tmp_path, monkeypatch, synthetic_runs
+):
+    class Inventing:
+        name = "inventing"
+        store_kind = "none"
+        needs_embeddings = False
+        answers = False
+
+        async def rank(self, built, q, emb, **_kw):
+            return ["p-salt", "p-invented"]
+
+    monkeypatch.setitem(runner.ARMS, "inventing", Inventing())
+    with pytest.raises(ValueError, match="not in the pool"):
+        await _run_arm(tmp_path, "inventing")
+
+
+async def test_a_run_never_overwrites_another(tmp_path, synthetic_runs):
+    await _run_arm(tmp_path, "oracle")
+    with pytest.raises(FileExistsError):
+        await _run_arm(tmp_path, "oracle")
+
+
+async def test_controls_score_as_expected(tmp_path, synthetic_runs):
+    oracle = await _run_arm(tmp_path, "oracle", "oracle")
+    summary = json.loads((oracle / "summary.json").read_text())["all"]
+    assert summary["full_support@10"] == 1.0 and summary["mrr"] == 1.0
+    shuffled = await _run_arm(tmp_path, "shuffled", "shuffled")
+    rows = [json.loads(line) for line in (shuffled / "questions.jsonl").open()]
+    assert all(sorted(r["ranked"]) == sorted(p.pid for p in PASSAGES) for r in rows)
+
+
+async def test_manifest_records_status_store_and_provenance(tmp_path, synthetic_runs):
+    run_dir = await _run_arm(tmp_path, "bm25")
     manifest = json.loads((run_dir / "manifest.json").read_text())
-    assert manifest["query_errors"] == 1
-    assert "1 query errors" in runner.format_summary(run_dir)
+    assert manifest["status"] == "complete"
+    assert manifest["started"] and manifest["ended"]
+    assert manifest["store_file"]["layout"] == arms.CURRENT_LAYOUT
+    assert manifest["store_file"]["reused"] is False
+    assert manifest["git"] == _CLEAN_GIT
+    assert "uv_lock_sha256" in manifest
+    row = runner.table_row(run_dir)
+    assert row["arm"] == "bm25" and row["commit"] == "c0ffee"
+    summary = json.loads((run_dir / "summary.json").read_text())["all"]
+    assert row["full_support@10"] == summary["full_support@10"]
 
 
-async def test_compare_refuses_runs_over_different_questions(tmp_path, monkeypatch):
-    monkeypatch.setattr(
-        runner, "load_corpus", lambda *_a, **_kw: (_corpus(), {"version": 1})
-    )
-    a = await runner.run(
-        suite="synthetic",
-        tier="smoke",
-        arm_name="bm25_or",
-        workdir=tmp_path,
-        embedding_model=None,
-    )
-    b = await runner.run(
-        suite="synthetic",
-        tier="smoke",
-        arm_name="fts5",
-        workdir=tmp_path / "b",
-        embedding_model=None,
-    )
+async def test_compare_refuses_runs_that_differ_in_what_must_match(
+    tmp_path, synthetic_runs
+):
+    a = await _run_arm(tmp_path, "bm25", "a")
+    b = await _run_arm(tmp_path, "oracle", "b")
     assert "B - A" in runner.compare(a, b)
+    c = runner.contrast(a, b, "full_support@10")
+    assert c["mean_b"] == 1.0 and c["n"] == len(QUESTIONS)
 
     manifest = json.loads((b / "manifest.json").read_text())
-    manifest["corpus_sha256"] = "other"
-    (b / "manifest.json").write_text(json.dumps(manifest))
-    with pytest.raises(ValueError, match="corpus_sha256"):
-        runner.compare(a, b)
+    for key, value, message in (
+        ("corpus_sha256", "other", "corpus_sha256"),
+        ("git", {**_CLEAN_GIT, "commit": "other"}, "git commit"),
+        ("git", {**_CLEAN_GIT, "dirty": True}, "uncommitted code"),
+    ):
+        changed = {**manifest, key: value}
+        (b / "manifest.json").write_text(json.dumps(changed))
+        with pytest.raises(ValueError, match=message):
+            runner.compare(a, b)
 
 
 def test_frozen_suites_in_the_repo_are_well_formed():
     for suite in data.SOURCES:
-        spec = json.loads(data.suite_file(suite).read_text())
-        assert len(spec["sample_ids"]) == data.TIERS["standard"]
-        assert len(set(spec["sample_ids"])) == len(spec["sample_ids"])
+        spec = data.load_spec(suite)
+        assert len(spec["dev_ids"]) == data.SPLITS["dev"]
+        assert len(spec["test_ids"]) == data.SPLITS["test"]
+        ids = spec["dev_ids"] + spec["test_ids"]
+        assert len(set(ids)) == len(ids)
         assert set(spec["tiers"]) == set(data.RUN_TIERS)
-        assert len(spec["dev_ids"]) == data.DEV_SIZE
-        assert not set(spec["dev_ids"]) & set(spec["sample_ids"])
+        assert set(spec["groups"]) == set(ids)
+        dev_groups = {spec["groups"][q] for q in spec["dev_ids"]}
+        assert not dev_groups & {spec["groups"][q] for q in spec["test_ids"]}

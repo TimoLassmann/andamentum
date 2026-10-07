@@ -13,6 +13,7 @@ in the trace.
 
 from __future__ import annotations
 
+import hashlib
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
@@ -21,6 +22,7 @@ from typing import Any
 from pydantic_ai import Agent
 from pydantic_ai.exceptions import UsageLimitExceeded
 from pydantic_ai.models import Model
+from pydantic_ai.settings import ModelSettings
 from pydantic_ai.usage import RunUsage, UsageLimits
 
 from ...core.agents import run_agent_with_usage
@@ -105,10 +107,19 @@ _STOP_INSTRUCTIONS = (
     "false and say in missing what is still needed."
 )
 
+_CLOSED_BOOK_INSTRUCTIONS = (
+    "Answer the question from your own knowledge; no passages are given. Put in text only "
+    "the shortest phrase that answers the question: a name, a date, a number or a short noun "
+    "phrase, never a sentence. If you are not sure, still give your best answer and set "
+    "confidence to low. Leave citations empty."
+)
+
+_SIMILAR_TOOL = "similar matches by meaning, "
+
 _LOOP_INSTRUCTIONS = (
     "You are a research agent over a document store. Answer the question with the tools "
     "provided: list and glob browse paths, grep matches a regular expression, search matches "
-    "keywords, similar matches by meaning, outline shows a document's sections, read shows "
+    "keywords, {similar}outline shows a document's sections, read shows "
     "lines of a document, note records a passage as evidence. Hits are shown as "
     "path:line_from-line_to. Use the evidence already gathered and look only for what is "
     "missing. For a question with several steps, find each intermediate entity first and "
@@ -118,12 +129,25 @@ _LOOP_INSTRUCTIONS = (
 ) + _ANSWER_FORMAT
 
 
+def prompts_sha256() -> str:
+    """Fingerprint of every instruction text the answering arms send; run records keep it."""
+    texts = (
+        _ANSWER_INSTRUCTIONS,
+        _STOP_INSTRUCTIONS,
+        _LOOP_INSTRUCTIONS,
+        _SIMILAR_TOOL,
+        _CLOSED_BOOK_INSTRUCTIONS,
+    )
+    return hashlib.sha256("\x00".join(texts).encode()).hexdigest()
+
+
 async def answer_from_hits(
     question: str,
     hits: list[Hit],
     *,
     model: ModelLike,
     store: SectionStore | None = None,
+    model_settings: ModelSettings | None = None,
 ) -> tuple[Answer, Any]:
     """One synthesis call over the given hits; returns ``(answer, usage)``.
 
@@ -136,6 +160,21 @@ async def answer_from_hits(
         output_type=Answer,
         user_message=f"Question: {question}\n\nPassages:\n{_passages(hits)}",
         validators=[_citation_validator(store)] if store is not None else None,
+        model_settings=model_settings,
+    )
+    return answer, usage
+
+
+async def answer_closed_book(
+    question: str, *, model: ModelLike, model_settings: ModelSettings | None = None
+) -> tuple[Answer, Any]:
+    """One call with no passages: the floor that retrieval has to beat."""
+    answer, usage = await run_agent_with_usage(
+        model,
+        instructions=_CLOSED_BOOK_INSTRUCTIONS,
+        output_type=Answer,
+        user_message=f"Question: {question}",
+        model_settings=model_settings,
     )
     return answer, usage
 
@@ -224,17 +263,23 @@ async def run_agentic(
     *,
     store: SectionStore,
     model: ModelLike,
-    embed_fn: EmbedFn,
+    embed_fn: EmbedFn | None,
     reranker_model: str | None,
     run_id: str,
     budget: AgentBudget = AgentBudget(),
+    model_settings: ModelSettings | None = None,
 ) -> AgentResult:
+    """Round 0, the stop decision, then the tool loop.
+
+    With ``embed_fn=None`` the agent works without embeddings: round 0 uses the
+    lexical legs only and the ``similar`` tool is not offered.
+    """
     started = time.perf_counter()
     counter = _Counter()
     trace: list[dict[str, Any]] = []
 
     # 1. Round 0 -------------------------------------------------------------
-    query_embedding = (await embed_fn([question]))[0]
+    query_embedding = (await embed_fn([question]))[0] if embed_fn is not None else None
     hits0 = store.round0(question, query_embedding=query_embedding, use_exact=False)
     if reranker_model:
         hits0 = await store.rerank(question, hits0, reranker_model=reranker_model)
@@ -254,6 +299,7 @@ async def run_agentic(
         instructions=_STOP_INSTRUCTIONS,
         output_type=Sufficiency,
         user_message=f"Question: {question}\n\nPassages:\n{_passages(top0)}",
+        model_settings=model_settings,
     )
     counter.add(usage)
     choice = "answer" if sufficiency.enough else "loop"
@@ -281,7 +327,9 @@ async def run_agentic(
 
     # 3. Enough: synthesise from round 0 ----------------------------------------
     if sufficiency.enough:
-        answer, usage = await answer_from_hits(question, top0, model=model, store=store)
+        answer, usage = await answer_from_hits(
+            question, top0, model=model, store=store, model_settings=model_settings
+        )
         counter.add(usage)
         trace.append(
             {"step": 1, "kind": "answer_from_hits", "args": {"n_hits": len(top0)}}
@@ -388,7 +436,10 @@ async def run_agentic(
     decided_by = model if isinstance(model, str) else model.model_name
     agent: Agent[None, Answer] = Agent(
         resolve_model(model) if isinstance(model, str) else model,
-        instructions=_LOOP_INSTRUCTIONS.format(max_tool_calls=budget.max_tool_calls),
+        instructions=_LOOP_INSTRUCTIONS.format(
+            max_tool_calls=budget.max_tool_calls,
+            similar=_SIMILAR_TOOL if embed_fn is not None else "",
+        ),
         output_type=Answer,
         retries={"tools": 3, "output": 5},
     )
@@ -442,18 +493,23 @@ async def run_agentic(
             "search", {"keywords": keywords, "path_prefix": path_prefix}, go
         )
 
-    @agent.tool_plain
-    async def similar(text: str, path_prefix: str = "") -> str:
-        """Find passages similar in meaning to text, optionally within a path prefix."""
+    if embed_fn is not None:
+        embed = embed_fn
 
-        async def go() -> tuple[str, list[Hit] | None]:
-            embedding = (await embed_fn([text]))[0]
-            hits = await _rerank_hits(
-                store.similar(embedding, k=_candidates(), path_prefix=path_prefix)
+        @agent.tool_plain
+        async def similar(text: str, path_prefix: str = "") -> str:
+            """Find passages similar in meaning to text, optionally within a path prefix."""
+
+            async def go() -> tuple[str, list[Hit] | None]:
+                embedding = (await embed([text]))[0]
+                hits = await _rerank_hits(
+                    store.similar(embedding, k=_candidates(), path_prefix=path_prefix)
+                )
+                return _render_hits(hits), hits
+
+            return await _call(
+                "similar", {"text": text, "path_prefix": path_prefix}, go
             )
-            return _render_hits(hits), hits
-
-        return await _call("similar", {"text": text, "path_prefix": path_prefix}, go)
 
     @agent.tool_plain
     async def outline(path: str) -> str:
@@ -533,6 +589,7 @@ async def run_agentic(
             prompt,
             usage=loop_usage,
             usage_limits=UsageLimits(request_limit=budget.max_requests),
+            model_settings=model_settings,
         )
         answer = result.output
         counter.add(loop_usage)
@@ -548,7 +605,11 @@ async def run_agentic(
             }
         )
         answer, usage = await answer_from_hits(
-            question, fallback_hits, model=model, store=store
+            question,
+            fallback_hits,
+            model=model,
+            store=store,
+            model_settings=model_settings,
         )
         counter.add(usage)
 
@@ -584,6 +645,8 @@ __all__ = [
     "Answer",
     "Citation",
     "EmbedFn",
+    "answer_closed_book",
     "answer_from_hits",
+    "prompts_sha256",
     "run_agentic",
 ]
