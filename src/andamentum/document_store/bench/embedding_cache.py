@@ -8,6 +8,7 @@ pulling a new build of the same tag cannot silently mix two models' vectors.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import sqlite3
 import struct
@@ -64,14 +65,18 @@ class EmbeddingCache:
     @classmethod
     def for_ollama(cls, path: Path, *, model: str) -> "EmbeddingCache":
         embedder: OllamaEmbedder | None = None
+        # The model is local: a run with --concurrency N must still send it
+        # one request at a time.
+        one_at_a_time = asyncio.Lock()
 
         async def embed(texts: list[str]) -> list[list[float]]:
             # Created on the first miss only, so a fully cached run never
             # touches the model (OllamaEmbedder probes it on construction).
             nonlocal embedder
-            if embedder is None:
-                embedder = OllamaEmbedder(model=model)
-            return await embedder.embed_batch(texts)
+            async with one_at_a_time:
+                if embedder is None:
+                    embedder = OllamaEmbedder(model=model)
+                return await embedder.embed_batch(texts)
 
         return cls(path, model=model, digest=ollama_model_digest(model), embed_fn=embed)
 

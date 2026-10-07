@@ -373,6 +373,65 @@ async def test_unified_arm_runs_on_cached_vectors(tmp_path):
     assert ranked
 
 
+async def test_unified_rerank_arm_reorders_the_pool_by_reranker_score(
+    tmp_path, monkeypatch
+):
+    from andamentum.document_store import reranking
+
+    seen: dict[str, list[str]] = {}
+
+    async def fake_rerank(query, texts, *, reranker_model):
+        seen["texts"] = list(texts)
+        seen["model"] = [reranker_model]
+        # The passage about hills scores highest, everything else keeps order.
+        return [1.0 if "hill" in t.lower() else 0.0 for t in texts]
+
+    monkeypatch.setattr(reranking, "rerank", fake_rerank)
+    emb = _cache(tmp_path)
+    await arms.build_current_store(_corpus(), workdir=tmp_path, emb=emb)
+    # Reopened from disk: the passage texts must still be there.
+    built = await arms.build_current_store(_corpus(), workdir=tmp_path, emb=emb)
+    arm = arms.ARMS["unified_rerank"]
+    plain = _ranked(await arms.ARMS["unified"].rank(built, QUESTIONS[0], emb))
+    ranked = _ranked(await arm.rank(built, QUESTIONS[0], emb))
+
+    texts = {arms.document_content(p) for p in PASSAGES}
+    assert seen["texts"] and set(seen["texts"]) <= texts
+    assert seen["model"] == [arms.SUGGESTED_RERANKER_MODEL]
+    assert ranked[0] == "p-hill"
+    assert set(ranked) == set(plain)
+
+
+async def test_ollama_cache_sends_one_embedding_request_at_a_time(
+    tmp_path, monkeypatch
+):
+    import asyncio
+
+    from andamentum.document_store.bench import embedding_cache
+
+    state = {"in_flight": 0, "max": 0}
+
+    class SlowEmbedder(_FakeEmbedder):
+        async def embed_batch(self, texts):
+            state["in_flight"] += 1
+            state["max"] = max(state["max"], state["in_flight"])
+            await asyncio.sleep(0.01)
+            state["in_flight"] -= 1
+            return [_fake_vector(t) for t in texts]
+
+    monkeypatch.setattr(embedding_cache, "OllamaEmbedder", SlowEmbedder)
+    monkeypatch.setattr(embedding_cache, "ollama_model_digest", lambda m: "d1")
+    cache = EmbeddingCache.for_ollama(tmp_path / "emb.sqlite", model="fake-embed")
+    results = await asyncio.gather(
+        *(cache.get_or_compute([f"text {i}"]) for i in range(6))
+    )
+    assert state["max"] == 1
+    float32 = embedding_cache._unpack
+    assert results == [
+        [float32(embedding_cache._pack(_fake_vector(f"text {i}")))] for i in range(6)
+    ]
+
+
 async def test_runner_records_a_rejected_store_query_instead_of_crashing(
     tmp_path, monkeypatch
 ):

@@ -33,6 +33,10 @@ from .embedding_cache import EmbeddingCache
 #: Ranked list depth every arm returns; the deepest metric cut-off.
 DEPTH = 20
 
+#: How many fused results a reranking arm hands to the cross-encoder; the v2
+#: store reranks its fused top 50, so the current store gets the same pool.
+RERANK_POOL = 50
+
 
 def document_content(p: Passage) -> str:
     """A passage as the store would hold it after harvest: a titled markdown page."""
@@ -100,6 +104,8 @@ class ArmResult:
 class BuiltStore:
     store: DocumentStore
     doc_to_pid: dict[str, str]
+    #: Passage id -> the document text the store holds; what a reranker scores.
+    pid_text: dict[str, str] = field(default_factory=dict)
 
 
 async def build_current_store(
@@ -115,8 +121,9 @@ async def build_current_store(
     store_dir = workdir / "stores"
     mapping_path = store_dir / f"{name}.map.json"
     store = DocumentStore(name, db_dir=store_dir)
+    pid_text = {p.pid: document_content(p) for p in corpus.passages}
     if mapping_path.exists():
-        return BuiltStore(store, json.loads(mapping_path.read_text()))
+        return BuiltStore(store, json.loads(mapping_path.read_text()), pid_text)
     if store.db_path.exists():
         store.db_path.unlink()  # a half-built store from an interrupted run
     await store.initialize()
@@ -127,7 +134,7 @@ async def build_current_store(
             raise ValueError(f"passages {doc_to_pid[doc_id]} and {p.pid} share content")
         doc_to_pid[doc_id] = p.pid
     mapping_path.write_text(json.dumps(doc_to_pid))
-    return BuiltStore(store, doc_to_pid)
+    return BuiltStore(store, doc_to_pid, pid_text)
 
 
 class Arm(Protocol):
@@ -202,11 +209,19 @@ class Bm25OrArm:
 
 
 class UnifiedArm:
-    """The current store's full 4-signal RRF search, query embedded from the cache."""
+    """The current store's full 4-signal RRF search, query embedded from the cache.
 
-    name = "unified"
+    With ``reranker``, the fused top :data:`RERANK_POOL` documents are reordered
+    by the same cross-encoder the v2 arms use, so a v2 gain can be split into
+    what the reranker gives and what the store layout gives.
+    """
+
     store_kind = "current"
     needs_embeddings = True
+
+    def __init__(self, name: str = "unified", *, reranker: str | None = None) -> None:
+        self.name = name
+        self.reranker = reranker
 
     async def rank(
         self,
@@ -220,10 +235,20 @@ class UnifiedArm:
         if emb is None:
             raise ValueError("the unified arm needs an embedding cache")
         [qvec] = await emb.get_or_compute([q.text])
+        limit = DEPTH if self.reranker is None else RERANK_POOL
         results = await search_unified(
-            str(built.store.db_path), q.text, limit=DEPTH, query_embedding=qvec
+            str(built.store.db_path), q.text, limit=limit, query_embedding=qvec
         )
-        return [built.doc_to_pid[r.doc_id] for r in results]
+        pids = [built.doc_to_pid[r.doc_id] for r in results]
+        if self.reranker is None or not pids:
+            return pids
+        from ..reranking import rerank
+
+        scores = await rerank(
+            q.text, [built.pid_text[pid] for pid in pids], reranker_model=self.reranker
+        )
+        order = sorted(range(len(pids)), key=lambda i: (-scores[i], i))
+        return [pids[i] for i in order][:DEPTH]
 
 
 # ---------------------------------------------------------------------------
@@ -504,6 +529,7 @@ ARMS: dict[str, Arm] = {
         Fts5Arm(),
         Bm25OrArm(),
         UnifiedArm(),
+        UnifiedArm("unified_rerank", reranker=SUGGESTED_RERANKER_MODEL),
         *_v2_grid(),
         V2RagArm(),
         V2AgentArm(),
