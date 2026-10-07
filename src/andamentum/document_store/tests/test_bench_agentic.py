@@ -139,7 +139,12 @@ class _AnsweringArm:
             tokens_in=100,
             tokens_out=10,
             entered_loop=q.qid == "q1",
-            trace=[{"step": 1, "kind": "tool:grep"}],
+            trace=[{"step": 1, "kind": "tool:grep"}]
+            + (
+                [{"step": 2, "kind": "invalid_answer_fallback"}]
+                if q.qid == "q1"
+                else []
+            ),
         )
 
 
@@ -169,7 +174,7 @@ async def test_rows_carry_answers_costs_and_manifest_records_the_run(
     assert r1["em"] == 1.0 and r1["f1"] == 1.0
     assert r1["llm_calls"] == 2 and r1["tokens_in"] == 100 and r1["tokens_out"] == 10
     assert r1["entered_loop"] is True and r0["entered_loop"] is False
-    assert r1["trace"] == [{"step": 1, "kind": "tool:grep"}]
+    assert r0["trace"] == [{"step": 1, "kind": "tool:grep"}]
     assert "seconds" in r1
     manifest = json.loads((run_dir / "manifest.json").read_text())
     assert manifest["driver_model"] == "m" and manifest["concurrency"] == 3
@@ -178,6 +183,7 @@ async def test_rows_carry_answers_costs_and_manifest_records_the_run(
     assert manifest["mean_llm_calls"] == 2
     assert manifest["mean_tokens_in"] == 100
     assert "mean_seconds" in manifest
+    assert manifest["fallbacks"] == {"invalid_answer_fallback": 1}
     summary = json.loads((run_dir / "summary.json").read_text())
     assert summary["all"]["em"] == pytest.approx(5 / 6)
     assert len(set(arm.seen_run_ids)) == len(QUESTIONS)

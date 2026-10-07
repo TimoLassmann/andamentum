@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from pydantic_ai import Agent
-from pydantic_ai.exceptions import UsageLimitExceeded
+from pydantic_ai.exceptions import UnexpectedModelBehavior, UsageLimitExceeded
 from pydantic_ai.models import Model
 from pydantic_ai.settings import ModelSettings
 from pydantic_ai.usage import RunUsage, UsageLimits
@@ -593,13 +593,21 @@ async def run_agentic(
         )
         answer = result.output
         counter.add(loop_usage)
-    except UsageLimitExceeded as exc:
+    except (UsageLimitExceeded, UnexpectedModelBehavior) as exc:
+        # The loop ran out of requests, or the model could not produce a valid
+        # answer (for example, citations that still point nowhere after every
+        # retry). Either way the evidence it gathered is real, so answer from
+        # it, and record which case it was in the trace.
         counter.add(loop_usage)
         fallback_hits = await _fallback_hits()
         trace.append(
             {
                 "step": state["step"] + 1,
-                "kind": "request_limit_fallback",
+                "kind": (
+                    "request_limit_fallback"
+                    if isinstance(exc, UsageLimitExceeded)
+                    else "invalid_answer_fallback"
+                ),
                 "args": {"n_hits": len(fallback_hits)},
                 "error": str(exc),
             }

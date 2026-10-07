@@ -20,6 +20,7 @@ import json
 import platform
 import time
 import traceback
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -282,6 +283,18 @@ async def _run_questions(
         search_seconds=round(time.perf_counter() - t0, 2),
         embeddings_computed=emb.misses if emb else 0,
         empty_rankings=sum(not r["ranked"] for r in rows),
+        # How many questions the agent answered by a fallback, by kind, so a
+        # gain or loss that comes from the fallback path is visible.
+        fallbacks=dict(
+            sorted(
+                Counter(
+                    step.get("kind", "")
+                    for r in rows
+                    for step in r.get("trace", [])
+                    if step.get("kind", "").endswith("_fallback")
+                ).items()
+            )
+        ),
         **{
             f"mean_{k}": round(v, 4)
             for k, v in _agent_means(rows).items()

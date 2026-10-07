@@ -298,13 +298,17 @@ async def test_invalid_citations_are_sent_back_and_corrected() -> None:
     )  # stop decision + rejected answer + corrected answer
 
 
-async def test_a_model_that_never_fixes_its_citations_fails_loudly() -> None:
+async def test_a_model_that_never_fixes_its_citations_falls_back() -> None:
+    """After every retry fails, answer from the evidence and say so in the trace."""
     bad = [{"path": "nope.md", "line_from": 1, "line_to": 2}]
     model = scripted(
         enough=False, steps=[lambda info: _answer(info, text="x", citations=bad)]
     )
-    with pytest.raises(Exception, match="output retries|retries"):
-        await _run(model, FakeStore())
+    result = await _run(model, FakeStore())
+    assert result.answer.text == "synthesised"
+    assert result.trace[-2]["kind"] == "invalid_answer_fallback"
+    assert "retries" in result.trace[-2]["error"]
+    assert result.trace[-1]["kind"] == "answer"
 
 
 async def test_ranked_paths_order_tools_then_round0() -> None:
