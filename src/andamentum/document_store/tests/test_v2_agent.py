@@ -223,6 +223,7 @@ async def test_answers_after_round0() -> None:
         "round0",
         "stop_after_round0",
         "answer_from_hits",
+        "answer",
     ]
 
 
@@ -257,9 +258,33 @@ async def test_loop_search_read_note_answer() -> None:
         "tool:search",
         "tool:read",
         "tool:note",
+        "answer",
     ]
     assert result.trace[2]["result_paths"] == ["c.md:1-5", "d.md:1-5"]
     assert result.llm_calls == 1 + 4  # stop decision + four loop requests
+    assert result.trace[-1]["citations"] == [
+        {"path": "c.md", "line_from": 1, "line_to": 5, "resolves": True}
+    ]
+
+
+async def test_answer_trace_flags_citations_that_do_not_resolve() -> None:
+    cites = [
+        {"path": "a.md", "line_from": 1, "line_to": 5},  # real
+        {"path": "a.md", "line_from": 1, "line_to": 99},  # past the last line
+        {"path": "nope.md", "line_from": 1, "line_to": 2},  # unknown path
+        {"path": "a.md", "line_from": 4, "line_to": 2},  # reversed range
+    ]
+    model = scripted(
+        enough=False,
+        steps=[lambda info: _answer(info, text="x", citations=cites)],
+    )
+    result = await _run(model, FakeStore())
+    assert [c["resolves"] for c in result.trace[-1]["citations"]] == [
+        True,
+        False,
+        False,
+        False,
+    ]
 
 
 async def test_ranked_paths_order_tools_then_round0() -> None:
@@ -304,7 +329,8 @@ async def test_request_limit_falls_back_to_answer_from_hits() -> None:
     result = await _run(model, store, budget=AgentBudget(max_requests=3))
     assert result.entered_loop
     assert result.answer.text == "synthesised"
-    assert result.trace[-1]["kind"] == "request_limit_fallback"
+    assert result.trace[-2]["kind"] == "request_limit_fallback"
+    assert result.trace[-1]["kind"] == "answer"
     assert result.llm_calls == 1 + 3 + 1  # stop + three loop requests + synthesis
     assert "c.md" in result.ranked_paths
 
@@ -376,6 +402,7 @@ async def test_similar_and_listing_tools_run() -> None:
         "tool:similar",
         "tool:list",
         "tool:glob",
+        "answer",
     ]
     assert not any(t.get("error") for t in result.trace)
 

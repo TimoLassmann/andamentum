@@ -124,6 +124,30 @@ def _dedup(paths: list[str]) -> list[str]:
     return out
 
 
+def _citation_trace(store: SectionStore, answer: Answer) -> list[dict[str, Any]]:
+    """Each citation of the answer with whether it names a real path and line range."""
+    out: list[dict[str, Any]] = []
+    for c in answer.citations:
+        try:
+            sections = store.outline(c.path)
+            resolves = (
+                1 <= c.line_from <= c.line_to
+                and bool(sections)
+                and c.line_to <= max(e.line_to for e in sections)
+            )
+        except KeyError:
+            resolves = False
+        out.append(
+            {
+                "path": c.path,
+                "line_from": c.line_from,
+                "line_to": c.line_to,
+                "resolves": resolves,
+            }
+        )
+    return out
+
+
 class _Counter:
     """Sums pydantic-ai usage objects from every LLM call of one run."""
 
@@ -204,6 +228,14 @@ async def run_agentic(
         counter.add(usage)
         trace.append(
             {"step": 1, "kind": "answer_from_hits", "args": {"n_hits": len(top0)}}
+        )
+        trace.append(
+            {
+                "step": 2,
+                "kind": "answer",
+                "args": {"confidence": answer.confidence},
+                "citations": _citation_trace(store, answer),
+            }
         )
         ranked = _dedup([c.path for c in answer.citations] + round0_paths)
         return AgentResult(
@@ -441,6 +473,15 @@ async def run_agentic(
         )
         answer, usage = await answer_from_hits(question, fallback_hits, model=model)
         counter.add(usage)
+
+    trace.append(
+        {
+            "step": state["step"] + 2,
+            "kind": "answer",
+            "args": {"confidence": answer.confidence},
+            "citations": _citation_trace(store, answer),
+        }
+    )
 
     # 5. Ranked paths -----------------------------------------------------------
     noted = [store.section_path(sid) for sid, _, _, _ in store.evidence(run_id)]
