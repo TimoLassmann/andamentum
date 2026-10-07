@@ -644,3 +644,34 @@ def test_the_outcome_is_json_serialisable() -> None:
 
     outcome = ReadOutcome(readings=[WorkReading(work=Work(title="x"))], stopped="")
     assert json.loads(outcome.model_dump_json())["readings"][0]["work"]["title"] == "x"
+
+
+def test_locate_quote_reads_markdown_links_as_their_text() -> None:
+    # a page converted to Markdown: a link, a lost space after it, a citation
+    # marker and bold text
+    text = (
+        "**Jane Doe** (1850 - 1910) was a ferry captain.\n\n"
+        "She entered\n\n[Apollo Nautical School](https://example.org/wiki/Apollo)in "
+        "1871, graduating and getting her licence in 1873.\n\n"
+        "[[3]](https://example.org#cite-3)Later she sailed the SaltLog route."
+    )
+    quote = (
+        "She entered Apollo Nautical School in 1871, graduating and getting her "
+        "licence in 1873."
+    )
+    span = locate_quote(quote, text)
+    assert span is not None
+    assert text[span[0] : span[1]].startswith("She entered")
+    assert text[span[0] : span[1]].endswith("licence in 1873.")
+    assert locate_quote("Jane Doe (1850 - 1910) was a ferry captain.", text) == (
+        2,
+        text.index("captain.") + len("captain."),
+    )
+    later = locate_quote("Later she sailed the SaltLog route.", text)
+    assert later is not None and text[later[0] : later[1]].startswith("Later")
+
+
+def test_locate_quote_still_refuses_words_the_text_does_not_hold() -> None:
+    text = "She entered [Apollo Nautical School](https://example.org)in 1871."
+    assert locate_quote("She entered Apollo Nautical School in 1872.", text) is None
+    assert locate_quote("She entered https://example.org in 1871.", text) is None

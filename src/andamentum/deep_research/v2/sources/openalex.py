@@ -125,7 +125,7 @@ class OpenAlexSource:
         self, query: str, *, limit: int, filters: SearchFilters | None
     ) -> list[Candidate]:
         base: dict[str, str | int] = {
-            "search.title_abstract_keywords": query,
+            "search.title_abstract_keywords": keyword_query(query),
             "select": SELECT,
         }
         if flt := _filter(filters):
@@ -326,6 +326,16 @@ def abstract_from_index(index: object) -> str:
             if isinstance(place, int) and not isinstance(place, bool):
                 positions[place] = word
     return " ".join(positions[i] for i in sorted(positions))
+
+
+_WILDCARDS = re.compile(r"[?*]")
+
+
+def keyword_query(query: str) -> str:
+    """*query* without the wildcard characters ``?`` and ``*``: OpenAlex reads
+    them as wildcards and refuses them in its default (stemmed) search with
+    HTTP 400, and a question ends with ``?``."""
+    return " ".join(_WILDCARDS.sub(" ", query).split())
 
 
 def _filter(filters: SearchFilters | None) -> str:

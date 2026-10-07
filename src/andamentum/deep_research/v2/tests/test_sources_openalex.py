@@ -292,3 +292,12 @@ def test_a_record_without_a_title_is_skipped_and_a_retraction_is_kept() -> None:
     )
     assert work.retracted == "retracted"
     assert work.access == "metadata"
+
+
+async def test_a_question_mark_or_star_never_reaches_the_keyword_search() -> None:
+    kit = SourceKit(routes)
+    await source(kit).search("Which ferry * sailed first?", limit=2)
+    assert (
+        kit.requests[0].url.params["search.title_abstract_keywords"]
+        == "Which ferry sailed first"
+    )

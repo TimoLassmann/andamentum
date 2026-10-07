@@ -349,9 +349,48 @@ def _fold(text: str) -> tuple[str, list[int]]:
     return "".join(folded), origin
 
 
+# Markdown a web page's text keeps and a reader does not see: a citation
+# marker ``[[3]](url)`` (dropped whole), a link ``[text](url)`` or image (its
+# text kept), and emphasis and code marks.
+_MD_CITATION = re.compile(r"\[\[[^\]]*\]\]\([^)]*\)")
+_MD_LINK = re.compile(r"!?\[([^\]]*)\]\([^)]*\)")
+_MD_MARKS = frozenset("*_`")
+
+
+def _visible(text: str) -> tuple[str, list[int]]:
+    """*text* as a reader sees it (Markdown link targets, citation markers and
+    emphasis marks left out), folded as :func:`_fold` folds it and with no
+    whitespace at all, with the original index of every character kept."""
+    keep = [True] * len(text)
+    for match in _MD_CITATION.finditer(text):
+        keep[match.start() : match.end()] = [False] * (match.end() - match.start())
+    for match in _MD_LINK.finditer(text):
+        if not keep[match.start()]:
+            continue
+        keep[match.start() : match.end()] = [False] * (match.end() - match.start())
+        keep[match.start(1) : match.end(1)] = [True] * (match.end(1) - match.start(1))
+    folded: list[str] = []
+    origin: list[int] = []
+    for index, char in enumerate(text):
+        if not keep[index] or char in _MD_MARKS:
+            continue
+        for piece in (
+            unicodedata.normalize("NFKC", char).translate(_QUOTE_FOLD).casefold()
+        ):
+            if piece.isspace() or piece in _MD_MARKS:
+                continue
+            folded.append(piece)
+            origin.append(index)
+    return "".join(folded), origin
+
+
 def locate_quote(quote: str, text: str) -> tuple[int, int] | None:
     """Where *quote* occurs in *text*: exactly, else ignoring case, whitespace,
-    quotation-mark and dash style. ``(start, end)`` in *text*, or ``None``."""
+    quotation-mark and dash style, else in the text a reader sees (Markdown
+    links read as their text, citation markers and emphasis marks left out,
+    whitespace ignored: a page converted to Markdown often loses the space
+    next to a link). The characters must still occur in order, and the span
+    returned is the original text's. ``(start, end)`` in *text*, or ``None``."""
     needle = quote.strip()
     if not needle:
         return None
@@ -363,9 +402,16 @@ def locate_quote(quote: str, text: str) -> tuple[int, int] | None:
         return None
     folded_text, origin = _fold(text)
     at = folded_text.find(folded_needle)
+    if at >= 0:
+        return origin[at], origin[at + len(folded_needle) - 1] + 1
+    visible_needle, _ = _visible(needle)
+    if not visible_needle:
+        return None
+    visible_text, origin = _visible(text)
+    at = visible_text.find(visible_needle)
     if at < 0:
         return None
-    return origin[at], origin[at + len(folded_needle) - 1] + 1
+    return origin[at], origin[at + len(visible_needle) - 1] + 1
 
 
 def quote_is_long_enough(quote: str) -> bool:
