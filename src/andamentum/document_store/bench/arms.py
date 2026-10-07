@@ -429,6 +429,51 @@ class V2AgentArm:
         )
 
 
+class V2DecomposeArm:
+    """Query decomposition: split, retrieve per sub-question, fuse, rerank, answer.
+
+    Two LLM calls per question (decompose + synthesis); the multi-hop baseline
+    the agent loop has to beat.
+    """
+
+    name = "v2_decompose"
+    store_kind = "v2"
+    needs_embeddings = True
+    reranker = SUGGESTED_RERANKER_MODEL
+    exact = False
+    vector_weight = 1
+
+    async def rank(
+        self,
+        built: BuiltV2,
+        q: Question,
+        emb: EmbeddingCache | None,
+        *,
+        driver_model: str | None = None,
+        run_id: str | None = None,
+    ) -> ArmResult:
+        from ..v2.decompose import retrieve_decomposed
+
+        model = _require_driver(self.name, driver_model)
+        cache = _require_embeddings(self.name, emb)
+        hits, answer, (calls, tin, tout), decomposition = await retrieve_decomposed(
+            q.text,
+            store=built.store,
+            model=model,
+            embed_fn=cache.get_or_compute,
+            reranker_model=self.reranker,
+        )
+        return ArmResult(
+            ranked=_passages_in_order(hits),
+            answer=answer.text,
+            llm_calls=calls,
+            tokens_in=tin,
+            tokens_out=tout,
+            entered_loop=False,
+            trace=[{"kind": "decompose", "sub_questions": decomposition.sub_questions}],
+        )
+
+
 def _v2_grid() -> list[V2Arm]:
     """The plan as written, the dev-split grid, and each with the reranker."""
     base = [
@@ -460,5 +505,6 @@ ARMS: dict[str, Arm] = {
         *_v2_grid(),
         V2RagArm(),
         V2AgentArm(),
+        V2DecomposeArm(),
     )
 }

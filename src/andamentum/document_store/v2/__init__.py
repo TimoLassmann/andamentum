@@ -7,6 +7,7 @@ No LLM call. Measured against the current store by ``document_store.bench``.
 """
 
 from .agent import AgentBudget, AgentResult, EmbedFn, answer_from_hits, run_agentic
+from .decompose import Decomposition, decompose, retrieve_decomposed
 from .sections import Section, split_sections
 from .store import DocEntry, Hit, OutlineEntry, SectionStore, identifiers, rrf
 from .types import Answer, Citation, Sufficiency
@@ -16,10 +17,13 @@ __all__ = [
     "AgentResult",
     "Answer",
     "Citation",
+    "Decomposition",
     "EmbedFn",
     "Sufficiency",
     "answer_from_hits",
     "run_agentic",
+    "decompose",
+    "retrieve_decomposed",
     "DocEntry",
     "Hit",
     "OutlineEntry",
