@@ -856,7 +856,10 @@ class Finish(BaseNode[ResearchState, ResearchDeps, ResearchResult]):
             works=[w.work_id for w in result.works],
             titles={w.work_id: w.title for w in result.works},
             rows=fusion_rows(
-                state.scores, candidates=state.candidates, signals=_signals(state)
+                state.scores,
+                candidates=state.candidates,
+                signals=_signals(state),
+                with_sources=getattr(rank, "fuses_sources", True),
             ),
             stop_reason=state.stop_reason,
         )

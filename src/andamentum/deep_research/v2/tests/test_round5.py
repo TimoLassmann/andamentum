@@ -27,6 +27,7 @@ from ..strategies import (
     RRF_K,
     RankOnlyScreen,
     RankSignals,
+    RerankDenseRank,
     RrfDenseRank,
     fusion_rows,
     screen_one,
@@ -102,7 +103,7 @@ def test_hybrid_is_the_baseline_with_three_strategies_swapped() -> None:
     differ = {k for k in base if base[k] != hybrid[k]}
     assert differ == {"screen", "rank", "queries"}
     assert hybrid["screen"] == "rank_only"
-    assert hybrid["rank"] == "rrf_dense"
+    assert hybrid["rank"] == "rerank_dense"
     assert hybrid["queries"] == "llm_plus_question"
     assert PRESETS["hybrid"].needs_embeddings
     assert not any(PRESETS[n].needs_embeddings for n in PRESETS if n != "hybrid")
@@ -141,6 +142,24 @@ async def test_rank_only_never_drops_and_p_is_recorded() -> None:
     assert all(s.kept for s in scores)
     assert all(s.score == pytest.approx(0.05) for s in scores)
     assert all("never dropped" in s.reason for s in scores)
+
+
+async def test_rank_only_asks_about_the_original_question_not_the_part() -> None:
+    model, stub = decisions(lambda state, _q: 0.5)
+    asker = make_asker(decision_model=model)
+    screener = Screener(asker=asker)
+    candidates = [_candidate(1), _candidate(2)]
+    for c in candidates:
+        asker.store.upsert_work(c.work)
+    question = "Which Apollo study measures cache latency and SaltLog volume?"
+    run = screen_one(
+        PRESETS["hybrid"], criteria={}, screener=screener, question=question
+    )
+    await run(SUBQ, candidates)
+    asked = [str(q["instructions"]) for _state, qs in stub.calls for q in qs.values()]
+    assert len(asked) == 2
+    assert all(question.rstrip("?") in text for text in asked)
+    assert not any(SUBQ.text.rstrip("?") in text for text in asked)
 
 
 def test_rank_only_offers_only_the_depth_best_first() -> None:
@@ -217,6 +236,31 @@ def test_the_fused_order_of_four_candidates_by_hand() -> None:
         assert kept[work_id][0] == pytest.approx(value)
     order = sorted(kept, key=lambda w: -kept[w][0])
     assert order == ["w1", "w3", "w2", "w4"]
+
+
+def test_rerank_dense_orders_by_dense_and_p_only() -> None:
+    # w1 is in three keyword lists; w2 came in by a citation hop alone, so it is
+    # in none of them, but both dense lists put it first
+    candidates = {
+        "w1": _candidate(1, {"a": 1, "b": 1, "c": 1}),
+        "w2": _candidate(2, {"openalex:references": 9}),
+    }
+    pairs = [("w1", "Q1"), ("w2", "Q1")]
+    signals = RankSignals(
+        pairs=pairs,
+        dense_subquestion={("w1", "Q1"): 0.4, ("w2", "Q1"): 0.9},
+        dense_question={"w1": 0.3, "w2": 0.8},
+    )
+    scores = {pairs[0]: _score("w1", 0.6), pairs[1]: _score("w2", 0.7)}
+    fused = RrfDenseRank().kept(scores, candidates=candidates, signals=signals)
+    assert fused["w1"][0] > fused["w2"][0]  # more lists win the plain fusion
+    reranked = RerankDenseRank().kept(scores, candidates=candidates, signals=signals)
+    assert reranked["w2"][0] > reranked["w1"][0]
+    assert reranked["w2"][0] == pytest.approx(3 / (RRF_K + 1))
+    rows = fusion_rows(
+        scores, candidates=candidates, signals=signals, with_sources=False
+    )
+    assert rows[("w1", "Q1")].ranks["a"] == 1  # kept for the log, not fused
 
 
 def test_a_dropped_or_retracted_candidate_is_not_ranked() -> None:

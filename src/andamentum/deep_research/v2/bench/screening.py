@@ -205,6 +205,7 @@ class ScreeningArm:
                 criteria=[],
                 screener=screener,
                 config=config,
+                question=subquestion.text,
             )
         else:
             scores = await screener.score_candidates(subquestion, criteria, candidates)

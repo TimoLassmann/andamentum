@@ -26,10 +26,12 @@ Four presets (``PRESETS``):
   nothing else (round 3).
 - ``hybrid`` (round 5): the baseline with three strategies swapped: the
   ``llm_plus_question`` queries (the raw question searched too, once, in round
-  1), the ``rrf_dense`` rank (dense similarity against the question and the
-  sub-question as two more lists of the fusion, over every candidate held; the
-  result is the fused order) and the ``rank_only`` screen (the generic
-  question's p is a ranked list, nothing is dropped). It needs an embedding
+  1), the ``rerank_dense`` rank (retrieve, then rerank: the searches only
+  gather the pool, the order is the fusion of dense similarity against the
+  question and the sub-question and the screen's p, over every candidate held;
+  the result is the fused order) and the ``rank_only`` screen (the generic
+  question about the original question; its p is a ranked list, nothing is
+  dropped). It needs an embedding
   model (``research(embedding_model=)``).
 - ``criteria``: the behaviour built first (LLM-compiled criteria scored by the
   decision model, refinement, criteria passage scoring, criteria facets, the
@@ -75,6 +77,7 @@ from .strategies import (
     RankOnlyScreen,
     RankStrategy,
     RefineStrategy,
+    RerankDenseRank,
     RrfDenseRank,
     RrfRank,
     ScoreRank,
@@ -95,6 +98,7 @@ RANKS: dict[str, RankStrategy] = {
     "rrf": RrfRank(),
     "score": ScoreRank(),
     "rrf_dense": RrfDenseRank(),
+    "rerank_dense": RerankDenseRank(),
 }
 PASSAGES: dict[str, PassageStrategy] = {
     "lexical": LexicalPassages(),
@@ -344,11 +348,12 @@ PRESETS: dict[str, ResearchConfig] = {
     "hybrid": ResearchConfig(
         name="hybrid",
         description="the baseline with the raw question searched too, dense "
-        "similarity in the rank fusion and the generic screen as a ranker that "
-        "drops nothing (needs an embedding model)",
+        "similarity and the screen reranking the pool the searches gathered, the "
+        "screen asking about the original question and dropping nothing "
+        "(needs an embedding model)",
         screen="rank_only",
         refine="off",
-        rank="rrf_dense",
+        rank="rerank_dense",
         passages="lexical",
         expand="citations",
         facets="off",

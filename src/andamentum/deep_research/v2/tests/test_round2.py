@@ -295,6 +295,7 @@ async def test_with_twelve_candidates_or_fewer_the_prefilter_is_the_generic_scre
             criteria=[],
             screener=Screener(asker=asker),
             config=PRESETS["fast"],
+            question=SUBQ.text,
         )
         outcomes.append(([s.model_dump() for s in scores], len(stub.calls)))
     assert outcomes[0] == outcomes[1]
