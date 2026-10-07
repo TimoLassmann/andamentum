@@ -108,7 +108,7 @@ async def _ingest_like(
 
 @dataclass
 class ArmResult:
-    """What an answering arm returns: the ranking plus the answer and its cost."""
+    """What a model-driven arm returns: the ranking, its cost, and an answer if it answers."""
 
     ranked: list[str]
     answer: str | None = None
@@ -511,7 +511,7 @@ class ClosedBookArm:
         driver_model: str | None = None,
         run_id: str | None = None,
     ) -> ArmResult:
-        from ..v2.agent import answer_closed_book
+        from ..v2.answering import answer_closed_book
 
         model = _require_driver(self.name, driver_model)
         answer, usage = await answer_closed_book(
@@ -549,7 +549,7 @@ class V2RagArm:
         driver_model: str | None = None,
         run_id: str | None = None,
     ) -> ArmResult:
-        from ..v2.agent import answer_from_hits
+        from ..v2.answering import answer_from_hits
 
         model = _require_driver(self.name, driver_model)
         cache = _require_embeddings(self.name, emb)
@@ -575,14 +575,16 @@ class V2RagArm:
 
 
 class V2AgentArm:
-    """The agent loop (``run_agentic``) with the reranker and the default budget.
+    """Agent-run search (``search_agentic``) with the reranker and the default budget.
 
-    With ``vector=False`` the agent works without embeddings: lexical round 0
-    and no ``similar`` tool.
+    A search arm: it is scored on its ranking like the store arms, and it
+    records its model calls and trace. With ``vector=False`` the agent works
+    without embeddings: lexical round 0 and no ``similar`` tool.
     """
 
     store_kind = "v2"
-    answers = True
+    answers = False
+    llm_driven = True
     reranker = SUGGESTED_RERANKER_MODEL
     exact = False
     vector_weight = 1
@@ -600,7 +602,7 @@ class V2AgentArm:
         driver_model: str | None = None,
         run_id: str | None = None,
     ) -> ArmResult:
-        from ..v2.agent import AgentBudget, run_agentic
+        from ..v2.agent import AgentBudget, search_agentic
 
         model = _require_driver(self.name, driver_model)
         embed_fn = (
@@ -608,19 +610,19 @@ class V2AgentArm:
             if self.needs_embeddings
             else None
         )
-        result = await run_agentic(
+        result = await search_agentic(
             q.text,
             store=built.store,
             model=model,
             embed_fn=embed_fn,
             reranker_model=self.reranker,
             run_id=run_id or q.qid,
+            limit=DEPTH,
             budget=AgentBudget(),
             model_settings=DRIVER_SETTINGS,
         )
         return ArmResult(
-            ranked=list(result.ranked_paths)[:DEPTH],
-            answer=result.answer.text,
+            ranked=result.ranked_paths,
             llm_calls=result.llm_calls,
             tokens_in=result.tokens_in,
             tokens_out=result.tokens_out,

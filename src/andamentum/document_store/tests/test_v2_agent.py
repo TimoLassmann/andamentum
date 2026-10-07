@@ -1,4 +1,4 @@
-"""The v2 agent loop, scripted with a FunctionModel over an in-memory fake store."""
+"""Agent-run search over v2, scripted with a FunctionModel over an in-memory fake store."""
 
 from __future__ import annotations
 
@@ -15,8 +15,7 @@ from pydantic_ai.messages import (
 )
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
-from andamentum.document_store.v2 import AgentBudget, Answer, Hit, run_agentic
-from andamentum.document_store.v2.agent import answer_from_hits
+from andamentum.document_store.v2 import AgentBudget, Hit, search_agentic
 from andamentum.document_store.v2.store import DocEntry, OutlineEntry
 
 # (section_id, path, heading, line_from, line_to, text)
@@ -147,6 +146,9 @@ class FakeStore:
     def section_path(self, section_id: int) -> str:
         return next(r[1] for r in _SECTIONS if r[0] == section_id)
 
+    def titles(self, paths: Sequence[str]) -> dict[str, str]:
+        return {p: f"Title of {p}" for p in paths}
+
     def hits(self, section_ids: list[int]) -> list[Hit]:
         rows = {r[0]: r for r in _SECTIONS}
         return [_hit(rows[sid], 0.0) for sid in section_ids]
@@ -160,10 +162,12 @@ def _final(info: AgentInfo, **args: Any) -> ModelResponse:
     return ModelResponse(parts=[ToolCallPart(info.output_tools[0].name, args)])
 
 
-def _answer(
-    info: AgentInfo, text: str = "1969", citations: list[dict[str, Any]] | None = None
+def _select(
+    info: AgentInfo, passages: list[dict[str, Any]] | None = None
 ) -> ModelResponse:
-    return _final(info, text=text, citations=citations or [], confidence="high")
+    if passages is None:
+        passages = [{"path": "a.md", "line_from": 1, "line_to": 5}]
+    return _final(info, passages=passages)
 
 
 def scripted(
@@ -172,7 +176,10 @@ def scripted(
     steps: Sequence[Callable[[AgentInfo], ModelResponse]] = (),
     seen_returns: list[str] | None = None,
 ) -> FunctionModel:
-    """Stop call -> Sufficiency; loop agent (has function tools) -> next step; else synthesis."""
+    """Stop call -> Sufficiency; loop agent (has function tools) -> next step.
+
+    The last step repeats once the others are used up.
+    """
     queue = list(steps)
 
     def fn(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
@@ -181,14 +188,13 @@ def scripted(
             return _final(
                 info, enough=enough, missing=None if enough else "the launch crew"
             )
-        if info.function_tools:
-            if seen_returns is not None:
-                for m in messages:
-                    for p in getattr(m, "parts", []):
-                        if isinstance(p, ToolReturnPart) and isinstance(p.content, str):
-                            seen_returns.append(p.content)
-            return (queue.pop(0) if len(queue) > 1 else queue[0])(info)
-        return _answer(info, text="synthesised")
+        assert info.function_tools, "search never makes a call without tools"
+        if seen_returns is not None:
+            for m in messages:
+                for p in getattr(m, "parts", []):
+                    if isinstance(p, ToolReturnPart) and isinstance(p.content, str):
+                        seen_returns.append(p.content)
+        return (queue.pop(0) if len(queue) > 1 else queue[0])(info)
 
     return FunctionModel(fn)
 
@@ -203,51 +209,61 @@ async def _run(
     *,
     reranker: str | None = None,
     budget: AgentBudget = AgentBudget(),
+    embed: bool = True,
+    limit: int = 10,
 ):
-    return await run_agentic(
+    return await search_agentic(
         "When did Apollo launch?",
         store=store,  # type: ignore[arg-type]
         model=model,  # type: ignore[arg-type]
-        embed_fn=_embed,
+        embed_fn=_embed if embed else None,
         reranker_model=reranker,
         run_id="r1",
+        limit=limit,
         budget=budget,
     )
 
 
-async def test_answers_after_round0() -> None:
+async def test_round0_is_the_result_when_it_covers_the_request() -> None:
     store = FakeStore()
     result = await _run(scripted(enough=True), store)
     assert not result.entered_loop
-    assert result.answer.text == "synthesised"
-    assert result.llm_calls == 2  # stop decision + synthesis
+    assert result.llm_calls == 1  # the stop decision only; nothing is written
     assert result.tokens_in > 0 and result.tokens_out > 0
     assert result.ranked_paths == ["a.md", "b.md"]
-    assert [d["kind"] for d in store.decisions] == ["stop_after_round0"]
-    assert store.decisions[0]["choice"] == "answer"
+    assert [d.match_type for d in result.results] == ["round0", "round0"]
+    assert store.decisions[0]["choice"] == "round0"
     assert [t["kind"] for t in result.trace] == [
         "round0",
         "stop_after_round0",
-        "answer_from_hits",
-        "answer",
+        "results",
     ]
 
 
-async def test_loop_search_read_note_answer() -> None:
+async def test_results_have_the_search_result_shape() -> None:
+    result = await _run(scripted(enough=True), FakeStore())
+    first = result.results[0]
+    assert first.title == "Title of a.md"
+    assert first.score == 0.9
+    assert [h.citation for h in first.passages] == ["a.md:1-5"]
+    assert not hasattr(result, "answer")
+
+
+async def test_loop_search_read_note_select() -> None:
     store = FakeStore()
-    cite = [{"path": "c.md", "line_from": 1, "line_to": 5}]
     model = scripted(
         enough=False,
         steps=[
             _tool("search", keywords="saltlog"),
             _tool("read", path="d.md"),
             _tool("note", path="d.md", line_from=1, line_to=5, claim="Jane wrote it"),
-            lambda info: _answer(info, text="Jane Doe", citations=cite),
+            lambda info: _select(
+                info, [{"path": "d.md", "line_from": 1, "line_to": 5}]
+            ),
         ],
     )
     result = await _run(model, store)
     assert result.entered_loop
-    assert result.answer.text == "Jane Doe"
     assert store.decisions[0]["choice"] == "loop"
     assert [d["kind"] for d in store.decisions[1:]] == [
         "tool:search",
@@ -255,141 +271,90 @@ async def test_loop_search_read_note_answer() -> None:
         "tool:note",
     ]
     assert store.notes == [("r1", 5, 1, 5, "Jane wrote it")]
-    # cited -> noted -> tool hits (search: c, d) -> round 0 (a, b)
-    assert result.ranked_paths == ["c.md", "d.md", "a.md", "b.md"]
-    kinds = [t["kind"] for t in result.trace]
-    assert kinds == [
+    # selected (d), then everything else seen, by score: c 1.0, a 0.9, b 0.5
+    assert result.ranked_paths == ["d.md", "c.md", "a.md", "b.md"]
+    assert [d.match_type for d in result.results] == [
+        "selected",
+        "seen",
+        "seen",
+        "seen",
+    ]
+    assert [t["kind"] for t in result.trace] == [
         "round0",
         "stop_after_round0",
         "tool:search",
         "tool:read",
         "tool:note",
-        "answer",
+        "selection",
+        "results",
     ]
     assert result.trace[2]["result_paths"] == ["c.md:1-5", "d.md:1-5"]
     assert result.llm_calls == 1 + 4  # stop decision + four loop requests
-    assert result.trace[-1]["citations"] == [
-        {"path": "c.md", "line_from": 1, "line_to": 5, "resolves": True}
-    ]
 
 
-async def test_invalid_citations_are_sent_back_and_corrected() -> None:
-    """A citation that names no real path or line range is never passed on:
-    the model is told what is wrong and answers again."""
-    bad = [
-        {"path": "a.md", "line_from": 1, "line_to": 99},  # past the last line
-        {"path": "nope.md", "line_from": 1, "line_to": 2},  # unknown path
-        {"path": "a.md", "line_from": 4, "line_to": 2},  # reversed range
-    ]
-    good = [{"path": "a.md", "line_from": 1, "line_to": 5}]
+async def test_a_passage_shown_only_by_read_can_be_selected() -> None:
+    model = scripted(
+        enough=False,
+        steps=[
+            _tool("read", path="d.md"),
+            lambda info: _select(
+                info, [{"path": "d.md", "line_from": 1, "line_to": 5}]
+            ),
+        ],
+    )
+    result = await _run(model, FakeStore())
+    assert result.ranked_paths[0] == "d.md"
+    assert result.results[0].match_type == "selected"
+
+
+async def test_a_passage_never_shown_is_rejected_and_corrected() -> None:
     returns: list[str] = []
     model = scripted(
         enough=False,
         steps=[
-            lambda info: _answer(info, text="x", citations=bad),
-            lambda info: _answer(info, text="x", citations=good),
+            lambda info: _select(
+                info, [{"path": "c.md", "line_from": 1, "line_to": 5}]
+            ),  # c.md exists but no tool showed it
+            lambda info: _select(info),  # a.md, shown in round 0
         ],
         seen_returns=returns,
     )
     result = await _run(model, FakeStore())
-    assert [c["resolves"] for c in result.trace[-1]["citations"]] == [True]
-    assert (
-        result.llm_calls == 1 + 2
-    )  # stop decision + rejected answer + corrected answer
+    assert result.ranked_paths[0] == "a.md"
+    assert "c.md" not in result.ranked_paths
+    assert result.llm_calls == 1 + 2  # stop + rejected selection + corrected one
 
 
-async def test_a_model_that_never_fixes_its_citations_falls_back() -> None:
-    """After every retry fails, answer from the evidence and say so in the trace."""
+async def test_a_model_that_never_selects_validly_falls_back_to_its_notes() -> None:
     bad = [{"path": "nope.md", "line_from": 1, "line_to": 2}]
-    model = scripted(
-        enough=False, steps=[lambda info: _answer(info, text="x", citations=bad)]
-    )
-    result = await _run(model, FakeStore())
-    assert result.answer.text == "synthesised"
-    assert result.trace[-2]["kind"] == "invalid_answer_fallback"
-    assert "retries" in result.trace[-2]["error"]
-    assert result.trace[-1]["kind"] == "answer"
-
-
-async def test_ranked_paths_order_tools_then_round0() -> None:
-    store = FakeStore()
-    model = scripted(
-        enough=False,
-        steps=[
-            _tool("grep", regex="Jane"),  # d
-            _tool("search", keywords="crew"),  # a (section 2)
-            lambda info: _answer(info),
-        ],
-    )
-    result = await _run(model, store)
-    assert result.ranked_paths == ["d.md", "a.md", "b.md"]
-
-
-async def test_tool_budget_spent_returns_error_to_model() -> None:
-    store = FakeStore()
-    returns: list[str] = []
-    model = scripted(
-        enough=False,
-        steps=[
-            _tool("search", keywords="apollo"),
-            _tool("search", keywords="crew"),
-            lambda info: _answer(info),
-        ],
-        seen_returns=returns,
-    )
-    result = await _run(
-        model, store, budget=AgentBudget(max_tool_calls=1, max_requests=4)
-    )
-    assert returns[0].endswith(
-        "[no tool calls left: answer now with the evidence you have]"
-    )
-    assert "ERROR: no tool calls left; answer now with the evidence you have" in returns
-    errors = [t for t in result.trace if t.get("error")]
-    assert len(errors) == 1 and errors[0]["kind"] == "tool:search"
-    # the refused call is not logged as a successful decision
-    assert [d["kind"] for d in store.decisions] == ["stop_after_round0", "tool:search"]
-
-
-async def test_request_limit_falls_back_to_answer_from_hits() -> None:
-    store = FakeStore()
-    model = scripted(
-        enough=False, steps=[_tool("search", keywords="saltlog")]
-    )  # never answers, keeps calling tools after the budget is spent
-    result = await _run(
-        model, store, budget=AgentBudget(max_tool_calls=1, max_requests=4)
-    )
-    assert result.entered_loop
-    assert result.answer.text == "synthesised"
-    assert result.trace[-2]["kind"] == "request_limit_fallback"
-    assert result.trace[-1]["kind"] == "answer"
-    assert result.llm_calls == 1 + 4 + 1  # stop + four loop requests + synthesis
-    assert "c.md" in result.ranked_paths
-
-
-async def test_fallback_answers_from_noted_evidence_first(monkeypatch) -> None:
-    """The fallback must not drop what the agent itself recorded as evidence."""
-    from andamentum.document_store.v2 import agent as agent_module
-
-    store = FakeStore()
     model = scripted(
         enough=False,
         steps=[
             _tool("note", path="d.md", line_from=1, line_to=5, claim="Jane wrote it"),
-            _tool("search", keywords="saltlog"),
+            lambda info: _select(info, bad),
         ],
-    )  # notes, searches, then never answers
-    given: list[list[str]] = []
-    real = agent_module.answer_from_hits
+    )
+    result = await _run(model, FakeStore())
+    assert result.ranked_paths[0] == "d.md"
+    assert result.results[0].match_type == "selected"
+    fallback = result.trace[-2]
+    assert fallback["kind"] == "invalid_selection_fallback"
+    assert "retries" in fallback["error"]
 
-    async def spy(question, hits, *, model, store=None, model_settings=None):
-        given.append([h.citation for h in hits])
-        return await real(
-            question, hits, model=model, store=store, model_settings=model_settings
-        )
 
-    monkeypatch.setattr(agent_module, "answer_from_hits", spy)
-    await _run(model, store, budget=AgentBudget(max_tool_calls=2, max_requests=5))
-    assert given and given[-1][0] == "d.md:1-5"
+async def test_request_limit_falls_back_without_a_model_call() -> None:
+    store = FakeStore()
+    model = scripted(
+        enough=False, steps=[_tool("search", keywords="saltlog")]
+    )  # never finishes, keeps calling tools after the budget is spent
+    result = await _run(
+        model, store, budget=AgentBudget(max_tool_calls=1, max_requests=4)
+    )
+    assert result.entered_loop
+    assert result.trace[-2]["kind"] == "request_limit_fallback"
+    assert result.llm_calls == 1 + 4  # stop + four loop requests, no synthesis
+    assert "c.md" in result.ranked_paths
+    assert {d.match_type for d in result.results} == {"seen"}
 
 
 def test_budget_must_let_the_tool_cap_bind_before_the_request_cap() -> None:
@@ -402,26 +367,49 @@ async def test_every_tool_result_states_the_calls_left() -> None:
     returns: list[str] = []
     model = scripted(
         enough=False,
-        steps=[_tool("search", keywords="apollo"), lambda info: _answer(info)],
+        steps=[_tool("search", keywords="apollo"), lambda info: _select(info)],
         seen_returns=returns,
     )
     await _run(model, FakeStore())
     assert returns[0].endswith("[tool calls left: 11]")
 
 
-async def test_tool_exception_is_returned_and_traced() -> None:
+async def test_tool_budget_spent_returns_error_to_model() -> None:
     store = FakeStore()
     returns: list[str] = []
     model = scripted(
         enough=False,
-        steps=[_tool("outline", path="missing.md"), lambda info: _answer(info)],
+        steps=[
+            _tool("search", keywords="apollo"),
+            _tool("search", keywords="crew"),
+            lambda info: _select(info),
+        ],
         seen_returns=returns,
     )
-    result = await _run(model, store)
+    result = await _run(
+        model, store, budget=AgentBudget(max_tool_calls=1, max_requests=4)
+    )
+    assert returns[0].endswith(
+        "[no tool calls left: finish now with the passages you have]"
+    )
+    assert "ERROR: no tool calls left; finish now with the passages you have" in returns
+    errors = [t for t in result.trace if t.get("error")]
+    assert len(errors) == 1 and errors[0]["kind"] == "tool:search"
+    assert [d["kind"] for d in store.decisions] == ["stop_after_round0", "tool:search"]
+
+
+async def test_tool_exception_is_returned_and_traced() -> None:
+    returns: list[str] = []
+    model = scripted(
+        enough=False,
+        steps=[_tool("outline", path="missing.md"), lambda info: _select(info)],
+        seen_returns=returns,
+    )
+    result = await _run(model, FakeStore())
     assert any(r.startswith("ERROR:") and "missing.md" in r for r in returns)
     err = [t for t in result.trace if t["kind"] == "tool:outline"]
     assert len(err) == 1 and err[0]["error"].startswith("ERROR: KeyError")
-    assert result.answer.text == "1969"  # the run itself still completes
+    assert result.ranked_paths[0] == "a.md"  # the run itself still completes
 
 
 async def test_note_without_overlapping_section_errors() -> None:
@@ -430,7 +418,7 @@ async def test_note_without_overlapping_section_errors() -> None:
         enough=False,
         steps=[
             _tool("note", path="a.md", line_from=50, line_to=60, claim="x"),
-            lambda info: _answer(info),
+            lambda info: _select(info),
         ],
     )
     result = await _run(model, store)
@@ -442,87 +430,41 @@ async def test_tools_rerank_candidates_when_reranker_set() -> None:
     store = FakeStore()
     model = scripted(
         enough=False,
-        steps=[_tool("search", keywords="apollo saltlog"), lambda info: _answer(info)],
+        steps=[_tool("search", keywords="apollo saltlog"), lambda info: _select(info)],
     )
     await _run(model, store, reranker="fake", budget=AgentBudget(tool_k=2))
-    assert store.rerank_calls == 2  # round 0 + the search tool
+    assert store.rerank_calls == 2  # round 0 + the search tool; nothing left unscored
 
 
-async def test_tools_do_not_rerank_when_disabled() -> None:
+async def test_unscored_seen_passages_are_reranked_once_at_the_end() -> None:
     store = FakeStore()
     model = scripted(
         enough=False,
-        steps=[_tool("search", keywords="apollo"), lambda info: _answer(info)],
+        steps=[_tool("search", keywords="apollo"), lambda info: _select(info)],
     )
     await _run(
         model, store, reranker="fake", budget=AgentBudget(tool_rerank_candidates=0)
     )
-    assert store.rerank_calls == 1  # round 0 only
+    assert store.rerank_calls == 2  # round 0, then the tool hits it never scored
 
 
-async def test_similar_and_listing_tools_run() -> None:
-    store = FakeStore()
+async def test_limit_caps_the_documents() -> None:
     model = scripted(
         enough=False,
-        steps=[
-            _tool("similar", text="apollo"),
-            _tool("list", prefix=""),
-            _tool("glob", pattern="*.md"),
-            lambda info: _answer(info),
-        ],
+        steps=[_tool("search", keywords="saltlog"), lambda info: _select(info)],
     )
-    result = await _run(model, store)
-    assert [t["kind"] for t in result.trace[2:]] == [
-        "tool:similar",
-        "tool:list",
-        "tool:glob",
-        "answer",
-    ]
-    assert not any(t.get("error") for t in result.trace)
+    result = await _run(model, FakeStore(), limit=2)
+    assert len(result.results) == 2
 
 
-async def test_answer_from_hits_returns_usage() -> None:
-    model = FunctionModel(lambda messages, info: _answer(info, text="x"))
-    answer, usage = await answer_from_hits("q?", [_hit(_SECTIONS[0])], model=model)  # type: ignore[arg-type]
-    assert isinstance(answer, Answer) and usage.requests == 1
-
-
-async def test_without_embeddings_round0_is_lexical_and_similar_is_not_offered() -> (
-    None
-):
-    store = FakeStore()
-    seen: dict[str, Any] = {}
-    original = store.round0
-
-    def round0(query: str, *, query_embedding: Any, **kw: Any) -> list[Hit]:
-        seen["query_embedding"] = query_embedding
-        return original(query, query_embedding=query_embedding, **kw)
-
-    store.round0 = round0  # type: ignore[method-assign]
-    tools: list[set[str]] = []
-    inner = scripted(enough=False, steps=[lambda info: _answer(info)])
+async def test_without_embeddings_similar_is_not_offered() -> None:
+    offered: list[list[str]] = []
 
     def fn(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
-        if info.function_tools:
-            tools.append({t.name for t in info.function_tools})
-        return inner.function(messages, info)  # type: ignore[misc]
+        if "enough" in info.output_tools[0].parameters_json_schema["properties"]:
+            return _final(info, enough=False, missing="x")
+        offered.append([t.name for t in info.function_tools])
+        return _select(info)
 
-    result = await run_agentic(
-        "When did Apollo launch?",
-        store=store,  # type: ignore[arg-type]
-        model=FunctionModel(fn),
-        embed_fn=None,
-        reranker_model=None,
-        run_id="r1",
-    )
-    assert seen["query_embedding"] is None
-    assert tools and all("similar" not in names for names in tools)
-    assert "search" in tools[0]
-    assert result.entered_loop is True
-
-
-def test_prompts_fingerprint_is_stable() -> None:
-    from andamentum.document_store.v2.agent import prompts_sha256
-
-    assert prompts_sha256() == prompts_sha256()
-    assert len(prompts_sha256()) == 64
+    await _run(FunctionModel(fn), FakeStore(), embed=False)
+    assert offered and "similar" not in offered[0] and "search" in offered[0]

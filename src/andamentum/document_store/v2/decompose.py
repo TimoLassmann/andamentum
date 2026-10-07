@@ -13,7 +13,8 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from ...core.agents import run_agent_with_usage
-from .agent import EmbedFn, ModelLike, answer_from_hits
+from .agent import EmbedFn, ModelLike
+from .answering import answer_from_hits
 from .store import Hit, SectionStore, rrf
 from .types import Answer
 

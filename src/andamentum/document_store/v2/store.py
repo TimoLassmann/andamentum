@@ -679,6 +679,18 @@ class SectionStore:
             for r in rows
         ]
 
+    def titles(self, paths: Sequence[str]) -> dict[str, str]:
+        """``{path: title}`` for the documents among ``paths`` that exist."""
+        if not paths:
+            return {}
+        marks = ",".join("?" * len(paths))
+        with self._connect() as db:
+            rows = db.execute(
+                f"SELECT path, title FROM documents WHERE path IN ({marks})",
+                list(paths),
+            ).fetchall()
+        return {path: title or "" for path, title in rows}
+
     def section_path(self, section_id: int) -> str:
         with self._connect() as db:
             row = db.execute(

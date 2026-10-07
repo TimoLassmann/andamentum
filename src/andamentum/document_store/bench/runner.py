@@ -77,7 +77,7 @@ def _now() -> str:
 
 
 def _agent_means(rows: list[dict]) -> dict[str, float]:
-    """Mean of each answer key; every row of an answering run carries every key."""
+    """Mean of each answer and cost key; a run's rows carry the same keys."""
     out: dict[str, float] = {}
     for key in _ANSWER_KEYS:
         vals = [r[key] for r in rows if key in r]
@@ -130,6 +130,9 @@ async def run(
         raise ValueError(f"arm {arm_name!r} needs --embedding-model")
     out_dir.mkdir(parents=True, exist_ok=True)
     answering = bool(getattr(arm, "answers", False))
+    # A model-driven arm calls the driver model: it answers, or an agent runs
+    # its search. Either way its costs and trace are recorded per question.
+    llm_driven = answering or bool(getattr(arm, "llm_driven", False))
     manifest: dict[str, Any] = {
         "run": out_dir.name,
         "status": "running",
@@ -145,7 +148,7 @@ async def run(
         "v2_vector_weight": getattr(arm, "vector_weight", None),
         "depth": DEPTH,
         "driver_model": driver_model,
-        "driver_settings": DRIVER_SETTINGS if answering else None,
+        "driver_settings": DRIVER_SETTINGS if llm_driven else None,
         "concurrency": concurrency,
         "git": git_state(),
         "uv_lock_sha256": uv_lock_sha256(),
@@ -163,6 +166,7 @@ async def run(
             driver_model=driver_model,
             concurrency=concurrency,
             answering=answering,
+            llm_driven=llm_driven,
         )
     except BaseException as exc:
         manifest.update(
@@ -188,6 +192,7 @@ async def _run_questions(
     driver_model: str | None,
     concurrency: int,
     answering: bool,
+    llm_driven: bool,
 ) -> None:
     corpus, spec = load_corpus(manifest["suite"], manifest["tier"], workdir=workdir)
     emb = (
@@ -210,6 +215,10 @@ async def _run_questions(
         reranker_revision=_reranker_revision(manifest["reranker"]),
     )
     if answering:
+        from ..v2.answering import prompts_sha256
+
+        manifest["prompts_sha256"] = prompts_sha256()
+    elif llm_driven:
         from ..v2.agent import prompts_sha256
 
         manifest["prompts_sha256"] = prompts_sha256()
@@ -257,19 +266,19 @@ async def _run_questions(
             "ranked": ranked,
             "metrics": question_metrics(ranked, q.gold),
         }
-        if answering:
-            if result.answer is None:
-                raise ValueError(f"{q.qid}: answering arm returned no answer")
+        if llm_driven:
             row.update(
-                answer=result.answer,
                 llm_calls=result.llm_calls,
                 tokens_in=result.tokens_in,
                 tokens_out=result.tokens_out,
                 seconds=round(seconds, 3),
                 entered_loop=result.entered_loop,
                 trace=result.trace,
-                **answer_metrics(result.answer, q.answers),
             )
+        if answering:
+            if result.answer is None:
+                raise ValueError(f"{q.qid}: answering arm returned no answer")
+            row.update(answer=result.answer, **answer_metrics(result.answer, q.answers))
         return row
 
     t0 = time.perf_counter()
@@ -362,6 +371,13 @@ def format_summary(run_dir: Path) -> str:
             f"  answers: em {allm['em']:.3f}  f1 {allm['f1']:.3f}  "
             f"unknown {allm['unknown']:.3f}  "
             f"llm_calls {allm['llm_calls']:.2f}  "
+            f"tokens_in {allm['tokens_in']:.0f}  "
+            f"tokens_out {allm['tokens_out']:.0f}  "
+            f"seconds {allm['seconds']:.1f} per question"
+        )
+    elif "llm_calls" in allm:
+        lines.append(
+            f"  cost: llm_calls {allm['llm_calls']:.2f}  "
             f"tokens_in {allm['tokens_in']:.0f}  "
             f"tokens_out {allm['tokens_out']:.0f}  "
             f"seconds {allm['seconds']:.1f} per question"

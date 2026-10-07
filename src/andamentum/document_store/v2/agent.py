@@ -1,14 +1,27 @@
-"""Agentic retrieval over the v2 store: round 0, a stop decision, then a tool loop.
+"""Agent-run search over the v2 store: round 0, a stop decision, then a tool loop.
+
+The output is search results, the same shape as the current store's
+``search``: documents, best first, each with its passages and a score. The
+agent never answers the request and never writes prose that reaches the
+caller. It decides only where to look and which passages the request needs;
+the results are then built deterministically from those passages.
 
 Round 0 (no LLM) retrieves and reranks. One structured call decides whether
-that evidence is enough; if so one synthesis call answers. Otherwise a
+those passages cover the request; if so they are the results. Otherwise a
 pydantic-ai agent with store tools (list, glob, grep, search, similar,
-outline, read, note) loops until it answers. The LLM makes every decision.
+outline, read, note) searches until it finishes with a ``Selection``: the
+passages the request needs, by path and line range. A selection may name only
+passages a tool showed it, so it cannot point at a source it never saw.
+
+Results, in this order: the selected passages, then every other passage the
+agent saw, each group by reranker score against the request, then the rest of
+round 0 in its reranked order. Passages are grouped into documents at the
+position of each document's first passage.
 
 A failed tool call is returned to the model as an ``ERROR: ...`` string and
-recorded in the trace; a failed run raises. Only the request limit has a
-defined fallback: one synthesis call over everything seen so far, recorded
-in the trace.
+recorded in the trace. If the loop runs out of requests, or the model cannot
+produce a valid selection, the passages it noted become the selection; the
+trace records which case it was. No extra model call is made for it.
 """
 
 from __future__ import annotations
@@ -17,7 +30,7 @@ import hashlib
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 from pydantic_ai import Agent
 from pydantic_ai.exceptions import UnexpectedModelBehavior, UsageLimitExceeded
@@ -27,17 +40,19 @@ from pydantic_ai.usage import RunUsage, UsageLimits
 
 from ...core.agents import run_agent_with_usage
 from ...core.models import resolve_model
+from .render import hit_lines, passages_text
 from .store import Hit, SectionStore
-from .types import Answer, Citation, Sufficiency
+from .types import PassageRef, Selection, Sufficiency
 
 EmbedFn = Callable[[list[str]], Awaitable[list[list[float]]]]
 
 #: A model id (resolved through ``core.models.resolve_model``) or a ready model object.
 ModelLike = str | Model
 
-_SNIPPET_CHARS = 300
-_PASSAGE_CHARS = 1200
-_FALLBACK_MAX_HITS = 20
+#: Where a result's first passage came from: selected by the agent, seen by
+#: the agent, or only in round 0.
+MatchType = Literal["selected", "seen", "round0"]
+
 _READ_MAX_CHARS = 6000
 
 
@@ -50,10 +65,10 @@ class AgentBudget:
     tool_rerank_candidates: int = 20  # tool hits reranked before returning (0 = none)
 
     def __post_init__(self) -> None:
-        # Each loop request issues at least one tool call or the answer, and an
-        # invalid citation costs one retry request. The tool budget must run out
-        # before the request budget, so the agent always gets to answer from its
-        # own evidence instead of being cut off mid-search.
+        # Each loop request issues at least one tool call or the selection, and an
+        # invalid selection costs one retry request. The tool budget must run out
+        # before the request budget, so the agent always gets to finish with its
+        # own selection instead of being cut off mid-search.
         if self.max_requests < self.max_tool_calls + 3:
             raise ValueError(
                 f"max_requests ({self.max_requests}) must be at least "
@@ -61,10 +76,20 @@ class AgentBudget:
             )
 
 
+@dataclass(frozen=True)
+class DocumentResult:
+    """One document of the results, with its passages best first."""
+
+    path: str
+    title: str
+    score: float  # the score of its first passage
+    match_type: MatchType
+    passages: list[Hit]
+
+
 @dataclass
-class AgentResult:
-    answer: Answer
-    ranked_paths: list[str]
+class AgentSearchResult:
+    results: list[DocumentResult]
     llm_calls: int
     tokens_in: int
     tokens_out: int
@@ -72,176 +97,40 @@ class AgentResult:
     entered_loop: bool
     trace: list[dict[str, Any]] = field(default_factory=list)
 
+    @property
+    def ranked_paths(self) -> list[str]:
+        return [d.path for d in self.results]
 
-def _passages(hits: list[Hit]) -> str:
-    if not hits:
-        return "(no passages)"
-    return "\n\n".join(f"[{h.citation}]\n{h.text[:_PASSAGE_CHARS]}" for h in hits)
-
-
-def _render_hit(h: Hit) -> str:
-    snippet = " ".join(h.text.split())[:_SNIPPET_CHARS]
-    return f"{h.citation} | {h.heading} | {snippet}"
-
-
-def _render_hits(hits: list[Hit]) -> str:
-    return "\n".join(_render_hit(h) for h in hits) if hits else "(no results)"
-
-
-_ANSWER_FORMAT = (
-    "Put in text only the shortest phrase that answers the question: a name, a date, a "
-    "number or a short noun phrase, never a sentence. If the passages make an answer likely "
-    "but not certain, still give it and set confidence to low. Write unknown only when no "
-    "passage is relevant to the question. Cite each passage you used with its path and, as "
-    "two separate integers, line_from and line_to, copied from the passage label. Set "
-    "confidence to high, medium or low according to how well the passages support the answer."
-)
-
-_ANSWER_INSTRUCTIONS = (
-    "Answer the question using only the passages given. " + _ANSWER_FORMAT
-)
 
 _STOP_INSTRUCTIONS = (
-    "You judge retrieved evidence. Given a question and passages, set enough to true only if "
-    "the passages contain what is needed to answer the question. Otherwise set enough to "
-    "false and say in missing what is still needed."
-)
-
-_CLOSED_BOOK_INSTRUCTIONS = (
-    "Answer the question from your own knowledge; no passages are given. Put in text only "
-    "the shortest phrase that answers the question: a name, a date, a number or a short noun "
-    "phrase, never a sentence. If you are not sure, still give your best answer and set "
-    "confidence to low. Leave citations empty."
+    "You judge search results. Given a search request and passages, set enough to true only "
+    "if the passages contain everything the request needs; for a request with several "
+    "steps, every step. Otherwise set enough to false and say in missing what is still "
+    "needed."
 )
 
 _SIMILAR_TOOL = "similar matches by meaning, "
 
 _LOOP_INSTRUCTIONS = (
-    "You are a research agent over a document store. Answer the question with the tools "
-    "provided: list and glob browse paths, grep matches a regular expression, search matches "
-    "keywords, {similar}outline shows a document's sections, read shows "
-    "lines of a document, note records a passage as evidence. Hits are shown as "
-    "path:line_from-line_to. Use the evidence already gathered and look only for what is "
-    "missing. For a question with several steps, find each intermediate entity first and "
+    "You search a document store for the passages a request needs. You do not answer the "
+    "request. Tools: list and glob browse paths, grep matches a regular expression, search "
+    "matches keywords, {similar}outline shows a document's sections, read shows lines of a "
+    "document, note records a passage as evidence. Hits are shown as "
+    "path:line_from-line_to. Use the passages already found and look only for what is "
+    "missing. For a request with several steps, find each intermediate entity first and "
     "then search for the next step by its name. You have at most {max_tool_calls} tool "
-    "calls in total; every tool result states how many are left. Answer as soon as the "
-    "evidence is enough, and when no calls are left, answer with the evidence you have. "
-) + _ANSWER_FORMAT
+    "calls in total; every tool result states how many are left. Finish as soon as the "
+    "passages cover the request, and when no calls are left, finish with what you have. "
+    "To finish, list the passages the request needs, most important first, each with its "
+    "path and, as two separate integers, line_from and line_to copied from the hit label. "
+    "List only passages a tool showed you."
+)
 
 
 def prompts_sha256() -> str:
-    """Fingerprint of every instruction text the answering arms send; run records keep it."""
-    texts = (
-        _ANSWER_INSTRUCTIONS,
-        _STOP_INSTRUCTIONS,
-        _LOOP_INSTRUCTIONS,
-        _SIMILAR_TOOL,
-        _CLOSED_BOOK_INSTRUCTIONS,
-    )
+    """Fingerprint of every instruction text this module sends; run records keep it."""
+    texts = (_STOP_INSTRUCTIONS, _LOOP_INSTRUCTIONS, _SIMILAR_TOOL)
     return hashlib.sha256("\x00".join(texts).encode()).hexdigest()
-
-
-async def answer_from_hits(
-    question: str,
-    hits: list[Hit],
-    *,
-    model: ModelLike,
-    store: SectionStore | None = None,
-    model_settings: ModelSettings | None = None,
-) -> tuple[Answer, Any]:
-    """One synthesis call over the given hits; returns ``(answer, usage)``.
-
-    With ``store``, citations are checked against it and an invalid one is sent
-    back to the model for correction (costing one more request).
-    """
-    answer, usage = await run_agent_with_usage(
-        model,
-        instructions=_ANSWER_INSTRUCTIONS,
-        output_type=Answer,
-        user_message=f"Question: {question}\n\nPassages:\n{_passages(hits)}",
-        validators=[_citation_validator(store)] if store is not None else None,
-        model_settings=model_settings,
-    )
-    return answer, usage
-
-
-async def answer_closed_book(
-    question: str, *, model: ModelLike, model_settings: ModelSettings | None = None
-) -> tuple[Answer, Any]:
-    """One call with no passages: the floor that retrieval has to beat."""
-    answer, usage = await run_agent_with_usage(
-        model,
-        instructions=_CLOSED_BOOK_INSTRUCTIONS,
-        output_type=Answer,
-        user_message=f"Question: {question}",
-        model_settings=model_settings,
-    )
-    return answer, usage
-
-
-def _dedup(paths: list[str]) -> list[str]:
-    seen: set[str] = set()
-    out: list[str] = []
-    for p in paths:
-        if p not in seen:
-            seen.add(p)
-            out.append(p)
-    return out
-
-
-def _citation_trace(store: SectionStore, answer: Answer) -> list[dict[str, Any]]:
-    """Each citation of the answer with whether it names a real path and line range."""
-    out: list[dict[str, Any]] = []
-    for c in answer.citations:
-        try:
-            sections = store.outline(c.path)
-            resolves = (
-                1 <= c.line_from <= c.line_to
-                and bool(sections)
-                and c.line_to <= max(e.line_to for e in sections)
-            )
-        except KeyError:
-            resolves = False
-        out.append(
-            {
-                "path": c.path,
-                "line_from": c.line_from,
-                "line_to": c.line_to,
-                "resolves": resolves,
-            }
-        )
-    return out
-
-
-def _citation_validator(store: SectionStore) -> Callable[[Answer], Answer]:
-    """Reject an answer whose citation names no real path or line range.
-
-    The model then gets one retry with the document's real line count, instead
-    of a citation that points nowhere being passed on as evidence.
-    """
-    from pydantic_ai import ModelRetry
-
-    def check(answer: Answer) -> Answer:
-        problems = []
-        for c in answer.citations:
-            try:
-                sections = store.outline(c.path)
-            except KeyError:
-                problems.append(f"{c.path} is not a document in the store")
-                continue
-            last = max((e.line_to for e in sections), default=0)
-            if not 1 <= c.line_from <= c.line_to <= last:
-                problems.append(
-                    f"{c.path}:{c.line_from}-{c.line_to} is outside the document's lines 1-{last}"
-                )
-        if problems:
-            raise ModelRetry(
-                "Fix these citations, copying path and lines from the passage labels: "
-                + "; ".join(problems)
-            )
-        return answer
-
-    return check
 
 
 class _Counter:
@@ -258,31 +147,60 @@ class _Counter:
         self.tokens_out += int(usage.output_tokens)
 
 
-async def run_agentic(
-    question: str,
+def _overlapping(store: SectionStore, ref: PassageRef) -> list[int]:
+    """Section ids of ``ref.path`` that overlap the ref's line range; [] if none."""
+    try:
+        entries = store.outline(ref.path)
+    except KeyError:
+        return []
+    return [
+        e.section_id
+        for e in entries
+        if e.line_from <= ref.line_to and e.line_to >= ref.line_from
+    ]
+
+
+async def search_agentic(
+    query: str,
     *,
     store: SectionStore,
     model: ModelLike,
     embed_fn: EmbedFn | None,
     reranker_model: str | None,
     run_id: str,
+    limit: int = 10,
     budget: AgentBudget = AgentBudget(),
     model_settings: ModelSettings | None = None,
-) -> AgentResult:
-    """Round 0, the stop decision, then the tool loop.
+) -> AgentSearchResult:
+    """Search the store for ``query``; the agent decides where to look.
 
-    With ``embed_fn=None`` the agent works without embeddings: round 0 uses the
-    lexical legs only and the ``similar`` tool is not offered.
+    Returns at most ``limit`` documents. With ``embed_fn=None`` the agent works
+    without embeddings: round 0 uses the lexical legs only and the ``similar``
+    tool is not offered.
     """
     started = time.perf_counter()
     counter = _Counter()
     trace: list[dict[str, Any]] = []
+    decided_by = model if isinstance(model, str) else model.model_name
+
+    # Every passage the run has, and its reranker score against the query.
+    hits: dict[int, Hit] = {}
+    scores: dict[int, float] = {}
+
+    async def rerank(candidates: list[Hit]) -> list[Hit]:
+        if not (reranker_model and candidates):
+            return candidates
+        reranked = await store.rerank(query, candidates, reranker_model=reranker_model)
+        for h in reranked:
+            scores[h.section_id] = h.score
+        return reranked
 
     # 1. Round 0 -------------------------------------------------------------
-    query_embedding = (await embed_fn([question]))[0] if embed_fn is not None else None
-    hits0 = store.round0(question, query_embedding=query_embedding, use_exact=False)
-    if reranker_model:
-        hits0 = await store.rerank(question, hits0, reranker_model=reranker_model)
+    query_embedding = (await embed_fn([query]))[0] if embed_fn is not None else None
+    hits0 = await rerank(
+        store.round0(query, query_embedding=query_embedding, use_exact=False)
+    )
+    hits.update({h.section_id: h for h in hits0})
     top0 = hits0[: budget.round0_k]
     trace.append(
         {
@@ -298,11 +216,11 @@ async def run_agentic(
         model,
         instructions=_STOP_INSTRUCTIONS,
         output_type=Sufficiency,
-        user_message=f"Question: {question}\n\nPassages:\n{_passages(top0)}",
+        user_message=f"Search request: {query}\n\nPassages:\n{passages_text(top0)}",
         model_settings=model_settings,
     )
     counter.add(usage)
-    choice = "answer" if sufficiency.enough else "loop"
+    choice = "round0" if sufficiency.enough else "loop"
     store.log_decision(
         run_id=run_id,
         step=0,
@@ -312,7 +230,7 @@ async def run_agentic(
             "top_scores": [round(h.score, 4) for h in top0[:3]],
         },
         choice=choice,
-        decided_by=model if isinstance(model, str) else model.model_name,
+        decided_by=decided_by,
     )
     trace.append(
         {
@@ -323,60 +241,145 @@ async def run_agentic(
         }
     )
 
-    round0_paths = [h.path for h in hits0]
+    selected: list[int] = []
+    seen: list[int] = []
+    entered_loop = not sufficiency.enough
 
-    # 3. Enough: synthesise from round 0 ----------------------------------------
-    if sufficiency.enough:
-        answer, usage = await answer_from_hits(
-            question, top0, model=model, store=store, model_settings=model_settings
-        )
-        counter.add(usage)
-        trace.append(
-            {"step": 1, "kind": "answer_from_hits", "args": {"n_hits": len(top0)}}
-        )
-        trace.append(
-            {
-                "step": 2,
-                "kind": "answer",
-                "args": {"confidence": answer.confidence},
-                "citations": _citation_trace(store, answer),
-            }
-        )
-        ranked = _dedup([c.path for c in answer.citations] + round0_paths)
-        return AgentResult(
-            answer=answer,
-            ranked_paths=ranked,
-            llm_calls=counter.llm_calls,
-            tokens_in=counter.tokens_in,
-            tokens_out=counter.tokens_out,
-            seconds=time.perf_counter() - started,
-            entered_loop=False,
+    # 3. The agent loop ---------------------------------------------------------
+    if entered_loop:
+        selected, seen = await _loop(
+            query,
+            store=store,
+            model=model,
+            decided_by=decided_by,
+            embed_fn=embed_fn,
+            reranker_model=reranker_model,
+            run_id=run_id,
+            budget=budget,
+            model_settings=model_settings,
+            top0=top0,
+            missing=sufficiency.missing,
+            rerank=rerank,
+            hits=hits,
+            counter=counter,
             trace=trace,
         )
 
-    # 4. The agent loop ---------------------------------------------------------
-    seen: dict[int, Hit] = {
-        h.section_id: h for h in top0
-    }  # for the request-limit fallback
-    tool_paths: list[str] = []  # paths of every tool hit, in call order
+    # 4. Results, deterministically ---------------------------------------------
+    missing_hits = [sid for sid in dict.fromkeys(selected + seen) if sid not in hits]
+    hits.update({h.section_id: h for h in store.hits(missing_hits)})
+    await rerank(
+        [hits[sid] for sid in dict.fromkeys(selected + seen) if sid not in scores]
+    )
+
+    def score(sid: int) -> float:
+        return scores.get(sid, hits[sid].score)
+
+    chosen = sorted(dict.fromkeys(selected), key=lambda sid: -score(sid))
+    others = sorted(
+        (sid for sid in dict.fromkeys(seen) if sid not in set(chosen)),
+        key=lambda sid: -score(sid),
+    )
+    tail = [h.section_id for h in hits0 if h.section_id not in set(chosen + others)]
+    tiers: list[tuple[int, MatchType]] = []
+    groups: tuple[tuple[list[int], MatchType], ...] = (
+        (chosen, "selected"),
+        (others, "seen"),
+        (tail, "round0"),
+    )
+    for group, tier in groups:
+        tiers.extend((sid, tier) for sid in group)
+
+    order: list[str] = []
+    grouped: dict[str, list[tuple[int, MatchType]]] = {}
+    for sid, tier in tiers:
+        path = hits[sid].path
+        if path not in grouped:
+            order.append(path)
+            grouped[path] = []
+        grouped[path].append((sid, tier))
+    order = order[:limit]
+    titles = store.titles(order)
+    results = [
+        DocumentResult(
+            path=path,
+            title=titles.get(path, ""),
+            score=score(grouped[path][0][0]),
+            match_type=grouped[path][0][1],
+            passages=[
+                Hit(
+                    h.section_id,
+                    h.path,
+                    h.heading,
+                    h.line_from,
+                    h.line_to,
+                    h.text,
+                    score(h.section_id),
+                )
+                for h in (hits[sid] for sid, _ in grouped[path])
+            ],
+        )
+        for path in order
+    ]
+    trace.append(
+        {
+            "step": len(trace),
+            "kind": "results",
+            "args": {"selected": len(chosen), "seen": len(others), "round0": len(tail)},
+            "result_paths": [d.path for d in results],
+        }
+    )
+    return AgentSearchResult(
+        results=results,
+        llm_calls=counter.llm_calls,
+        tokens_in=counter.tokens_in,
+        tokens_out=counter.tokens_out,
+        seconds=time.perf_counter() - started,
+        entered_loop=entered_loop,
+        trace=trace,
+    )
+
+
+async def _loop(
+    query: str,
+    *,
+    store: SectionStore,
+    model: ModelLike,
+    decided_by: str,
+    embed_fn: EmbedFn | None,
+    reranker_model: str | None,
+    run_id: str,
+    budget: AgentBudget,
+    model_settings: ModelSettings | None,
+    top0: list[Hit],
+    missing: str | None,
+    rerank: Callable[[list[Hit]], Awaitable[list[Hit]]],
+    hits: dict[int, Hit],
+    counter: _Counter,
+    trace: list[dict[str, Any]],
+) -> tuple[list[int], list[int]]:
+    """Run the tool loop; returns ``(selected, seen)`` section ids."""
+    # Every section a tool showed the agent, in the order it was shown.
+    shown: list[int] = [h.section_id for h in top0]
     state = {"calls": 0, "step": 0}
 
-    def _finish_tool(name: str, args: dict[str, Any], hits: list[Hit] | None) -> None:
-        for h in hits or []:
-            seen.setdefault(h.section_id, h)
-            tool_paths.append(h.path)
+    def show(section_ids: list[int]) -> None:
+        shown.extend(sid for sid in section_ids if sid not in set(shown))
 
-    async def _rerank_hits(hits: list[Hit]) -> list[Hit]:
-        if reranker_model and budget.tool_rerank_candidates > 0 and hits:
-            hits = await store.rerank(question, hits, reranker_model=reranker_model)
-        return hits[: budget.tool_k]
+    async def tool_hits(candidates: list[Hit]) -> list[Hit]:
+        if reranker_model and budget.tool_rerank_candidates > 0:
+            candidates = await rerank(candidates)
+        found = candidates[: budget.tool_k]
+        hits.update({h.section_id: h for h in found})
+        show([h.section_id for h in found])
+        return found
 
-    def _candidates() -> int:
+    def n_candidates() -> int:
         if reranker_model and budget.tool_rerank_candidates > 0:
             return max(budget.tool_rerank_candidates, budget.tool_k)
         return budget.tool_k
 
-    async def _call(
+    async def call(
         name: str,
         args: dict[str, Any],
         fn: Callable[[], Awaitable[tuple[str, list[Hit] | None]]],
@@ -386,14 +389,14 @@ async def run_agentic(
         step = state["step"]
         compact = ", ".join(f"{k}={v!r}" for k, v in args.items())
         if state["calls"] >= budget.max_tool_calls:
-            msg = "ERROR: no tool calls left; answer now with the evidence you have"
+            msg = "ERROR: no tool calls left; finish now with the passages you have"
             trace.append(
                 {"step": step, "kind": f"tool:{name}", "args": args, "error": msg}
             )
             return msg
         state["calls"] += 1
         try:
-            text, hits = await fn()
+            text, found = await fn()
         except Exception as exc:  # returned to the model and traced, not swallowed
             msg = f"ERROR: {type(exc).__name__}: {exc}"
             trace.append(
@@ -408,42 +411,58 @@ async def run_agentic(
                 decided_by=decided_by,
             )
             return msg
-        _finish_tool(name, args, hits)
         left = budget.max_tool_calls - state["calls"]
         text = (
             f"{text}\n[tool calls left: {left}]"
             if left
-            else f"{text}\n[no tool calls left: answer now with the evidence you have]"
+            else f"{text}\n[no tool calls left: finish now with the passages you have]"
         )
         trace.append(
             {
                 "step": step,
                 "kind": f"tool:{name}",
                 "args": args,
-                "result_paths": [h.citation for h in hits or []],
+                "result_paths": [h.citation for h in found or []],
             }
         )
         store.log_decision(
             run_id=run_id,
             step=step,
             kind=f"tool:{name}",
-            features={"n_hits": len(hits or [])},
+            features={"n_hits": len(found or [])},
             choice=compact,
             decided_by=decided_by,
         )
         return text
 
-    decided_by = model if isinstance(model, str) else model.model_name
-    agent: Agent[None, Answer] = Agent(
+    agent: Agent[None, Selection] = Agent(
         resolve_model(model) if isinstance(model, str) else model,
         instructions=_LOOP_INSTRUCTIONS.format(
             max_tool_calls=budget.max_tool_calls,
             similar=_SIMILAR_TOOL if embed_fn is not None else "",
         ),
-        output_type=Answer,
+        output_type=Selection,
         retries={"tools": 3, "output": 5},
     )
-    agent.output_validator(_citation_validator(store))
+
+    @agent.output_validator
+    def check(selection: Selection) -> Selection:
+        """Reject a selection that names a passage no tool showed the agent."""
+        from pydantic_ai import ModelRetry
+
+        problems = [
+            f"{r.path}:{r.line_from}-{r.line_to}"
+            for r in selection.passages
+            if not set(_overlapping(store, r)) & set(shown)
+        ]
+        if problems:
+            raise ModelRetry(
+                "These passages were never shown to you or do not exist: "
+                + "; ".join(problems)
+                + ". List only passages from tool results, copying path and lines "
+                "from the hit labels."
+            )
+        return selection
 
     @agent.tool_plain(name="list")
     async def list_documents(prefix: str = "") -> str:
@@ -454,7 +473,7 @@ async def run_agentic(
             lines = [f"{d.path} | {d.title} | {d.n_sections} sections" for d in docs]
             return ("\n".join(lines) or "(no documents)"), None
 
-        return await _call("list", {"prefix": prefix}, go)
+        return await call("list", {"prefix": prefix}, go)
 
     @agent.tool_plain
     async def glob(pattern: str) -> str:
@@ -465,31 +484,31 @@ async def run_agentic(
             lines = [f"{d.path} | {d.title} | {d.n_sections} sections" for d in docs]
             return ("\n".join(lines) or "(no documents)"), None
 
-        return await _call("glob", {"pattern": pattern}, go)
+        return await call("glob", {"pattern": pattern}, go)
 
     @agent.tool_plain
     async def grep(regex: str, path_prefix: str = "") -> str:
         """Find passages matching a regular expression, optionally within a path prefix."""
 
         async def go() -> tuple[str, list[Hit] | None]:
-            hits = await _rerank_hits(
-                store.grep(regex, path_prefix=path_prefix, limit=_candidates())
+            found = await tool_hits(
+                store.grep(regex, path_prefix=path_prefix, limit=n_candidates())
             )
-            return _render_hits(hits), hits
+            return hit_lines(found), found
 
-        return await _call("grep", {"regex": regex, "path_prefix": path_prefix}, go)
+        return await call("grep", {"regex": regex, "path_prefix": path_prefix}, go)
 
     @agent.tool_plain
     async def search(keywords: str, path_prefix: str = "") -> str:
         """Keyword search (BM25) over passages, optionally within a path prefix."""
 
         async def go() -> tuple[str, list[Hit] | None]:
-            hits = await _rerank_hits(
-                store.search(keywords, k=_candidates(), path_prefix=path_prefix)
+            found = await tool_hits(
+                store.search(keywords, k=n_candidates(), path_prefix=path_prefix)
             )
-            return _render_hits(hits), hits
+            return hit_lines(found), found
 
-        return await _call(
+        return await call(
             "search", {"keywords": keywords, "path_prefix": path_prefix}, go
         )
 
@@ -502,14 +521,12 @@ async def run_agentic(
 
             async def go() -> tuple[str, list[Hit] | None]:
                 embedding = (await embed([text]))[0]
-                hits = await _rerank_hits(
-                    store.similar(embedding, k=_candidates(), path_prefix=path_prefix)
+                found = await tool_hits(
+                    store.similar(embedding, k=n_candidates(), path_prefix=path_prefix)
                 )
-                return _render_hits(hits), hits
+                return hit_lines(found), found
 
-            return await _call(
-                "similar", {"text": text, "path_prefix": path_prefix}, go
-            )
+            return await call("similar", {"text": text, "path_prefix": path_prefix}, go)
 
     @agent.tool_plain
     async def outline(path: str) -> str:
@@ -523,16 +540,23 @@ async def run_agentic(
             ]
             return ("\n".join(lines) or "(no sections)"), None
 
-        return await _call("outline", {"path": path}, go)
+        return await call("outline", {"path": path}, go)
 
     @agent.tool_plain
     async def read(path: str, offset: int = 1, limit: int = 60) -> str:
         """Read lines of a document starting at the 1-based line offset."""
 
         async def go() -> tuple[str, list[Hit] | None]:
-            return store.read(path, offset=offset, limit=limit)[:_READ_MAX_CHARS], None
+            text = store.read(path, offset=offset, limit=limit)[:_READ_MAX_CHARS]
+            show(
+                _overlapping(
+                    store,
+                    PassageRef(path=path, line_from=offset, line_to=offset + limit - 1),
+                )
+            )
+            return text, None
 
-        return await _call("read", {"path": path, "offset": offset, "limit": limit}, go)
+        return await call("read", {"path": path, "offset": offset, "limit": limit}, go)
 
     @agent.tool_plain
     async def note(path: str, line_from: int, line_to: int, claim: str) -> str:
@@ -559,29 +583,18 @@ async def run_agentic(
                 line_to=line_to,
                 claim=claim,
             )
+            show([best.section_id])
             return f"noted {path}:{line_from}-{line_to}", None
 
-        return await _call(
+        return await call(
             "note",
             {"path": path, "line_from": line_from, "line_to": line_to, "claim": claim},
             go,
         )
 
-    async def _fallback_hits() -> list[Hit]:
-        """The agent's noted evidence first, then everything it saw, best first."""
-        noted_ids = [sid for sid, _, _, _ in store.evidence(run_id)]
-        missing = [sid for sid in noted_ids if sid not in seen]
-        for h in store.hits(missing):
-            seen[h.section_id] = h
-        noted = [seen[sid] for sid in dict.fromkeys(noted_ids)]
-        rest = [h for sid, h in seen.items() if sid not in set(noted_ids)]
-        if reranker_model and rest:
-            rest = await store.rerank(question, rest, reranker_model=reranker_model)
-        return (noted + rest)[:_FALLBACK_MAX_HITS]
-
     prompt = (
-        f"Question: {question}\n\nEvidence from the first retrieval:\n{_passages(top0)}\n\n"
-        f"Still missing: {sufficiency.missing or '(not stated)'}"
+        f"Search request: {query}\n\nPassages from the first search:\n"
+        f"{passages_text(top0)}\n\nStill missing: {missing or '(not stated)'}"
     )
     loop_usage = RunUsage()
     try:
@@ -591,70 +604,46 @@ async def run_agentic(
             usage_limits=UsageLimits(request_limit=budget.max_requests),
             model_settings=model_settings,
         )
-        answer = result.output
         counter.add(loop_usage)
+        refs = result.output.passages
+        selected = [
+            sid for r in refs for sid in _overlapping(store, r) if sid in set(shown)
+        ]
+        trace.append(
+            {
+                "step": state["step"] + 1,
+                "kind": "selection",
+                "args": {"n_passages": len(refs)},
+                "result_paths": [f"{r.path}:{r.line_from}-{r.line_to}" for r in refs],
+            }
+        )
     except (UsageLimitExceeded, UnexpectedModelBehavior) as exc:
         # The loop ran out of requests, or the model could not produce a valid
-        # answer (for example, citations that still point nowhere after every
-        # retry). Either way the evidence it gathered is real, so answer from
-        # it, and record which case it was in the trace.
+        # selection after every retry. What it noted is its own judgement of
+        # the evidence, so the noted passages become the selection.
         counter.add(loop_usage)
-        fallback_hits = await _fallback_hits()
+        selected = [sid for sid, _, _, _ in store.evidence(run_id)]
         trace.append(
             {
                 "step": state["step"] + 1,
                 "kind": (
                     "request_limit_fallback"
                     if isinstance(exc, UsageLimitExceeded)
-                    else "invalid_answer_fallback"
+                    else "invalid_selection_fallback"
                 ),
-                "args": {"n_hits": len(fallback_hits)},
+                "args": {"n_noted": len(selected)},
                 "error": str(exc),
             }
         )
-        answer, usage = await answer_from_hits(
-            question,
-            fallback_hits,
-            model=model,
-            store=store,
-            model_settings=model_settings,
-        )
-        counter.add(usage)
-
-    trace.append(
-        {
-            "step": state["step"] + 2,
-            "kind": "answer",
-            "args": {"confidence": answer.confidence},
-            "citations": _citation_trace(store, answer),
-        }
-    )
-
-    # 5. Ranked paths -----------------------------------------------------------
-    noted = [store.section_path(sid) for sid, _, _, _ in store.evidence(run_id)]
-    ranked = _dedup(
-        [c.path for c in answer.citations] + noted + tool_paths + round0_paths
-    )
-    return AgentResult(
-        answer=answer,
-        ranked_paths=ranked,
-        llm_calls=counter.llm_calls,
-        tokens_in=counter.tokens_in,
-        tokens_out=counter.tokens_out,
-        seconds=time.perf_counter() - started,
-        entered_loop=True,
-        trace=trace,
-    )
+    return selected, shown
 
 
 __all__ = [
     "AgentBudget",
-    "AgentResult",
-    "Answer",
-    "Citation",
+    "AgentSearchResult",
+    "DocumentResult",
     "EmbedFn",
-    "answer_closed_book",
-    "answer_from_hits",
+    "MatchType",
     "prompts_sha256",
-    "run_agentic",
+    "search_agentic",
 ]

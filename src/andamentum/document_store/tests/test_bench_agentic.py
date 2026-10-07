@@ -68,6 +68,14 @@ def _fake_agent_module(monkeypatch, **overrides):
     return mod
 
 
+def _fake_answering_module(monkeypatch, **overrides):
+    mod = types.ModuleType("andamentum.document_store.v2.answering")
+    for k, v in overrides.items():
+        setattr(mod, k, v)
+    monkeypatch.setitem(sys.modules, "andamentum.document_store.v2.answering", mod)
+    return mod
+
+
 # -- metrics ---------------------------------------------------------------
 
 
@@ -212,6 +220,38 @@ async def test_plain_list_arms_still_work_and_have_no_answer_fields(
     assert "mean_llm_calls" not in manifest
 
 
+async def test_a_model_driven_search_arm_records_costs_but_no_answer(
+    tmp_path, monkeypatch
+):
+    class AgentSearch:
+        name = "agent_search"
+        store_kind = "current"
+        needs_embeddings = False
+        answers = False
+        llm_driven = True
+
+        async def rank(self, built, q, emb, **_kw):
+            return ArmResult(
+                ranked=["p1"],
+                llm_calls=3,
+                tokens_in=40,
+                tokens_out=4,
+                entered_loop=True,
+                trace=[{"step": 1, "kind": "request_limit_fallback"}],
+            )
+
+    run_dir = await _run(tmp_path, monkeypatch, AgentSearch(), driver_model="m")
+    rows = [json.loads(line) for line in (run_dir / "questions.jsonl").open()]
+    assert all("answer" not in r and "em" not in r for r in rows)
+    assert all(r["llm_calls"] == 3 and r["entered_loop"] is True for r in rows)
+    manifest = json.loads((run_dir / "manifest.json").read_text())
+    assert manifest["driver_settings"] == {"temperature": 0.0}
+    assert manifest["mean_llm_calls"] == 3
+    assert len(manifest["prompts_sha256"]) == 64
+    assert manifest["fallbacks"] == {"request_limit_fallback": len(rows)}
+    assert "cost: llm_calls 3.00" in runner.format_summary(run_dir)
+
+
 async def test_an_answering_arm_without_an_answer_fails_the_run(tmp_path, monkeypatch):
     class Silent:
         name = "silent"
@@ -263,7 +303,7 @@ async def test_v2_rag_answers_from_the_top_ten_after_rerank(monkeypatch):
             requests=1, input_tokens=50, output_tokens=5
         )
 
-    _fake_agent_module(monkeypatch, answer_from_hits=answer_from_hits)
+    _fake_answering_module(monkeypatch, answer_from_hits=answer_from_hits)
 
     class Emb:
         async def get_or_compute(self, texts):
@@ -284,22 +324,26 @@ async def test_v2_rag_answers_from_the_top_ten_after_rerank(monkeypatch):
 async def test_v2_agent_maps_the_result_and_passes_cached_embedder(monkeypatch):
     seen = {}
 
-    async def run_agentic(
-        question,
+    async def search_agentic(
+        query,
         *,
         store,
         model,
         embed_fn,
         reranker_model,
         run_id,
+        limit,
         budget,
         model_settings,
     ):
         seen.update(
-            embed_fn=embed_fn, run_id=run_id, model=model, settings=model_settings
+            embed_fn=embed_fn,
+            run_id=run_id,
+            model=model,
+            settings=model_settings,
+            limit=limit,
         )
         return SimpleNamespace(
-            answer=SimpleNamespace(text="Jane Doe"),
             ranked_paths=["p2", "p1"],
             llm_calls=5,
             tokens_in=900,
@@ -309,7 +353,7 @@ async def test_v2_agent_maps_the_result_and_passes_cached_embedder(monkeypatch):
             trace=[{"step": 0}],
         )
 
-    _fake_agent_module(monkeypatch, run_agentic=run_agentic)
+    _fake_agent_module(monkeypatch, search_agentic=search_agentic)
 
     class Emb:
         async def get_or_compute(self, texts):
@@ -325,6 +369,8 @@ async def test_v2_agent_maps_the_result_and_passes_cached_embedder(monkeypatch):
     )
     assert seen["embed_fn"] == emb.get_or_compute and seen["run_id"] == "r:q0"
     assert seen["settings"] == {"temperature": 0.0}
+    assert seen["limit"] == arms.DEPTH
+    assert out.answer is None  # a search arm: ranked passages, no answer
     assert (
         out.ranked == ["p2", "p1"] and out.entered_loop is True and out.llm_calls == 5
     )
@@ -334,10 +380,9 @@ async def test_v2_agent_maps_the_result_and_passes_cached_embedder(monkeypatch):
 async def test_v2_agent_lex_runs_without_an_embedder(monkeypatch):
     seen = {}
 
-    async def run_agentic(question, *, embed_fn, **_kw):
+    async def search_agentic(query, *, embed_fn, **_kw):
         seen["embed_fn"] = embed_fn
         return SimpleNamespace(
-            answer=SimpleNamespace(text="Jane Doe"),
             ranked_paths=["p1"],
             llm_calls=2,
             tokens_in=10,
@@ -347,13 +392,13 @@ async def test_v2_agent_lex_runs_without_an_embedder(monkeypatch):
             trace=[],
         )
 
-    _fake_agent_module(monkeypatch, run_agentic=run_agentic)
+    _fake_agent_module(monkeypatch, search_agentic=search_agentic)
     arm = _ARMS["v2_agent_lex"]
     assert arm.needs_embeddings is False
     out = await arm.rank(
         SimpleNamespace(store=object()), QUESTIONS[0], None, driver_model="m"
     )
-    assert seen["embed_fn"] is None and out.answer == "Jane Doe"
+    assert seen["embed_fn"] is None and out.ranked == ["p1"]
 
 
 async def test_closed_book_answers_without_a_store(monkeypatch):
@@ -363,7 +408,7 @@ async def test_closed_book_answers_without_a_store(monkeypatch):
             requests=1, input_tokens=20, output_tokens=3
         )
 
-    _fake_agent_module(monkeypatch, answer_closed_book=answer_closed_book)
+    _fake_answering_module(monkeypatch, answer_closed_book=answer_closed_book)
     out = await _ARMS["closed_book"].rank(
         arms.BuiltPool(["p1"]), QUESTIONS[0], None, driver_model="m"
     )
