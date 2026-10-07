@@ -6,7 +6,26 @@ line ranges, fused by reciprocal rank, optionally reranked by a cross-encoder.
 No LLM call. Measured against the current store by ``document_store.bench``.
 """
 
+from .agent import AgentBudget, AgentResult, EmbedFn, answer_from_hits, run_agentic
 from .sections import Section, split_sections
-from .store import Hit, SectionStore, identifiers, rrf
+from .store import DocEntry, Hit, OutlineEntry, SectionStore, identifiers, rrf
+from .types import Answer, Citation, Sufficiency
 
-__all__ = ["Hit", "Section", "SectionStore", "identifiers", "rrf", "split_sections"]
+__all__ = [
+    "AgentBudget",
+    "AgentResult",
+    "Answer",
+    "Citation",
+    "EmbedFn",
+    "Sufficiency",
+    "answer_from_hits",
+    "run_agentic",
+    "DocEntry",
+    "Hit",
+    "OutlineEntry",
+    "Section",
+    "SectionStore",
+    "identifiers",
+    "rrf",
+    "split_sections",
+]

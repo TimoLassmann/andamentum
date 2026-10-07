@@ -58,6 +58,7 @@ the same as it would padded to its own length.
 from __future__ import annotations
 
 import asyncio
+import threading
 import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -272,11 +273,20 @@ def _release_gpu_cache() -> None:
         torch.mps.empty_cache()
 
 
+# One forward pass at a time. The model is process-resident and shared, and
+# concurrent forward passes from several worker threads (several questions in
+# flight at once) stall on the Apple GPU backend: a 20-question run with four
+# questions in flight made no progress for ten minutes, while the same run one
+# question at a time finished in about three.
+_predict_lock = threading.Lock()
+
+
 def _predict(model: _Scorer, query: str, texts: Sequence[str]) -> list[float]:
-    try:
-        return _score(model, query, texts)
-    finally:
-        _release_gpu_cache()
+    with _predict_lock:
+        try:
+            return _score(model, query, texts)
+        finally:
+            _release_gpu_cache()
 
 
 def reset_reranker_cache() -> None:

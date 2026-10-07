@@ -67,6 +67,9 @@ class Question:
     text: str
     group: str
     gold: frozenset[str]  # pids of the supporting passages
+    answers: tuple[
+        str, ...
+    ] = ()  # accepted answer strings (never used by retrieval arms)
 
 
 @dataclass(frozen=True)
@@ -108,7 +111,11 @@ def parse_hotpotqa(row: dict) -> tuple[Question, list[Passage]]:
         if title in support_titles:
             gold.add(p.pid)
     q = Question(
-        qid=row["id"], text=row["question"], group=row["type"], gold=frozenset(gold)
+        qid=row["id"],
+        text=row["question"],
+        group=row["type"],
+        gold=frozenset(gold),
+        answers=(row["answer"],),
     )
     return q, passages
 
@@ -125,7 +132,14 @@ def parse_musique(row: dict) -> tuple[Question, list[Passage]]:
     # Ids look like "2hop__153573_109006" or "3hop1__...": the prefix is the
     # hop structure, which is the natural reporting group.
     group = row["id"].split("__", 1)[0]
-    q = Question(qid=row["id"], text=row["question"], group=group, gold=frozenset(gold))
+    answers = (row["answer"], *row.get("answer_aliases", ()))
+    q = Question(
+        qid=row["id"],
+        text=row["question"],
+        group=group,
+        gold=frozenset(gold),
+        answers=tuple(answers),
+    )
     return q, passages
 
 

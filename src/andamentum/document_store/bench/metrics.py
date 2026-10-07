@@ -10,6 +10,9 @@ from __future__ import annotations
 
 import math
 import random
+import re
+import string
+from collections import Counter
 from collections.abc import Sequence
 
 CUTOFFS = (5, 10, 20)
@@ -53,3 +56,35 @@ def paired_bootstrap(
     lo = means[int(0.025 * n_resamples)]
     hi = means[int(0.975 * n_resamples) - 1]
     return sum(diffs) / n, lo, hi
+
+
+_ARTICLES = re.compile(r"\b(a|an|the)\b")
+_PUNCT = set(string.punctuation)
+
+
+def normalize_answer(text: str) -> str:
+    """SQuAD normalisation: lowercase, drop punctuation and articles, collapse spaces."""
+    text = "".join(ch for ch in text.lower() if ch not in _PUNCT)
+    return " ".join(_ARTICLES.sub(" ", text).split())
+
+
+def _token_f1(prediction: str, answer: str) -> float:
+    p, a = normalize_answer(prediction).split(), normalize_answer(answer).split()
+    if not p or not a:
+        return float(p == a)
+    common = sum((Counter(p) & Counter(a)).values())
+    if common == 0:
+        return 0.0
+    precision, recall = common / len(p), common / len(a)
+    return 2 * precision * recall / (precision + recall)
+
+
+def answer_metrics(prediction: str, answers: Sequence[str]) -> dict[str, float]:
+    """Exact match and token F1, each the maximum over the accepted answers."""
+    if not answers:
+        raise ValueError("a question without answers cannot be scored")
+    norm = normalize_answer(prediction)
+    return {
+        "em": float(any(norm == normalize_answer(a) for a in answers)),
+        "f1": max(_token_f1(prediction, a) for a in answers),
+    }

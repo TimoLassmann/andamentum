@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -84,6 +84,19 @@ async def _ingest_like(
 
 
 @dataclass
+class ArmResult:
+    """What an answering arm returns: the ranking plus the answer and its cost."""
+
+    ranked: list[str]
+    answer: str | None = None
+    llm_calls: int = 0
+    tokens_in: int = 0
+    tokens_out: int = 0
+    entered_loop: bool | None = None
+    trace: list[dict] = field(default_factory=list)
+
+
+@dataclass
 class BuiltStore:
     store: DocumentStore
     doc_to_pid: dict[str, str]
@@ -123,8 +136,14 @@ class Arm(Protocol):
     needs_embeddings: bool
 
     async def rank(
-        self, built: Any, q: Question, emb: EmbeddingCache | None
-    ) -> list[str]: ...
+        self,
+        built: Any,
+        q: Question,
+        emb: EmbeddingCache | None,
+        *,
+        driver_model: str | None = None,
+        run_id: str | None = None,
+    ) -> list[str] | ArmResult: ...
 
 
 class Fts5Arm:
@@ -135,7 +154,13 @@ class Fts5Arm:
     needs_embeddings = False
 
     async def rank(
-        self, built: BuiltStore, q: Question, emb: EmbeddingCache | None
+        self,
+        built: BuiltStore,
+        q: Question,
+        emb: EmbeddingCache | None,
+        *,
+        driver_model: str | None = None,
+        run_id: str | None = None,
     ) -> list[str]:
         hits = await search_fts5(str(built.store.db_path), q.text, limit=DEPTH)
         return [built.doc_to_pid[doc_id] for doc_id, _ in hits]
@@ -155,7 +180,13 @@ class Bm25OrArm:
     needs_embeddings = False
 
     async def rank(
-        self, built: BuiltStore, q: Question, emb: EmbeddingCache | None
+        self,
+        built: BuiltStore,
+        q: Question,
+        emb: EmbeddingCache | None,
+        *,
+        driver_model: str | None = None,
+        run_id: str | None = None,
     ) -> list[str]:
         terms = sorted({t.lower() for t in re.findall(r"\w+", q.text)})
         match = " OR ".join(f'"{t}"' for t in terms)
@@ -178,7 +209,13 @@ class UnifiedArm:
     needs_embeddings = True
 
     async def rank(
-        self, built: BuiltStore, q: Question, emb: EmbeddingCache | None
+        self,
+        built: BuiltStore,
+        q: Question,
+        emb: EmbeddingCache | None,
+        *,
+        driver_model: str | None = None,
+        run_id: str | None = None,
     ) -> list[str]:
         if emb is None:
             raise ValueError("the unified arm needs an embedding cache")
@@ -265,7 +302,13 @@ class V2Arm:
         self.reranker = reranker
 
     async def rank(
-        self, built: BuiltV2, q: Question, emb: EmbeddingCache | None
+        self,
+        built: BuiltV2,
+        q: Question,
+        emb: EmbeddingCache | None,
+        *,
+        driver_model: str | None = None,
+        run_id: str | None = None,
     ) -> list[str]:
         qvec = None
         if self.needs_embeddings:
@@ -281,6 +324,109 @@ class V2Arm:
         if self.reranker is not None:
             hits = await built.store.rerank(q.text, hits, reranker_model=self.reranker)
         return _passages_in_order(hits)
+
+
+def _usage_counts(usage: Any) -> tuple[int, int, int]:
+    """(requests, input tokens, output tokens) of a pydantic-ai usage object."""
+    return (
+        int(getattr(usage, "requests", 0) or 0),
+        int(getattr(usage, "input_tokens", 0) or 0),
+        int(getattr(usage, "output_tokens", 0) or 0),
+    )
+
+
+def _require_driver(name: str, driver_model: str | None) -> str:
+    if not driver_model:
+        raise ValueError(f"the {name} arm needs --driver-model")
+    return driver_model
+
+
+def _require_embeddings(name: str, emb: EmbeddingCache | None) -> EmbeddingCache:
+    if emb is None:
+        raise ValueError(f"the {name} arm needs an embedding cache")
+    return emb
+
+
+class V2RagArm:
+    """The plan's baseline: round 0 + rerank + one synthesis call over the top 10."""
+
+    name = "v2_rag"
+    store_kind = "v2"
+    needs_embeddings = True
+    reranker = SUGGESTED_RERANKER_MODEL
+    exact = False
+    vector_weight = 1
+    top_k = 10
+
+    async def rank(
+        self,
+        built: BuiltV2,
+        q: Question,
+        emb: EmbeddingCache | None,
+        *,
+        driver_model: str | None = None,
+        run_id: str | None = None,
+    ) -> ArmResult:
+        from ..v2.agent import answer_from_hits  # deferred: Part B module
+
+        model = _require_driver(self.name, driver_model)
+        cache = _require_embeddings(self.name, emb)
+        [qvec] = await cache.get_or_compute([q.text])
+        hits = built.store.round0(q.text, query_embedding=qvec, use_exact=False)
+        hits = await built.store.rerank(q.text, hits, reranker_model=self.reranker)
+        answer, usage = await answer_from_hits(q.text, hits[: self.top_k], model=model)
+        calls, tin, tout = _usage_counts(usage)
+        return ArmResult(
+            ranked=_passages_in_order(hits),
+            answer=answer.text,
+            llm_calls=calls,
+            tokens_in=tin,
+            tokens_out=tout,
+            entered_loop=False,
+        )
+
+
+class V2AgentArm:
+    """The agent loop (``run_agentic``) with the reranker and the default budget."""
+
+    name = "v2_agent"
+    store_kind = "v2"
+    needs_embeddings = True
+    reranker = SUGGESTED_RERANKER_MODEL
+    exact = False
+    vector_weight = 1
+
+    async def rank(
+        self,
+        built: BuiltV2,
+        q: Question,
+        emb: EmbeddingCache | None,
+        *,
+        driver_model: str | None = None,
+        run_id: str | None = None,
+    ) -> ArmResult:
+        from ..v2.agent import AgentBudget, run_agentic  # deferred: Part B module
+
+        model = _require_driver(self.name, driver_model)
+        cache = _require_embeddings(self.name, emb)
+        result = await run_agentic(
+            q.text,
+            store=built.store,
+            model=model,
+            embed_fn=cache.get_or_compute,
+            reranker_model=self.reranker,
+            run_id=run_id or q.qid,
+            budget=AgentBudget(),
+        )
+        return ArmResult(
+            ranked=list(result.ranked_paths)[:DEPTH],
+            answer=result.answer.text,
+            llm_calls=result.llm_calls,
+            tokens_in=result.tokens_in,
+            tokens_out=result.tokens_out,
+            entered_loop=result.entered_loop,
+            trace=result.trace,
+        )
 
 
 def _v2_grid() -> list[V2Arm]:
@@ -306,5 +452,13 @@ def _v2_grid() -> list[V2Arm]:
 
 
 ARMS: dict[str, Arm] = {
-    a.name: a for a in (Fts5Arm(), Bm25OrArm(), UnifiedArm(), *_v2_grid())
+    a.name: a
+    for a in (
+        Fts5Arm(),
+        Bm25OrArm(),
+        UnifiedArm(),
+        *_v2_grid(),
+        V2RagArm(),
+        V2AgentArm(),
+    )
 }

@@ -69,6 +69,7 @@ def _cache(tmp_path: Path) -> EmbeddingCache:
 HOTPOT_ROW = {
     "id": "q-apollo",
     "question": "Which river flows past the town where SaltLog was founded?",
+    "answer": "Apollo River",
     "type": "bridge",
     "supporting_facts": {"title": ["SaltLog", "Apollo River"], "sent_id": [0, 1]},
     "context": {
@@ -84,6 +85,8 @@ HOTPOT_ROW = {
 MUSIQUE_ROW = {
     "id": "3hop1__1_2_3",
     "question": "Who founded the company whose logo is a salt crystal?",
+    "answer": "Jane Doe",
+    "answer_aliases": ["J. Doe"],
     "paragraphs": [
         {
             "idx": 0,
@@ -147,6 +150,7 @@ def _musique_rows(n: int) -> list[dict]:
             {
                 "id": f"2hop__{i}",
                 "question": f"What is item {i}?",
+                "answer": f"item {i}",
                 "paragraphs": [
                     {
                         "idx": 0,
@@ -339,6 +343,10 @@ QUESTIONS = [
 ]
 
 
+def _ranked(result) -> list[str]:
+    return result.ranked if isinstance(result, arms.ArmResult) else result
+
+
 def _corpus() -> Corpus:
     return Corpus(
         "synthetic", "smoke", QUESTIONS, PASSAGES, data.corpus_sha256(PASSAGES)
@@ -347,7 +355,7 @@ def _corpus() -> Corpus:
 
 async def test_bm25_or_arm_ranks_the_supporting_passages_first(tmp_path):
     built = await arms.build_current_store(_corpus(), workdir=tmp_path, emb=None)
-    ranked = await arms.ARMS["bm25_or"].rank(built, QUESTIONS[0], None)
+    ranked = _ranked(await arms.ARMS["bm25_or"].rank(built, QUESTIONS[0], None))
     assert set(ranked[:2]) == {"p-salt", "p-river"}
 
 
@@ -360,7 +368,7 @@ async def test_store_is_built_once_and_reused(tmp_path):
 async def test_unified_arm_runs_on_cached_vectors(tmp_path):
     emb = _cache(tmp_path)
     built = await arms.build_current_store(_corpus(), workdir=tmp_path, emb=emb)
-    ranked = await arms.ARMS["unified"].rank(built, QUESTIONS[0], emb)
+    ranked = _ranked(await arms.ARMS["unified"].rank(built, QUESTIONS[0], emb))
     assert set(ranked) <= {p.pid for p in PASSAGES}
     assert ranked
 
@@ -373,7 +381,7 @@ async def test_runner_records_a_rejected_store_query_instead_of_crashing(
         store_kind = "current"
         needs_embeddings = False
 
-        async def rank(self, built, q, emb):
+        async def rank(self, built, q, emb, **_kw):
             if q.qid == "q2":
                 raise sqlite3.OperationalError('fts5: syntax error near "?"')
             return ["p-salt"]

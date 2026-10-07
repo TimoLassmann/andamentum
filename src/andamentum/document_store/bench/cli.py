@@ -3,6 +3,7 @@
     fetch    --workdir DIR [--suite S]          download raw dev sets once
     freeze   --workdir DIR --suite S [--dev]    draw and record the sample (once, ever)
     run      --workdir DIR --suite S --arm A --tier T [--embedding-model M]
+             [--driver-model M] [--concurrency N]
     show     RUN_DIR                            print a run's summary
     compare  RUN_A RUN_B                        paired-bootstrap B - A
 
@@ -47,6 +48,18 @@ def main(argv: list[str] | None = None) -> int:
         "--embedding-model", help="Ollama embedding model, e.g. embeddinggemma:latest"
     )
 
+    p_run.add_argument(
+        "--driver-model",
+        help="LLM driving the answering arms, e.g. ollama:gemma4:31b-cloud",
+    )
+    p_run.add_argument(
+        "--concurrency",
+        type=int,
+        default=1,
+        choices=range(1, 5),
+        help="questions in flight at once (1-4; cloud models only above 1)",
+    )
+
     p_show = sub.add_parser("show")
     p_show.add_argument("run_dir", type=Path)
 
@@ -71,6 +84,8 @@ def main(argv: list[str] | None = None) -> int:
                 arm_name=args.arm,
                 workdir=args.workdir,
                 embedding_model=args.embedding_model,
+                driver_model=args.driver_model,
+                concurrency=args.concurrency,
             )
         )
         print(format_summary(run_dir))
