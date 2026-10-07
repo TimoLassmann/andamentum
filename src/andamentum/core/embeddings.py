@@ -33,7 +33,7 @@ import numpy as np
 EmbeddingFn = Callable[[list[str]], Awaitable[list[list[float]]]]
 
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
-DEFAULT_EMBEDDING_MODEL = "embeddinggemma:latest"
+DEFAULT_EMBEDDING_MODEL = "embeddinggemma-2:latest"
 
 # Aligned with document_store's 500-token / 4-chars-per-token chunking.
 DEFAULT_MAX_EMBED_CHARS = 2000

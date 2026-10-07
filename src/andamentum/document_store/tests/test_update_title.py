@@ -104,7 +104,7 @@ class TestReembedDocument:
         from andamentum.document_store.public import search
 
         model = "ollama:gpt-oss:20b"
-        embedding_model = "embeddinggemma:latest"
+        embedding_model = "embeddinggemma-2:latest"
 
         doc_id = await ingest(
             db,
@@ -133,6 +133,6 @@ class TestReembedDocument:
         from andamentum.document_store import reembed_document
 
         ok = await reembed_document(
-            db, "missing-doc-id", embedding_model="embeddinggemma:latest"
+            db, "missing-doc-id", embedding_model="embeddinggemma-2:latest"
         )
         assert ok is False

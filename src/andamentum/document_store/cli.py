@@ -15,7 +15,7 @@ drain it from a shell, a cron entry or a launchd timer. The store owns a
 
     # drain (e.g. from cron at 02:00), self-capping before morning
     andamentum-docstore process-pending brain \
-        --embedding-model embeddinggemma:latest \
+        --embedding-model embeddinggemma-2:latest \
         --max-seconds 21600
 
 Ctrl-C (or SIGTERM from a job runner) pauses cleanly: the in-flight document
@@ -151,7 +151,7 @@ def _add_model_args(p: argparse.ArgumentParser, *, required: bool) -> None:
         "--embedding-model",
         required=required,
         default=None,
-        help="Embedding model (e.g. embeddinggemma:latest)",
+        help="Embedding model (e.g. embeddinggemma-2:latest)",
     )
 
 

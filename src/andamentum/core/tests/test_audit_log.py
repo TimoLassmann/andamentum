@@ -96,7 +96,7 @@ class TestWritingEntries:
         log_cloud_call(
             cli_name="chunker",
             operation="embed",
-            model="ollama:embeddinggemma",
+            model="ollama:embeddinggemma-2",
         )
         line = log_path.read_text().strip()
         assert " n/a " in line
