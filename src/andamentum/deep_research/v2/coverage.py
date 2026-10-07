@@ -229,8 +229,8 @@ def decide_stop(
 
 CONFLICT_QUESTION = (
     "Do the two findings contradict each other, so that they cannot both be true "
-    "of the same thing? Answer no when they differ in subject, population, "
-    "setting or time, when one only adds detail to the other, or when they merely "
+    "of the same thing? Answer no when they differ in who or what they concern, "
+    "the setting or the time, when one only adds detail to the other, or when they merely "
     "differ in strength."
 )
 

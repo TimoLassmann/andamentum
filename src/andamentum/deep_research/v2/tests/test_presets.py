@@ -175,7 +175,9 @@ async def test_the_hash_is_on_the_run_and_the_result() -> None:
 async def test_the_criteria_preset_reproduces_the_first_build() -> None:
     """Every model request, in order, and the evidence table of four runs over
     the invented world are those the engine at commit cf61b6e produced (the
-    fixture was recorded from that commit's code with ``preset_trace``)."""
+    fixture was recorded from that commit's code with ``preset_trace``; re-recorded
+    for the round-5 prompt revision, which changed the wording of the plan, query,
+    kind, screen, extraction, writing and conflict prompts and nothing else)."""
     recorded = json.loads(FIXTURE.read_text(encoding="utf-8"))
     assert [(t["mode"], t["decision"]) for t in recorded] == list(SCENARIOS)
     for expected, (mode, decision) in zip(recorded, SCENARIOS, strict=True):

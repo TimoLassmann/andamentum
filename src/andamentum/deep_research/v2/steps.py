@@ -58,7 +58,7 @@ from .types import (
     SubQuestionKind,
 )
 
-MIN_SUBQUESTIONS = 2
+MIN_SUBQUESTIONS = 1
 MAX_SUBQUESTIONS = 6
 # Kept works whose references and citations are followed, per round, best first.
 MAX_EXPAND_SEEDS = 5
@@ -74,11 +74,11 @@ WRITE_RESERVE_FIXED = 2
 Pair = tuple[str, str]  # (work_id, subquestion_id)
 
 _KIND_OPTIONS: dict[str, str] = {
-    "topical": "Find what is known about a topic: studies, evidence, explanations.",
-    "navigational": "Find one particular paper, page or document named by its "
-    "title, authors or name.",
-    "metadata": "Find works by a property such as publication year, author, "
-    "venue or open access.",
+    "topical": "Find what is known about something: facts, evidence, "
+    "explanations, opinions.",
+    "navigational": "Find one particular page, document, product, person or "
+    "place named by its title, author or name.",
+    "metadata": "Find items by a property such as date, author, publisher or source.",
 }
 KIND_QUESTION = Question(
     type="choice",
@@ -95,8 +95,9 @@ class PlannedSubQuestion(BaseModel):
     text: str = Field(description="One sub-question, a full sentence ending in '?'.")
     kind: SubQuestionKind = Field(
         default="topical",
-        description="topical (what is known), navigational (one named paper or "
-        "page), or metadata (works by year, author, venue or open access)",
+        description="topical (what is known), navigational (one named page, "
+        "document, product, person or place), or metadata (items by date, "
+        "author, publisher or source)",
     )
 
 
@@ -105,11 +106,13 @@ class PlanDraft(BaseModel):
 
 
 PLAN_INSTRUCTIONS = f"""\
-You split a research question into {MIN_SUBQUESTIONS} to {MAX_SUBQUESTIONS} \
-sub-questions. Together they must cover everything the question asks; each asks \
-one thing that sources can answer on their own. Do not answer them. Do not add \
-sub-questions the question does not need. Keep the question's own terms, names, \
-populations, years and places in the sub-questions that need them."""
+You turn a question into the sub-questions a search must answer. When the \
+question asks one thing, return it as one sub-question, in its own words. When \
+it asks several things, split it into at most {MAX_SUBQUESTIONS} sub-questions: \
+together they cover everything the question asks, and each asks one thing that \
+sources can answer on their own. Do not answer them. Do not add sub-questions \
+the question does not need. Keep the question's own terms, names, numbers, dates \
+and places in the sub-questions that need them."""
 
 
 @dataclass
@@ -289,12 +292,12 @@ class QueriesDraft(BaseModel):
 
 
 QUERY_INSTRUCTIONS = """\
-You write search queries for sub-questions of a research question. For each \
+You write search queries for the sub-questions of a question. For each \
 sub-question listed, write up to the number of queries asked, each a few plain \
-keywords (2 to 8 words, no quotes, no operators, no site: filters) that a \
-scholarly database or a web search engine would match against titles and \
-abstracts. Make the queries of one sub-question differ: synonyms, the \
-technical term and the plain one, the population or setting, the outcome. Never \
+keywords (2 to 8 words, no quotes, no operators, no site: filters) that a web \
+search engine or a database would match against titles and text. Make the \
+queries of one sub-question differ: the specific names, the technical and the \
+everyday wording, and the different aspects the sub-question asks about. Never \
 repeat a query already run. Where a gap is named, aim a query at it."""
 
 

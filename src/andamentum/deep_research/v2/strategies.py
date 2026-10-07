@@ -275,23 +275,28 @@ def relevance_question(subquestion: SubQuestion | str) -> Question:
     asked = subquestion if isinstance(subquestion, str) else subquestion.text
     text = asked.strip().rstrip("?").strip()
     return Question(
-        type="noul", instructions=f"Is this item relevant to the question: {text}?"
+        type="noul",
+        instructions=(
+            f"Does this item contain information that helps answer the question: "
+            f"{text}?"
+        ),
     )
 
 
 def item_state(
     candidate: Candidate, *, max_chars: int = MAX_STATE_CHARS
 ) -> dict[str, object]:
-    """What the generic screen shows of a candidate: title, abstract (or the
-    search snippet, at most *max_chars* of it), year and venue. The question
-    is in the question itself."""
+    """What the generic screen shows of a candidate, in names that fit any kind
+    of item (a paper, a web page, a document): title, text (the abstract or the
+    search snippet, at most *max_chars* of it), date (the year) and source (the
+    venue or site). The question is in the question itself."""
     work = candidate.work
     text = work.abstract or candidate.snippet
     return {
         "title": work.title,
-        "abstract": text if len(text) <= max_chars else text[:max_chars] + " ...",
-        "year": work.year,
-        "venue": work.venue,
+        "text": text if len(text) <= max_chars else text[:max_chars] + " ...",
+        "date": work.year,
+        "source": work.venue,
     }
 
 

@@ -64,7 +64,8 @@ class SectionDraft(BaseModel):
 
 _WRITE_INSTRUCTIONS = (
     "You write one section of a research report, only from the numbered findings "
-    "you are given. Write short, plain sentences. Each sentence states one thing "
+    "you are given. When the findings answer the question, the first sentence "
+    "gives that answer directly. Write short, plain sentences. Each sentence states one thing "
     "the findings say, and lists in finding_ids the ids of every finding that says "
     "it (for example F3 or F3, F7). Never state anything the findings do not say: "
     "no numbers, names or causes of your own. When findings agree, say so in one "

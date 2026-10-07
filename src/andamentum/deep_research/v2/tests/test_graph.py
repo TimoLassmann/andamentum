@@ -210,7 +210,7 @@ async def test_a_second_run_reads_the_first_runs_cache() -> None:
 
 async def test_a_failing_model_degrades_the_plan_instead_of_failing() -> None:
     def no_plan(instructions: str, prompt: str) -> dict[str, object]:
-        if instructions.startswith("You split a research question"):
+        if instructions.startswith("You turn a question into the sub-questions"):
             return {"subquestions": "not a list"}
         return respond(instructions, prompt)
 

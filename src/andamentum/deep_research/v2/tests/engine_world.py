@@ -305,7 +305,7 @@ def _sentences(text: str) -> list[str]:
 
 def respond(instructions: str, prompt: str) -> dict[str, object]:
     """Answer one language-model call of the engine, from the prompt alone."""
-    if instructions.startswith("You split a research question"):
+    if instructions.startswith("You turn a question into the sub-questions"):
         return {
             "subquestions": [
                 {"text": SUBQ_APOLLO, "kind": "topical"},

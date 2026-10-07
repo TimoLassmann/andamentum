@@ -72,21 +72,21 @@ def test_the_relevance_question_is_one_query_agnostic_noul() -> None:
     question = relevance_question(SUBQ)
     assert question.type == "noul"
     assert question.instructions == (
-        "Is this item relevant to the question: How much does the Apollo cache "
-        "reduce latency?"
+        "Does this item contain information that helps answer the question: "
+        "How much does the Apollo cache reduce latency?"
     )
     assert not question.criteria  # no LLM-written rubric of any kind
 
 
-def test_the_item_state_is_title_abstract_year_venue() -> None:
+def test_the_item_state_is_title_text_date_source() -> None:
     state = item_state(_candidate(1))
-    assert set(state) == {"title", "abstract", "year", "venue"}
+    assert set(state) == {"title", "text", "date", "source"}
     snippet_only = Candidate(
         work=Work(url="https://a.example/x", title="A page", work_id="w9"),
         sources=["web"],
         snippet="the search snippet",
     )
-    assert item_state(snippet_only)["abstract"] == "the search snippet"
+    assert item_state(snippet_only)["text"] == "the search snippet"
 
 
 async def test_the_generic_screen_asks_one_question_and_drops_below_the_threshold() -> (
@@ -149,8 +149,8 @@ async def test_without_a_decision_model_the_llm_answers_the_same_question() -> N
     assert len(llm.calls) == 2  # one call per candidate, the same single question
     for _instructions, prompt in llm.calls:
         assert (
-            "C1: Is this item relevant to the question: How much does the Apollo"
-            in prompt
+            "C1: Does this item contain information that helps answer the "
+            "question: How much does the Apollo" in prompt
         )
         assert "Sub-question:" not in prompt  # the question is in the question
     by_work = {s.work_id: s for s in scores}

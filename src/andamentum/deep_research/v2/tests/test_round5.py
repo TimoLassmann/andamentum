@@ -230,7 +230,7 @@ def test_the_rank_only_screen_shows_a_shortened_abstract() -> None:
         update={"work": long.work.model_copy(update={"abstract": "x" * 5000})}
     )
     state = item_state(long, max_chars=1200)
-    assert state["abstract"] == "x" * 1200 + " ..."
+    assert state["text"] == "x" * 1200 + " ..."
 
 
 def test_p_ordering_moves_ranks() -> None:

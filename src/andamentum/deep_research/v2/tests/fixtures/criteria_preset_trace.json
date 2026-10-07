@@ -74,11 +74,11 @@
   "decision": true,
   "decision_calls": [
    {
-    "questions": "2e9a9ad785ff4ca7",
+    "questions": "27bd9cc0a40da243",
     "state": "49cbccb151a7ae40"
    },
    {
-    "questions": "2e9a9ad785ff4ca7",
+    "questions": "27bd9cc0a40da243",
     "state": "c91a471edc1fe5e1"
    },
    {
@@ -126,19 +126,19 @@
     "state": "7c0c8858d386ffcd"
    },
    {
-    "questions": "18e2fc54c3e62292",
+    "questions": "26b2ea06cd65c928",
     "state": "d9dcfb5ab57e9191"
    },
    {
-    "questions": "18e2fc54c3e62292",
+    "questions": "26b2ea06cd65c928",
     "state": "a619a84a26401618"
    },
    {
-    "questions": "18e2fc54c3e62292",
+    "questions": "26b2ea06cd65c928",
     "state": "7aa166825613f125"
    },
    {
-    "questions": "18e2fc54c3e62292",
+    "questions": "26b2ea06cd65c928",
     "state": "d3547a71c17c3bc9"
    },
    {
@@ -211,8 +211,8 @@
   ],
   "llm_calls": [
    {
-    "head": "You split a research question into 2 to ",
-    "instructions": "6e9e58698c90c196",
+    "head": "You turn a question into the sub-questio",
+    "instructions": "f231caf604d6a593",
     "prompt": "c58db22f04103c54"
    },
    {
@@ -226,8 +226,8 @@
     "prompt": "40458884081fe630"
    },
    {
-    "head": "You write search queries for sub-questio",
-    "instructions": "a7997294cebd4216",
+    "head": "You write search queries for the sub-que",
+    "instructions": "fdab1c02668a24ef",
     "prompt": "882edf61f8877805"
    },
    {
@@ -257,37 +257,37 @@
    },
    {
     "head": "You extract findings from passages of on",
-    "instructions": "f16624be3f6b621f",
+    "instructions": "45c9261a04b22375",
     "prompt": "cb09a9a0bfec71cb"
    },
    {
     "head": "You extract findings from passages of on",
-    "instructions": "f16624be3f6b621f",
+    "instructions": "45c9261a04b22375",
     "prompt": "07ead77b14fe720c"
    },
    {
     "head": "You extract findings from passages of on",
-    "instructions": "f16624be3f6b621f",
+    "instructions": "45c9261a04b22375",
     "prompt": "4930e831f9b46992"
    },
    {
     "head": "You extract findings from passages of on",
-    "instructions": "f16624be3f6b621f",
+    "instructions": "45c9261a04b22375",
     "prompt": "e9191fd262766044"
    },
    {
     "head": "You extract findings from passages of on",
-    "instructions": "f16624be3f6b621f",
+    "instructions": "45c9261a04b22375",
     "prompt": "0ae9eb728207c5b3"
    },
    {
     "head": "You write one section of a research repo",
-    "instructions": "0a0577483bf17e24",
+    "instructions": "b1c8fddf1665fa0b",
     "prompt": "793a50569064985d"
    },
    {
     "head": "You write one section of a research repo",
-    "instructions": "0a0577483bf17e24",
+    "instructions": "b1c8fddf1665fa0b",
     "prompt": "f33c45f1f184acac"
    }
   ],
@@ -469,8 +469,8 @@
   ],
   "llm_calls": [
    {
-    "head": "You split a research question into 2 to ",
-    "instructions": "6e9e58698c90c196",
+    "head": "You turn a question into the sub-questio",
+    "instructions": "f231caf604d6a593",
     "prompt": "c58db22f04103c54"
    },
    {
@@ -484,8 +484,8 @@
     "prompt": "40458884081fe630"
    },
    {
-    "head": "You write search queries for sub-questio",
-    "instructions": "a7997294cebd4216",
+    "head": "You write search queries for the sub-que",
+    "instructions": "fdab1c02668a24ef",
     "prompt": "882edf61f8877805"
    },
    {
@@ -550,7 +550,7 @@
    },
    {
     "head": "You extract findings from passages of on",
-    "instructions": "f16624be3f6b621f",
+    "instructions": "45c9261a04b22375",
     "prompt": "cb09a9a0bfec71cb"
    },
    {
@@ -560,7 +560,7 @@
    },
    {
     "head": "You extract findings from passages of on",
-    "instructions": "f16624be3f6b621f",
+    "instructions": "45c9261a04b22375",
     "prompt": "07ead77b14fe720c"
    },
    {
@@ -570,7 +570,7 @@
    },
    {
     "head": "You extract findings from passages of on",
-    "instructions": "f16624be3f6b621f",
+    "instructions": "45c9261a04b22375",
     "prompt": "4930e831f9b46992"
    },
    {
@@ -580,7 +580,7 @@
    },
    {
     "head": "You extract findings from passages of on",
-    "instructions": "f16624be3f6b621f",
+    "instructions": "45c9261a04b22375",
     "prompt": "e9191fd262766044"
    },
    {
@@ -590,27 +590,27 @@
    },
    {
     "head": "You extract findings from passages of on",
-    "instructions": "f16624be3f6b621f",
+    "instructions": "45c9261a04b22375",
     "prompt": "0ae9eb728207c5b3"
    },
    {
     "head": "You answer one yes/no question about eac",
     "instructions": "e93005fb7726984f",
-    "prompt": "f685e8ec418f5d72"
+    "prompt": "15da5bfc9dc869e3"
    },
    {
     "head": "You answer one yes/no question about eac",
     "instructions": "e93005fb7726984f",
-    "prompt": "7f1d2d1030823786"
+    "prompt": "7647a960a574394c"
    },
    {
     "head": "You write one section of a research repo",
-    "instructions": "0a0577483bf17e24",
+    "instructions": "b1c8fddf1665fa0b",
     "prompt": "793a50569064985d"
    },
    {
     "head": "You write one section of a research repo",
-    "instructions": "0a0577483bf17e24",
+    "instructions": "b1c8fddf1665fa0b",
     "prompt": "f33c45f1f184acac"
    },
    {
@@ -749,11 +749,11 @@
   "decision": true,
   "decision_calls": [
    {
-    "questions": "2e9a9ad785ff4ca7",
+    "questions": "27bd9cc0a40da243",
     "state": "49cbccb151a7ae40"
    },
    {
-    "questions": "2e9a9ad785ff4ca7",
+    "questions": "27bd9cc0a40da243",
     "state": "c91a471edc1fe5e1"
    },
    {
@@ -849,67 +849,67 @@
     "state": "7c0c8858d386ffcd"
    },
    {
-    "questions": "18e2fc54c3e62292",
+    "questions": "26b2ea06cd65c928",
     "state": "341b20f58a5d92c5"
    },
    {
-    "questions": "18e2fc54c3e62292",
+    "questions": "26b2ea06cd65c928",
     "state": "439cf82c16000e23"
    },
    {
-    "questions": "18e2fc54c3e62292",
+    "questions": "26b2ea06cd65c928",
     "state": "d9dcfb5ab57e9191"
    },
    {
-    "questions": "18e2fc54c3e62292",
+    "questions": "26b2ea06cd65c928",
     "state": "d24602d7301e87be"
    },
    {
-    "questions": "18e2fc54c3e62292",
+    "questions": "26b2ea06cd65c928",
     "state": "a619a84a26401618"
    },
    {
-    "questions": "18e2fc54c3e62292",
+    "questions": "26b2ea06cd65c928",
     "state": "85efdd1483a3db4e"
    },
    {
-    "questions": "18e2fc54c3e62292",
+    "questions": "26b2ea06cd65c928",
     "state": "dd746d76da6a86b0"
    },
    {
-    "questions": "18e2fc54c3e62292",
+    "questions": "26b2ea06cd65c928",
     "state": "7aa166825613f125"
    },
    {
-    "questions": "18e2fc54c3e62292",
+    "questions": "26b2ea06cd65c928",
     "state": "0b6bf33637eabcbe"
    },
    {
-    "questions": "18e2fc54c3e62292",
+    "questions": "26b2ea06cd65c928",
     "state": "027833ac53c47652"
    },
    {
-    "questions": "18e2fc54c3e62292",
+    "questions": "26b2ea06cd65c928",
     "state": "b4768e7721144598"
    },
    {
-    "questions": "18e2fc54c3e62292",
+    "questions": "26b2ea06cd65c928",
     "state": "6d2ec7e6b77efa85"
    },
    {
-    "questions": "18e2fc54c3e62292",
+    "questions": "26b2ea06cd65c928",
     "state": "d3547a71c17c3bc9"
    },
    {
-    "questions": "18e2fc54c3e62292",
+    "questions": "26b2ea06cd65c928",
     "state": "d641d10aa432fdb5"
    },
    {
-    "questions": "18e2fc54c3e62292",
+    "questions": "26b2ea06cd65c928",
     "state": "e848544b62d5f0d6"
    },
    {
-    "questions": "18e2fc54c3e62292",
+    "questions": "26b2ea06cd65c928",
     "state": "96c2bd3cff9bcd42"
    },
    {
@@ -1030,8 +1030,8 @@
   ],
   "llm_calls": [
    {
-    "head": "You split a research question into 2 to ",
-    "instructions": "6e9e58698c90c196",
+    "head": "You turn a question into the sub-questio",
+    "instructions": "f231caf604d6a593",
     "prompt": "c58db22f04103c54"
    },
    {
@@ -1045,8 +1045,8 @@
     "prompt": "40458884081fe630"
    },
    {
-    "head": "You write search queries for sub-questio",
-    "instructions": "a7997294cebd4216",
+    "head": "You write search queries for the sub-que",
+    "instructions": "fdab1c02668a24ef",
     "prompt": "882edf61f8877805"
    },
    {
@@ -1111,57 +1111,57 @@
    },
    {
     "head": "You extract findings from passages of on",
-    "instructions": "f16624be3f6b621f",
+    "instructions": "45c9261a04b22375",
     "prompt": "cb09a9a0bfec71cb"
    },
    {
     "head": "You extract findings from passages of on",
-    "instructions": "f16624be3f6b621f",
+    "instructions": "45c9261a04b22375",
     "prompt": "07ead77b14fe720c"
    },
    {
     "head": "You extract findings from passages of on",
-    "instructions": "f16624be3f6b621f",
+    "instructions": "45c9261a04b22375",
     "prompt": "9a4bacf4ed882c6a"
    },
    {
     "head": "You extract findings from passages of on",
-    "instructions": "f16624be3f6b621f",
+    "instructions": "45c9261a04b22375",
     "prompt": "30c16da87c1815d2"
    },
    {
     "head": "You extract findings from passages of on",
-    "instructions": "f16624be3f6b621f",
+    "instructions": "45c9261a04b22375",
     "prompt": "d5639ee34755d8bf"
    },
    {
     "head": "You extract findings from passages of on",
-    "instructions": "f16624be3f6b621f",
+    "instructions": "45c9261a04b22375",
     "prompt": "4053f75c32effeae"
    },
    {
     "head": "You extract findings from passages of on",
-    "instructions": "f16624be3f6b621f",
+    "instructions": "45c9261a04b22375",
     "prompt": "4930e831f9b46992"
    },
    {
     "head": "You extract findings from passages of on",
-    "instructions": "f16624be3f6b621f",
+    "instructions": "45c9261a04b22375",
     "prompt": "e9191fd262766044"
    },
    {
     "head": "You extract findings from passages of on",
-    "instructions": "f16624be3f6b621f",
+    "instructions": "45c9261a04b22375",
     "prompt": "0ae9eb728207c5b3"
    },
    {
     "head": "You write one section of a research repo",
-    "instructions": "0a0577483bf17e24",
+    "instructions": "b1c8fddf1665fa0b",
     "prompt": "999351b71478bb06"
    },
    {
     "head": "You write one section of a research repo",
-    "instructions": "0a0577483bf17e24",
+    "instructions": "b1c8fddf1665fa0b",
     "prompt": "6ed1e2e5b632fb75"
    }
   ],
@@ -1357,8 +1357,8 @@
   ],
   "llm_calls": [
    {
-    "head": "You split a research question into 2 to ",
-    "instructions": "6e9e58698c90c196",
+    "head": "You turn a question into the sub-questio",
+    "instructions": "f231caf604d6a593",
     "prompt": "c58db22f04103c54"
    },
    {
@@ -1372,8 +1372,8 @@
     "prompt": "40458884081fe630"
    },
    {
-    "head": "You write search queries for sub-questio",
-    "instructions": "a7997294cebd4216",
+    "head": "You write search queries for the sub-que",
+    "instructions": "fdab1c02668a24ef",
     "prompt": "882edf61f8877805"
    },
    {
@@ -1463,7 +1463,7 @@
    },
    {
     "head": "You extract findings from passages of on",
-    "instructions": "f16624be3f6b621f",
+    "instructions": "45c9261a04b22375",
     "prompt": "9a4bacf4ed882c6a"
    },
    {
@@ -1473,7 +1473,7 @@
    },
    {
     "head": "You extract findings from passages of on",
-    "instructions": "f16624be3f6b621f",
+    "instructions": "45c9261a04b22375",
     "prompt": "30c16da87c1815d2"
    },
    {
@@ -1483,7 +1483,7 @@
    },
    {
     "head": "You extract findings from passages of on",
-    "instructions": "f16624be3f6b621f",
+    "instructions": "45c9261a04b22375",
     "prompt": "d5639ee34755d8bf"
    },
    {
@@ -1493,27 +1493,27 @@
    },
    {
     "head": "You extract findings from passages of on",
-    "instructions": "f16624be3f6b621f",
+    "instructions": "45c9261a04b22375",
     "prompt": "4053f75c32effeae"
    },
    {
     "head": "You answer one yes/no question about eac",
     "instructions": "e93005fb7726984f",
-    "prompt": "c3af8990a890e124"
+    "prompt": "ea59e15fcdbccd3c"
    },
    {
     "head": "You answer one yes/no question about eac",
     "instructions": "e93005fb7726984f",
-    "prompt": "244bd23fa1943bcb"
+    "prompt": "1e97dc051a1a665d"
    },
    {
     "head": "You write one section of a research repo",
-    "instructions": "0a0577483bf17e24",
+    "instructions": "b1c8fddf1665fa0b",
     "prompt": "da8f72d1858971dc"
    },
    {
     "head": "You write one section of a research repo",
-    "instructions": "0a0577483bf17e24",
+    "instructions": "b1c8fddf1665fa0b",
     "prompt": "01ed488e222d3699"
    },
    {

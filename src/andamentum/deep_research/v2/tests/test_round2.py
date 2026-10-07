@@ -98,7 +98,9 @@ async def _research(
 async def test_the_baseline_reproduces_the_engine_before_round_two() -> None:
     """Every model request, in order, and the evidence table of four runs over
     the invented world are those the engine at commit f339357 produced for the
-    baseline preset (recorded with ``preset_trace`` from that commit's code)."""
+    baseline preset (recorded with ``preset_trace`` from that commit's code;
+    re-recorded for the round-5 prompt revision: the same requests in the same
+    order and the same evidence, only the prompt wording differs)."""
     recorded = json.loads(BASELINE_TRACE.read_text(encoding="utf-8"))
     assert [(t["mode"], t["decision"]) for t in recorded] == list(SCENARIOS)
     for expected, (mode, decision) in zip(recorded, SCENARIOS, strict=True):

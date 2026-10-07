@@ -498,10 +498,13 @@ _EXTRACT_INSTRUCTIONS = (
     "(name what it is about; no 'the study', 'this', 'they'); the quote is copied "
     "from the passage word for word, in one piece, with no ellipsis and no "
     "changes, long enough to show the claim; 'passage' is the number of the "
-    "passage the quote is in; 'criteria' lists the ids of the listed criteria "
-    "the finding gives evidence for, and may be empty. Report only what the "
-    "passages say. Return an empty list when no passage bears on the question. "
-    + UNTRUSTED
+    "passage the quote is in. Report only what the passages say. Return an "
+    "empty list when no passage bears on the question. " + UNTRUSTED
+)
+# Added only when criteria are listed, so a run without criteria never asks for them.
+_EXTRACT_CRITERIA = (
+    " 'criteria' lists the ids of the listed criteria the finding gives evidence "
+    "for, and may be empty."
 )
 
 
@@ -522,7 +525,7 @@ async def extract_findings(
         f"[{n}]\n{fence(p.text)}" for n, p in enumerate(selected, start=1)
     )
     out = await asker.llm(
-        instructions=_EXTRACT_INSTRUCTIONS,
+        instructions=_EXTRACT_INSTRUCTIONS + (_EXTRACT_CRITERIA if facets else ""),
         output_type=_Extraction,
         user_message=(
             f"QUESTION: {subquestion.text}\n"

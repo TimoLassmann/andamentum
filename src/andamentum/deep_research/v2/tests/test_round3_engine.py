@@ -359,7 +359,7 @@ async def test_the_screen_state_of_a_frozen_s2_only_candidate_equals_a_live_run_
         decision=decisions(record)[0],
     )
     assert states and states[0] == item_state(live)
-    assert states[0]["abstract"] == SECRET  # type: ignore[index]
+    assert states[0]["text"] == SECRET  # type: ignore[index]
     assert result.screening[0].kept
     for dump in (
         result.model_dump_json(),

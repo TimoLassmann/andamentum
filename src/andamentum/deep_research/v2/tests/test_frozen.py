@@ -138,7 +138,7 @@ async def test_a_frozen_run_plans_nothing_searches_nothing_and_makes_no_request(
 
     assert world.requests == []  # the world was never asked anything
     asked = [instructions for instructions, _ in llm.calls]
-    assert not [i for i in asked if i.startswith("You split a research question")]
+    assert not [i for i in asked if i.startswith("You turn a question into the sub-questions")]
     assert not [i for i in asked if i.startswith("You write search queries")]
     assert result.subquestions == frozen.subquestions
     assert result.queries == frozen.all_queries()
