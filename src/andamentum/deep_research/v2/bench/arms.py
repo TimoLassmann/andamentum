@@ -188,7 +188,9 @@ class LegacyArm:
     """The legacy ``run_research`` pipeline, web only.
 
     ``pdf_extraction`` is how a fetched PDF becomes text, as for the v2 arm
-    (``SourceConfig.pdf_extraction``), so both arms read a PDF the same way."""
+    (``SourceConfig.pdf_extraction``), so both arms read a PDF the same way;
+    ``browser_cdp_url`` makes it search through that Chrome, as the v2 arm
+    does with the same ``SourceConfig`` field."""
 
     name = "legacy"
     returns_pages = True
@@ -203,7 +205,9 @@ class LegacyArm:
         max_results: int = 10,
         max_pages: int = 5,
         pdf_extraction: PdfExtraction = DEFAULT_PDF_EXTRACTION,
+        browser_cdp_url: str | None = None,
     ) -> None:
+        self.browser_cdp_url = browser_cdp_url
         self.pdf_extraction: PdfExtraction = pdf_extraction
         self.model = model
         self.searxng_url = searxng_url
@@ -232,7 +236,9 @@ class LegacyArm:
             )
 
         async with HttpxSearchBackend(
-            searxng_url=self.searxng_url, extract=extract
+            searxng_url=self.searxng_url,
+            extract=extract,
+            browser_cdp_url=self.browser_cdp_url,
         ) as backend:
             result = await run_research(
                 question,

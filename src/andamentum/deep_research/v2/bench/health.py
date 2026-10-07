@@ -81,6 +81,22 @@ async def check_searxng(
     return SearxHealth(url=url, ok=True, n_results=n, unresponsive=down)
 
 
+async def require_browser(cdp_url: str) -> SearxHealth:
+    """Is a Chrome answering at *cdp_url* (its debugging address)? ``SearxDown``
+    when not. Only the browser is checked: an engine's bot check shows per
+    search, as an outage of that cell."""
+    try:
+        async with httpx.AsyncClient(timeout=PROBE_TIMEOUT_S) as http:
+            response = await http.get(f"{cdp_url.rstrip('/')}/json/version")
+            browser = str(response.json().get("Browser", ""))
+    except (httpx.HTTPError, ValueError, AttributeError) as error:
+        raise SearxDown(
+            f"no Chrome answers at {cdp_url} ({type(error).__name__}); start Chrome "
+            "with --remote-debugging-port and its own --user-data-dir"
+        ) from error
+    return SearxHealth(url=cdp_url, ok=True, detail=browser)
+
+
 async def require_searxng(
     url: str | None, *, client: httpx.AsyncClient | None = None
 ) -> SearxHealth:

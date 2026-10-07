@@ -30,7 +30,7 @@ import asyncio
 import os
 import sys
 import time
-from collections.abc import Callable, Coroutine, Sequence
+from collections.abc import Awaitable, Callable, Coroutine, Sequence
 from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from datetime import date
@@ -68,7 +68,7 @@ from .freeze import (
     rewarm_set,
 )
 from .pool import load_pool_items, pool_comparison, pool_tables
-from .health import SearxDown, require_searxng
+from .health import SearxDown, SearxHealth, require_browser, require_searxng
 from .judging import ClaimJudge, UrlChecker
 from .simpleqa import AnswerGrader
 from .litsearch import DEFAULT_SEED, DEFAULT_SUBSET, download_litsearch, load_litsearch
@@ -365,6 +365,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     run.add_argument("--searxng-url", default=DEFAULT_SEARXNG_URL)
     run.add_argument(
+        "--browser-cdp-url",
+        default=None,
+        metavar="URL",
+        help="search the web through this Chrome (its debugging address) instead "
+        "of SearxNG, for every arm",
+    )
+    run.add_argument(
         "--only-sets",
         nargs="+",
         default=None,
@@ -448,11 +455,13 @@ def _source_config(
     *,
     keyless: bool = False,
     local_corpus: Path | None = None,
+    browser_cdp_url: str | None = None,
 ) -> SourceConfig:
     """The sources' configuration. Keyless: neither API key is looked up at all
     (not read, not checked for), whatever the environment holds."""
     return SourceConfig(
         searxng_url=searxng_url,
+        browser_cdp_url=browser_cdp_url,
         pdf_extraction=pdf_extraction,
         local_corpus=local_corpus,
         mailto=os.environ.get("OPENALEX_EMAIL"),
@@ -950,6 +959,15 @@ def _live_web(exp: Experiment, only_sets: Sequence[str] | None = None) -> bool:
     return False
 
 
+def _browser_probe(cdp_url: str) -> Callable[[str | None], Awaitable[SearxHealth]]:
+    """The per-cell web check when the arms search through a browser."""
+
+    async def probe(_searxng_url: str | None) -> SearxHealth:
+        return await require_browser(cdp_url)
+
+    return probe
+
+
 async def _cmd_experiment_run(args: argparse.Namespace) -> int:
     cache = _open_cache(args.cache)
     try:
@@ -962,8 +980,14 @@ async def _cmd_experiment_run(args: argparse.Namespace) -> int:
 async def _experiment_run(args: argparse.Namespace, cache: ResearchStore | None) -> int:
     exp = load_experiment(args.file)
     if _live_web(exp, args.only_sets):
-        health = await require_searxng(args.searxng_url)
-        print(health.explain(), file=sys.stderr)
+        if args.browser_cdp_url:
+            health = await require_browser(args.browser_cdp_url)
+            print(
+                f"web search through {health.detail} at {health.url}", file=sys.stderr
+            )
+        else:
+            health = await require_searxng(args.searxng_url)
+            print(health.explain(), file=sys.stderr)
     keyless = exp.keyless
     shared_decisions = _open_cache(args.decision_cache)
     try:
@@ -1003,12 +1027,17 @@ async def _run_with(
                 args.pdf_extraction,
                 keyless=keyless,
                 local_corpus=args.local_corpus,
+                browser_cdp_url=args.browser_cdp_url,
             ),
             judge=judge,
             judge_label=judge_label,
             judge_digest=judge_digest,
             url_checker=checker,
-            check_searxng=require_searxng,
+            check_searxng=(
+                _browser_probe(args.browser_cdp_url)
+                if args.browser_cdp_url
+                else require_searxng
+            ),
             http_cache=cache,
             decision_cache=shared_decisions,
             keyless=keyless,

@@ -133,6 +133,7 @@ def build_sources(
         [
             WebSource(
                 searxng_url=config.searxng_url,
+                browser_cdp_url=config.browser_cdp_url,
                 tdm_allowed_hosts=config.tdm_allowed_hosts,
                 client=shared,
             )

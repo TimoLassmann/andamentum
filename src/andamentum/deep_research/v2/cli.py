@@ -119,6 +119,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--searxng-url", default=None, help="the SearxNG instance (web and both modes)"
     )
     parser.add_argument(
+        "--browser-cdp-url",
+        default=None,
+        metavar="URL",
+        help="search the web through this Chrome instead of SearxNG (its debugging "
+        "address, e.g. http://127.0.0.1:9222; start Chrome with "
+        "--remote-debugging-port=9222 and its own --user-data-dir)",
+    )
+    parser.add_argument(
         "--sources",
         type=scholarly_names,
         default=",".join(SourceConfig().scholarly),
@@ -202,6 +210,7 @@ def _source_config(args: argparse.Namespace) -> SourceConfig:
         openalex_api_key=os.environ.get("OPENALEX_API_KEY") or None,
         semantic_scholar_api_key=os.environ.get("SEMANTIC_SCHOLAR_API_KEY") or None,
         searxng_url=args.searxng_url,
+        browser_cdp_url=args.browser_cdp_url,
         tdm_allowed_hosts=frozenset(args.tdm_host),
         scholarly=args.sources,
         local_corpus=args.local_corpus,

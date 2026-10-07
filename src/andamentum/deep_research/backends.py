@@ -95,6 +95,7 @@ class HttpxSearchBackend:
         clock: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
         extract: Callable[[bytes, str, str], Awaitable[str]] | None = None,
+        browser_cdp_url: str | None = None,
     ):
         """``cache`` is an explicit store for SearxNG search answers (kept
         seven days, size-capped by the store). There is no default: without
@@ -103,7 +104,9 @@ class HttpxSearchBackend:
         backoff, injectable so a test does not wait. ``extract`` turns a
         fetched body ``(data, content_type, url)`` into text (default:
         ``content_extractor.extract_content``); it raises ``ExtractionError``
-        on failure."""
+        on failure. ``browser_cdp_url`` (a Chrome's debugging address) makes
+        the search go through that browser instead of SearxNG
+        (``browser_search``)."""
         self.searxng_url = searxng_url
         # One breaker per backend instance; ``run_research`` builds a backend
         # per run, so a failure streak never leaks into the next run.
@@ -123,6 +126,7 @@ class HttpxSearchBackend:
         self._clock = clock
         self._sleep = sleep
         self._extract = extract
+        self._browser = browser_cdp_url
         self._searx_client: SourceClient | None = None
 
     def _client(self) -> "SourceClient":
@@ -157,12 +161,22 @@ class HttpxSearchBackend:
             raise CircuitOpenError(self._breaker.name)
 
         try:
-            page = await searxng_query(
-                self._client(),
-                f"{self.searxng_url}/search",
-                {"q": query, "format": "json"},
-                cache=self._cache is not None,
-            )
+            if self._browser:
+                from .browser_search import browser_query
+
+                page = await browser_query(
+                    self._client(),
+                    self._browser,
+                    query,
+                    cache=self._cache is not None,
+                )
+            else:
+                page = await searxng_query(
+                    self._client(),
+                    f"{self.searxng_url}/search",
+                    {"q": query, "format": "json"},
+                    cache=self._cache is not None,
+                )
         except SearchEnginesBlocked:
             self._breaker.record_failure()
             logger.error("Search blocked for '%s': engines did not answer", query[:50])

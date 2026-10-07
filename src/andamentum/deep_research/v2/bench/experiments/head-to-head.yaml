@@ -17,7 +17,8 @@
 #   B="uv run python -m andamentum.deep_research.v2.bench"
 #   $B experiment run src/andamentum/deep_research/v2/bench/experiments/head-to-head.yaml \
 #     --out-dir $OUT --litsearch-local-dir $DATA --simpleqa-dir $SQA \
-#     --embedding-model embeddinggemma-2:latest
+#     --embedding-model embeddinggemma-2:latest --browser-cdp-url http://127.0.0.1:9222
+#   (a Chrome started with --remote-debugging-port=9222 and its own --user-data-dir)
 #   $B experiment report src/andamentum/deep_research/v2/bench/experiments/head-to-head.yaml \
 #     --out-dir $OUT
 # A search outage stops the run without recording the cell; the same command resumes.
@@ -120,6 +121,16 @@ notes:
     sources), v2 searches the web for SimpleQA and the scholarly sources for LitSearch.
     So the LitSearch rule compares the two tools, not the two engines on the same
     sources.
+  - >-
+    Both arms search the web through one Chrome (deep_research.browser_search:
+    DuckDuckGo's HTML page, Bing when DuckDuckGo shows a bot check, about ten results
+    a query), not SearxNG: SearxNG's upstream engines were suspended (Google CSE
+    quota, DuckDuckGo access denied, Brave crashing) and no cell could run. Every
+    cell of the earlier SearxNG attempts was discarded.
+  - >-
+    v2 was run with two fixes made after the first cells and before any rule was
+    applied: a quote is matched in the text a reader sees (Markdown links), and the
+    OpenAlex keyword query drops wildcard characters.
   - >-
     Both arms read a fetched PDF the same way, from its text layer (the bench's
     pdf_extraction "fast"; a scan with no text layer is unreadable for both). The

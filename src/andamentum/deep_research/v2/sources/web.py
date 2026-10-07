@@ -22,8 +22,10 @@ from urllib.parse import urlparse
 
 from pydantic import JsonValue
 
+from andamentum.deep_research.browser_search import browser_query
 from andamentum.deep_research.searxng_search import (
     SearchEnginesBlocked,
+    SearxPage,
     searxng_query,
 )
 from andamentum.references import Work
@@ -47,7 +49,8 @@ SNIPPET_CHARS = 1000
 
 
 class WebSource:
-    """SearxNG search and page fetch."""
+    """Web search (SearxNG, or a Chrome when ``browser_cdp_url`` is given:
+    ``deep_research.browser_search``, one page of results) and page fetch."""
 
     name = NAME
 
@@ -55,18 +58,21 @@ class WebSource:
         self,
         *,
         searxng_url: str | None = None,
+        browser_cdp_url: str | None = None,
         store: ResearchStore | None = None,
         client: SourceClient | None = None,
         tdm_allowed_hosts: frozenset[str] = frozenset(),
     ) -> None:
-        if not searxng_url:
+        if not searxng_url and not browser_cdp_url:
             raise SourceError(
                 NAME,
-                "web search needs the address of a SearxNG instance (searxng_url)",
+                "web search needs a SearxNG instance (searxng_url) or a Chrome "
+                "(browser_cdp_url)",
                 kind="config",
             )
         self._client = resolve_client(NAME, store=store, client=client)
-        self._endpoint = f"{searxng_url.rstrip('/')}/search"
+        self._browser = browser_cdp_url
+        self._endpoint = f"{(searxng_url or '').rstrip('/')}/search"
         self._tdm = tdm_allowed_hosts
         self._warnings: list[str] = []
 
@@ -90,11 +96,7 @@ class WebSource:
         seen: set[str] = set()
         for page in range(1, MAX_PAGES + 1):
             try:
-                answer = await searxng_query(
-                    self._client,
-                    self._endpoint,
-                    {"q": query, "format": "json", "pageno": page},
-                )
+                answer = await self._ask(query, page=page)
             except SearchEnginesBlocked as blocked:
                 raise SourceError(
                     NAME,
@@ -115,9 +117,18 @@ class WebSource:
                 if key not in seen:
                     seen.add(key)
                     found.append(candidate)
-            if len(found) >= limit:
+            if len(found) >= limit or self._browser:
                 break
         return found[:limit]
+
+    async def _ask(self, query: str, *, page: int) -> SearxPage:
+        if self._browser:
+            return await browser_query(self._client, self._browser, query)
+        return await searxng_query(
+            self._client,
+            self._endpoint,
+            {"q": query, "format": "json", "pageno": page},
+        )
 
     async def fetch_text(self, work: Work) -> FetchedText | None:
         """The text of the page at the work's URL, or None when it has no URL."""

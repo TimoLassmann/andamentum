@@ -433,11 +433,15 @@ def build_answer_arm(
     if spec.model is None:
         raise ValueError(f"arm {spec.name} needs a model")
     if spec.system == "legacy":
-        if not services.source_config.searxng_url:
-            raise ValueError(f"arm {spec.name}: the legacy arm needs --searxng-url")
+        sources_of = services.source_config
+        if not sources_of.searxng_url and not sources_of.browser_cdp_url:
+            raise ValueError(
+                f"arm {spec.name}: the legacy arm needs --searxng-url or --browser-cdp-url"
+            )
         return LegacyArm(
             model=spec.model,
-            searxng_url=services.source_config.searxng_url,
+            searxng_url=sources_of.searxng_url or "",
+            browser_cdp_url=sources_of.browser_cdp_url,
             decision_model=decision,
             pdf_extraction=services.source_config.pdf_extraction,
         )
