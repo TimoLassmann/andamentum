@@ -1,5 +1,10 @@
 """A novelty check on the v2 engine: prior work is what a passage says, not a guess.
 
+INTERFACE COMMIT STATE: only the import of ``research`` and its call (no decision
+model goes into the engine) were changed. Package e rewrites the scoring to judge
+findings rather than passages, as the spec (section 1.8) says, and updates this
+docstring.
+
 ``run_novelty_check_v2(claim, ...)`` searches the scholarly sources for work that
 may already report *claim* (a ``research`` run in mode ``scholarly``), then asks
 the decision model, for every passage it read, whether that passage reports the
@@ -31,7 +36,7 @@ from andamentum.core.decisions import DecisionModel
 
 from ..novelty.models import NoveltyReport, Relevance, SimilarWork
 from .ask import MODEL_ERRORS, Asker, BudgetExhausted
-from .graph import research
+from .engine import research
 from .sources import SourceConfig
 from .sources.base import SourceClient
 from .store import ResearchStore
@@ -267,7 +272,6 @@ async def run_novelty_check_v2(
             f"What published work already reports or anticipates this: {claim}",
             mode="scholarly",
             model=model,
-            decision_model=handle,
             store=opened,
             budget=budget,
             sources=sources,

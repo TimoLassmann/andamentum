@@ -1,102 +1,69 @@
-"""deep_research v2: an evidence-first research engine, web and scholarly.
+"""deep_research v2: an evidence-first research loop, web and scholarly.
 
 ``research(question, *, mode, model, ...)`` runs the engine and returns a
-``ResearchResult``: sub-questions, criteria, works, verbatim passages, findings
-with checked quotes, coverage, conflicts, and a report that cites findings by
-id, verified. ``config`` (a ``ResearchConfig``, default ``PRESETS['baseline']``)
-names every swappable strategy; ``frozen`` (``FrozenInputs`` from
-``capture_frozen``) replays a captured plan and search offline. See ``CLAUDE.md`` for the design and what each module owns.
+``ResearchResult``: sub-questions, the works found, verbatim passages, findings
+(each with the quote behind it, checked in code or marked unverified), the
+answer the research reached for each sub-question, and a report that cites
+findings by id, verified. The loop is plan, then per sub-question: queries,
+search, choose what to read, read, take notes, reflect (is it answered?), then
+one write and a code-only verify. See ``CLAUDE.md`` for the design.
 """
 
 from .ask import MODEL_ERRORS, Asker, AskError, BudgetExhausted
-from .config import PRESETS, ResearchConfig, config_hash
-from .coverage import compute_coverage, decide_stop, find_conflicts, record_coverage
-from .criteria import (
-    CriteriaError,
-    PassageScore,
-    Refinement,
-    Screener,
-    Screening,
-    ScreeningError,
-    combine,
-    compile_criteria,
-    score_candidates,
-)
-from .frozen import FrozenInputs
-from .frozen import capture as capture_frozen
-from .graph import research
+from .engine import research
 from .identity import merge
 from .novelty import NoveltyResearch, run_novelty_check_v2
-from .read import ReadDeps, ReadTarget, load_work, read_work, read_works
-from .sources import SourceConfig, SourceError, SourceSet, build_sources
+from .read import locate_quote
+from .sources import (
+    SourceClient,
+    SourceConfig,
+    SourceError,
+    SourceSet,
+    build_sources,
+)
 from .store import ResearchStore, StoreError
-from .verify import verify_report
-from .write import write_report
 from .types import (
     Budget,
     Candidate,
-    CandidateScore,
-    Conflict,
-    Coverage,
-    Criterion,
     Finding,
+    LogEvent,
+    Mode,
     Passage,
     ResearchResult,
+    RunLog,
     RunStats,
     SubQuestion,
+    SubQuestionResult,
     VerifyFlag,
 )
 
 __all__ = [
     "MODEL_ERRORS",
-    "PRESETS",
-    "FrozenInputs",
-    "NoveltyResearch",
     "AskError",
     "Asker",
     "Budget",
     "BudgetExhausted",
     "Candidate",
-    "CandidateScore",
-    "Conflict",
-    "Coverage",
-    "CriteriaError",
-    "Criterion",
     "Finding",
+    "LogEvent",
+    "Mode",
+    "NoveltyResearch",
     "Passage",
-    "PassageScore",
-    "ReadDeps",
-    "ReadTarget",
-    "Refinement",
-    "ResearchConfig",
     "ResearchResult",
     "ResearchStore",
+    "RunLog",
     "RunStats",
-    "Screener",
-    "Screening",
-    "ScreeningError",
-    "StoreError",
+    "SourceClient",
     "SourceConfig",
     "SourceError",
     "SourceSet",
+    "StoreError",
     "SubQuestion",
+    "SubQuestionResult",
     "VerifyFlag",
     "build_sources",
-    "capture_frozen",
-    "combine",
-    "compile_criteria",
-    "compute_coverage",
-    "config_hash",
-    "decide_stop",
-    "find_conflicts",
-    "load_work",
+    "locate_quote",
     "merge",
-    "read_work",
-    "read_works",
-    "record_coverage",
     "research",
     "run_novelty_check_v2",
-    "score_candidates",
-    "verify_report",
-    "write_report",
 ]

@@ -1,46 +1,36 @@
 """The run log: what happened at each step of a run, recorded as it happens.
 
-``RunLogger`` is the recorder a run carries in its deps (and its ``Asker``);
-``RunLog`` / ``LogEvent`` (``types.py``) are the record, with ``to_jsonl`` and
-``to_markdown``. The functions below turn a step's outcome into events, so a
-graph node stays one line per thing it logs. Every run fills a log; nothing
-turns it on. ``write_log`` writes the two files (the CLI and the bench call it).
+``RunLogger`` is the recorder a run carries (in its ``Asker`` and the worker
+functions); ``RunLog`` / ``LogEvent`` (``types.py``) are the record, with
+``to_jsonl`` and ``to_markdown``. Every run fills a log; nothing turns it on.
+``write_log`` writes the two files (the CLI and the bench call it).
+
+Every event names its step explicitly (``event(..., step=...)``): the loop runs
+sub-questions and pages in parallel, so there is no ambient "current step".
+The event catalogue (names and data keys) is in the spec section 1.10 and in
+``v2/CLAUDE.md``. Text a later stage saw (snippets, fetched text, the window
+given to the notes, the answer, the report) is logged whole, because the bench's
+loss attribution reads it; only a fetched page is clipped, at ``TEXT_CHARS``.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, JsonValue
 
-from .types import (
-    Candidate,
-    CandidateScore,
-    Coverage,
-    LogEvent,
-    LogStep,
-    RunLog,
-    RunStats,
-    SubQuestion,
-    VerifyFlag,
-)
+from .types import LogEvent, LogStep, RunLog
 
-if TYPE_CHECKING:
-    from .strategies import FusionRow
-
-# Titles shown per source and query.
-TOP_TITLES = 5
-# Works shown in the final ranking.
-FINAL_TOP = 20
-# Characters of a model's output and of a passage kept in an event.
+# Characters of a model's output kept in an ``llm_call`` event.
 OUTPUT_CHARS = 500
-PASSAGE_CHARS = 160
-
-Pair = tuple[str, str]
+# Characters of one fetched page kept whole in a ``fetched`` event.
+TEXT_CHARS = 200_000
+# Titles shown per source and query, and works in the final ranking.
+TOP_TITLES = 5
+FINAL_TOP = 20
 
 
 def _jsonable(value: object) -> JsonValue:
@@ -49,14 +39,17 @@ def _jsonable(value: object) -> JsonValue:
     return loaded
 
 
+def clipped(text: str, *, limit: int = TEXT_CHARS) -> tuple[str, bool]:
+    """*text* cut to *limit* characters, and whether it was cut."""
+    return (text, False) if len(text) <= limit else (text[:limit], True)
+
+
 class RunLogger:
-    """Appends events to one ``RunLog`` on the run's clock. ``step`` is the
-    step the next event belongs to (the graph sets it per node)."""
+    """Appends events to one ``RunLog`` on the run's clock."""
 
     def __init__(self, *, clock: Callable[[], float], run_id: str = "") -> None:
         self.clock = clock
         self.started = clock()
-        self.step: LogStep = "Setup"
         self.log = RunLog(run_id=run_id)
 
     def event(
@@ -64,7 +57,7 @@ class RunLogger:
         event: str,
         message: str,
         *,
-        step: LogStep | None = None,
+        step: LogStep,
         **data: object,
     ) -> None:
         payload = _jsonable(data)
@@ -73,7 +66,7 @@ class RunLogger:
             LogEvent(
                 seq=len(self.log.events),
                 t=max(0.0, self.clock() - self.started),
-                step=step or self.step,
+                step=step,
                 event=event,
                 message=message,
                 data=payload,
@@ -96,19 +89,18 @@ def write_log(log: RunLog, *, md_path: Path) -> tuple[Path, Path]:
     return md_path, jsonl_path
 
 
-# -- model calls ----------------------------------------------------------------
-
-
 def llm_call(
     logger: RunLogger | None,
     *,
     purpose: str,
+    step: str,
     model: str,
     prompt: str,
     output: BaseModel | None,
     seconds: float,
     error: str = "",
 ) -> None:
+    """One ``llm_call`` event; the step it is filed under is the call's own."""
     if logger is None:
         return
     text = output.model_dump_json() if output is not None else ""
@@ -116,6 +108,7 @@ def llm_call(
         "llm_call",
         f"{purpose}: {model}, {len(prompt)} prompt characters, {seconds:.2f} s"
         + (f", failed: {error}" if error else ""),
+        step=_step_of(step),
         purpose=purpose,
         model=model,
         prompt_sha256=hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
@@ -126,218 +119,43 @@ def llm_call(
     )
 
 
-def decision_batch(
-    logger: RunLogger | None, *, step: str, instruction: str, probabilities: list[float]
-) -> None:
-    if logger is None:
-        return
-    logger.event(
-        "decision_batch",
-        f"{step}: {len(probabilities)} states asked {instruction!r}",
-        purpose=step,
-        question=instruction,
-        states=len(probabilities),
-        p=[round(p, 4) for p in probabilities],
-    )
+_LOG_STEP_NAMES: tuple[LogStep, ...] = (
+    "Setup",
+    "Plan",
+    "Search",
+    "Expand",
+    "Choose",
+    "Read",
+    "Notes",
+    "Reflect",
+    "Write",
+    "Verify",
+    "Finish",
+)
 
 
-def step_done(
-    logger: RunLogger, *, step: str, seconds: float, before: RunStats, after: RunStats
-) -> None:
-    llm = after.llm_calls - before.llm_calls
-    decisions = after.decision_calls - before.decision_calls
-    embeddings = after.embedding_calls - before.embedding_calls
-    logger.event(
-        "step_done",
-        f"{step} took {seconds:.2f} s: {llm} language-model, {decisions} decision "
-        f"and {embeddings} embedding calls",
-        seconds=round(seconds, 3),
-        llm_calls=llm,
-        decision_calls=decisions,
-        embedding_calls=embeddings,
-    )
-
-
-# -- the steps ------------------------------------------------------------------
+def _step_of(step: str) -> LogStep:
+    """*step* as a ``LogStep`` (an unknown name is filed under Setup)."""
+    for name in _LOG_STEP_NAMES:
+        if name == step:
+            return name
+    return "Setup"
 
 
 def records(
-    logger: RunLogger,
+    logger: RunLogger | None,
     *,
+    step: LogStep,
     degraded: Sequence[str] = (),
     notes: Sequence[str] = (),
     skipped: Sequence[str] = (),
 ) -> None:
+    """``degraded`` / ``note`` / ``skipped`` events for the given lines."""
+    if logger is None:
+        return
     for line in degraded:
-        logger.event("degraded", f"degraded: {line}", text=line)
+        logger.event("degraded", f"degraded: {line}", step=step, text=line)
     for line in notes:
-        logger.event("note", f"note: {line}", text=line)
+        logger.event("note", f"note: {line}", step=step, text=line)
     for line in skipped:
-        logger.event("skipped", f"skipped: {line}", text=line)
-
-
-def subquestions(logger: RunLogger, planned: Sequence[SubQuestion]) -> None:
-    for subquestion in planned:
-        logger.event(
-            "subquestion",
-            f"{subquestion.id} ({subquestion.kind}): {subquestion.text}",
-            id=subquestion.id,
-            kind=subquestion.kind,
-            text=subquestion.text,
-        )
-
-
-def query_hits(
-    logger: RunLogger, hits: Sequence[Mapping[str, object]], *, raw_question: bool
-) -> None:
-    for hit in hits:
-        count = hit.get("count")
-        error = hit.get("error")
-        what = "the question" if raw_question else str(hit.get("subquestion"))
-        logger.event(
-            "query",
-            f"{what}: {hit.get('query')!r} on {hit.get('source')}: "
-            + (f"failed ({error})" if error else f"{count} results"),
-            raw_question=raw_question,
-            subquestion=hit.get("subquestion"),
-            query=hit.get("query"),
-            source=hit.get("source"),
-            count=count,
-            top=hit.get("top"),
-            error=error,
-        )
-
-
-def admitted(
-    logger: RunLogger, *, before: int, after: int, pairs: int, via: str
-) -> None:
-    logger.event(
-        "admitted",
-        f"{via}: {after - before} new works ({after} held), {pairs} new "
-        "(work, sub-question) pairs waiting",
-        via=via,
-        new_works=after - before,
-        works_held=after,
-        new_pairs=pairs,
-    )
-
-
-def screened(
-    logger: RunLogger,
-    scores: Sequence[CandidateScore],
-    *,
-    candidates: Mapping[str, Candidate],
-    subquestions: Sequence[SubQuestion],
-    before: Mapping[Pair, int],
-    after: Mapping[str, int],
-) -> None:
-    """One event per screened candidate, and per sub-question the screen's
-    question with every p (the decision requests, summarised)."""
-    by_id = {s.id: s for s in subquestions}
-    batches: dict[str, list[float]] = {}
-    for score in scores:
-        pair = (score.work_id, score.subquestion_id)
-        candidate = candidates.get(score.work_id)
-        title = candidate.work.title if candidate is not None else ""
-        batches.setdefault(score.subquestion_id, []).append(score.score)
-        logger.event(
-            "screened",
-            f"{score.subquestion_id}: {title!r} p={score.score:.2f} "
-            f"{'kept' if score.kept else 'dropped'}",
-            work_id=score.work_id,
-            title=title,
-            subquestion=score.subquestion_id,
-            p=round(score.score, 4),
-            kept=score.kept,
-            reason=score.reason,
-            rank_before=before.get(pair),
-            rank_after=after.get(score.work_id) if score.kept else None,
-        )
-    for subquestion_id, values in batches.items():
-        subquestion = by_id.get(subquestion_id)
-        logger.event(
-            "screen_batch",
-            f"{subquestion_id}: {len(values)} candidates screened",
-            subquestion=subquestion_id,
-            question=subquestion.text if subquestion else "",
-            states=len(values),
-            p=[round(v, 4) for v in values],
-        )
-
-
-def kept_places(kept: Mapping[str, tuple[float, list[str]]]) -> dict[str, int]:
-    """Each kept work's 1-based place by its ranking value (ties by work id)."""
-    ordered = sorted(kept.items(), key=lambda item: (-item[1][0], item[0]))
-    return {work_id: place for place, (work_id, _) in enumerate(ordered, start=1)}
-
-
-def final_ranking(
-    logger: RunLogger,
-    *,
-    works: Sequence[str],
-    titles: Mapping[str, str],
-    rows: Mapping[Pair, FusionRow],
-    stop_reason: str,
-) -> None:
-    """The stop reason and the result's first ``FINAL_TOP`` works with the
-    place they reached in every list (per source, dense, screen p) for their
-    best sub-question."""
-    best: dict[str, tuple[str, FusionRow]] = {}
-    for (work_id, subquestion_id), row in rows.items():
-        held = best.get(work_id)
-        if held is None or row.fused > held[1].fused:
-            best[work_id] = (subquestion_id, row)
-    entries: list[dict[str, object]] = []
-    for place, work_id in enumerate(works[:FINAL_TOP], start=1):
-        entry: dict[str, object] = {
-            "rank": place,
-            "work_id": work_id,
-            "title": titles.get(work_id, ""),
-        }
-        if work_id in best:
-            subquestion_id, row = best[work_id]
-            entry.update(
-                subquestion=subquestion_id,
-                fused=round(row.fused, 6),
-                ranks=row.ranks,
-                p=row.p,
-            )
-        entries.append(entry)
-    logger.event(
-        "final_ranking",
-        f"stopped: {stop_reason}; the first {len(entries)} of {len(works)} ranked works",
-        stop_reason=stop_reason,
-        works_ranked=len(works),
-        works=entries,
-    )
-
-
-def coverage(logger: RunLogger, verdicts: Sequence[Coverage]) -> None:
-    for entry in verdicts:
-        state = (
-            "covered"
-            if entry.covered
-            else "unresolvable"
-            if entry.unresolvable
-            else "open"
-        )
-        logger.event(
-            "coverage",
-            f"{entry.subquestion_id}: {state}, {entry.independent_sources} "
-            "independent source(s)" + (f"; {entry.note}" if entry.note else ""),
-            subquestion=entry.subquestion_id,
-            state=state,
-            independent_sources=entry.independent_sources,
-            note=entry.note,
-        )
-
-
-def flags(logger: RunLogger, raised: Sequence[VerifyFlag]) -> None:
-    for flag in raised:
-        logger.event(
-            "verify_flag",
-            f"{flag.kind}: {flag.ref}",
-            kind=flag.kind,
-            ref=flag.ref,
-            detail=flag.detail,
-        )
+        logger.event("skipped", f"skipped: {line}", step=step, text=line)
