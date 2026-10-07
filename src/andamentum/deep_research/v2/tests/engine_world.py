@@ -4,19 +4,24 @@ Everything is synthetic: two topics (the Apollo cache and SaltLog logging),
 six scholarly works served in OpenAlex's shape, one of them retracted in
 Crossref, one found only as a citation, and four web pages behind a SearxNG
 endpoint. ``World.handler`` answers every HTTP request the engine makes;
-``world_llm`` answers every language-model call by reading the prompt the way
-a model would; ``world_decisions`` answers the decision-model questions. No
-network, no real model.
+``world_llm`` answers every language-model call of the new loop (plan, queries, choose, notes, reflect,
+write) by reading the prompt the way a model would; ``world_decisions`` answers
+the decision-model questions of the novelty check. No network, no real model.
+The stand-ins at the end replace the reading, writing, verifying and ranking
+modules for the tests of the loop alone.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable, Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 
 import httpx
+import pytest
+from pydantic import BaseModel
 
 from andamentum.core.decisions import DecisionModel
 from andamentum.core.decisions.testing import (
@@ -25,8 +30,25 @@ from andamentum.core.decisions.testing import (
     noul_answer,
 )
 
+from andamentum.references import ReferenceHttp, Work
+
+from .. import fusion
+from ..ask import MODEL_ERRORS, Asker, BudgetExhausted, fence
+from ..read import ReadDeps
 from ..sources.base import SourceClient
 from ..store import ResearchStore
+from ..types import (
+    Candidate,
+    Finding,
+    PageReading,
+    Passage,
+    RawFinding,
+    SubQuestion,
+    SubQuestionResult,
+    VerifyFlag,
+)
+from ..verify import VerifyOutcome
+from ..write import NO_EVIDENCE_LINE, SOURCES_HEADING, Report
 from .llm_stub import ScriptedLLM
 
 QUESTION = "How do the Apollo cache and SaltLog logging affect request latency?"
@@ -264,22 +286,9 @@ class World:
 
 # -- the language model ------------------------------------------------------------
 
-_CRITERIA = {
-    "apollo": [
-        ("Is the result about the Apollo cache?", "must", 3),
-        ("Does the result report a latency measurement?", "should", 2),
-        ("Is the result an advertisement?", "exclude", 1),
-    ],
-    "saltlog": [
-        ("Is the result about SaltLog logging?", "must", 3),
-        ("Does the result report an overhead measurement?", "should", 2),
-        ("Is the result an advertisement?", "exclude", 1),
-    ],
-}
-
 
 def holds(question: str, text: str) -> bool:
-    """Whether a criterion (or any yes/no question the engine asks) holds of *text*."""
+    """Whether a yes/no question (a decision-model request) holds of *text*."""
     lowered = question.lower()
     item = text.lower()
     if lowered.startswith("do the quotes state"):
@@ -294,13 +303,122 @@ def holds(question: str, text: str) -> bool:
     return bool(topic) and topic in item
 
 
-def _block(prompt: str) -> str:
-    found = re.search(r"<<<\n(.*?)\n>>>", prompt, re.DOTALL)
-    return found.group(1) if found else prompt
+_FENCED = re.compile(r"(<{3,})\n.*?\n(>{3,})", re.DOTALL)
+_QUERY_WORDS = ("latency", "benchmark", "measurement", "study")
+
+
+def _fenced(prompt: str) -> str:
+    found = re.search(r"(<{3,})\n(.*?)\n(>{3,})", prompt, re.DOTALL)
+    return found.group(2) if found else prompt
+
+
+def _outside_fences(prompt: str) -> str:
+    return _FENCED.sub("", prompt)
+
+
+def _line(prompt: str, label: str) -> str:
+    found = re.search(rf"^{label}: (.+)$", prompt, re.MULTILINE)
+    return found.group(1) if found else ""
 
 
 def _sentences(text: str) -> list[str]:
     return [s.strip() for s in re.split(r"(?<=\.)\s+", text) if s.strip()]
+
+
+def _choose(instructions: str, prompt: str) -> dict[str, object]:
+    topic = _topic(_line(prompt, "SUB-QUESTION"))
+    limit = int(re.search(r"at most (\d+)", instructions).group(1))  # type: ignore[union-attr]
+    entries = re.findall(
+        r"^\[(\d+)\] (.+?)(?=^\[\d+\] |\Z)", _fenced(prompt), re.MULTILINE | re.DOTALL
+    )
+    relevant = [int(n) for n, text in entries if topic and topic in text.lower()]
+    return {"picks": relevant[:limit], "reserves": relevant[limit : 2 * limit]}
+
+
+def _notes(prompt: str) -> dict[str, object]:
+    topic = _topic(_outside_fences(prompt))
+    findings = []
+    for number, text in re.findall(
+        r"^\[(\d+)\]\n<{3,}\n(.*?)\n>{3,}(?=\n\n\[\d+\]\n|\Z)",
+        prompt,
+        re.MULTILINE | re.DOTALL,
+    ):
+        for sentence in _sentences(text):
+            if topic in sentence.lower() and re.search(r"\d|half", sentence):
+                findings.append(
+                    {
+                        "passage": int(number),
+                        "claim": sentence,
+                        "quote": sentence.rstrip("."),
+                    }
+                )
+                break
+    return {"findings": findings}
+
+
+def _reflect(prompt: str) -> dict[str, object]:
+    topic = _topic(_line(prompt, "QUESTION"))
+    claims = re.findall(r"^\[\d+\] claim: (.+)$", prompt, re.MULTILINE)
+    sources = set(re.findall(r"^\s+source: (.+)$", prompt, re.MULTILINE))
+    # Apollo needs three independent sources (the follow-up found only through
+    # citations makes the third); SaltLog is settled by two.
+    needed = 3 if topic == "apollo" else 2
+    answered = len(sources) >= needed
+    return {
+        "answered": answered,
+        "answer": f"Likely: {claims[0]}" if claims else "",
+        "confidence": "high" if answered else "low",
+        "gaps": [] if answered else [f"a further independent source on {topic}"],
+        "next_queries": [] if answered else [f"{topic} replication study"],
+    }
+
+
+def _queries(prompt: str) -> dict[str, object]:
+    topic = _topic(_line(prompt, "SUB-QUESTION"))
+    done = len(re.findall(r"^- ", prompt.split("ALREADY RUN:")[-1], re.MULTILINE))
+    done = done if "ALREADY RUN:" in prompt else 0
+    return {
+        "queries": [
+            f"{topic} {_QUERY_WORDS[done % 4]}",
+            f"{topic} {_QUERY_WORDS[(done + 1) % 4]}",
+        ]
+    }
+
+
+def _write(prompt: str) -> dict[str, object]:
+    """Group the findings under the sub-question they follow: a finding is an
+    ``F<n>`` line and its ``claim:`` line (the writer's own layout), or one line
+    ``F<n> claim: ...``."""
+    sections: dict[str, list[dict[str, object]]] = {}
+    label = ""
+    current = ""
+    for line in prompt.splitlines():
+        head = re.match(r"^(?:SUB-QUESTION |#+\s*)?(Q\d+)\b", line)
+        if head:
+            label = head.group(1)
+            sections.setdefault(label, [])
+            continue
+        finding = re.match(r"^(F\d+)\b(?:.*?claim: (.+))?$", line)
+        if finding:
+            current = finding.group(1)
+            if finding.group(2):
+                sections.setdefault(label or "Q1", []).append(
+                    {"text": finding.group(2), "finding_ids": [current]}
+                )
+            continue
+        claim = re.match(r"^claim: (.+)$", line)
+        if claim and current:
+            sections.setdefault(label or "Q1", []).append(
+                {"text": claim.group(1), "finding_ids": [current]}
+            )
+            current = ""
+    return {
+        "sections": [
+            {"subquestion": name, "sentences": sentences}
+            for name, sentences in sections.items()
+            if sentences
+        ]
+    }
 
 
 def respond(instructions: str, prompt: str) -> dict[str, object]:
@@ -312,83 +430,16 @@ def respond(instructions: str, prompt: str) -> dict[str, object]:
                 {"text": SUBQ_SALTLOG, "kind": "topical"},
             ]
         }
-    if instructions.startswith("You write the screening rubric"):
-        topic = _topic(prompt.split("Sub-question", 1)[-1])
-        return {
-            "criteria": [
-                {
-                    "text": text,
-                    "kind": kind,
-                    "weight": weight,
-                    "applies_to": "candidate",
-                }
-                for text, kind, weight in _CRITERIA[topic]
-            ]
-        }
-    if instructions.startswith("You write search queries"):
-        done = prompt.count("\n- ")
-        words = ("latency", "benchmark", "measurement", "study")
-        labels = re.findall(r"^(Q\d+): (.+)$", prompt, re.MULTILINE)
-        return {
-            "queries": [
-                {"subquestion": label, "query": f"{_topic(text)} {words[done % 4]}"}
-                for label, text in labels
-            ]
-        }
-    if instructions.startswith("You screen one search result"):
-        item = _block(prompt)
-        answers = [
-            {"label": label, "answer": "yes" if holds(text, item) else "no"}
-            for label, text in re.findall(r"^(C\d+): (.+)$", prompt, re.MULTILINE)
-        ]
-        result: dict[str, object] = {"answers": answers}
-        if "Source types:" in prompt:
-            result["source_type"] = "primary_study"
-        return result
-    if instructions.startswith("You check one decision"):
-        return {"keep": "Decision: kept" in prompt}
-    if instructions.startswith("You choose which passages"):
-        count = len(re.findall(r"^\[\d+\]$", prompt, re.MULTILINE))
-        return {"passages": list(range(1, min(count, 3) + 1))}
-    if instructions.startswith("You extract findings"):
-        topic = _topic(prompt.split("\n", 1)[0])
-        findings = []
-        for number, text in re.findall(
-            r"^\[(\d+)\]\n<<<\n(.*?)\n>>>(?=\n\n\[\d+\]\n|\Z)",
-            prompt,
-            re.MULTILINE | re.DOTALL,
-        ):
-            for sentence in _sentences(text):
-                if topic in sentence.lower() and re.search(r"\d|half", sentence):
-                    findings.append(
-                        {
-                            "passage": int(number),
-                            "claim": sentence,
-                            "quote": sentence.rstrip("."),
-                            "criteria": [],
-                        }
-                    )
-                    break
-        return {"findings": findings}
-    if instructions.startswith("You write one section"):
-        found = re.findall(
-            r"^(F\d+).*\n<<<\n(?:source: .*\n)?claim: (.+)$", prompt, re.MULTILINE
-        )
-        return {
-            "sentences": [
-                {"text": claim, "finding_ids": [finding_id]}
-                for finding_id, claim in found
-            ]
-        }
-    if instructions.startswith("You answer one yes/no question"):
-        question = prompt.split("\n", 1)[0].removeprefix("QUESTION: ")
-        items = re.findall(r"^\[(\d+)\]$", prompt, re.MULTILINE)
-        return {
-            "verdicts": [
-                {"item": int(n), "answer": "yes" if holds(question, "") else "no"}
-                for n in items
-            ]
-        }
+    if instructions.startswith("You are a search query specialist"):
+        return _queries(prompt)
+    if instructions.startswith("You choose which search results"):
+        return _choose(instructions, prompt)
+    if instructions.startswith("You read passages of ONE document"):
+        return _notes(prompt)
+    if instructions.startswith("You judge the progress of research"):
+        return _reflect(prompt)
+    if "report" in instructions.lower() or "section" in instructions.lower():
+        return _write(prompt)
     raise AssertionError(f"the world has no answer for: {instructions[:80]!r}")
 
 
@@ -430,3 +481,355 @@ def world_decisions(
 
     stub = StubDecisions(answer)
     return stub.model(), stub
+
+
+# -- stand-ins for the reading, writing, verifying and ranking modules -----------------
+#
+# The loop is tested apart from the modules it calls. These stand in for
+# ``read.read_page``, ``write.write_report``, ``verify.verify_report``,
+# ``read.unreadable_degraded`` and ``fusion.rank_works`` / ``fused_scores``: they
+# honour the documented signatures and the ``PageReading`` / ``RawFinding`` /
+# ``Report`` shapes, answer through the engine's ``Asker`` (so the calls are
+# counted, budget-checked and logged) and emit the events those modules emit.
+
+
+class NoteDraft(BaseModel):
+    passage: int
+    claim: str
+    quote: str
+
+
+class NotesDraft(BaseModel):
+    findings: list[NoteDraft]
+
+
+class WrittenSentence(BaseModel):
+    text: str
+    finding_ids: list[str]
+
+
+class WrittenSection(BaseModel):
+    subquestion: str
+    sentences: list[WrittenSentence]
+
+
+class WriteDraft(BaseModel):
+    sections: list[WrittenSection]
+
+
+STAND_IN_NOTES = (
+    "You read passages of ONE document to find evidence for a question. Extract "
+    "the findings: each a claim and the exact words that state it. Quote "
+    "character for character."
+)
+STAND_IN_WRITE = (
+    "You write the report for a question from its findings. One section per "
+    "sub-question; every sentence cites the findings it rests on."
+)
+
+
+@dataclass
+class StandInReader:
+    """A ``read_page`` over the world: pages from ``PAGES``, abstracts for
+    papers. ``unreadable`` lists substrings of a url or title that cannot be
+    opened; ``texts`` overrides a url's text; ``skip_notes`` lists substrings
+    of a url or title whose page is read but gets no notes call; ``read`` lists
+    what was read, in order, and ``peak`` the most pages read at once."""
+
+    unreadable: tuple[str, ...] = ()
+    skip_notes: tuple[str, ...] = ()
+    texts: dict[str, str] = field(default_factory=dict)
+    read: list[str] = field(default_factory=list)
+    in_flight: int = 0
+    peak: int = 0
+
+    async def __call__(
+        self,
+        candidate: Candidate,
+        *,
+        subquestion: SubQuestion,
+        queries: Sequence[str],
+        deps: ReadDeps,
+        round_number: int = 1,
+    ) -> PageReading:
+        self.read.append(candidate.work.work_id)
+        self.in_flight += 1
+        self.peak = max(self.peak, self.in_flight)
+        try:
+            await asyncio.sleep(0)
+            return await self._read(candidate, subquestion, deps)
+        finally:
+            self.in_flight -= 1
+
+    async def _read(
+        self,
+        candidate: Candidate,
+        subquestion: SubQuestion,
+        deps: ReadDeps,
+    ) -> PageReading:
+        asker = deps.asker
+        log = asker.log
+        work = candidate.work
+        if deps.fetched_bytes is not None and (
+            deps.fetched_bytes() >= asker.budget.max_fetch_bytes
+        ):
+            raise BudgetExhausted("max_fetch_bytes")
+        if work.doi == RETRACTED_DOI:
+            if log is not None:
+                log.event(
+                    "excluded",
+                    f"{work.title!r} excluded: retracted",
+                    step="Read",
+                    work_id=work.work_id,
+                    reason="retracted",
+                )
+            return PageReading(
+                work=work.model_copy(update={"retracted": "retracted"}),
+                subquestion_id=subquestion.id,
+                excluded="retracted",
+            )
+        label = work.url or work.title
+        url = work.url or ""
+        text = self.texts.get(url) or (PAGES[url][1] if url in PAGES else "")
+        via = "fetched" if text else "abstract"
+        text = text or work.abstract or candidate.snippet
+        if any(mark in label for mark in self.unreadable) or not text:
+            if log is not None:
+                log.event(
+                    "unreadable",
+                    f"{work.title!r}: nothing read",
+                    step="Read",
+                    work_id=work.work_id,
+                    url=url,
+                    title=work.title,
+                    reasons=["HTTP 403"],
+                )
+            return PageReading(
+                work=work.model_copy(update={"access": "unreadable"}),
+                subquestion_id=subquestion.id,
+                via="none",
+                status=403,
+                error="HTTP 403",
+                failed_notes=[f"{label}: HTTP 403"],
+            )
+        passage = Passage.make(work_id=work.work_id, start=0, text=text)
+        asker.store.add_passages([passage])
+        if log is not None:
+            log.event(
+                "fetched",
+                f"{work.title!r}: {len(text)} characters",
+                step="Read",
+                work_id=work.work_id,
+                url=url,
+                title=work.title,
+                via=via,
+                ok=True,
+                chars=len(text),
+                status=200,
+                error="",
+                truncated=False,
+                text=text,
+            )
+            log.event(
+                "notes_input",
+                f"{work.title!r}: {len(text)} characters given to the notes",
+                step="Notes",
+                work_id=work.work_id,
+                url=url,
+                title=work.title,
+                subquestion=subquestion.id,
+                source_chars=len(text),
+                window_chars=len(text),
+                window_spans=[[0, len(text)]],
+                text=text,
+            )
+        reading = PageReading(
+            work=work.model_copy(
+                update={"access": "full_text" if via == "fetched" else "abstract"}
+            ),
+            subquestion_id=subquestion.id,
+            via=via,  # type: ignore[arg-type]
+            passages=[passage],
+            status=200,
+        )
+        if any(mark in label for mark in self.skip_notes):
+            return reading
+        try:
+            drafted = await asker.llm(
+                step="Notes",
+                instructions=STAND_IN_NOTES,
+                output_type=NotesDraft,
+                user_message=(f"QUESTION: {subquestion.text}\n\n[1]\n{fence(text)}"),
+            )
+        except MODEL_ERRORS as error:
+            reading.degraded.append(
+                f"notes for {work.title!r} failed ({type(error).__name__}: {error})"
+            )
+            return reading
+        unverified = 0
+        for note in drafted.findings:
+            at = text.find(note.quote)
+            verified = at >= 0
+            unverified += not verified
+            reading.findings.append(
+                RawFinding(
+                    subquestion_id=subquestion.id,
+                    claim=note.claim,
+                    quote=text[at : at + len(note.quote)] if verified else note.quote,
+                    quote_verified=verified,
+                    passage_id=passage.passage_id,
+                    work_id=work.work_id,
+                )
+            )
+            if log is not None:
+                log.event(
+                    "finding_noted",
+                    f"{work.title!r}: {note.claim}",
+                    step="Notes",
+                    subquestion=subquestion.id,
+                    work_id=work.work_id,
+                    title=work.title,
+                    claim=note.claim,
+                    quote=note.quote,
+                    verified=verified,
+                )
+        if log is not None:
+            log.event(
+                "notes",
+                f"{work.title!r}: {len(reading.findings)} findings",
+                step="Notes",
+                work_id=work.work_id,
+                url=url,
+                subquestion=subquestion.id,
+                findings=len(reading.findings),
+                unverified=unverified,
+            )
+        return reading
+
+
+async def stand_in_write(
+    question: str,
+    *,
+    subquestions: Sequence[SubQuestion],
+    answers: Mapping[str, SubQuestionResult],
+    findings: Sequence[Finding],
+    works: Mapping[str, Work],
+    asker: Asker,
+) -> Report:
+    """One model call over every sub-question that has findings; a failed or
+    spent model lists the findings' own claims."""
+    lines: list[str] = []
+    for subquestion in subquestions:
+        own = [f for f in findings if f.subquestion_id == subquestion.id]
+        if not own:
+            continue
+        lines += [f"{subquestion.id}: {subquestion.text}"]
+        draft = answers[subquestion.id].answer
+        if draft:
+            lines.append(f"  draft answer: {draft}")
+        lines += [f"{f.finding_id} claim: {f.claim}" for f in own]
+    degraded: list[str] = []
+    sentences: dict[str, list[tuple[str, list[str]]]] = {}
+    known = {f.finding_id for f in findings}
+    try:
+        if lines:
+            written = await asker.llm(
+                step="Write",
+                instructions=STAND_IN_WRITE,
+                output_type=WriteDraft,
+                user_message="\n".join(lines),
+            )
+            for section in written.sections:
+                sentences[section.subquestion] = [
+                    (s.text, [i for i in s.finding_ids if i in known])
+                    for s in section.sentences
+                ]
+    except (BudgetExhausted, *MODEL_ERRORS) as error:
+        degraded.append(f"the report could not be written ({error}); claims listed")
+    body = [f"# Report: {question}"]
+    for subquestion in subquestions:
+        own = [f for f in findings if f.subquestion_id == subquestion.id]
+        body += ["", f"## {subquestion.id}: {subquestion.text}", ""]
+        if not own:
+            body.append(NO_EVIDENCE_LINE)
+            continue
+        written_here = sentences.get(subquestion.id) or [
+            (f.claim, [f.finding_id]) for f in own
+        ]
+        for text, ids in written_here:
+            body.append(f"{text} [{', '.join(ids)}]")
+    body += ["", SOURCES_HEADING]
+    return Report(markdown="\n".join(body) + "\n", degraded=degraded)
+
+
+async def stand_in_verify(
+    report_markdown: str,
+    *,
+    findings: Sequence[Finding],
+    passages: Mapping[str, Passage],
+    works: Mapping[str, Work],
+    http: ReferenceHttp,
+) -> VerifyOutcome:
+    known = {f.finding_id for f in findings}
+    flags = [
+        VerifyFlag(kind="unknown_finding", ref=ref)
+        for ref in dict.fromkeys(re.findall(r"\bF\d+\b", report_markdown))
+        if ref not in known
+    ]
+    return VerifyOutcome(report_markdown=report_markdown, flags=flags)
+
+
+def stand_in_fused_scores(candidates: Mapping[str, Candidate]) -> dict[str, float]:
+    return {
+        work_id: sum(1.0 / (60 + rank) for rank in c.source_ranks.values())
+        for work_id, c in candidates.items()
+    }
+
+
+def stand_in_rank_works(
+    candidates: Mapping[str, Candidate],
+    *,
+    cited: Sequence[str],
+    chosen: Sequence[str],
+    excluded: Collection[str] = (),
+) -> list[str]:
+    scores = stand_in_fused_scores(candidates)
+
+    def by_score(ids: Iterable[str]) -> list[str]:
+        # ties keep the candidates' order: a work id is random per store
+        return sorted(ids, key=lambda w: -scores.get(w, 0.0))
+
+    ordered = [w for w in dict.fromkeys(cited) if w in candidates]
+    ordered += by_score(
+        w for w in dict.fromkeys(chosen) if w in candidates and w not in ordered
+    )
+    ordered += by_score(w for w in candidates if w not in ordered)
+    return [w for w in ordered if w not in excluded]
+
+
+def stand_in_unreadable_degraded(*, attempted: int, unreadable: int) -> list[str]:
+    if attempted and unreadable / attempted > 0.5:
+        return [f"{unreadable} of {attempted} pages could not be read"]
+    return []
+
+
+def install_stand_ins(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    reader: StandInReader | None = None,
+    writer: Callable[..., Awaitable[Report]] | None = None,
+) -> StandInReader:
+    """Replace the reading, writing, verifying and ranking functions the engine
+    calls; returns the reader so a test can look at what was read."""
+    from .. import choose as choose_module
+    from .. import engine
+
+    reader = reader or StandInReader()
+    monkeypatch.setattr(engine, "read_page", reader)
+    monkeypatch.setattr(engine, "write_report", writer or stand_in_write)
+    monkeypatch.setattr(engine, "verify_report", stand_in_verify)
+    monkeypatch.setattr(engine, "unreadable_degraded", stand_in_unreadable_degraded)
+    monkeypatch.setattr(fusion, "fused_scores", stand_in_fused_scores)
+    monkeypatch.setattr(fusion, "rank_works", stand_in_rank_works)
+    assert choose_module.fusion is fusion
+    return reader

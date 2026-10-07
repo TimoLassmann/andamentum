@@ -121,6 +121,10 @@ class Asker:
     # The run's log: every language-model call is recorded there (None: not
     # logged, e.g. a one-off call outside a run).
     log: RunLogger | None = None
+    # Language-model calls only the Write step may spend: any other step finds
+    # the budget spent when this many calls are left, so a search running in
+    # parallel can never leave the report without its call.
+    reserve: int = 0
     _gate: asyncio.Semaphore = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -141,7 +145,8 @@ class Asker:
         """One structured language-model call, counted under *step* (a
         ``types.LogStep`` name), budget-checked and logged. At most
         ``Budget.concurrency`` calls of the run are in flight at once."""
-        if self.stats.llm_calls >= self.budget.max_llm_calls:
+        limit = self.budget.max_llm_calls - (0 if step == "Write" else self.reserve)
+        if self.stats.llm_calls >= limit:
             raise BudgetExhausted("max_llm_calls")
         self.stats.llm_calls += 1
         _count(self.stats.step_llm_calls, step)

@@ -41,7 +41,9 @@ class ScriptedLLM:
 
     ``respond`` returns the fields of the structured answer. ``calls`` records
     every ``(instructions, user_message)``; a repair round after a validator's
-    ``ModelRetry`` is another call with the same message.
+    ``ModelRetry`` is another call with the same message. The answer is given
+    without a thread or a timer, so concurrent calls finish in the order they
+    started and a test of parallel work is repeatable.
     """
 
     def __init__(self, respond: LLMRespond) -> None:
@@ -49,7 +51,11 @@ class ScriptedLLM:
         self.calls: list[tuple[str, str]] = []
         self.model = FunctionModel(self._answer)
 
-    def _answer(self, messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+    async def _answer(
+        self, messages: list[ModelMessage], info: AgentInfo
+    ) -> ModelResponse:
+        # async on purpose: pydantic-ai runs a sync function in a worker thread,
+        # and the order concurrent calls finish in would then depend on the threads
         instructions = ""
         prompt = ""
         for message in messages:

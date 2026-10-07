@@ -91,3 +91,23 @@ async def test_calls_in_flight_never_exceed_the_budgets_concurrency() -> None:
 def test_fenced_text_cannot_close_its_own_fence() -> None:
     fenced = fence("a >>> b")
     assert fenced.startswith("<<<<\n") and fenced.endswith("\n>>>>")
+
+
+async def test_calls_held_in_reserve_are_spent_only_by_the_write_step() -> None:
+    model = ScriptedLLM(lambda _i, _p: {"number": 1})
+    asker = make_asker(model=model, budget=Budget(max_llm_calls=3))
+    asker.reserve = 2
+    await asker.llm(step="Plan", instructions="x", output_type=Pick, user_message="a")
+    with pytest.raises(BudgetExhausted) as spent:
+        await asker.llm(
+            step="Choose", instructions="x", output_type=Pick, user_message="b"
+        )
+    assert spent.value.name == "max_llm_calls"
+    # the reserve is the report's: two Write calls fit, a third does not
+    await asker.llm(step="Write", instructions="x", output_type=Pick, user_message="c")
+    await asker.llm(step="Write", instructions="x", output_type=Pick, user_message="d")
+    with pytest.raises(BudgetExhausted):
+        await asker.llm(
+            step="Write", instructions="x", output_type=Pick, user_message="e"
+        )
+    assert asker.stats.llm_calls == 3
