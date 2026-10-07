@@ -1,19 +1,16 @@
-"""A novelty check on the v2 engine: prior work is what a passage says, not a guess.
-
-INTERFACE COMMIT STATE: only the import of ``research`` and its call (no decision
-model goes into the engine) were changed. Package e rewrites the scoring to judge
-findings rather than passages, as the spec (section 1.8) says, and updates this
-docstring.
+"""A novelty check on the v2 engine: prior work is what a finding says, not a guess.
 
 ``run_novelty_check_v2(claim, ...)`` searches the scholarly sources for work that
-may already report *claim* (a ``research`` run in mode ``scholarly``), then asks
-the decision model, for every passage it read, whether that passage reports the
-same result, method or finding the claim presents as new. The verdict is a
-function of those answers and of how healthy the search was:
+may already report *claim* (a ``research`` run in mode ``scholarly``; the engine
+uses only the language model), then asks the local decision model, for every
+finding of a work that was read, whether that finding reports the same result,
+method or finding the claim presents as new. The decision model judges findings
+(a claim and the quote behind it), never raw passages. The verdict is a function
+of those answers and of how healthy the search was:
 
-- a passage the decision model says anticipates the claim (``p >= 0.5``, the
-  decision-model convention) makes the claim **not novel**; the passage's own
-  words are the evidence in ``similar_work``;
+- a finding the decision model says anticipates the claim (``p >= 0.5``, the
+  decision-model convention) makes the claim **not novel**; the finding's own
+  quote is the evidence in ``similar_work``;
 - nothing anticipates it **and** the search was healthy (no source or model
   failure, no spent budget, at least ``MIN_WORKS_ASSESSED`` works read) makes
   it **novel**, with confidence ``1 - max p``;
@@ -21,7 +18,9 @@ function of those answers and of how healthy the search was:
   evidence of novelty when the search could not look properly.
 
 No text is written by a model: the assessment is built from counts and quotes,
-so there is nothing to invent. The decision model is required and explicit.
+so there is nothing to invent. The decision model is required and explicit, is
+called strictly one request after another, and is the only local model left in
+the package (whetstone's opt-in path). A retracted work is never evidence.
 """
 
 from __future__ import annotations
@@ -33,6 +32,7 @@ from pathlib import Path
 from pydantic_ai.models import Model
 
 from andamentum.core.decisions import DecisionModel
+from andamentum.references import Work
 
 from ..novelty.models import NoveltyReport, Relevance, SimilarWork
 from .ask import MODEL_ERRORS, Asker, BudgetExhausted
@@ -40,13 +40,13 @@ from .engine import research
 from .sources import SourceConfig
 from .sources.base import SourceClient
 from .store import ResearchStore
-from .types import Budget, Passage, ResearchResult, RunStats
+from .types import Budget, Finding, ResearchResult, RunStats
 
-# A noul question is a yes at p >= 0.5 (core.decisions); a passage is direct
+# A noul question is a yes at p >= 0.5 (core.decisions); a finding is direct
 # prior work from 0.8.
 ANTICIPATES_AT = 0.5
 DIRECT_AT = 0.8
-# "Not novel" needs one passage; "novel" needs the search to have read this
+# "Not novel" needs one finding; "novel" needs the search to have read this
 # many different works, or an empty answer would read as a finding.
 MIN_WORKS_ASSESSED = 3
 MAX_SIMILAR_WORKS = 5
@@ -55,17 +55,17 @@ NOVELTY_BUDGET = Budget(max_rounds=2)
 
 STEP = "novelty"
 _ANTICIPATES = (
-    "The passage reports the same result, method or finding that the claim "
-    "presents as new, so the claim is not new."
+    "The finding reports the same result, method or finding that the claim "
+    "under review presents as new, so the claim is not new."
 )
-_RELATED = "The passage is about the same topic or problem as the claim."
+_RELATED = "The finding is about the same topic or problem as the claim under review."
 _QUESTIONS = {"anticipates": _ANTICIPATES, "related": _RELATED}
 
 
 @dataclass(frozen=True)
 class NoveltyResearch:
     """How a caller asks for the v2 novelty check: the decision model that
-    judges the passages (opened, left open), where the sources are and where
+    judges the findings (opened, left open), where the sources are and where
     the research store lives (``None`` keeps it in memory)."""
 
     decision_model: DecisionModel
@@ -76,7 +76,7 @@ class NoveltyResearch:
 
 @dataclass(frozen=True)
 class _Scored:
-    passage: Passage
+    finding: Finding
     anticipates: float
     related: float
 
@@ -95,19 +95,27 @@ def _undetermined(
     )
 
 
-def _work_url(result: ResearchResult, work_id: str) -> str:
-    work = next(w for w in result.works if w.work_id == work_id)
+def _work_url(work: Work) -> str:
     if work.doi:
         return f"https://doi.org/{work.doi}"
     return work.url or work.oa_url or ""
 
 
+def _kept(result: ResearchResult) -> dict[str, Work]:
+    """The works that may be evidence: not excluded, not retracted."""
+    return {
+        w.work_id: w
+        for w in result.works
+        if w.work_id not in result.excluded and w.retracted != "retracted"
+    }
+
+
 def _similar(result: ResearchResult, scored: list[_Scored]) -> list[SimilarWork]:
-    """One entry per work, its best passage's words as the summary, best first."""
-    titles = {w.work_id: w.title or "(untitled)" for w in result.works}
+    """One entry per work, its best finding's quote as the summary, best first."""
+    kept = _kept(result)
     best: dict[str, _Scored] = {}
     for item in scored:
-        key = item.passage.work_id
+        key = item.finding.work_id
         if key not in best or item.anticipates > best[key].anticipates:
             best[key] = item
     ranked = sorted(best.values(), key=lambda s: (-s.anticipates, -s.related))
@@ -119,12 +127,13 @@ def _similar(result: ResearchResult, scored: list[_Scored]) -> list[SimilarWork]
             relevance = Relevance.PARTIAL
         else:
             continue
+        work = kept[item.finding.work_id]
         similar.append(
             SimilarWork(
-                title=titles[item.passage.work_id],
-                url=_work_url(result, item.passage.work_id),
+                title=work.title or "(untitled)",
+                url=_work_url(work),
                 relevance=relevance,
-                summary=item.passage.text[:SUMMARY_CHARS],
+                summary=item.finding.quote[:SUMMARY_CHARS],
             )
         )
     return similar
@@ -133,35 +142,45 @@ def _similar(result: ResearchResult, scored: list[_Scored]) -> list[SimilarWork]
 async def _score(
     asker: Asker, claim: str, result: ResearchResult
 ) -> tuple[list[_Scored], bool]:
-    """Ask both questions of every passage of a kept work, one request each.
+    """Ask both questions of every finding of a kept work, one request each,
+    strictly one after another (the decision model is local).
 
     Returns what was scored and whether the budget stopped it early.
     """
-    titles = {w.work_id: w.title for w in result.works}
+    kept = _kept(result)
     scored: list[_Scored] = []
-    for passage in result.passages:
-        if passage.work_id not in titles:
-            continue  # a work left out of the result (retracted) is not evidence
+    for finding in result.findings:
+        work = kept.get(finding.work_id)
+        if work is None:
+            continue  # a retracted or excluded work is not evidence
         try:
             p = await asker.ask_criteria(
                 STEP,
                 state={
-                    "claim": claim,
-                    "work": titles[passage.work_id],
-                    "passage": passage.text,
+                    "claim_under_review": claim,
+                    "finding": finding.claim,
+                    "quote": finding.quote,
+                    "work": work.title,
+                    "year": work.year if work.year is not None else "unknown",
                 },
                 questions=_QUESTIONS,
             )
         except BudgetExhausted:
             return scored, True
         scored.append(
-            _Scored(
-                passage=passage,
-                anticipates=p["anticipates"],
-                related=p["related"],
-            )
+            _Scored(finding=finding, anticipates=p["anticipates"], related=p["related"])
         )
     return scored, False
+
+
+def _unverified_note(scored: list[_Scored]) -> str:
+    count = sum(1 for s in scored if not s.finding.quote_verified)
+    if count == 0:
+        return ""
+    return (
+        f" {count} of the {len(scored)} judged finding(s) have a quote that "
+        "could not be found in the page text."
+    )
 
 
 def _verdict(
@@ -172,26 +191,27 @@ def _verdict(
     cut_short: bool,
     queries: list[str],
 ) -> NoveltyReport:
-    """The verdict from the scored passages and the health of the search."""
-    sources = [url for w in result.works if (url := _work_url(result, w.work_id)) != ""]
+    """The verdict from the scored findings and the health of the search."""
+    kept = _kept(result)
+    sources = [url for w in kept.values() if (url := _work_url(w)) != ""]
     anticipating = [s for s in scored if s.anticipates >= ANTICIPATES_AT]
     if anticipating:
         top = max(s.anticipates for s in anticipating)
-        works = {s.passage.work_id for s in anticipating}
+        works = {s.finding.work_id for s in anticipating}
         return NoveltyReport(
             claim=claim,
             is_novel=False,
             confidence=top,
             assessment=(
-                f"{len(anticipating)} passage(s) from {len(works)} work(s) report "
+                f"{len(anticipating)} finding(s) from {len(works)} work(s) report "
                 f"what the claim presents as new (decision model p up to {top:.2f}); "
-                "their words are quoted under similar work."
+                "their quotes are given under similar work." + _unverified_note(scored)
             ),
             similar_work=_similar(result, scored),
             sources=sources,
             search_queries_used=queries,
         )
-    works_read = len({s.passage.work_id for s in scored})
+    works_read = len({p.work_id for p in result.passages if p.work_id in kept})
     problems: list[str] = []
     if result.degraded:
         problems.append(
@@ -201,7 +221,7 @@ def _verdict(
     if result.stop_reason.startswith("budget:"):
         problems.append(f"the search stopped on its budget ({result.stop_reason})")
     if cut_short:
-        problems.append("the decision budget ran out before every passage was judged")
+        problems.append("the decision budget ran out before every finding was judged")
     if works_read < MIN_WORKS_ASSESSED:
         problems.append(
             f"only {works_read} work(s) were read (at least {MIN_WORKS_ASSESSED} "
@@ -210,20 +230,27 @@ def _verdict(
     if problems:
         return _undetermined(
             claim,
-            why="No passage anticipates the claim, but " + "; ".join(problems) + ".",
+            why="No finding anticipates the claim, but " + "; ".join(problems) + ".",
             queries=queries,
             sources=sources,
         )
     top_p = max((s.anticipates for s in scored), default=0.0)
+    if scored:
+        body = (
+            f"{len(scored)} finding(s) from {works_read} work(s) were read and "
+            f"none reports what the claim presents as new (highest decision model "
+            f"p {top_p:.2f}). The search had no failures."
+        )
+    else:
+        body = (
+            f"{works_read} work(s) were read and no finding bore on the claim. "
+            "The search had no failures."
+        )
     return NoveltyReport(
         claim=claim,
         is_novel=True,
         confidence=1.0 - top_p,
-        assessment=(
-            f"{len(scored)} passage(s) from {works_read} work(s) were read and "
-            f"none reports what the claim presents as new (highest decision model "
-            f"p {top_p:.2f}). The search had no failures."
-        ),
+        assessment=body + _unverified_note(scored),
         similar_work=_similar(result, scored),
         sources=sources,
         search_queries_used=queries,
@@ -243,14 +270,14 @@ async def run_novelty_check_v2(
 ) -> NoveltyReport:
     """Check whether *claim* is novel against the scholarly literature.
 
-    ``model`` is the language model (a pydantic-ai id or object) that plans the search and reads the works;
-    ``decision_model`` (a name, opened and closed here, or an opened handle) is
-    the local decision model that judges every passage. ``store`` is the
-    research store: a path opens or creates a persistent one (works, passages
-    and answers are cached there), an open store is used as it is, ``None``
-    keeps it in memory. A failure of the language model or decision model, or
-    a search too thin to conclude from, gives ``is_novel=None``, never a
-    guess; anything else raises.
+    ``model`` is the language model (a pydantic-ai id or object) that plans the
+    search and reads the works; ``decision_model`` (a name, opened and closed
+    here, or an opened handle left open) is the local decision model that judges
+    every finding, one request at a time. ``store`` is the research store: a path
+    opens or creates a persistent one (works, passages and answers are cached
+    there), an open store is used as it is, ``None`` keeps it in memory. A
+    failure of the language model or decision model, or a search too thin to
+    conclude from, gives ``is_novel=None``, never a guess; anything else raises.
     """
     if not claim.strip():
         raise ValueError("claim is empty")
@@ -268,16 +295,24 @@ async def run_novelty_check_v2(
         else decision_model
     )
     try:
-        result = await research(
-            f"What published work already reports or anticipates this: {claim}",
-            mode="scholarly",
-            model=model,
-            store=opened,
-            budget=budget,
-            sources=sources,
-            source_client=source_client,
-            progress=progress,
-        )
+        try:
+            result = await research(
+                f"What published work already reports or anticipates this: {claim}",
+                mode="scholarly",
+                model=model,
+                store=opened,
+                budget=budget,
+                sources=sources,
+                source_client=source_client,
+                progress=progress,
+            )
+        except MODEL_ERRORS as error:
+            return _undetermined(
+                claim,
+                why=f"The language model failed during the search: {error}.",
+                queries=[],
+                sources=[],
+            )
         queries = result.queries
         asker = Asker(
             model=model,
@@ -292,7 +327,7 @@ async def run_novelty_check_v2(
         except MODEL_ERRORS as error:
             return _undetermined(
                 claim,
-                why=f"The judgement of the passages failed: {error}.",
+                why=f"The judgement of the findings failed: {error}.",
                 queries=queries,
                 sources=[],
             )
