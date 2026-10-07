@@ -52,10 +52,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from andamentum.core.decisions import DecisionModel
+from andamentum.core.decisions import DecisionModel, DecisionModelUnavailable
 from andamentum.references.works import canonical_url
 
 from ..config import ResearchConfig, config_hash, preset
+from ..dense import EmbeddingError
 from ..frozen import FrozenInputs
 from ..sources.base import SourceConfig
 from ..store import ResearchStore
@@ -950,8 +951,10 @@ async def _run_cell(
 ) -> RunRecord:
     """One (arm, item, repeat) cell: run it, record it, append it to the registry.
 
-    A cell that raises is recorded with its error; an ``InfrastructureDown`` is
-    not recorded and propagates (the other cells in flight are cancelled).
+    A cell that raises is recorded with its error; an ``InfrastructureDown`` (a
+    failed search, or an embedding or decision model that is missing or
+    unreachable) is not recorded and propagates (the other cells in flight are
+    cancelled).
     """
     live = spec.system == "legacy" or (spec.system == "v2" and not spec.is_frozen)
     # the legacy pipeline searches the web whatever the set; v2 only in web mode
@@ -1015,6 +1018,14 @@ async def _run_cell(
             record.output = output
             record.planted_outcome = outcome
         record.metrics = metrics
+    except (EmbeddingError, DecisionModelUnavailable) as error:
+        # a model that is missing or unreachable is the machine's state, not the
+        # arm's result: never a zero; a resume runs the cell once it is fixed
+        raise InfrastructureDown(
+            f"{spec.name} {item.set_name}/{item.item_id} #{repeat}: "
+            f"{_error_text(error)}. The cell is not recorded; fix the model "
+            "and run the same command again"
+        ) from error
     except (InfrastructureDown, SearxDown) as outage:
         if spec.outage != "record":
             raise

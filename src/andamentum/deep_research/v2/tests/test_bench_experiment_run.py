@@ -919,3 +919,29 @@ async def test_only_sets_runs_part_of_the_file_and_a_later_run_finishes_it(
             services=services(arms),
             only_sets=["litsearch"],
         )
+
+
+def missing_model_behaviour(question: str, _call: int) -> ArmOutput:
+    from andamentum.deep_research.v2.dense import EmbeddingError
+
+    raise EmbeddingError("Ollama does not list the embedding model 'm'")
+
+
+async def test_a_missing_model_is_not_recorded_as_a_zero_and_stops_the_run(
+    tmp_path: Path,
+) -> None:
+    from andamentum.deep_research.v2.bench.experiment_run import InfrastructureDown
+
+    exp = small_experiment(repeats=1)
+    arms = {
+        "base": ScriptedArm("base", missing_model_behaviour),
+        "other": ScriptedArm("other", stable_behaviour),
+    }
+    with pytest.raises(InfrastructureDown, match="not recorded"):
+        await run_experiment(
+            exp, out_dir=tmp_path, dirs=DataDirs(), services=services(arms)
+        )
+    runs = [
+        r for r in read_records(registry_path(tmp_path)) if isinstance(r, RunRecord)
+    ]
+    assert all(r.arm != "base" for r in runs)  # a resume runs the cell again
