@@ -93,7 +93,11 @@ async def test_retrieves_per_sub_question_fuses_and_reranks_against_original() -
         embed_fn=_embed,
         reranker_model="fake",
     )
-    assert store.queries == [QUESTION, "Who founded SaltLog?", "Where is SaltLog based?"]
+    assert store.queries == [
+        QUESTION,
+        "Who founded SaltLog?",
+        "Where is SaltLog based?",
+    ]
     assert store.rerank_queries == [QUESTION]
     assert {h.section_id for h in hits} == {1, 2, 3}
     # RRF puts section 1 (two rankings) first; the fake reranker reverses it last.

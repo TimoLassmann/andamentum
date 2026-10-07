@@ -374,7 +374,9 @@ class V2RagArm:
         [qvec] = await cache.get_or_compute([q.text])
         hits = built.store.round0(q.text, query_embedding=qvec, use_exact=False)
         hits = await built.store.rerank(q.text, hits, reranker_model=self.reranker)
-        answer, usage = await answer_from_hits(q.text, hits[: self.top_k], model=model)
+        answer, usage = await answer_from_hits(
+            q.text, hits[: self.top_k], model=model, store=built.store
+        )
         calls, tin, tout = _usage_counts(usage)
         return ArmResult(
             ranked=_passages_in_order(hits),

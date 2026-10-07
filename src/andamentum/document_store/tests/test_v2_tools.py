@@ -314,3 +314,10 @@ async def test_create_is_idempotent_and_adds_tables(store: SectionStore):
     with sqlite3.connect(store.path) as db:
         names = {r[0] for r in db.execute("SELECT name FROM sqlite_master")}
     assert {"collections", "evidence", "decisions"} <= names
+
+
+def test_hits_returns_sections_in_the_given_order(store):
+    ids = [h.section_id for h in store.search("apollo", k=3)]
+    assert [h.section_id for h in store.hits(list(reversed(ids)))] == list(
+        reversed(ids)
+    )

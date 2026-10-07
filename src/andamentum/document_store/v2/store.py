@@ -377,6 +377,10 @@ class SectionStore:
         ]
         return sorted(scored, key=lambda h: (-h.score, h.section_id))
 
+    def hits(self, section_ids: Sequence[int]) -> list[Hit]:
+        """The sections with these ids as hits, in the given order (score 0.0)."""
+        return self._hits([(sid, 0.0) for sid in section_ids])
+
     def _hits(self, fused: list[tuple[int, float]]) -> list[Hit]:
         if not fused:
             return []

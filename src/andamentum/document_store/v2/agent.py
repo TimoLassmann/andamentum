@@ -42,10 +42,21 @@ _READ_MAX_CHARS = 6000
 @dataclass(frozen=True)
 class AgentBudget:
     max_tool_calls: int = 12  # hard cap on tool calls inside the loop
-    max_requests: int = 10  # hard cap on LLM requests inside the loop (UsageLimits)
+    max_requests: int = 15  # hard cap on LLM requests inside the loop (UsageLimits)
     round0_k: int = 10  # passages shown to the LLM from round 0
     tool_k: int = 8  # hits returned by search/similar/grep to the LLM
     tool_rerank_candidates: int = 20  # tool hits reranked before returning (0 = none)
+
+    def __post_init__(self) -> None:
+        # Each loop request issues at least one tool call or the answer, and an
+        # invalid citation costs one retry request. The tool budget must run out
+        # before the request budget, so the agent always gets to answer from its
+        # own evidence instead of being cut off mid-search.
+        if self.max_requests < self.max_tool_calls + 3:
+            raise ValueError(
+                f"max_requests ({self.max_requests}) must be at least "
+                f"max_tool_calls + 3 ({self.max_tool_calls + 3})"
+            )
 
 
 @dataclass
@@ -75,11 +86,17 @@ def _render_hits(hits: list[Hit]) -> str:
     return "\n".join(_render_hit(h) for h in hits) if hits else "(no results)"
 
 
+_ANSWER_FORMAT = (
+    "Put in text only the shortest phrase that answers the question: a name, a date, a "
+    "number or a short noun phrase, never a sentence. If the passages make an answer likely "
+    "but not certain, still give it and set confidence to low. Write unknown only when no "
+    "passage is relevant to the question. Cite each passage you used with its path and, as "
+    "two separate integers, line_from and line_to, copied from the passage label. Set "
+    "confidence to high, medium or low according to how well the passages support the answer."
+)
+
 _ANSWER_INSTRUCTIONS = (
-    "Answer the question using only the passages given. Give a short answer, a few words "
-    "where possible. Cite each passage you used with its path and, as two separate integers, "
-    "line_from and line_to. Set confidence to "
-    "high, medium or low according to how well the passages support the answer."
+    "Answer the question using only the passages given. " + _ANSWER_FORMAT
 )
 
 _STOP_INSTRUCTIONS = (
@@ -93,23 +110,32 @@ _LOOP_INSTRUCTIONS = (
     "provided: list and glob browse paths, grep matches a regular expression, search matches "
     "keywords, similar matches by meaning, outline shows a document's sections, read shows "
     "lines of a document, note records a passage as evidence. Hits are shown as "
-    "path:line_from-line_to. Use the evidence already gathered, look for what is missing, "
-    "and answer as soon as you can. Give a short answer, a few words where possible, cite "
-    "the passages that support it with path and two separate integers line_from and line_to, "
-    "and set confidence to high, "
-    "medium or low."
-)
+    "path:line_from-line_to. Use the evidence already gathered and look only for what is "
+    "missing. For a question with several steps, find each intermediate entity first and "
+    "then search for the next step by its name. You have at most {max_tool_calls} tool "
+    "calls in total; every tool result states how many are left. Answer as soon as the "
+    "evidence is enough, and when no calls are left, answer with the evidence you have. "
+) + _ANSWER_FORMAT
 
 
 async def answer_from_hits(
-    question: str, hits: list[Hit], *, model: ModelLike
+    question: str,
+    hits: list[Hit],
+    *,
+    model: ModelLike,
+    store: SectionStore | None = None,
 ) -> tuple[Answer, Any]:
-    """One synthesis call over the given hits; returns ``(answer, usage)``."""
+    """One synthesis call over the given hits; returns ``(answer, usage)``.
+
+    With ``store``, citations are checked against it and an invalid one is sent
+    back to the model for correction (costing one more request).
+    """
     answer, usage = await run_agent_with_usage(
         model,
         instructions=_ANSWER_INSTRUCTIONS,
         output_type=Answer,
         user_message=f"Question: {question}\n\nPassages:\n{_passages(hits)}",
+        validators=[_citation_validator(store)] if store is not None else None,
     )
     return answer, usage
 
@@ -146,6 +172,37 @@ def _citation_trace(store: SectionStore, answer: Answer) -> list[dict[str, Any]]
             }
         )
     return out
+
+
+def _citation_validator(store: SectionStore) -> Callable[[Answer], Answer]:
+    """Reject an answer whose citation names no real path or line range.
+
+    The model then gets one retry with the document's real line count, instead
+    of a citation that points nowhere being passed on as evidence.
+    """
+    from pydantic_ai import ModelRetry
+
+    def check(answer: Answer) -> Answer:
+        problems = []
+        for c in answer.citations:
+            try:
+                sections = store.outline(c.path)
+            except KeyError:
+                problems.append(f"{c.path} is not a document in the store")
+                continue
+            last = max((e.line_to for e in sections), default=0)
+            if not 1 <= c.line_from <= c.line_to <= last:
+                problems.append(
+                    f"{c.path}:{c.line_from}-{c.line_to} is outside the document's lines 1-{last}"
+                )
+        if problems:
+            raise ModelRetry(
+                "Fix these citations, copying path and lines from the passage labels: "
+                + "; ".join(problems)
+            )
+        return answer
+
+    return check
 
 
 class _Counter:
@@ -224,7 +281,7 @@ async def run_agentic(
 
     # 3. Enough: synthesise from round 0 ----------------------------------------
     if sufficiency.enough:
-        answer, usage = await answer_from_hits(question, top0, model=model)
+        answer, usage = await answer_from_hits(question, top0, model=model, store=store)
         counter.add(usage)
         trace.append(
             {"step": 1, "kind": "answer_from_hits", "args": {"n_hits": len(top0)}}
@@ -281,7 +338,7 @@ async def run_agentic(
         step = state["step"]
         compact = ", ".join(f"{k}={v!r}" for k, v in args.items())
         if state["calls"] >= budget.max_tool_calls:
-            msg = "ERROR: tool budget spent; answer now"
+            msg = "ERROR: no tool calls left; answer now with the evidence you have"
             trace.append(
                 {"step": step, "kind": f"tool:{name}", "args": args, "error": msg}
             )
@@ -304,6 +361,12 @@ async def run_agentic(
             )
             return msg
         _finish_tool(name, args, hits)
+        left = budget.max_tool_calls - state["calls"]
+        text = (
+            f"{text}\n[tool calls left: {left}]"
+            if left
+            else f"{text}\n[no tool calls left: answer now with the evidence you have]"
+        )
         trace.append(
             {
                 "step": step,
@@ -325,10 +388,11 @@ async def run_agentic(
     decided_by = model if isinstance(model, str) else model.model_name
     agent: Agent[None, Answer] = Agent(
         resolve_model(model) if isinstance(model, str) else model,
-        instructions=_LOOP_INSTRUCTIONS,
+        instructions=_LOOP_INSTRUCTIONS.format(max_tool_calls=budget.max_tool_calls),
         output_type=Answer,
         retries={"tools": 3, "output": 5},
     )
+    agent.output_validator(_citation_validator(store))
 
     @agent.tool_plain(name="list")
     async def list_documents(prefix: str = "") -> str:
@@ -447,6 +511,18 @@ async def run_agentic(
             go,
         )
 
+    async def _fallback_hits() -> list[Hit]:
+        """The agent's noted evidence first, then everything it saw, best first."""
+        noted_ids = [sid for sid, _, _, _ in store.evidence(run_id)]
+        missing = [sid for sid in noted_ids if sid not in seen]
+        for h in store.hits(missing):
+            seen[h.section_id] = h
+        noted = [seen[sid] for sid in dict.fromkeys(noted_ids)]
+        rest = [h for sid, h in seen.items() if sid not in set(noted_ids)]
+        if reranker_model and rest:
+            rest = await store.rerank(question, rest, reranker_model=reranker_model)
+        return (noted + rest)[:_FALLBACK_MAX_HITS]
+
     prompt = (
         f"Question: {question}\n\nEvidence from the first retrieval:\n{_passages(top0)}\n\n"
         f"Still missing: {sufficiency.missing or '(not stated)'}"
@@ -462,7 +538,7 @@ async def run_agentic(
         counter.add(loop_usage)
     except UsageLimitExceeded as exc:
         counter.add(loop_usage)
-        fallback_hits = list(seen.values())[:_FALLBACK_MAX_HITS]
+        fallback_hits = await _fallback_hits()
         trace.append(
             {
                 "step": state["step"] + 1,
@@ -471,7 +547,9 @@ async def run_agentic(
                 "error": str(exc),
             }
         )
-        answer, usage = await answer_from_hits(question, fallback_hits, model=model)
+        answer, usage = await answer_from_hits(
+            question, fallback_hits, model=model, store=store
+        )
         counter.add(usage)
 
     trace.append(

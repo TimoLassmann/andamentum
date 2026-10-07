@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from collections.abc import Callable, Sequence
 from typing import Any
 
@@ -145,6 +147,10 @@ class FakeStore:
     def section_path(self, section_id: int) -> str:
         return next(r[1] for r in _SECTIONS if r[0] == section_id)
 
+    def hits(self, section_ids: list[int]) -> list[Hit]:
+        rows = {r[0]: r for r in _SECTIONS}
+        return [_hit(rows[sid], 0.0) for sid in section_ids]
+
 
 async def _embed(texts: list[str]) -> list[list[float]]:
     return [[0.0, 1.0] for _ in texts]
@@ -267,24 +273,38 @@ async def test_loop_search_read_note_answer() -> None:
     ]
 
 
-async def test_answer_trace_flags_citations_that_do_not_resolve() -> None:
-    cites = [
-        {"path": "a.md", "line_from": 1, "line_to": 5},  # real
+async def test_invalid_citations_are_sent_back_and_corrected() -> None:
+    """A citation that names no real path or line range is never passed on:
+    the model is told what is wrong and answers again."""
+    bad = [
         {"path": "a.md", "line_from": 1, "line_to": 99},  # past the last line
         {"path": "nope.md", "line_from": 1, "line_to": 2},  # unknown path
         {"path": "a.md", "line_from": 4, "line_to": 2},  # reversed range
     ]
+    good = [{"path": "a.md", "line_from": 1, "line_to": 5}]
+    returns: list[str] = []
     model = scripted(
         enough=False,
-        steps=[lambda info: _answer(info, text="x", citations=cites)],
+        steps=[
+            lambda info: _answer(info, text="x", citations=bad),
+            lambda info: _answer(info, text="x", citations=good),
+        ],
+        seen_returns=returns,
     )
     result = await _run(model, FakeStore())
-    assert [c["resolves"] for c in result.trace[-1]["citations"]] == [
-        True,
-        False,
-        False,
-        False,
-    ]
+    assert [c["resolves"] for c in result.trace[-1]["citations"]] == [True]
+    assert (
+        result.llm_calls == 1 + 2
+    )  # stop decision + rejected answer + corrected answer
+
+
+async def test_a_model_that_never_fixes_its_citations_fails_loudly() -> None:
+    bad = [{"path": "nope.md", "line_from": 1, "line_to": 2}]
+    model = scripted(
+        enough=False, steps=[lambda info: _answer(info, text="x", citations=bad)]
+    )
+    with pytest.raises(Exception, match="output retries|retries"):
+        await _run(model, FakeStore())
 
 
 async def test_ranked_paths_order_tools_then_round0() -> None:
@@ -313,8 +333,13 @@ async def test_tool_budget_spent_returns_error_to_model() -> None:
         ],
         seen_returns=returns,
     )
-    result = await _run(model, store, budget=AgentBudget(max_tool_calls=1))
-    assert "ERROR: tool budget spent; answer now" in returns
+    result = await _run(
+        model, store, budget=AgentBudget(max_tool_calls=1, max_requests=4)
+    )
+    assert returns[0].endswith(
+        "[no tool calls left: answer now with the evidence you have]"
+    )
+    assert "ERROR: no tool calls left; answer now with the evidence you have" in returns
     errors = [t for t in result.trace if t.get("error")]
     assert len(errors) == 1 and errors[0]["kind"] == "tool:search"
     # the refused call is not logged as a successful decision
@@ -325,14 +350,57 @@ async def test_request_limit_falls_back_to_answer_from_hits() -> None:
     store = FakeStore()
     model = scripted(
         enough=False, steps=[_tool("search", keywords="saltlog")]
-    )  # never answers
-    result = await _run(model, store, budget=AgentBudget(max_requests=3))
+    )  # never answers, keeps calling tools after the budget is spent
+    result = await _run(
+        model, store, budget=AgentBudget(max_tool_calls=1, max_requests=4)
+    )
     assert result.entered_loop
     assert result.answer.text == "synthesised"
     assert result.trace[-2]["kind"] == "request_limit_fallback"
     assert result.trace[-1]["kind"] == "answer"
-    assert result.llm_calls == 1 + 3 + 1  # stop + three loop requests + synthesis
+    assert result.llm_calls == 1 + 4 + 1  # stop + four loop requests + synthesis
     assert "c.md" in result.ranked_paths
+
+
+async def test_fallback_answers_from_noted_evidence_first(monkeypatch) -> None:
+    """The fallback must not drop what the agent itself recorded as evidence."""
+    from andamentum.document_store.v2 import agent as agent_module
+
+    store = FakeStore()
+    model = scripted(
+        enough=False,
+        steps=[
+            _tool("note", path="d.md", line_from=1, line_to=5, claim="Jane wrote it"),
+            _tool("search", keywords="saltlog"),
+        ],
+    )  # notes, searches, then never answers
+    given: list[list[str]] = []
+    real = agent_module.answer_from_hits
+
+    async def spy(question, hits, *, model, store=None):
+        given.append([h.citation for h in hits])
+        return await real(question, hits, model=model, store=store)
+
+    monkeypatch.setattr(agent_module, "answer_from_hits", spy)
+    await _run(model, store, budget=AgentBudget(max_tool_calls=2, max_requests=5))
+    assert given and given[-1][0] == "d.md:1-5"
+
+
+def test_budget_must_let_the_tool_cap_bind_before_the_request_cap() -> None:
+    AgentBudget(max_tool_calls=12, max_requests=15)
+    with pytest.raises(ValueError, match="max_requests"):
+        AgentBudget(max_tool_calls=12, max_requests=10)
+
+
+async def test_every_tool_result_states_the_calls_left() -> None:
+    returns: list[str] = []
+    model = scripted(
+        enough=False,
+        steps=[_tool("search", keywords="apollo"), lambda info: _answer(info)],
+        seen_returns=returns,
+    )
+    await _run(model, FakeStore())
+    assert returns[0].endswith("[tool calls left: 11]")
 
 
 async def test_tool_exception_is_returned_and_traced() -> None:

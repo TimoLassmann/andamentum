@@ -219,7 +219,8 @@ async def test_v2_rag_answers_from_the_top_ten_after_rerank(monkeypatch):
         async def rerank(self, text, hs, *, reranker_model):
             return list(reversed(hs))
 
-    async def answer_from_hits(question, hs, *, model):
+    async def answer_from_hits(question, hs, *, model, store=None):
+        assert store is not None  # the arm passes its store, so citations are checked
         assert len(hs) == 10 and model == "m"
         return SimpleNamespace(text="Jane Doe"), SimpleNamespace(
             requests=1, input_tokens=50, output_tokens=5

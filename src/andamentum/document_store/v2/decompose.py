@@ -82,7 +82,9 @@ async def retrieve_decomposed(
     fused = [by_id[sid] for sid, _ in rrf(rankings, depth=FUSED_TOP)]
     if reranker_model is not None:
         fused = await store.rerank(question, fused, reranker_model=reranker_model)
-    answer, usage_a = await answer_from_hits(question, fused[:k_final], model=model)
+    answer, usage_a = await answer_from_hits(
+        question, fused[:k_final], model=model, store=store
+    )
     d, a = _counts(usage_d), _counts(usage_a)
     counts = (d[0] + a[0], d[1] + a[1], d[2] + a[2])
     return fused, answer, counts, decomposition
