@@ -25,6 +25,7 @@ from pydantic import JsonValue
 
 from andamentum.references import Work
 from andamentum.references.works import (
+    canonical_url,
     normalise_doi,
     normalise_openalex_id,
     normalise_pmcid,
@@ -94,6 +95,12 @@ class OpenAlexSource:
         }
         self._mode = mode
         self._tdm = tdm_allowed_hosts
+        self._warnings: list[str] = []
+
+    def take_warnings(self) -> list[str]:
+        """The records read since the last call that lost a field (and forget them)."""
+        taken, self._warnings = self._warnings, []
+        return taken
 
     # -- search ------------------------------------------------------------
 
@@ -267,7 +274,7 @@ class OpenAlexSource:
     ) -> list[Candidate]:
         found: list[Candidate] = []
         for item in as_list(body.get("results")):
-            work = work_from_item(as_mapping(item))
+            work = work_from_item(as_mapping(item), notes=self._warnings)
             if work is None:
                 continue
             found.append(
@@ -282,8 +289,15 @@ class OpenAlexSource:
         return found
 
 
-def work_from_item(item: dict[str, JsonValue] | object) -> Work | None:
-    """A ``Work`` from one OpenAlex work object; None when it has no title."""
+def work_from_item(
+    item: dict[str, JsonValue] | object, *, notes: list[str]
+) -> Work | None:
+    """A ``Work`` from one OpenAlex work object; None when it has no title.
+
+    A landing page that is not an http(s) URL (OpenAlex holds some, such as a
+    repository handle written after a colon) is left out and one line naming it
+    is added to *notes*; the rest of the record is kept.
+    """
     data = as_mapping(item)
     title = squash(data.get("title"))
     if not title:
@@ -293,12 +307,18 @@ def work_from_item(item: dict[str, JsonValue] | object) -> Work | None:
     source = as_mapping(location.get("source"))
     access = as_mapping(data.get("open_access"))
     abstract = abstract_from_index(data.get("abstract_inverted_index"))
+    landing = _text(location.get("landing_page_url"))
+    if landing and canonical_url(landing) is None:
+        note = f"openalex: {title!r} has a landing page that is not a URL ({landing!r}); left out"
+        if note not in notes:
+            notes.append(note)
+        landing = ""
     return Work(
         openalex_id=normalise_openalex_id(str(data.get("id", ""))),
         doi=normalise_doi(_text(data.get("doi")) or _text(ids.get("doi"))),
         pmid=normalise_pmid(_pmid(ids.get("pmid"))),
         pmcid=normalise_pmcid(_pmcid(ids.get("pmcid"))),
-        url=_text(location.get("landing_page_url")) or None,
+        url=landing or None,
         title=title,
         authors=[
             name

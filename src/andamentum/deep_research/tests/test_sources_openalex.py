@@ -8,7 +8,11 @@ import httpx
 import pytest
 
 from andamentum.core import fetch_gate, url_safety
-from andamentum.deep_research.sources.base import SearchFilters, SourceError
+from andamentum.deep_research.sources.base import (
+    SearchFilters,
+    SourceError,
+    WarningSource,
+)
 from andamentum.deep_research.sources.openalex import (
     OpenAlexSource,
     abstract_from_index,
@@ -270,7 +274,10 @@ def test_an_abstract_is_rebuilt_from_its_inverted_index() -> None:
 
 
 def test_a_record_without_a_title_is_skipped_and_a_retraction_is_kept() -> None:
-    assert work_from_item({"id": "https://openalex.org/W1", "title": None}) is None
+    assert (
+        work_from_item({"id": "https://openalex.org/W1", "title": None}, notes=[])
+        is None
+    )
     work = work_from_item(
         {
             "id": "https://openalex.org/W9",
@@ -282,7 +289,8 @@ def test_a_record_without_a_title_is_skipped_and_a_retraction_is_kept() -> None:
                 "doi": "https://doi.org/10.1000/Invented.9",
             },
             "publication_year": 2020,
-        }
+        },
+        notes=[],
     )
     assert work is not None
     assert (work.pmid, work.pmcid, work.doi) == (
@@ -292,6 +300,28 @@ def test_a_record_without_a_title_is_skipped_and_a_retraction_is_kept() -> None:
     )
     assert work.retracted == "retracted"
     assert work.access == "metadata"
+
+
+def test_a_landing_page_that_is_not_a_url_is_left_out_with_a_note() -> None:
+    notes: list[str] = []
+    work = work_from_item(
+        {
+            "id": "https://openalex.org/W7",
+            "title": "An invented repository deposit",
+            "doi": "https://doi.org/10.1000/invented.7",
+            "primary_location": {
+                "landing_page_url": "https://repository.example.org:hc-1234"
+            },
+        },
+        notes=notes,
+    )
+    assert work is not None
+    assert work.url is None and work.doi == "10.1000/invented.7"
+    assert notes == [
+        "openalex: 'An invented repository deposit' has a landing page that is not "
+        "a URL ('https://repository.example.org:hc-1234'); left out"
+    ]
+    assert isinstance(source(SourceKit(routes)), WarningSource)
 
 
 async def test_a_question_mark_or_star_never_reaches_the_keyword_search() -> None:

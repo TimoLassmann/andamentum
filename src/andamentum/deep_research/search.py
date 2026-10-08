@@ -263,6 +263,8 @@ async def expand(
                     else:
                         outcome.degraded.append(message)
                     continue
+                if isinstance(source, WarningSource):
+                    outcome.notes += source.take_warnings()
                 outcome.candidates += [
                     c.model_copy(
                         update={
