@@ -165,6 +165,8 @@ def test_no_configuration_from_the_environment():
         for name in _ENV_READ.findall(text):
             if name not in ALLOWED_ENV:
                 found.setdefault(name, []).append(str(path.relative_to(ROOT)))
-        for name in re.findall(r"\bANDAMENTUM_[A-Z_]+\b", text):
+        # An ANDAMENTUM_* name in quotes is an environment variable's name
+        # (bare ANDAMENTUM_* identifiers are ordinary constants).
+        for name in re.findall(r"""["'](ANDAMENTUM_[A-Z_]+)["']""", text):
             found.setdefault(name, []).append(str(path.relative_to(ROOT)))
     assert not found, f"configuration read from the environment: {found}"
