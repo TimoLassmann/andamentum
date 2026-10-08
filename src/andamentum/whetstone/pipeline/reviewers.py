@@ -11,17 +11,17 @@ start from ``methods``, change one thing, and see exactly what they changed.
 
 **Where the content lives.** A profile *selects*; it does not carry questions.
 
-  • Criteria — :mod:`andamentum.whetstone.v3.criteria`. Every shipped
+  • Criteria — :mod:`andamentum.whetstone.pipeline.criteria`. Every shipped
     ``Criterion`` is a module-level constant there and the profiles below hold
     references to those constants, so each question has exactly one wording.
     The registry is deliberately larger than the union of the six
     document-type sets: twelve criteria in it exist for these profiles and for
     nothing else.
-  • Probes — :mod:`andamentum.whetstone.v3.checklist.bank`. A profile holds
+  • Probes — :mod:`andamentum.whetstone.pipeline.checklist.bank`. A profile holds
     probe *ids* rather than ``Probe`` objects, because the same id names a
     different probe on different document types; ``bank.probe_for`` resolves
     an id once the type is known.
-  • Editor criteria — :data:`andamentum.whetstone.v3.editor
+  • Editor criteria — :data:`andamentum.whetstone.pipeline.editor
     .DEFAULT_EDITOR_CRITERIA` is the default the profiles fall through to.
     They are free text, not a closed set.
 
@@ -155,7 +155,7 @@ class ReviewerProfile:
     because Word shows it in the margin."""
 
     description: str
-    """One line for ``--list-reviewers``. The user picks from this without
+    """One line for ``andamentum-whetstone reviewers``. The user picks from this without
     reading any code, so it says what the reviewer does and what it costs."""
 
     brief: str
@@ -430,7 +430,7 @@ EDITOR_PROFILE = ReviewerProfile(
 
 PROFILES: Mapping[str, ReviewerProfile] = MappingProxyType(
     {
-        # Display order for --list-reviewers, and the order the recommended
+        # Display order for the `reviewers` listing, and the order the recommended
         # sequence walks: the free one first, then the three that change what
         # goes out, then the reader, then the editor last — prose that will
         # still change is wasted effort to edit.
@@ -457,7 +457,7 @@ def fits(*, profile: ReviewerProfile, document_type: str) -> bool:
     """Does this reviewer make sense on this kind of document?
 
     The one predicate. Everything that needs the answer — the resolver below,
-    the fit marker in ``--list-reviewers``, the warning in the report header —
+    the fit marker in ``andamentum-whetstone reviewers``, the warning in the report header —
     asks here, so the compatibility matrix has exactly one definition.
 
     A miss is not a refusal. Document type is usually classified rather than
@@ -516,7 +516,7 @@ def resolve(
     type's default — and each inline value **replaces** its field entirely
     rather than merging into it. Replacement is what makes the effective
     configuration statable in one line per field, which is what
-    ``--list-reviewers`` and the report header print.
+    ``andamentum-whetstone reviewers`` and the report header print.
 
     ::
 
@@ -621,7 +621,7 @@ def resolve(
     resolved_editor_criteria: list[str]
     if editor_criteria:
         # Falsy rather than ``is not None``: an empty inline list means "not
-        # supplied", which is what ``run_review_v3`` did with it before this
+        # supplied", which is what ``run_review`` did with it before this
         # function existed and what ``ReviewerProfile.__post_init__`` cites
         # when it refuses ``editor_criteria=()``. It is also the only reading
         # the editor can honour — an empty list reaching the prompt is

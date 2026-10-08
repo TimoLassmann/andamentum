@@ -26,18 +26,18 @@ import pytest
 from andamentum.whetstone.renderers import render_html, render_markdown
 from andamentum.whetstone.reviewed_document import ReviewedDocument
 from andamentum.whetstone.schemas import ReviewResult
-from andamentum.whetstone.v3.checklist.graph import run_checklist_v3
-from andamentum.whetstone.v3.checklist.probes import Probe
-from andamentum.whetstone.v3.checklist.run_probes import (
+from andamentum.whetstone.pipeline.checklist.graph import run_checklist
+from andamentum.whetstone.pipeline.checklist.probes import Probe
+from andamentum.whetstone.pipeline.checklist.run_probes import (
     _AbsenceFinding,
     _AbsenceFindings,
     _PresenceFinding,
     _PresenceFindings,
 )
-from andamentum.whetstone.v3.extract import _ClaimSpans, _Requote
-from andamentum.whetstone.v3.sectionize import sectionize
+from andamentum.whetstone.pipeline.extract import _ClaimSpans, _Requote
+from andamentum.whetstone.pipeline.sectionize import sectionize
 
-_AGENT_FACTORY = "andamentum.whetstone.v3.checklist.run_probes._build_agent"
+_AGENT_FACTORY = "andamentum.whetstone.pipeline.checklist.run_probes._build_agent"
 
 SRC = (
     "# Introduction\n\nWe propose a fast method.\n\n"
@@ -79,11 +79,11 @@ def _extract_router(defn: Any, _model: Any) -> Any:
             return fn
 
         async def run(self, _prompt: str, **_kwargs: Any) -> Any:
-            if name == "v3_extract_claims":
+            if name == "extract_claims":
                 out: Any = _ClaimSpans(
                     claims=["We propose a fast method.", _RESULTS_CLAIM]
                 )
-            elif name == "v3_requote":
+            elif name == "requote":
                 out = _Requote(quote="")  # give up → unmatched claims drop
             else:  # pragma: no cover - the checklist graph uses no other agent
                 raise AssertionError(f"unexpected agent in checklist run: {name}")
@@ -122,15 +122,15 @@ async def _run(
     with ExitStack() as stack:
         stack.enter_context(
             patch(
-                "andamentum.whetstone.v3.extract.build_pydantic_ai_agent",
+                "andamentum.whetstone.pipeline.extract.build_pydantic_ai_agent",
                 new=_extract_router,
             )
         )
         stack.enter_context(
-            patch("andamentum.whetstone.v3.extract.resolve_model", new=lambda x: None)
+            patch("andamentum.whetstone.pipeline.extract.resolve_model", new=lambda x: None)
         )
         stack.enter_context(patch(_AGENT_FACTORY, new=_probe_agents(responder)))
-        return await run_checklist_v3(source, model="stub", probes=probes)
+        return await run_checklist(source, model="stub", probes=probes)
 
 
 def _presence(issue: str, quote: str, *, severity: str = "major") -> _PresenceFindings:
@@ -436,9 +436,9 @@ async def test_consolidate_and_gap_loop_are_never_invoked(
             "checklist mode must not call the review pipeline's stochastic stages"
         )
 
-    monkeypatch.setattr("andamentum.whetstone.v3.consolidate.consolidate", _boom)
-    monkeypatch.setattr("andamentum.whetstone.v3.gaps.gap_loop", _boom)
-    monkeypatch.setattr("andamentum.whetstone.v3.gaps.analyze_gaps", _boom)
+    monkeypatch.setattr("andamentum.whetstone.pipeline.consolidate.consolidate", _boom)
+    monkeypatch.setattr("andamentum.whetstone.pipeline.gaps.gap_loop", _boom)
+    monkeypatch.setattr("andamentum.whetstone.pipeline.gaps.analyze_gaps", _boom)
 
     result = await _run([PRESENCE_PROBE, ABSENCE_PROBE], _standard_responder())
 
@@ -449,7 +449,7 @@ async def test_consolidate_and_gap_loop_are_never_invoked(
     # could bite, so also assert no checklist module imports either one.
     import re
 
-    from andamentum.whetstone.v3 import checklist as checklist_pkg
+    from andamentum.whetstone.pipeline import checklist as checklist_pkg
 
     offender = re.compile(r"^\s*(?:from|import)\s+.*\b(consolidate|gaps)\b", re.M)
     package_dir = Path(checklist_pkg.__file__).parent

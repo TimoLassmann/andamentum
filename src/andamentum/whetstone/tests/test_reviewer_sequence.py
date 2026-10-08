@@ -19,13 +19,13 @@ import pytest
 
 from andamentum.whetstone import cli as cli_mod
 from andamentum.whetstone.schemas import Finding, Quote, ReviewerHeader, ReviewResult
-from andamentum.whetstone.v3.reconcile import (
+from andamentum.whetstone.pipeline.reconcile import (
     AgreedPoint,
     Disagreement,
     ReviewerReconciliation,
     combine_reviews,
 )
-from andamentum.whetstone.v3.reviewers import PROFILES
+from andamentum.whetstone.pipeline.reviewers import PROFILES
 
 
 # ── parsing ─────────────────────────────────────────────────────────────────
@@ -51,7 +51,7 @@ def test_an_unknown_name_names_itself_and_the_alternatives(
 ) -> None:
     with pytest.raises(SystemExit) as exc:
         cli_mod._parse_reviewers("claims,statistician")
-    assert exc.value.code == 1
+    assert exc.value.code == 2
     err = capsys.readouterr().err
     assert "statistician" in err
     for name in PROFILES:
@@ -65,7 +65,7 @@ def test_a_repeated_reviewer_is_refused_not_collapsed(
     makes it a typo every time rather than something to silently de-duplicate."""
     with pytest.raises(SystemExit) as exc:
         cli_mod._parse_reviewers("claims,methods,claims")
-    assert exc.value.code == 1
+    assert exc.value.code == 2
     assert "more than once" in capsys.readouterr().err
 
 

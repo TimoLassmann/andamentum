@@ -5,10 +5,10 @@ from __future__ import annotations
 import types
 from unittest.mock import patch
 
-from andamentum.whetstone.v3.gaps import Demand, coverage_summary, gap_loop
-from andamentum.whetstone.v3.model import DocumentModel, Section, Span
-from andamentum.whetstone.v3.review import Finding
-from andamentum.whetstone.v3.gaps import (
+from andamentum.whetstone.pipeline.gaps import Demand, coverage_summary, gap_loop
+from andamentum.whetstone.pipeline.model import DocumentModel, Section, Span
+from andamentum.whetstone.pipeline.review import Finding
+from andamentum.whetstone.pipeline.gaps import (
     _DemandList,
     _Holds,
     _ReexamineFinding,
@@ -37,9 +37,9 @@ def _route(*, demands, reexamine=None, holds=True):
                 return fn
 
             async def run(self, _p):
-                if name == "v3_gap_analysis":
+                if name == "gap_analysis":
                     out = _DemandList(demands=demands)
-                elif name == "v3_reexamine":
+                elif name == "reexamine":
                     out = _ReexamineFindings(findings=reexamine or [])
                 else:  # v3_recheck
                     out = _Holds(holds=holds)
@@ -48,8 +48,8 @@ def _route(*, demands, reexamine=None, holds=True):
         return A()
 
     return (
-        patch("andamentum.whetstone.v3.gaps.build_pydantic_ai_agent", new=factory),
-        patch("andamentum.whetstone.v3.gaps.resolve_model", new=lambda m: None),
+        patch("andamentum.whetstone.pipeline.gaps.build_pydantic_ai_agent", new=factory),
+        patch("andamentum.whetstone.pipeline.gaps.resolve_model", new=lambda m: None),
     )
 
 
@@ -159,7 +159,7 @@ async def test_reexamine_receives_prior_findings_block() -> None:
 
             async def run(self, p):
                 received_prompts.append((name, p))
-                if name == "v3_gap_analysis":
+                if name == "gap_analysis":
                     return types.SimpleNamespace(
                         output=_DemandList(
                             demands=[
@@ -186,13 +186,13 @@ async def test_reexamine_receives_prior_findings_block() -> None:
         )
     ]
     with (
-        patch("andamentum.whetstone.v3.gaps.build_pydantic_ai_agent", new=factory),
-        patch("andamentum.whetstone.v3.gaps.resolve_model", new=lambda m: None),
+        patch("andamentum.whetstone.pipeline.gaps.build_pydantic_ai_agent", new=factory),
+        patch("andamentum.whetstone.pipeline.gaps.resolve_model", new=lambda m: None),
     ):
         await gap_loop(model, prior, agent_model="stub", cap=1)
 
     # The reexamine call should have received a PRIOR FINDINGS block
-    reexamine_prompts = [p for name, p in received_prompts if name == "v3_reexamine"]
+    reexamine_prompts = [p for name, p in received_prompts if name == "reexamine"]
     assert len(reexamine_prompts) == 1
     prompt = reexamine_prompts[0]
     assert "PRIOR FINDINGS" in prompt
@@ -261,7 +261,7 @@ async def test_a_second_demand_in_one_round_sees_the_first_ones_findings() -> No
                 return fn
 
             async def run(self, prompt):
-                if defn.name == "v3_gap_analysis":
+                if defn.name == "gap_analysis":
                     return types.SimpleNamespace(output=_DemandList(demands=demands))
                 prompts.append(prompt)
                 return types.SimpleNamespace(
@@ -271,8 +271,8 @@ async def test_a_second_demand_in_one_round_sees_the_first_ones_findings() -> No
         return A()
 
     with (
-        patch("andamentum.whetstone.v3.gaps.build_pydantic_ai_agent", new=factory),
-        patch("andamentum.whetstone.v3.gaps.resolve_model", new=lambda m: None),
+        patch("andamentum.whetstone.pipeline.gaps.build_pydantic_ai_agent", new=factory),
+        patch("andamentum.whetstone.pipeline.gaps.resolve_model", new=lambda m: None),
     ):
         await gap_loop(model, [], agent_model="stub", cap=1, per_round_demand_cap=2)
 

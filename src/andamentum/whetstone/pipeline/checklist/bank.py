@@ -45,7 +45,7 @@ import logging
 
 from .probes import Probe
 
-logger = logging.getLogger("andamentum.whetstone.v3")
+logger = logging.getLogger("andamentum.whetstone.pipeline")
 
 
 # ── The academic core — eight probes ────────────────────────────────────────
@@ -710,7 +710,7 @@ def probe_bank_for(document_type: str) -> list[Probe]:
     bank = _BANKS.get(document_type)
     if bank is None:
         logger.warning(
-            "[v3.checklist.bank] unknown document type %r — falling back to "
+            "[checklist.bank] unknown document type %r — falling back to "
             "the general bank (%d probes). Known types: %s",
             document_type,
             len(GENERAL_PROBES),

@@ -33,7 +33,7 @@ from collections import Counter
 
 from .probes import Probe, ProbeFinding
 
-logger = logging.getLogger("andamentum.whetstone.v3")
+logger = logging.getLogger("andamentum.whetstone.pipeline")
 
 # Fixed presentation order for the severity breakdown. Sorting by count would
 # make the cell's word order depend on the findings, which is one more thing
@@ -158,7 +158,7 @@ def coverage_table(
     if len(bank_id_set) != len(bank_ids):
         duplicates = sorted({i for i in bank_ids if bank_ids.count(i) > 1})
         logger.warning(
-            "[v3.checklist.summary] bank has duplicate probe ids %s — "
+            "[checklist.summary] bank has duplicate probe ids %s — "
             "each will get its own row and their findings will be counted twice",
             ", ".join(duplicates),
         )
@@ -167,7 +167,7 @@ def coverage_table(
     unknown_failed = sorted(failed - bank_id_set)
     if unknown_failed:
         logger.warning(
-            "[v3.checklist.summary] %d crashed probe id(s) are not in this bank "
+            "[checklist.summary] %d crashed probe id(s) are not in this bank "
             "and get no row: %s",
             len(unknown_failed),
             ", ".join(unknown_failed),
@@ -188,7 +188,7 @@ def coverage_table(
     unplaceable_count = sum(len(by_probe[probe_id]) for probe_id in unplaceable)
     if unplaceable:
         logger.warning(
-            "[v3.checklist.summary] %d finding(s) cannot be placed in the "
+            "[checklist.summary] %d finding(s) cannot be placed in the "
             "coverage table (probe id absent from the bank, or recorded as "
             "crashed): %s",
             unplaceable_count,
@@ -205,7 +205,7 @@ def coverage_table(
     )
     if orphan_drops:
         logger.warning(
-            "[v3.checklist.summary] discarded-finding counts for %d probe(s) "
+            "[checklist.summary] discarded-finding counts for %d probe(s) "
             "have no row to appear in (probe id absent from the bank, or "
             "recorded as crashed): %s",
             len(orphan_drops),
@@ -302,7 +302,7 @@ def coverage_table(
         # instead of emitting a header with nothing under it, which reads as a
         # document that passed every check.
         logger.warning(
-            "[v3.checklist.summary] no probes in the bank — nothing was checked"
+            "[checklist.summary] no probes in the bank — nothing was checked"
         )
         lines.extend(["", "**No checks were configured, so nothing was checked.**"])
 

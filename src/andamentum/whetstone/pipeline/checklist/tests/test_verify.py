@@ -8,9 +8,9 @@ trustworthy rather than a free assertion, so it is asserted explicitly below.
 
 from __future__ import annotations
 
-from andamentum.whetstone.v3.checklist.probes import ProbeFinding
-from andamentum.whetstone.v3.checklist.verify import verify_probe_findings
-from andamentum.whetstone.v3.model import DocumentModel, Section
+from andamentum.whetstone.pipeline.checklist.probes import ProbeFinding
+from andamentum.whetstone.pipeline.checklist.verify import verify_probe_findings
+from andamentum.whetstone.pipeline.model import DocumentModel, Section
 
 _INTRO = "# Intro\n\nWe used a threshold of 0.5 throughout.\n\n"
 _METHODS = "# Methods\n\nThe cohort had 40 participants.\n"

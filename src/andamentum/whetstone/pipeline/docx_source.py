@@ -8,7 +8,7 @@ threshold. (The converted-markdown route lost 15 of 43 rewrites on one real
 manuscript, every one of them reporting a nearest match at 0.97 or better.)
 
 The markdown route is unchanged and still correct for its inputs — see
-:func:`~andamentum.whetstone.v3.sectionize.sectionize`. Both produce the same
+:func:`~andamentum.whetstone.pipeline.sectionize.sectionize`. Both produce the same
 ``Section`` shape, and both leave ``section.text == text[section.start:section.end]``
 true, so a consumer never has to know which one ran.
 

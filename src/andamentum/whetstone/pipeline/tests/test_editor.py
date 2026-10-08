@@ -16,18 +16,18 @@ from unittest.mock import patch
 
 import pytest
 
-from andamentum.whetstone.v3.model import Span
-from andamentum.whetstone.v3.review import Finding, Severity
+from andamentum.whetstone.pipeline.model import Span
+from andamentum.whetstone.pipeline.review import Finding, Severity
 from pydantic_ai import ModelRetry
 
-from andamentum.whetstone.v3.editor import (
+from andamentum.whetstone.pipeline.editor import (
     DEFAULT_EDITOR_CRITERIA,
     EditorOutput,
     EditProposal,
     make_edit_validator,
     run_editor,
 )
-from andamentum.whetstone.v3.model import Section
+from andamentum.whetstone.pipeline.model import Section
 
 
 # ── Fixtures ────────────────────────────────────────────────────────────────
@@ -87,7 +87,7 @@ class _FakeAgent:
 
 def _patch_editor(outputs: list[EditorOutput]) -> _FakeAgent:
     """Helper to construct a fake agent + the patches that route both
-    build_pydantic_ai_agent and resolve_model in v3.editor through it."""
+    build_pydantic_ai_agent and resolve_model in editor through it."""
     fake = _FakeAgent(outputs)
     return fake
 
@@ -100,10 +100,10 @@ async def test_run_editor_empty_sections_returns_empty() -> None:
     fake = _patch_editor([])
     with (
         patch(
-            "andamentum.whetstone.v3.editor.build_pydantic_ai_agent",
+            "andamentum.whetstone.pipeline.editor.build_pydantic_ai_agent",
             return_value=fake,
         ),
-        patch("andamentum.whetstone.v3.editor.resolve_model", return_value="stub"),
+        patch("andamentum.whetstone.pipeline.editor.resolve_model", return_value="stub"),
     ):
         edits, _declined = await run_editor(
             [], criteria=DEFAULT_EDITOR_CRITERIA, agent_model="stub"
@@ -133,10 +133,10 @@ async def test_run_editor_anchors_proposals_to_section_text() -> None:
     )
     with (
         patch(
-            "andamentum.whetstone.v3.editor.build_pydantic_ai_agent",
+            "andamentum.whetstone.pipeline.editor.build_pydantic_ai_agent",
             return_value=fake,
         ),
-        patch("andamentum.whetstone.v3.editor.resolve_model", return_value="stub"),
+        patch("andamentum.whetstone.pipeline.editor.resolve_model", return_value="stub"),
     ):
         edits, _declined = await run_editor(
             SECTIONS, criteria=["grammar"], agent_model="stub"
@@ -172,10 +172,10 @@ async def test_run_editor_drops_unanchored_proposals_silently() -> None:
     )
     with (
         patch(
-            "andamentum.whetstone.v3.editor.build_pydantic_ai_agent",
+            "andamentum.whetstone.pipeline.editor.build_pydantic_ai_agent",
             return_value=fake,
         ),
-        patch("andamentum.whetstone.v3.editor.resolve_model", return_value="stub"),
+        patch("andamentum.whetstone.pipeline.editor.resolve_model", return_value="stub"),
     ):
         edits, _declined = await run_editor(
             SECTIONS, criteria=DEFAULT_EDITOR_CRITERIA, agent_model="stub"
@@ -189,10 +189,10 @@ async def test_editor_criteria_flows_into_prompt() -> None:
     fake = _patch_editor([EditorOutput(edits=[])])
     with (
         patch(
-            "andamentum.whetstone.v3.editor.build_pydantic_ai_agent",
+            "andamentum.whetstone.pipeline.editor.build_pydantic_ai_agent",
             return_value=fake,
         ),
-        patch("andamentum.whetstone.v3.editor.resolve_model", return_value="stub"),
+        patch("andamentum.whetstone.pipeline.editor.resolve_model", return_value="stub"),
     ):
         await run_editor(
             SECTIONS[:1],
@@ -235,10 +235,10 @@ async def test_run_editor_isolates_per_section_failures() -> None:
     fake = _PartiallyFailing()
     with (
         patch(
-            "andamentum.whetstone.v3.editor.build_pydantic_ai_agent",
+            "andamentum.whetstone.pipeline.editor.build_pydantic_ai_agent",
             return_value=fake,
         ),
-        patch("andamentum.whetstone.v3.editor.resolve_model", return_value="stub"),
+        patch("andamentum.whetstone.pipeline.editor.resolve_model", return_value="stub"),
     ):
         edits, _declined = await run_editor(
             SECTIONS, criteria=["concision"], agent_model="stub"
@@ -279,10 +279,10 @@ async def test_run_editor_respects_concurrency_cap() -> None:
     fake = _CountingAgent()
     with (
         patch(
-            "andamentum.whetstone.v3.editor.build_pydantic_ai_agent",
+            "andamentum.whetstone.pipeline.editor.build_pydantic_ai_agent",
             return_value=fake,
         ),
-        patch("andamentum.whetstone.v3.editor.resolve_model", return_value="stub"),
+        patch("andamentum.whetstone.pipeline.editor.resolve_model", return_value="stub"),
     ):
         edits, _declined = await run_editor(
             many_sections, criteria=["grammar"], agent_model="stub"
@@ -294,9 +294,9 @@ async def test_run_editor_respects_concurrency_cap() -> None:
 async def test_editor_disabled_by_default_via_graph(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """End-to-end: run_review_v3 with editor=False (the default) skips
+    """End-to-end: run_review with editor=False (the default) skips
     the EditSections node — no editor LLM call, no Edits on the result."""
-    from andamentum.whetstone.v3 import graph as graph_mod
+    from andamentum.whetstone.pipeline import graph as graph_mod
 
     called = {"editor": False}
 
@@ -309,10 +309,10 @@ async def test_editor_disabled_by_default_via_graph(
 
     # Stub the whole graph: we only want to verify EditSections gating.
     # Easiest: directly construct the node + state + deps and call run().
-    from andamentum.whetstone.v3.graph import EditSections, Finalize, V3Deps, V3State
+    from andamentum.whetstone.pipeline.graph import EditSections, Finalize, ReviewDeps, ReviewState
 
-    state = V3State(source="...")
-    deps = V3Deps(agent_model="stub", editor_enabled=False)
+    state = ReviewState(source="...")
+    deps = ReviewDeps(agent_model="stub", editor_enabled=False)
 
     class _Ctx:
         def __init__(self, state, deps):
@@ -331,7 +331,7 @@ async def test_editor_enabled_via_graph_invokes_run_editor(
 ) -> None:
     """End-to-end: editor=True fires the editor pass and populates
     state.edits before flowing to Finalize."""
-    from andamentum.whetstone.v3 import graph as graph_mod
+    from andamentum.whetstone.pipeline import graph as graph_mod
     from andamentum.whetstone.schemas import Edit
 
     sentinel = Edit(
@@ -349,10 +349,10 @@ async def test_editor_enabled_via_graph_invokes_run_editor(
 
     monkeypatch.setattr(graph_mod, "run_editor", _stub_run_editor)
 
-    from andamentum.whetstone.v3.graph import EditSections, Finalize, V3Deps, V3State
+    from andamentum.whetstone.pipeline.graph import EditSections, Finalize, ReviewDeps, ReviewState
 
-    state = V3State(source="...")
-    deps = V3Deps(agent_model="stub", editor_enabled=True)
+    state = ReviewState(source="...")
+    deps = ReviewDeps(agent_model="stub", editor_enabled=True)
 
     class _Ctx:
         def __init__(self, state, deps):
@@ -391,10 +391,10 @@ async def _run(outputs, findings, sections=None):
     fake = _patch_editor(outputs)
     with (
         patch(
-            "andamentum.whetstone.v3.editor.build_pydantic_ai_agent",
+            "andamentum.whetstone.pipeline.editor.build_pydantic_ai_agent",
             return_value=fake,
         ),
-        patch("andamentum.whetstone.v3.editor.resolve_model", return_value="stub"),
+        patch("andamentum.whetstone.pipeline.editor.resolve_model", return_value="stub"),
     ):
         edits, declined = await run_editor(
             sections if sections is not None else SECTIONS,

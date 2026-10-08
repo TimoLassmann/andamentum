@@ -1,6 +1,6 @@
 """The reviewer block, in the two shapes the three renderers need.
 
-``andamentum.whetstone.v3.reviewers.resolve`` builds one
+``andamentum.whetstone.pipeline.reviewers.resolve`` builds one
 :class:`~andamentum.whetstone.schemas.ReviewerHeader` per run; this module
 turns it into text. Markdown and Word share the markdown form (the Word
 renderer prepends markdown to the review report it already builds), and HTML

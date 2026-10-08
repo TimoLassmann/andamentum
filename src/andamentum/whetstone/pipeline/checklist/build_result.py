@@ -33,10 +33,10 @@ from ..model import DocumentModel
 from .probes import Probe, ProbeFinding
 from .summary import coverage_table
 
-logger = logging.getLogger("andamentum.whetstone.v3")
+logger = logging.getLogger("andamentum.whetstone.pipeline")
 
 # Aggregate-failure gate, matching the pipeline default the review and panel
-# graphs already use (``V3Deps.soft_failure_threshold`` in ``v3/graph.py`` and
+# graphs already use (``ReviewDeps.soft_failure_threshold`` in ``pipeline/graph.py`` and
 # ``PanelDeps.soft_failure_threshold``). Held as a constant rather than a
 # parameter because the deliverable of this mode is the coverage table, which
 # reports every individual crash by name in the row that would otherwise have
@@ -129,7 +129,7 @@ def _to_public_finding(
             # without an anchor is survivable; doing it silently is not,
             # because the reader gets an unquoted presence claim.
             logger.warning(
-                "[v3.checklist.build_result] presence finding from probe %r has "
+                "[checklist.build_result] presence finding from probe %r has "
                 "no located span — rendering it without a quote anchor: %r",
                 finding.probe_id,
                 finding.quote[:60],
@@ -210,7 +210,7 @@ def build_checklist_result(
     unknown_ids = sorted({f.probe_id for f in findings} - set(title_by_id))
     if unknown_ids:
         logger.warning(
-            "[v3.checklist.build_result] %d finding(s) reference probe id(s) "
+            "[checklist.build_result] %d finding(s) reference probe id(s) "
             "absent from the bank; their raw id is used as the finding title: %s",
             sum(1 for f in findings if f.probe_id in set(unknown_ids)),
             ", ".join(unknown_ids),
@@ -227,14 +227,14 @@ def build_checklist_result(
         degraded_reason = (
             "the checklist ran with an empty probe bank — nothing was checked"
         )
-        logger.warning("[v3.checklist.build_result] degraded — %s", degraded_reason)
+        logger.warning("[checklist.build_result] degraded — %s", degraded_reason)
     elif len(failed) / total >= _SOFT_FAILURE_THRESHOLD:
         failed_labels = ", ".join(title_by_id.get(i, i) for i in failed)
         degraded_reason = (
             f"{len(failed)}/{total} checklist probes crashed and checked "
             f"nothing: {failed_labels}"
         )
-        logger.warning("[v3.checklist.build_result] degraded — %s", degraded_reason)
+        logger.warning("[checklist.build_result] degraded — %s", degraded_reason)
 
     gist_by_section = {g.section_id: g.gist for g in model.gists}
     summary = coverage_table(

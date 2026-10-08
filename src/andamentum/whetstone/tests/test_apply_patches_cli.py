@@ -1,4 +1,4 @@
-"""Tests for ``andamentum-whetstone --apply-patches``.
+"""Tests for ``andamentum-whetstone apply-patches``.
 
 The patch-only CLI path is the analogue of the standalone
 ``apply-patches.py`` from the manuscript-tools plugin: take a .docx, take
@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 from docx import Document
 
-from andamentum.whetstone.cli import _build_parser, _validate_args, main
+from andamentum.whetstone.cli import _validate_args, build_parser, main
 
 
 NS = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
@@ -72,11 +72,12 @@ def test_apply_patches_requires_docx_input(tmp_path: Path) -> None:
     patches = tmp_path / "patches.json"
     patches.write_text("[]")
 
-    parser = _build_parser()
+    parser = build_parser()
     args = parser.parse_args(
         [
+            "apply-patches",
             str(md),
-            "--apply-patches",
+            "--patches",
             str(patches),
             "--out",
             str(tmp_path / "out.docx"),
@@ -93,11 +94,12 @@ def test_apply_patches_requires_docx_out(tmp_path: Path) -> None:
     patches = tmp_path / "patches.json"
     patches.write_text("[]")
 
-    parser = _build_parser()
+    parser = build_parser()
     args = parser.parse_args(
         [
+            "apply-patches",
             str(src),
-            "--apply-patches",
+            "--patches",
             str(patches),
             "--out",
             str(tmp_path / "out.md"),
@@ -112,11 +114,12 @@ def test_apply_patches_rejects_missing_patches_file(tmp_path: Path) -> None:
     src = tmp_path / "draft.docx"
     _make_docx(src, ["hello"])
 
-    parser = _build_parser()
+    parser = build_parser()
     args = parser.parse_args(
         [
+            "apply-patches",
             str(src),
-            "--apply-patches",
+            "--patches",
             str(tmp_path / "missing.json"),
             "--out",
             str(tmp_path / "out.docx"),
@@ -133,11 +136,12 @@ def test_apply_patches_skips_model_requirement(tmp_path: Path) -> None:
     patches = tmp_path / "patches.json"
     patches.write_text("[]")
 
-    parser = _build_parser()
+    parser = build_parser()
     args = parser.parse_args(
         [
+            "apply-patches",
             str(src),
-            "--apply-patches",
+            "--patches",
             str(patches),
             "--out",
             str(tmp_path / "out.docx"),
@@ -146,20 +150,23 @@ def test_apply_patches_skips_model_requirement(tmp_path: Path) -> None:
     _validate_args(args)  # must not raise
 
 
-def test_patch_report_without_apply_patches_rejected(tmp_path: Path) -> None:
-    """--patch-report only makes sense in patch-only mode."""
-    parser = _build_parser()
-    args = parser.parse_args(
-        [
-            "paper.md",
-            "--out",
-            str(tmp_path / "out.md"),
-            "--patch-report",
-            str(tmp_path / "report.md"),
-        ]
-    )
-    with pytest.raises(SystemExit):
-        _validate_args(args)
+def test_patch_report_belongs_to_apply_patches_only(tmp_path: Path) -> None:
+    """--patch-report is a flag of apply-patches; the review command refuses it."""
+    parser = build_parser()
+    with pytest.raises(SystemExit) as excinfo:
+        parser.parse_args(
+            [
+                "review",
+                "paper.md",
+                "--out",
+                str(tmp_path / "out.md"),
+                "--model",
+                "stub",
+                "--patch-report",
+                str(tmp_path / "report.md"),
+            ]
+        )
+    assert excinfo.value.code == 2
 
 
 def test_patch_author_on_the_review_path_still_needs_the_override(
@@ -171,9 +178,10 @@ def test_patch_author_on_the_review_path_still_needs_the_override(
     a second name. The misconduct rail is unchanged by that: the flag on its
     own is still refused, on this path exactly as on the patch-only one.
     """
-    parser = _build_parser()
+    parser = build_parser()
     args = parser.parse_args(
         [
+            "review",
             "paper.md",
             "--out",
             str(tmp_path / "out.md"),
@@ -191,9 +199,10 @@ def test_patch_author_with_override_is_accepted_on_the_review_path(
     tmp_path: Path,
 ) -> None:
     """The pair together is how round two gets its own name in Word."""
-    parser = _build_parser()
+    parser = build_parser()
     args = parser.parse_args(
         [
+            "review",
             "paper.md",
             "--out",
             str(tmp_path / "out.docx"),
@@ -209,9 +218,10 @@ def test_patch_author_with_override_is_accepted_on_the_review_path(
 
 def test_naming_an_author_with_no_docx_output_is_refused(tmp_path: Path) -> None:
     """Only a .docx carries tracked changes, so only a .docx has an author."""
-    parser = _build_parser()
+    parser = build_parser()
     args = parser.parse_args(
         [
+            "review",
             "paper.md",
             "--out",
             str(tmp_path / "review.md"),
@@ -255,8 +265,9 @@ def test_apply_patches_text_edit_end_to_end(tmp_path: Path) -> None:
     out = tmp_path / "out.docx"
     main(
         [
+            "apply-patches",
             str(src),
-            "--apply-patches",
+            "--patches",
             str(patches_path),
             "--out",
             str(out),
@@ -287,8 +298,9 @@ def test_apply_patches_with_report_prepends_section(tmp_path: Path) -> None:
     out = tmp_path / "out.docx"
     main(
         [
+            "apply-patches",
             str(src),
-            "--apply-patches",
+            "--patches",
             str(patches_path),
             "--out",
             str(out),
@@ -309,21 +321,21 @@ def test_apply_patches_invalid_json_array(tmp_path: Path) -> None:
     patches_path = tmp_path / "patches.json"
     patches_path.write_text(json.dumps({"patches": []}))  # object, not array
 
-    with pytest.raises(SystemExit) as excinfo:
-        main(
-            [
-                str(src),
-                "--apply-patches",
-                str(patches_path),
-                "--out",
-                str(tmp_path / "out.docx"),
-            ]
-        )
-    assert excinfo.value.code == 1
+    code = main(
+        [
+            "apply-patches",
+            str(src),
+            "--patches",
+            str(patches_path),
+            "--out",
+            str(tmp_path / "out.docx"),
+        ]
+    )
+    assert code == 3
 
 
 def test_apply_patches_invalid_patch_object(tmp_path: Path) -> None:
-    """A malformed patch entry yields a config-error exit (1)."""
+    """A malformed patch entry yields an unreadable-input exit (3)."""
     src = tmp_path / "draft.docx"
     _make_docx(src, ["hello"])
     patches_path = tmp_path / "patches.json"
@@ -332,17 +344,17 @@ def test_apply_patches_invalid_patch_object(tmp_path: Path) -> None:
         json.dumps([{"patch_type": "text_edit", "text_pattern": "hello"}])
     )
 
-    with pytest.raises(SystemExit) as excinfo:
-        main(
-            [
-                str(src),
-                "--apply-patches",
-                str(patches_path),
-                "--out",
-                str(tmp_path / "out.docx"),
-            ]
-        )
-    assert excinfo.value.code == 1
+    code = main(
+        [
+            "apply-patches",
+            str(src),
+            "--patches",
+            str(patches_path),
+            "--out",
+            str(tmp_path / "out.docx"),
+        ]
+    )
+    assert code == 3
 
 
 # ── AI-author attribution gate ─────────────────────────────────────────
@@ -367,7 +379,7 @@ def test_default_author_is_ai_attributed(tmp_path: Path) -> None:
         )
     )
     out = tmp_path / "out.docx"
-    main([str(src), "--apply-patches", str(patches_path), "--out", str(out)])
+    main(["apply-patches", str(src), "--patches", str(patches_path), "-o", str(out)])
 
     # The tracked-insert author attribute should contain the AI default.
     doc = Document(str(out))
@@ -385,11 +397,12 @@ def test_patch_author_override_requires_explicit_flag(tmp_path: Path) -> None:
     patches_path = tmp_path / "patches.json"
     patches_path.write_text("[]")
 
-    parser = _build_parser()
+    parser = build_parser()
     args = parser.parse_args(
         [
+            "apply-patches",
             str(src),
-            "--apply-patches",
+            "--patches",
             str(patches_path),
             "--out",
             str(tmp_path / "out.docx"),
@@ -399,7 +412,7 @@ def test_patch_author_override_requires_explicit_flag(tmp_path: Path) -> None:
     )
     with pytest.raises(SystemExit) as excinfo:
         _validate_args(args)
-    assert excinfo.value.code == 1
+    assert excinfo.value.code == 2
 
 
 def test_allow_author_override_without_patch_author_rejected(
@@ -411,11 +424,12 @@ def test_allow_author_override_without_patch_author_rejected(
     patches_path = tmp_path / "patches.json"
     patches_path.write_text("[]")
 
-    parser = _build_parser()
+    parser = build_parser()
     args = parser.parse_args(
         [
+            "apply-patches",
             str(src),
-            "--apply-patches",
+            "--patches",
             str(patches_path),
             "--out",
             str(tmp_path / "out.docx"),
@@ -449,8 +463,9 @@ def test_explicit_author_override_works_with_warning(
     out = tmp_path / "out.docx"
     main(
         [
+            "apply-patches",
             str(src),
-            "--apply-patches",
+            "--patches",
             str(patches_path),
             "--out",
             str(out),

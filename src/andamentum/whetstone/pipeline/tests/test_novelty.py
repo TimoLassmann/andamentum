@@ -19,14 +19,14 @@ from dataclasses import dataclass
 from unittest.mock import AsyncMock, patch
 
 
-from andamentum.whetstone.v3.graph import (
+from andamentum.whetstone.pipeline.graph import (
     FlagNoveltyTargets,
     JudgeNovelty,
     RunNoveltySearches,
-    V3Deps,
-    V3State,
+    ReviewDeps,
+    ReviewState,
 )
-from andamentum.whetstone.v3.novelty import (
+from andamentum.whetstone.pipeline.novelty import (
     NoveltyEvidence,
     NoveltyTarget,
     SimilarWorkRef,
@@ -49,8 +49,8 @@ _TARGET = NoveltyTarget(
 
 @dataclass
 class _Ctx:
-    state: V3State
-    deps: V3Deps
+    state: ReviewState
+    deps: ReviewDeps
 
 
 # ── Pure-function tests ────────────────────────────────────────────────────
@@ -149,10 +149,10 @@ async def test_the_claims_are_found_even_when_nothing_will_verify_them() -> None
     So the list is always produced and never checked unless asked, and the
     report says which of the two it is holding.
     """
-    state = V3State(source="some markdown")
-    deps = V3Deps(agent_model="stub", check_novelty=False)
+    state = ReviewState(source="some markdown")
+    deps = ReviewDeps(agent_model="stub", check_novelty=False)
     with patch(
-        "andamentum.whetstone.v3.graph.flag_novelty_targets",
+        "andamentum.whetstone.pipeline.graph.flag_novelty_targets",
         new=AsyncMock(return_value=[_TARGET]),
     ) as mock_extract:
         result = await FlagNoveltyTargets().run(_Ctx(state, deps))
@@ -169,10 +169,10 @@ async def test_a_later_round_of_a_reviewer_list_does_not_flag_again() -> None:
     old behaviour spent one full-draft model call per extra round to produce
     a list that was discarded.
     """
-    state = V3State(source="some markdown")
-    deps = V3Deps(agent_model="stub", flag_novelty=False)
+    state = ReviewState(source="some markdown")
+    deps = ReviewDeps(agent_model="stub", flag_novelty=False)
     with patch(
-        "andamentum.whetstone.v3.graph.flag_novelty_targets",
+        "andamentum.whetstone.pipeline.graph.flag_novelty_targets",
         new=AsyncMock(side_effect=AssertionError("no call may be spent")),
     ) as mock_extract:
         result = await FlagNoveltyTargets().run(_Ctx(state, deps))
@@ -184,10 +184,10 @@ async def test_a_later_round_of_a_reviewer_list_does_not_flag_again() -> None:
 async def test_nothing_is_searched_unless_asked() -> None:
     """The guard moved to the node that talks to the outside world, and it is
     the only thing standing between an unpublished draft and a search engine."""
-    state = V3State(source="x", novelty_targets=[_TARGET])
-    deps = V3Deps(agent_model="stub", check_novelty=False)
+    state = ReviewState(source="x", novelty_targets=[_TARGET])
+    deps = ReviewDeps(agent_model="stub", check_novelty=False)
     with patch(
-        "andamentum.whetstone.v3.graph.run_novelty_searches",
+        "andamentum.whetstone.pipeline.graph.run_novelty_searches",
         new=AsyncMock(side_effect=AssertionError("nothing may leave the machine")),
     ) as mock_search:
         await RunNoveltySearches().run(_Ctx(state, deps))
@@ -198,11 +198,11 @@ async def test_nothing_is_searched_unless_asked() -> None:
 async def test_check_novelty_true_invokes_extractor_with_cap() -> None:
     """check_novelty=True calls flag_novelty_targets with the configured
     cap, and stores the result in state.novelty_targets."""
-    state = V3State(source="some markdown")
-    deps = V3Deps(agent_model="stub", check_novelty=True, novelty_target_cap=4)
+    state = ReviewState(source="some markdown")
+    deps = ReviewDeps(agent_model="stub", check_novelty=True, novelty_target_cap=4)
     targets = [_TARGET]
     with patch(
-        "andamentum.whetstone.v3.graph.flag_novelty_targets",
+        "andamentum.whetstone.pipeline.graph.flag_novelty_targets",
         new=AsyncMock(return_value=targets),
     ) as mock_extract:
         await FlagNoveltyTargets().run(_Ctx(state, deps))
@@ -215,11 +215,11 @@ async def test_check_novelty_true_invokes_extractor_with_cap() -> None:
 
 async def test_run_novelty_searches_node_invokes_helper() -> None:
     """RunNoveltySearches forwards targets + search_depth to the helper."""
-    state = V3State(source="...", novelty_targets=[_TARGET])
-    deps = V3Deps(agent_model="stub", check_novelty=True, novelty_search_depth=3)
+    state = ReviewState(source="...", novelty_targets=[_TARGET])
+    deps = ReviewDeps(agent_model="stub", check_novelty=True, novelty_search_depth=3)
     evidence = [NoveltyEvidence(target=_TARGET, is_novel=False, confidence=0.8)]
     with patch(
-        "andamentum.whetstone.v3.graph.run_novelty_searches",
+        "andamentum.whetstone.pipeline.graph.run_novelty_searches",
         new=AsyncMock(return_value=evidence),
     ) as mock_search:
         result = await RunNoveltySearches().run(_Ctx(state, deps))
@@ -232,10 +232,10 @@ async def test_run_novelty_searches_node_invokes_helper() -> None:
 async def test_run_novelty_searches_skips_when_no_targets() -> None:
     """When the extractor returned [] (no novelty claims to verify),
     RunNoveltySearches does not call deep_research."""
-    state = V3State(source="...", novelty_targets=[])
-    deps = V3Deps(agent_model="stub", check_novelty=True)
+    state = ReviewState(source="...", novelty_targets=[])
+    deps = ReviewDeps(agent_model="stub", check_novelty=True)
     with patch(
-        "andamentum.whetstone.v3.graph.run_novelty_searches",
+        "andamentum.whetstone.pipeline.graph.run_novelty_searches",
         new=AsyncMock(side_effect=AssertionError("should not be called")),
     ) as mock_search:
         result = await RunNoveltySearches().run(_Ctx(state, deps))
@@ -247,11 +247,11 @@ async def test_judge_novelty_node_extends_findings_list() -> None:
     """JudgeNovelty appends novelty findings (Finding objects with
     criterion='Novelty') to state.findings — no displacement of
     existing criterion findings."""
-    state = V3State(source="...")
+    state = ReviewState(source="...")
     state.novelty_evidence = [
         NoveltyEvidence(target=_TARGET, is_novel=False, confidence=0.85)
     ]
-    deps = V3Deps(agent_model="stub", check_novelty=True)
+    deps = ReviewDeps(agent_model="stub", check_novelty=True)
     await JudgeNovelty().run(_Ctx(state, deps))
     assert len(state.findings) == 1
     assert state.findings[0].criterion == "Novelty"

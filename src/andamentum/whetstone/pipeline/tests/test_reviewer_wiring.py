@@ -25,20 +25,20 @@ from contextlib import ExitStack
 from typing import Any
 from unittest.mock import patch
 
-from andamentum.whetstone.v3.checklist.bank import probe_for
-from andamentum.whetstone.v3.checklist.graph import run_checklist_v3
-from andamentum.whetstone.v3.checklist.run_probes import _PresenceFindings
-from andamentum.whetstone.v3.consolidate import _Consolidation
-from andamentum.whetstone.v3.extract import _ClaimSpans, _Requote
-from andamentum.whetstone.v3.extract_criteria import (
+from andamentum.whetstone.pipeline.checklist.bank import probe_for
+from andamentum.whetstone.pipeline.checklist.graph import run_checklist
+from andamentum.whetstone.pipeline.checklist.run_probes import _PresenceFindings
+from andamentum.whetstone.pipeline.consolidate import _Consolidation
+from andamentum.whetstone.pipeline.extract import _ClaimSpans, _Requote
+from andamentum.whetstone.pipeline.extract_criteria import (
     _ExtractedCriterion,
     _ExtractionResult,
 )
-from andamentum.whetstone.v3.gaps import _DemandList
-from andamentum.whetstone.v3.graph import run_review_v3
-from andamentum.whetstone.v3.review import _CriterionFindings
-from andamentum.whetstone.v3.reviewers import PROFILES
-from andamentum.whetstone.v3.synth import StructuredReview
+from andamentum.whetstone.pipeline.gaps import _DemandList
+from andamentum.whetstone.pipeline.graph import run_review
+from andamentum.whetstone.pipeline.review import _CriterionFindings
+from andamentum.whetstone.pipeline.reviewers import PROFILES
+from andamentum.whetstone.pipeline.synth import StructuredReview
 
 SRC = (
     "# Introduction\n\nWe propose a fast method.\n\n"
@@ -58,11 +58,11 @@ def _router(defn: Any, _model: Any) -> Any:
             return fn
 
         async def run(self, _prompt: str, **_kwargs: Any) -> Any:
-            if name == "v3_extract_claims":
+            if name == "extract_claims":
                 out: Any = _ClaimSpans(claims=["We propose a fast method."])
-            elif name == "v3_requote":
+            elif name == "requote":
                 out = _Requote(quote="")
-            elif name == "v3_extract_criteria":
+            elif name == "extract_criteria":
                 out = _ExtractionResult(
                     criteria=[
                         _ExtractedCriterion(
@@ -70,11 +70,11 @@ def _router(defn: Any, _model: Any) -> Any:
                         )
                     ]
                 )
-            elif name == "v3_gap_analysis":
+            elif name == "gap_analysis":
                 out = _DemandList(demands=[])
-            elif name == "v3_consolidate":
+            elif name == "consolidate":
                 out = _Consolidation(groups=[])
-            elif name in ("v3_synthesise", "v3_critique_revise"):
+            elif name in ("synthesise", "critique_revise"):
                 out = StructuredReview(
                     synopsis="A short methods paper.",
                     strengths=["clear contribution"],
@@ -119,43 +119,43 @@ async def _review(*, prompts: list[str], **kwargs: Any) -> Any:
         for module in ("extract", "extract_criteria", "gaps", "consolidate", "synth"):
             stack.enter_context(
                 patch(
-                    f"andamentum.whetstone.v3.{module}.build_pydantic_ai_agent",
+                    f"andamentum.whetstone.pipeline.{module}.build_pydantic_ai_agent",
                     new=_router,
                 )
             )
             stack.enter_context(
                 patch(
-                    f"andamentum.whetstone.v3.{module}.resolve_model",
+                    f"andamentum.whetstone.pipeline.{module}.resolve_model",
                     new=lambda _x: None,
                 )
             )
         stack.enter_context(
             patch(
-                "andamentum.whetstone.v3.review._build_agent",
+                "andamentum.whetstone.pipeline.review._build_agent",
                 new=_criterion_recorder(prompts),
             )
         )
-        return await run_review_v3(SRC, model="stub", cap=1, **kwargs)
+        return await run_review(SRC, model="stub", cap=1, **kwargs)
 
 
 async def _checklist(*, prompts: list[str], **kwargs: Any) -> Any:
     with ExitStack() as stack:
         stack.enter_context(
             patch(
-                "andamentum.whetstone.v3.extract.build_pydantic_ai_agent",
+                "andamentum.whetstone.pipeline.extract.build_pydantic_ai_agent",
                 new=_router,
             )
         )
         stack.enter_context(
-            patch("andamentum.whetstone.v3.extract.resolve_model", new=lambda _x: None)
+            patch("andamentum.whetstone.pipeline.extract.resolve_model", new=lambda _x: None)
         )
         stack.enter_context(
             patch(
-                "andamentum.whetstone.v3.checklist.run_probes._build_agent",
+                "andamentum.whetstone.pipeline.checklist.run_probes._build_agent",
                 new=_probe_recorder(prompts),
             )
         )
-        return await run_checklist_v3(SRC, model="stub", **kwargs)
+        return await run_checklist(SRC, model="stub", **kwargs)
 
 
 # ── 1. no reviewer means no change ──────────────────────────────────────────
@@ -347,7 +347,7 @@ async def test_the_line_editor_makes_no_criterion_call_and_no_gap_round() -> Non
         calls.append(kwargs)
         return list(args[1])
 
-    with patch("andamentum.whetstone.v3.graph.gap_loop", new=_gap_loop):
+    with patch("andamentum.whetstone.pipeline.graph.gap_loop", new=_gap_loop):
         result = await _review(
             prompts=prompts, document_type="academic", reviewer=PROFILES["editor"]
         )

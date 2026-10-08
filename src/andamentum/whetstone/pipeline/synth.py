@@ -30,7 +30,7 @@ from ..schemas import (
 from .model import DocumentModel
 from .review import Finding
 
-logger = logging.getLogger("andamentum.whetstone.v3")
+logger = logging.getLogger("andamentum.whetstone.pipeline")
 
 
 class StructuredReview(BaseModel):
@@ -77,7 +77,7 @@ async def synthesise(
 ) -> StructuredReview:
     synopsis_length = _synopsis_length_band(model.source)
     defn = AgentDefinition(
-        name="v3_synthesise",
+        name="synthesise",
         prompt=(
             f"Write one concise structured review of a document from the findings "
             f"and section gists. synopsis: {synopsis_length} on what the document "
@@ -135,7 +135,7 @@ async def critique_and_revise(
     old critique step.
     """
     defn = AgentDefinition(
-        name="v3_critique_revise",
+        name="critique_revise",
         prompt=(
             "You are reviewing a draft review for faithfulness to the document.\n\n"
             "Use THREE ground-truth blocks:\n"

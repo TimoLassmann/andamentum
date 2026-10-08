@@ -1,34 +1,43 @@
 """CLI for whetstone — ``andamentum-whetstone``.
 
-Six subcommands:
+Review your own draft and write the review as markdown, HTML or tracked
+changes in Word. Subcommands:
 
-    andamentum-whetstone [review] INPUT --model M --out OUT [...]
-        Criterion-cascade review (the default; verb is optional).
+    andamentum-whetstone [review] INPUT --model M -o OUT [...]
+        Criterion-cascade review (the default; the word ``review`` is optional
+        when the first argument is a file).
 
-    andamentum-whetstone panel INPUT --model M --out OUT [...]
+    andamentum-whetstone panel INPUT --model M -o OUT --i-am-the-author [...]
         Multi-expert simulated peer review.
 
-    andamentum-whetstone checklist INPUT --model M --out OUT [...]
+    andamentum-whetstone checklist INPUT --model M -o OUT [...]
         Quota-driven defect extraction against a probe bank, summarised
         by a deterministic coverage table. Same outputs as review.
 
-    andamentum-whetstone proofread INPUT [...]
-        Deterministic style + readability check (no LLM).
+    andamentum-whetstone reviewers [--document-type TYPE]
+        List the named reviewers. No model, no input.
 
-    andamentum-whetstone apply-patches INPUT --patches P.json --out O.docx
-        Apply a pre-built JSON patch list to a .docx (no LLM).
+    andamentum-whetstone apply-patches INPUT.docx --patches P.json -o OUT.docx
+        Apply a pre-built JSON patch list to a .docx (no model).
 
-    andamentum-whetstone verify-provenance INPUT.docx [--format human|json]
+    andamentum-whetstone verify-provenance INPUT.docx [--json]
         Read-only: report which whetstone AI-provenance markers a .docx
-        contains. Exit 0 if any marker present, 2 if none, 1 on read
-        error.
+        contains.
+
+The reference check is the separate command ``andamentum-references``; the
+readability and style check is ``andamentum-proofread``. ``review`` runs the
+reference check as one of its default steps (``--no-references`` skips it).
 
 Exit codes:
-    0 — success (or, for verify-provenance, "markers found")
-    1 — configuration / argument error
-    2 — input could not be loaded (harvest failure, file not found, or
-        — for verify-provenance — readable but no markers present)
-    3 — review pipeline failed
+    0 — success
+    1 — ran, negative result: a ``--goal`` run that did not reach its goal
+        (its output is still written); ``verify-provenance`` found no
+        marker; ``apply-patches`` could not apply some patches
+    2 — usage error: a wrong or missing argument, or a refusal (for example
+        the confidentiality check)
+    3 — the input could not be read (missing file, unreachable URL,
+        unsupported format)
+    4 — the run failed (model or network error, crash)
 """
 
 from __future__ import annotations
@@ -56,6 +65,12 @@ if TYPE_CHECKING:
 
 _LOGGER_NAME = "andamentum.whetstone"
 
+# Exit codes (docs/interface.md).
+_EXIT_NEGATIVE = 1
+_EXIT_USAGE = 2
+_EXIT_INPUT = 3
+_EXIT_FAILED = 4
+
 
 _HELP_DESCRIPTION = """\
 Sharpen YOUR OWN DRAFT with structured review.
@@ -66,36 +81,39 @@ journal reviewer, grant panel member, examiner, or editor). Most
 publishers and funders currently prohibit sharing such documents
 with AI tools, including cloud LLMs. See RESPONSIBLE_USE.md.
 
-Which one do I want? (first positional, optional — defaults to
-`review`):
+Which one do I want? (the first word; `review` is the default when the
+first argument is a file):
 
-  review     "help me improve this draft" — the default, and most of
-             what you need in one run: findings as comments, rewrites
-             as tracked changes, the reference check, and a list of
-             what the draft claims as new. --no-editor, --no-references
-             and --no-lookup turn parts off. --goal loops until a
-             condition you state holds.
-  checklist  "run the standard check" — fixed probe bank, same shape
-             every run, deterministic coverage table. Pre-submission,
-             draft-vs-draft, CI. The output centres on that table;
-             findings hang off it rather than off synthesised prose.
-  panel      simulated multi-expert peer review of your own draft
-  proofread  readability + style only, no LLM
+  review      "help me improve this draft" — the default, and most of
+              what you need in one run: findings as comments, rewrites
+              as tracked changes, the reference check, and a list of
+              what the draft claims as new. --no-editor, --no-references
+              and --no-lookup turn parts off. --goal loops until a
+              condition you state holds.
+  checklist   "run the standard check" — fixed probe bank, same shape
+              every run, deterministic coverage table. Pre-submission,
+              draft-vs-draft, CI. The output centres on that table;
+              findings hang off it rather than off synthesised prose.
+  panel       simulated multi-expert peer review of your own draft
+  reviewers   list the named reviewers you can pass to --reviewer
 
-Two further verbs, neither of them a review:
+Two further commands, neither of them a review:
 
-  apply-patches     apply a pre-built JSON patch list to a .docx (no LLM)
-  verify-provenance read-only: report AI-provenance markers in a .docx
+  apply-patches      apply a pre-built JSON patch list to a .docx (no model)
+  verify-provenance  read-only: report AI-provenance markers in a .docx
 
 INPUT is a path or URL to a document. Supported: .pdf, .docx, .html,
-.md, .txt; URLs auto-detect article vs index page. OUTPUTS: pass
---out FILE one or more times; format is inferred from the extension
-(.md / .html / .docx).
+.md, .txt; URLs auto-detect article vs index page. OUTPUT: pass
+-o/--out FILE one or more times; the format is taken from the extension
+(.md / .html / .docx). Nothing is written anywhere else.
 
 Whetstone reviews the text of the document it annotates. A .docx INPUT
 is read directly; anything else is harvested to markdown and written out
 as a clean baseline .docx FIRST, and the review then reads that file.
 Either way a quote's offsets are already an address in the output.
+
+For the reference check on its own use `andamentum-references`; for the
+readability and style check use `andamentum-proofread`.
 """
 
 
@@ -105,110 +123,114 @@ EXAMPLES
     # The default run: review, rewrites as tracked changes, and the
     # reference check with its Crossref lookup — one Word file, one report
     andamentum-whetstone draft.docx --model openai:gpt-5.4-nano \\
-        --out draft.reviewed.docx
+        -o draft.reviewed.docx
 
     # Turn parts off: comments only, and references checked offline
     andamentum-whetstone draft.docx --model openai:gpt-5.4-nano \\
-        --no-editor --no-lookup --out draft.reviewed.docx
+        --no-editor --no-lookup -o draft.reviewed.docx
 
     # Several output formats in one pass
     andamentum-whetstone paper.pdf --model openai:gpt-5.4-nano \\
-        --out review.md --out review.html --out paper.reviewed.docx
+        -o review.md -o review.html -o paper.reviewed.docx
 
     # A second round over the first round's output. No round flag: the input
     # file carries round one's changes, and the review reads them as accepted.
     # Give it its own name or Word shows both rounds as one reviewer.
     andamentum-whetstone draft.reviewed.docx --model openai:gpt-5.4-nano \\
         --patch-author "Second pass (AI)" --allow-author-override \\
-        --out draft.reviewed2.docx
+        -o draft.reviewed2.docx
 
     # Review with caller-supplied criteria
     andamentum-whetstone draft.md --model openai:gpt-5.4-nano \\
         --criteria "originality; depth of literature; clarity" \\
-        --out review.md
+        -o review.md
 
     # A named reviewer: its own criteria, probes and stance
     andamentum-whetstone draft.md --model openai:gpt-5.4-nano \\
-        --reviewer methods --out review.md
+        --reviewer methods -o review.md
 
     # Loop review-edit-review until a win condition holds (or gives up
     # honestly): here, a model judge checks "the flow is correct" every
     # round, separately from the pass that wrote the edit
     andamentum-whetstone draft.docx --model openai:gpt-5.4-nano \\
         --reviewer reader --goal "the flow is correct" \\
-        --out draft.reviewed.docx
+        -o draft.reviewed.docx
 
     # The same loop with the reference checker as the goal: its problems go
     # to the editor, and the loop stops once the citations and the list
     # agree, twice running
     andamentum-whetstone draft.docx --model openai:gpt-5.4-nano \\
         --goal "every reference is consistent" --goal-check citations \\
-        --out draft.reviewed.docx
+        -o draft.reviewed.docx
 
     # Which reviewers exist, and which suit this kind of document
-    andamentum-whetstone --list-reviewers --document-type academic
+    andamentum-whetstone reviewers --document-type academic
 
     # Review with free-text guidelines (one extractor call + cascade)
     andamentum-whetstone draft.md --model openai:gpt-5.4-nano \\
-        --guidelines @/path/to/author-guidelines.md --out review.md
+        --guidelines @author-guidelines.md -o review.md
 
     # Multi-expert panel review (different shape — N expert reviews + synthesis)
     andamentum-whetstone panel draft.md --model openai:gpt-5.4-nano \\
-        --n-experts 4 --i-am-the-author --out panel-review.md
+        --n-experts 4 --i-am-the-author -o panel-review.md
 
     # Checklist: one quota-driven probe per defect class + coverage table
     andamentum-whetstone checklist draft.md --model openai:gpt-5.4-nano \\
-        --out checklist.md
+        -o checklist.md
 
     # Checklist against the non-academic bank, straight into Word
     andamentum-whetstone checklist memo.docx --model openai:gpt-5.4-nano \\
-        --document-type external_communication --out memo.reviewed.docx
+        --document-type external_communication -o memo.reviewed.docx
 
-    # Deterministic style + readability check (no LLM)
-    andamentum-whetstone proofread draft.md --format json
-
-    # Apply a pre-built JSON patch list to a .docx (no LLM)
+    # Apply a pre-built JSON patch list to a .docx (no model)
     andamentum-whetstone apply-patches draft.docx \\
-        --patches patches.json --out draft.reviewed.docx \\
-        --patch-author "Claude" --patch-report review.md
+        --patches patches.json -o draft.reviewed.docx \\
+        --patch-author "Claude" --allow-author-override --patch-report review.md
 
     # Read-only: report AI-provenance markers in a .docx
     andamentum-whetstone verify-provenance suspicious.docx
-    andamentum-whetstone verify-provenance suspicious.docx --format json
+    andamentum-whetstone verify-provenance suspicious.docx --json
 
 EXIT CODES
     0  success
-    1  configuration / argument error
-    2  input could not be loaded (harvest failure, file not found)
-    3  review pipeline failed
-    4  --goal run completed and wrote its output, but the goal was not met
+    1  ran, negative result: a --goal run that did not reach its goal (output
+       still written); verify-provenance found no marker; apply-patches could
+       not apply some patches
+    2  usage error: a wrong or missing argument, or a refusal
+    3  the input could not be read (missing file, unreachable URL, unsupported format)
+    4  the run failed (model or network error, crash)
 """
 
 
 _SUPPORTED_OUT_EXTENSIONS = {".md", ".html", ".docx"}
 
-
-# Defaults for the review-only flags that carry a non-sentinel value. They are
-# named once because _validate_args rejects these flags under `checklist` by
-# comparing the parsed value against its default — sound only while there is a
-# single definition of each. A second literal in the parser would silently turn
-# the rejection off for that flag.
+# Defaults the validators compare against. Named once: a second literal in the
+# parser would silently turn a refusal off for that flag.
 #
-# --editor-criteria is deliberately NOT in this list: its default is None, the
-# sentinel meaning "the user did not say". A default of "clarity,concision,
+# --editor-criteria is deliberately NOT given a default: its default is None,
+# the sentinel meaning "the user did not say". A default of "clarity,concision,
 # grammar" here would make the CLI pass an explicit editor-criteria list on
 # every run, and an explicit list is an inline override — so a reviewer
 # profile's own editor criteria would be silently replaced by a value nobody
 # typed. The editor's default list lives in one place, `editor
 # .DEFAULT_EDITOR_CRITERIA`, and the run falls through to it.
 _DEFAULT_NOVELTY_SEARCH_DEPTH = 2
-_DEFAULT_ROUNDS = 3
+# Same as the library's ``cap`` default in ``review_document``.
+_DEFAULT_ROUNDS = 2
 _DEFAULT_GOAL_MAX_ROUNDS = 4
 
-# One list of document types, read by the main parser and by the
-# --list-reviewers short-circuit in main(), which builds a parser of its own.
-# Two lists would let a typo pass the second parser and print a fit column
-# against a type the first one refuses.
+_COMMANDS: tuple[str, ...] = (
+    "review",
+    "panel",
+    "checklist",
+    "reviewers",
+    "apply-patches",
+    "verify-provenance",
+)
+
+# One list of document types, read by every parser that takes one. Two lists
+# would let a typo pass the second parser and print a fit column against a
+# type the first one refuses.
 _DOCUMENT_TYPE_CHOICES: tuple[str, ...] = (
     "auto",
     "academic",
@@ -219,153 +241,13 @@ _DOCUMENT_TYPE_CHOICES: tuple[str, ...] = (
     "general",
 )
 
-# (namespace attribute, user-facing flag, value meaning "not set").
-_REVIEW_ONLY_FLAGS: tuple[tuple[str, str, object], ...] = (
-    ("criteria", "--criteria", None),
-    ("guidelines", "--guidelines", ""),
-    ("editor", "--no-editor", True),
-    ("references", "--no-references", True),
-    ("lookup", "--no-lookup", True),
-    ("editor_criteria", "--editor-criteria", None),
-    ("check_novelty", "--check-novelty", False),
-    ("novelty_search_depth", "--novelty-search-depth", _DEFAULT_NOVELTY_SEARCH_DEPTH),
-    ("novelty_store", "--novelty-store", None),
-    ("rounds", "--rounds", _DEFAULT_ROUNDS),
-)
-
-
-def _build_parser() -> argparse.ArgumentParser:
-    """Build the (single) flat argparse parser. The subcommand front-end
-    in :func:`main` rewrites verb-style invocations into flat argv before
-    parsing, so this single parser serves the four subcommands that reach
-    it — review, panel, checklist and apply-patches. ``proofread`` and
-    ``verify-provenance`` short-circuit in :func:`main` and never get
-    here."""
-    parser = argparse.ArgumentParser(
-        prog="andamentum-whetstone",
-        description=_HELP_DESCRIPTION,
-        epilog=_HELP_EXAMPLES,
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-    from andamentum import __version__ as _ver
-
-    parser.add_argument(
-        "--version",
-        action="version",
-        version=f"%(prog)s (andamentum {_ver})",
-    )
-
-    # ── Common: required positional + outputs + universal options ───────
-    parser.add_argument("input", help="Path or URL to the document.")
-    parser.add_argument(
-        "--out",
-        action="append",
-        type=Path,
-        required=True,
-        metavar="FILE",
-        help="Output file. Repeat for multiple formats. "
-        "Format inferred from extension (.md / .html / .docx).",
-    )
-    parser.add_argument(
-        "--model",
-        metavar="MODEL",
-        help="pydantic-ai model id (e.g. openai:gpt-5.4-nano, "
-        "ollama:gemma4:31b). Required for the review, panel and "
-        "checklist subcommands.",
-    )
-    # Shared by review and checklist: the same six types route to a criterion
-    # set in one mode and to a probe bank in the other. Deliberately ONE flag —
-    # a second `--document-type` in the checklist group would be an argparse
-    # conflict, and a differently-named twin would make the same question look
-    # like two questions.
-    parser.add_argument(
-        "--document-type",
-        choices=_DOCUMENT_TYPE_CHOICES,
-        default="auto",
-        help=(
-            "Document type. In review mode it routes to one of six criterion "
-            "sets; in checklist mode to the matching probe bank. 'auto' "
-            "(default) runs a one-shot classifier using --model; explicit "
-            "values skip the classifier. In checklist mode 'auto' therefore "
-            "costs one extra LLM call on top of the probe calls — the CLI "
-            "still defaults to it because detection is what a command-line "
-            "run is expected to do, while the Python API "
-            "(run_checklist_v3) defaults to 'general' so its default path "
-            "stays classifier-free. Pass an explicit type to match the API."
-        ),
-    )
-    parser.add_argument(
-        "--decision-model",
-        default=None,
-        metavar="NAME",
-        help=(
-            "A local Ollama decision model (e.g. nimble:9b) that answers the "
-            "document-type question under --document-type auto instead of "
-            "the LLM classifier. Review and checklist. Off by default."
-        ),
-    )
-    # Shared by review and checklist for the same reason --document-type is:
-    # one reviewer selects a criterion set in one mode and a probe bank in the
-    # other, and a second flag would make one question look like two. Panel and
-    # apply-patches reject it in _validate_args rather than ignoring it.
-    #
-    # The choices come from the profile registry, so a profile added there is
-    # offered here with no second list to update. Validation is
-    # _parse_reviewers, not argparse choices, because the value may be a list.
-    from .v3.reviewers import DEFAULT_PROFILE_NAME
-
-    parser.add_argument(
-        "--reviewer",
-        # NOT argparse choices: the value may be a comma-separated list, which
-        # choices cannot express. Validated by _parse_reviewers, which reports
-        # the unknown name and the full list rather than argparse's one-liner.
-        default=DEFAULT_PROFILE_NAME,
-        metavar="NAME[,NAME...]",
-        help=(
-            "Who reads the draft. One name, or several separated by commas to "
-            "run them in that order — each reviewer comments on the same "
-            "unchanged text, a run with more than one ends with a summary "
-            "reconciling them, and a single editor pass then rewrites against "
-            "every reviewer's findings at once (unless --no-editor). Leave it "
-            "out for "
-            f"'{DEFAULT_PROFILE_NAME}', the ordinary review: the criteria that "
-            "suit this kind of document, which is what ran before reviewers "
-            f"were named. Put '{DEFAULT_PROFILE_NAME}' in the list to have that "
-            "review as well as a specialist. Every value a reviewer supplies is "
-            "still overridden by the matching flag. Run --list-reviewers to see "
-            "them all."
-        ),
-    )
-    parser.add_argument(
-        "--list-reviewers",
-        action="store_true",
-        help=(
-            "List the reviewers, with a fit marker per document type when "
-            "--document-type is given, and exit. Needs no input file and no "
-            "model."
-        ),
-    )
-    parser.add_argument(
-        "--confirm-own-draft",
-        action="store_true",
-        help=(
-            "Bypass the confidentiality-marker tripwire (which refuses "
-            "to run on text containing 'Manuscript ID:', 'Reviewer "
-            "Instructions', 'Editorial Office', etc.). Pass this only "
-            "when the matched marker is a false positive in your own draft."
-        ),
-    )
-    parser.add_argument(
-        "-v",
-        "--verbose",
-        action="store_true",
-        help="Print phase-by-phase progress to stderr.",
-    )
-    # Shared by every path that writes a .docx. A second review round over the
-    # first round's output is just another run with another name here — the
-    # input file already carries round one's changes, so there is no round
-    # number to pass and no sequential mode to switch on.
-    parser.add_argument(
+def _author_parent() -> argparse.ArgumentParser:
+    """The tracked-change author flags, shared by every command that writes a
+    .docx. A second review round over the first round's output is just another
+    run with another name here — the input file already carries round one's
+    changes, so there is no round number to pass and no sequential mode."""
+    parent = argparse.ArgumentParser(add_help=False)
+    parent.add_argument(
         "--patch-author",
         default=None,
         metavar="NAME",
@@ -375,16 +257,45 @@ def _build_parser() -> argparse.ArgumentParser:
         "apart in Word's reviewing pane; the same name twice is valid "
         "but indistinguishable there.",
     )
-    parser.add_argument(
+    parent.add_argument(
         "--allow-author-override",
         action="store_true",
         help="Explicitly authorise a non-default --patch-author value. "
         "Misrepresenting AI-generated edits as a human reviewer's may "
         "constitute research misconduct.",
     )
+    return parent
 
-    # Watermark flags (mutually exclusive)
-    visible_wm = parser.add_mutually_exclusive_group()
+
+def _run_parent() -> argparse.ArgumentParser:
+    """Input, model, outputs and watermark: what review, panel and checklist
+    all take."""
+    parent = argparse.ArgumentParser(add_help=False, parents=[_author_parent()])
+    parent.add_argument("input", help="Path or URL to the document.")
+    parent.add_argument(
+        "-o",
+        "--out",
+        action="append",
+        type=Path,
+        required=True,
+        metavar="FILE",
+        help="Output file. Repeat for several formats. "
+        "Format taken from the extension (.md / .html / .docx).",
+    )
+    parent.add_argument(
+        "--model",
+        required=True,
+        metavar="MODEL",
+        help="Language model to use, for example openai:gpt-5.4-nano or "
+        "ollama:gemma4:31b.",
+    )
+    parent.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Print phase-by-phase progress to stderr.",
+    )
+    visible_wm = parent.add_mutually_exclusive_group()
     visible_wm.add_argument(
         "--visible-watermark",
         dest="visible_watermark",
@@ -404,22 +315,112 @@ def _build_parser() -> argparse.ArgumentParser:
         "(docx core properties and customXml) is written regardless, and the "
         "HTML report keeps a short disclaimer callout.",
     )
+    return parent
 
-    # --mode is internal: set by the subcommand rewriter (`panel` verb →
-    # --mode panel, `checklist` verb → --mode checklist). Users invoke the
-    # subcommands instead.
+
+def _typed_parent() -> argparse.ArgumentParser:
+    """What review and checklist share: the same six document types route to a
+    criterion set in one mode and to a probe bank in the other, and one
+    reviewer selects a criterion set in one and a probe bank in the other.
+    Deliberately ONE definition of each flag — a differently-named twin would
+    make the same question look like two questions."""
+    from .pipeline.reviewers import DEFAULT_PROFILE_NAME
+
+    parent = argparse.ArgumentParser(add_help=False)
+    parent.add_argument(
+        "--document-type",
+        choices=_DOCUMENT_TYPE_CHOICES,
+        default="auto",
+        help=(
+            "Document type. In review mode it routes to one of six criterion "
+            "sets; in checklist mode to the matching probe bank. 'auto' "
+            "(default) runs a one-shot classifier using --model; an explicit "
+            "value skips the classifier."
+        ),
+    )
+    parent.add_argument(
+        "--decision-model",
+        default=None,
+        metavar="NAME",
+        help=(
+            "A local Ollama decision model (for example nimble:9b) that "
+            "answers the document-type question under --document-type auto "
+            "instead of the --model classifier. Off by default."
+        ),
+    )
+    parent.add_argument(
+        "--reviewer",
+        # NOT argparse choices: the value may be a comma-separated list, which
+        # choices cannot express. Validated by _parse_reviewers, which reports
+        # the unknown name and the full list rather than argparse's one-liner.
+        default=DEFAULT_PROFILE_NAME,
+        metavar="NAME[,NAME...]",
+        help=(
+            "Who reads the draft. One name, or several separated by commas to "
+            "run them in that order — each reviewer comments on the same "
+            "unchanged text, a run with more than one ends with a summary "
+            "reconciling them, and a single editor pass then rewrites against "
+            "every reviewer's findings at once (unless --no-editor). Leave it "
+            "out for "
+            f"'{DEFAULT_PROFILE_NAME}', the ordinary review: the criteria that "
+            "suit this kind of document. Put "
+            f"'{DEFAULT_PROFILE_NAME}' in the list to have that "
+            "review as well as a specialist. Every value a reviewer supplies is "
+            "still overridden by the matching flag. Run "
+            "`andamentum-whetstone reviewers` to see them all."
+        ),
+    )
+    parent.add_argument(
+        "--confirm-own-draft",
+        action="store_true",
+        help=(
+            "Bypass the confidentiality-marker tripwire (which refuses "
+            "to run on text containing 'Manuscript ID:', 'Reviewer "
+            "Instructions', 'Editorial Office', etc.). Pass this only "
+            "when the matched marker is a false positive in your own draft."
+        ),
+    )
+    return parent
+
+
+def build_parser() -> argparse.ArgumentParser:
+    """The argparse tree: one subparser per command, each with only the flags
+    that apply to it."""
+    from andamentum import __version__
+
+    parser = argparse.ArgumentParser(
+        prog="andamentum-whetstone",
+        description=_HELP_DESCRIPTION,
+        epilog=_HELP_EXAMPLES,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     parser.add_argument(
-        "--mode",
-        choices=("review", "panel", "checklist"),
-        default="review",
-        help=argparse.SUPPRESS,
+        "--version",
+        action="version",
+        version=f"%(prog)s {__version__}",
     )
+    commands = parser.add_subparsers(dest="command", metavar="COMMAND", required=True)
+    run_parent = _run_parent()
+    typed_parent = _typed_parent()
 
-    # ── Review options ─────────────────────────────────────────────────
-    review_grp = parser.add_argument_group(
-        "review options (andamentum-whetstone [review] INPUT ...)"
+    def add(name: str, summary: str, **kwargs: Any) -> argparse.ArgumentParser:
+        return commands.add_parser(
+            name,
+            help=summary,
+            description=summary,
+            formatter_class=argparse.RawDescriptionHelpFormatter,
+            **kwargs,
+        )
+
+    # ── review ─────────────────────────────────────────────────────────
+    review = add(
+        "review",
+        "Review a draft: findings as comments, rewrites as tracked changes, "
+        "the reference check (the default command).",
+        parents=[run_parent, typed_parent],
     )
-    review_grp.add_argument(
+    review.set_defaults(mode="review")
+    review.add_argument(
         "--criteria",
         action="append",
         default=None,
@@ -427,7 +428,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Caller-supplied criteria. Semicolon-separated, or repeat the "
         "flag. Overrides the document-type default set.",
     )
-    review_grp.add_argument(
+    review.add_argument(
         "--guidelines",
         default="",
         metavar="TEXT",
@@ -435,7 +436,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "``@path/to/file`` to read from a file. One LLM call decomposes "
         "the prose into a criterion list. Mutually exclusive with --criteria.",
     )
-    review_grp.add_argument(
+    review.add_argument(
         "--editor",
         action=argparse.BooleanOptionalAction,
         default=True,
@@ -445,16 +446,16 @@ def _build_parser() -> argparse.ArgumentParser:
         "pass AFTER the last reviewer, over all of their findings — not from "
         "each reviewer in turn.",
     )
-    review_grp.add_argument(
+    review.add_argument(
         "--references",
         action=argparse.BooleanOptionalAction,
         default=True,
         help="Check the citations against the reference list, in any "
         "citation style, before the review — so the editor answers the "
         "problems too. On by default; --no-references skips it. The same "
-        "check as the 'references' subcommand.",
+        "check as `andamentum-references`.",
     )
-    review_grp.add_argument(
+    review.add_argument(
         "--lookup",
         action=argparse.BooleanOptionalAction,
         default=True,
@@ -463,7 +464,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "never the draft. On by default; --no-lookup keeps the reference "
         "check offline.",
     )
-    review_grp.add_argument(
+    review.add_argument(
         "--editor-criteria",
         default=None,
         metavar="LIST",
@@ -471,7 +472,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "grammar — or the reviewer's own, when --reviewer names one that "
         "sets them.",
     )
-    review_grp.add_argument(
+    review.add_argument(
         "--check-novelty",
         action="store_true",
         help="VERIFY the novelty claims against the literature, by searching "
@@ -486,7 +487,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "claim found, over at most 8 claims. With a list of reviewers this runs once, before the "
         "second reviewer starts — never once per reviewer.",
     )
-    review_grp.add_argument(
+    review.add_argument(
         "--novelty-search-depth",
         type=int,
         default=_DEFAULT_NOVELTY_SEARCH_DEPTH,
@@ -494,25 +495,25 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Search depth for --check-novelty: the number of search "
         "rounds per claim (1=quick, 2=balanced, 3=thorough). Default: 2.",
     )
-    review_grp.add_argument(
+    review.add_argument(
         "--novelty-store",
         type=Path,
         default=None,
-        metavar="PATH",
+        metavar="FILE",
         help="With --check-novelty: a research store file (SQLite) that "
         "keeps the works and passages between runs, so a second "
         "review of the same draft re-reads nothing. Default: in memory, "
-        "nothing is kept. No default location is used.",
+        "nothing is kept.",
     )
-    review_grp.add_argument(
+    review.add_argument(
         "--rounds",
         type=int,
         default=_DEFAULT_ROUNDS,
         metavar="N",
-        help="Hard cap on the gap-loop re-examination rounds. Default: 3. "
+        help="Hard cap on the gap-loop re-examination rounds. Default: 2. "
         "The loop typically exits earlier when no demands remain.",
     )
-    review_grp.add_argument(
+    review.add_argument(
         "--goal",
         default=None,
         metavar="TEXT",
@@ -520,9 +521,10 @@ def _build_parser() -> argparse.ArgumentParser:
         "re-review the same reviewer's own findings until the goal holds "
         "for two rounds running, no round changes anything, or --max-rounds "
         "is reached. The editor runs every round, so --no-editor is refused "
-        "with it. Takes one reviewer, not a list (see --goal-check).",
+        "with it. Takes one reviewer, not a list (see --goal-check). Exit "
+        "code 1 when the goal was not met (the output is still written).",
     )
-    review_grp.add_argument(
+    review.add_argument(
         "--goal-check",
         choices=("judged", "structure", "citations", "figures"),
         default="judged",
@@ -532,8 +534,8 @@ def _build_parser() -> argparse.ArgumentParser:
         "same pass that wrote the edit. 'structure': the active review "
         "criteria (see --reviewer / --criteria) raise no major or moderate "
         'finding; for "the flow is correct", pair with --reviewer reader. '
-        "'citations': the reference checker (the same one as the "
-        "'references' subcommand, any citation style, no Crossref lookup) "
+        "'citations': the reference checker (the same one as "
+        "`andamentum-references`, any citation style, no Crossref lookup) "
         "finds no problem — every citation points to an entry and every "
         "entry is cited; its problems go to the editor each round beside "
         "the review's own. Never whether a citation says what the sentence "
@@ -541,7 +543,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--goal-figure's image is checked against its caption and the "
         "sentences that mention it. Has no effect without --goal.",
     )
-    review_grp.add_argument(
+    review.add_argument(
         "--max-rounds",
         type=int,
         default=_DEFAULT_GOAL_MAX_ROUNDS,
@@ -550,11 +552,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "Distinct from --rounds, which caps the gap-loop's re-examination "
         "WITHIN one review pass. Has no effect without --goal.",
     )
-    review_grp.add_argument(
+    review.add_argument(
         "--goal-figure",
         action="append",
         default=None,
-        metavar="LABEL=PATH",
+        metavar="LABEL=FILE",
         help="A figure to check under --goal-check figures, e.g. "
         "'Figure 1=fig1.png'. LABEL is matched against \"Figure N\" / "
         '"Fig. N" mentions in the text, not required to be the literal '
@@ -563,117 +565,168 @@ def _build_parser() -> argparse.ArgumentParser:
         "discover embedded images on its own — name each figure you want "
         "checked.",
     )
-    review_grp.add_argument(
-        "--goal-figure-model",
+    review.add_argument(
+        "--figure-model",
         default=None,
         metavar="MODEL",
-        help="A multimodal pydantic-ai model id for --goal-check figures "
-        "(e.g. ollama:qwen3.8). Required with --goal-check "
+        help="A multimodal model for --goal-check figures "
+        "(for example ollama:qwen3.8). Required with --goal-check "
         "figures; refused otherwise.",
     )
 
-    # ── Panel options ──────────────────────────────────────────────────
-    panel_grp = parser.add_argument_group(
-        "panel options (andamentum-whetstone panel INPUT ...)"
+    # ── checklist ──────────────────────────────────────────────────────
+    #
+    # Checklist mode has no flags of its own. It is configured by
+    # --document-type (which bank) and --model, both shared with review, and it
+    # writes the same -o formats. That is not an oversight: the mode's whole
+    # proposition is that the machinery is fixed and only the probe bank
+    # varies, so a knob here would be a knob that makes two runs less
+    # comparable. A caller who wants a different bank passes ``probes=[...]``
+    # to ``run_checklist`` in Python rather than assembling one from flags.
+    checklist = add(
+        "checklist",
+        "Run the standard check: a fixed probe bank and a deterministic "
+        "coverage table.",
+        parents=[run_parent, typed_parent],
     )
-    panel_grp.add_argument(
+    checklist.set_defaults(mode="checklist")
+
+    # ── panel ──────────────────────────────────────────────────────────
+    panel = add(
+        "panel",
+        "Simulated multi-expert peer review of your own draft.",
+        parents=[run_parent],
+    )
+    panel.set_defaults(mode="panel")
+    panel.add_argument(
         "--n-experts",
         type=int,
         default=4,
         metavar="N",
         help="Number of fictional expert reviewers to generate. Default: 4.",
     )
-    panel_grp.add_argument(
+    panel.add_argument(
         "--panel-disciplines",
         default="",
         metavar="LIST",
         help="Comma-separated explicit discipline list. When supplied, "
         "skips the keyword-extraction LLM call.",
     )
-    panel_grp.add_argument(
+    panel.add_argument(
         "--i-am-the-author",
         action="store_true",
-        help="Required for the panel subcommand. Affirms that INPUT is "
-        "your own draft, not a manuscript shared with you confidentially. "
-        "Set ANDAMENTUM_PANEL_OWN_AUTHOR=1 to pre-affirm.",
+        help="Required. Affirms that INPUT is your own draft, not a "
+        "manuscript shared with you confidentially.",
     )
 
-    # ── Checklist options ──────────────────────────────────────────────
-    #
-    # Checklist mode has no flags of its own. It is configured by
-    # --document-type (which bank) and --model, both declared above and both
-    # shared with review mode, and it writes the same --out formats. That is
-    # not an oversight: the mode's whole proposition is that the machinery is
-    # fixed and only the probe bank varies, so a knob here would be a knob
-    # that makes two runs less comparable. A caller who wants a different
-    # bank passes ``probes=[...]`` to ``run_checklist_v3`` in Python rather
-    # than assembling one from flags.
-
-    # ── Apply-patches options ──────────────────────────────────────────
-    patches_grp = parser.add_argument_group(
-        "apply-patches options (andamentum-whetstone apply-patches INPUT.docx --patches P.json ...)"
+    # ── reviewers ──────────────────────────────────────────────────────
+    reviewers = add(
+        "reviewers",
+        "List the named reviewers, and which suit a document type. Needs no "
+        "input and no model.",
     )
-    patches_grp.add_argument(
-        "--apply-patches",
+    reviewers.set_defaults(mode="reviewers")
+    reviewers.add_argument(
+        "--document-type",
+        choices=_DOCUMENT_TYPE_CHOICES,
+        default="auto",
+        help="Show which reviewers suit this document type.",
+    )
+
+    # ── apply-patches ──────────────────────────────────────────────────
+    patches = add(
+        "apply-patches",
+        "Apply a pre-built JSON patch list to a .docx as tracked changes and "
+        "comments. No model.",
+        parents=[_author_parent()],
+    )
+    patches.set_defaults(mode="apply-patches")
+    patches.add_argument("input", help="The .docx file to patch (never modified).")
+    patches.add_argument(
+        "--patches",
+        required=True,
         type=Path,
-        default=None,
-        metavar="PATH",
-        help="Skip the review pipeline and apply a pre-built JSON patch "
-        "list to INPUT. INPUT must be a local .docx; --out must be one "
-        ".docx file. PATH is a JSON array of DocumentPatch objects.",
+        metavar="FILE",
+        help="JSON file holding an array of DocumentPatch objects.",
     )
-    patches_grp.add_argument(
+    patches.add_argument(
+        "-o",
+        "--out",
+        required=True,
+        type=Path,
+        metavar="FILE",
+        help="The patched .docx to write.",
+    )
+    patches.add_argument(
         "--patch-report",
         type=Path,
         default=None,
-        metavar="PATH",
+        metavar="FILE",
         help="Optional markdown file prepended as a review-summary section.",
+    )
+    patches.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Print progress to stderr.",
+    )
+
+    # ── verify-provenance ──────────────────────────────────────────────
+    provenance = add(
+        "verify-provenance",
+        "Report which whetstone AI-provenance markers a .docx contains. "
+        "Read-only: never modifies the file. Exit 0 if a marker is present, "
+        "1 if none, 3 if the file cannot be read.",
+    )
+    provenance.set_defaults(mode="verify-provenance")
+    provenance.add_argument("input", type=Path, help="Path to a .docx file.")
+    provenance.add_argument(
+        "--json",
+        action="store_true",
+        help="Print the markers as JSON.",
     )
 
     return parser
 
 
 def _validate_args(args: argparse.Namespace) -> None:
-    """Argparse-time validation that argparse can't express directly.
+    """Validation that argparse can't express directly.
 
-    Raises ``SystemExit(1)`` with a friendly message on any violation.
+    Raises ``SystemExit(2)`` with a friendly message on any violation.
     """
-    if args.list_reviewers:
-        # Also handled in main() before parsing, so the listing works without
-        # an input file or --out. Reaching it here means the run supplied
-        # them anyway: print the listing and stop, rather than reviewing a
-        # document the user did not ask to have reviewed yet.
-        _print_reviewer_listing(document_type=args.document_type)
-        sys.exit(0)
-
-    if args.apply_patches is not None:
+    if args.command in ("reviewers", "verify-provenance"):
+        return
+    if args.command == "apply-patches":
         _validate_apply_patches_args(args)
         return
 
-    if args.patch_report is not None:
-        _die(1, "--patch-report is only valid with --apply-patches.")
     _validate_author_args(args)
-
-    if not args.model:
-        _die(
-            1,
-            "--model is required.\nExamples:\n"
-            "  --model openai:gpt-5.4-nano\n"
-            "  --model ollama:gemma4:31b",
-        )
-    # Parsed here rather than at run time: an unknown reviewer should cost you
-    # nothing, and by run time the document has been loaded and, for a URL,
-    # fetched. The parsed list is kept so the run does not parse it twice.
-    args.reviewers = _parse_reviewers(args.reviewer)
-    args.final_editor = _split_off_the_final_editor(args)
-    _validate_decision_args(args)
-    _validate_novelty_args(args)
+    if args.mode == "panel":
+        if not args.i_am_the_author:
+            _die(
+                _EXIT_USAGE,
+                "panel requires --i-am-the-author. Panel-mode output "
+                "is shaped exactly like a journal peer-review report (3-5 "
+                "fictional reviewer biosketches + Accept/Reject recommendation). "
+                "Affirm that the document being reviewed is your own draft, not "
+                "a manuscript shared with you confidentially. Pass "
+                "--i-am-the-author.",
+            )
+        if args.n_experts < 1:
+            _die(_EXIT_USAGE, "--n-experts must be at least 1.")
+    else:
+        # Parsed here rather than at run time: an unknown reviewer should cost
+        # you nothing, and by run time the document has been loaded and, for a
+        # URL, fetched. The parsed list is kept so the run does not parse it
+        # twice.
+        args.reviewers = _parse_reviewers(args.reviewer)
+        args.final_editor = _split_off_the_final_editor(args)
+        _validate_decision_args(args)
     if args.mode == "checklist":
-        _reject_review_only_flags(args)
         _reject_the_line_editor_under_checklist(args)
         if len(args.reviewers) > 1:
             _die(
-                1,
+                _EXIT_USAGE,
                 "checklist mode takes one reviewer, not a list. Its output is "
                 "a coverage table whose rows come from one probe bank, and two "
                 "banks in one run would produce two tables that cannot be "
@@ -682,76 +735,27 @@ def _validate_args(args: argparse.Namespace) -> None:
                 "use review mode, which stacks them.",
             )
     if args.mode == "review":
+        _validate_novelty_args(args)
         _reject_a_review_that_would_review_nothing(args)
-    if args.mode == "panel" and args.reviewer != _default_reviewer_name():
-        # Detected by comparison against the default, matching
-        # _reject_review_only_flags: `--reviewer default` under panel asks for
-        # nothing panel does not already do, so it is tolerated.
-        _die(
-            1,
-            "panel generates its own reviewers; --reviewer applies to review "
-            "and checklist.",
-        )
-    if args.mode == "panel" and not (
-        args.i_am_the_author or os.environ.get("ANDAMENTUM_PANEL_OWN_AUTHOR") == "1"
-    ):
-        _die(
-            1,
-            "panel subcommand requires --i-am-the-author. Panel-mode output "
-            "is shaped exactly like a journal peer-review report (3-5 "
-            "fictional reviewer biosketches + Accept/Reject recommendation). "
-            "Affirm that the document being reviewed is your own draft, not "
-            "a manuscript shared with you confidentially. Pass "
-            "--i-am-the-author, or set ANDAMENTUM_PANEL_OWN_AUTHOR=1.",
-        )
-    # --criteria and --guidelines are mutually exclusive — both route to
-    # the unified criterion-input surface (Phase C); the API itself
-    # enforces this with a ValueError, but we surface a friendlier
-    # message earlier here.
-    if args.criteria and args.guidelines:
-        _die(
-            1,
-            "--criteria and --guidelines are mutually exclusive. Pass one "
-            "or the other — both are routes to the same active-criteria slot.",
-        )
-    if args.rounds < 1:
-        _die(1, "--rounds must be at least 1.")
-    _validate_goal_args(args)
-    if args.n_experts < 1:
-        _die(1, "--n-experts must be at least 1.")
+        # --criteria and --guidelines are mutually exclusive — both route to
+        # the unified criterion-input surface; the API itself enforces this
+        # with a ValueError, but we surface a friendlier message earlier here.
+        if args.criteria and args.guidelines:
+            _die(
+                _EXIT_USAGE,
+                "--criteria and --guidelines are mutually exclusive. Pass one "
+                "or the other — both are routes to the same active-criteria slot.",
+            )
+        if args.rounds < 1:
+            _die(_EXIT_USAGE, "--rounds must be at least 1.")
+        _validate_goal_args(args)
     for out in args.out:
         ext = out.suffix.lower()
         if ext not in _SUPPORTED_OUT_EXTENSIONS:
             _die(
-                1,
+                _EXIT_USAGE,
                 f"Unsupported output extension {ext!r} for {out}. "
                 f"Supported: {', '.join(sorted(_SUPPORTED_OUT_EXTENSIONS))}",
-            )
-
-
-def _reject_review_only_flags(args: argparse.Namespace) -> None:
-    """Refuse the review-mode flags under ``checklist``, naming the offender.
-
-    The checklist branch of :func:`_run` passes none of these on: the mode has
-    no criterion cascade, no editor pass, no novelty check and no gap loop for
-    them to configure. Accepting one and running anyway would report success on
-    a run that did not do what was asked — a silent failure, which this project
-    treats as worse than a loud one.
-
-    Detection is by comparison against the flag's default (see
-    ``_REVIEW_ONLY_FLAGS``), so passing a flag its own default value is
-    tolerated: that run genuinely is the run the user asked for.
-    """
-    for dest, flag, unset_value in _REVIEW_ONLY_FLAGS:
-        if getattr(args, dest) != unset_value:
-            _die(
-                1,
-                f"{flag} is a review-mode flag and has no effect under "
-                "`checklist`, so the run is refused rather than run without "
-                "it. Checklist mode takes only --model, --document-type, "
-                "--decision-model, --out and the author flags: the probe bank is fixed, which "
-                "is what keeps two runs comparable. Drop the flag, or use "
-                "`andamentum-whetstone review` instead.",
             )
 
 
@@ -763,15 +767,9 @@ def _validate_decision_args(args: argparse.Namespace) -> None:
     """
     if args.decision_model is None:
         return
-    if args.mode == "panel":
-        _die(
-            1,
-            "--decision-model has no effect under `panel`, which asks no "
-            "document-type question. It applies to review and checklist.",
-        )
     if args.document_type != "auto":
         _die(
-            1,
+            _EXIT_USAGE,
             "--decision-model answers the document-type question, which "
             f"--document-type {args.document_type} already settles. Drop one.",
         )
@@ -780,24 +778,23 @@ def _validate_decision_args(args: argparse.Namespace) -> None:
 def _validate_novelty_args(args: argparse.Namespace) -> None:
     """Refuse --novelty-store without --check-novelty, which would ignore it."""
     if getattr(args, "novelty_store", None) is not None and not args.check_novelty:
-        _die(1, "--novelty-store needs --check-novelty.")
+        _die(_EXIT_USAGE, "--novelty-store needs --check-novelty.")
 
 
 def _default_reviewer_name() -> str:
     """The name of the reviewer that runs when none is asked for.
 
     Read from the profile registry rather than written here, for the reason
-    the comment above ``_REVIEW_ONLY_FLAGS`` gives: the rejections below detect
-    "was this passed" by comparing against the default, which is sound only
-    while there is one definition of it.
+    the comment above ``_DEFAULT_NOVELTY_SEARCH_DEPTH`` gives: the checks below
+    detect "was this passed" by comparing against the default, which is sound
+    only while there is one definition of it.
     """
-    from .v3.reviewers import DEFAULT_PROFILE_NAME
+    from .pipeline.reviewers import DEFAULT_PROFILE_NAME
 
     return DEFAULT_PROFILE_NAME
 
 
-# (namespace attribute, user-facing flag, value meaning "not set") — mirrors
-# _REVIEW_ONLY_FLAGS, for the same reason: a goal flag left at its own
+# (namespace attribute, user-facing flag, value meaning "not set"): a goal flag left at its own
 # default is tolerated (that run genuinely is the run asked for), but a
 # non-default value with no --goal to attach to is refused rather than
 # silently ignored.
@@ -805,7 +802,7 @@ _GOAL_ONLY_FLAGS: tuple[tuple[str, str, object], ...] = (
     ("goal_check", "--goal-check", "judged"),
     ("max_rounds", "--max-rounds", _DEFAULT_GOAL_MAX_ROUNDS),
     ("goal_figure", "--goal-figure", None),
-    ("goal_figure_model", "--goal-figure-model", None),
+    ("figure_model", "--figure-model", None),
 )
 
 
@@ -821,13 +818,13 @@ def _parse_goal_figures(values: list[str]) -> list[tuple[str, Path]]:
         label, sep, raw_path = value.partition("=")
         if not sep or not label.strip() or not raw_path.strip():
             _die(
-                2,
-                f"--goal-figure {value!r} is not LABEL=PATH. Example: "
+                _EXIT_USAGE,
+                f"--goal-figure {value!r} is not LABEL=FILE. Example: "
                 "--goal-figure 'Figure 1=fig1.png'.",
             )
         path = Path(raw_path.strip())
         if not path.exists():
-            _die(2, f"--goal-figure {value!r}: no such file {raw_path.strip()!r}.")
+            _die(_EXIT_INPUT, f"--goal-figure {value!r}: no such file {raw_path.strip()!r}.")
         parsed.append((label.strip(), path))
     return parsed
 
@@ -835,39 +832,31 @@ def _parse_goal_figures(values: list[str]) -> list[tuple[str, Path]]:
 def _validate_goal_args(args: argparse.Namespace) -> None:
     """Refuse a goal-loop flag with no --goal, and an unworkable --goal.
 
-    Called only once ``args.reviewers`` exists (see ``_validate_args``), and
-    only reached for the review/checklist/panel modes handled above it —
-    ``apply_patches`` and ``--list-reviewers`` both return earlier.
+    Called only for the review command, once ``args.reviewers`` exists (see
+    ``_validate_args``).
     """
     if args.goal is None:
         for dest, flag, unset_value in _GOAL_ONLY_FLAGS:
             if getattr(args, dest) != unset_value:
                 _die(
-                    1,
+                    _EXIT_USAGE,
                     f"{flag} has no effect without --goal. Drop the flag, "
                     "or add --goal to turn the loop on.",
                 )
         return
-    if args.mode != "review":
-        _die(
-            1,
-            "--goal only applies to review mode. Panel generates its own "
-            "reviewers and checklist compares against a fixed probe bank; "
-            "neither has a round to loop.",
-        )
     if len(args.reviewers) > 1:
         _die(
-            1,
+            _EXIT_USAGE,
             "--goal takes one reviewer, not a list: the loop reviews with "
             "the same reviewer every round, and reconciling several "
             "reviewers' findings every round is not what this loop does. "
             "Drop --reviewer to use the default, or name one reviewer.",
         )
     if args.max_rounds < 1:
-        _die(1, "--max-rounds must be at least 1.")
+        _die(_EXIT_USAGE, "--max-rounds must be at least 1.")
     if not args.editor:
         _die(
-            1,
+            _EXIT_USAGE,
             "--no-editor cannot be combined with --goal: the loop reaches its "
             "goal by editing the draft every round. Drop --no-editor, or drop "
             "--goal for a single review with comments only.",
@@ -875,14 +864,14 @@ def _validate_goal_args(args: argparse.Namespace) -> None:
     if args.goal_check == "figures":
         if not args.goal_figure:
             _die(
-                1,
+                _EXIT_USAGE,
                 "--goal-check figures needs at least one --goal-figure "
                 "(e.g. --goal-figure 'Figure 1=fig1.png').",
             )
-        if not args.goal_figure_model:
+        if not args.figure_model:
             _die(
-                1,
-                "--goal-check figures needs --goal-figure-model (a "
+                _EXIT_USAGE,
+                "--goal-check figures needs --figure-model (a "
                 "multimodal pydantic-ai model id, e.g. "
                 "ollama:qwen3.8).",
             )
@@ -890,14 +879,14 @@ def _validate_goal_args(args: argparse.Namespace) -> None:
     else:
         if args.goal_figure:
             _die(
-                1,
+                _EXIT_USAGE,
                 "--goal-figure only applies to --goal-check figures. Drop "
                 "the flag, or set --goal-check figures.",
             )
-        if args.goal_figure_model:
+        if args.figure_model:
             _die(
-                1,
-                "--goal-figure-model only applies to --goal-check figures. "
+                _EXIT_USAGE,
+                "--figure-model only applies to --goal-check figures. "
                 "Drop the flag, or set --goal-check figures.",
             )
 
@@ -910,13 +899,13 @@ def _reject_the_line_editor_under_checklist(args: argparse.Namespace) -> None:
     reads like a document that passed every check rather than like a run that
     checked nothing.
     """
-    from .v3.reviewers import PROFILES
+    from .pipeline.reviewers import PROFILES
 
     for name in getattr(args, "reviewers", None) or [args.reviewer]:
         profile = PROFILES[name]
         if profile.probes == ():
             _die(
-                1,
+                _EXIT_USAGE,
                 f"the {profile.identity.lower()} runs no checks; use review "
                 "mode, where the editor runs by default.",
             )
@@ -943,7 +932,7 @@ def _split_off_the_final_editor(args: argparse.Namespace) -> bool:
     A single reviewer keeps its in-graph editor: there is one set of findings
     and the pass already sees all of it.
     """
-    from .v3.reviewers import EDITOR_PROFILE
+    from .pipeline.reviewers import EDITOR_PROFILE
 
     names: list[str] = args.reviewers
     if len(names) == 1 or args.mode != "review":
@@ -953,7 +942,7 @@ def _split_off_the_final_editor(args: argparse.Namespace) -> bool:
     if EDITOR_PROFILE.name in names:
         if not args.editor:
             _die(
-                1,
+                _EXIT_USAGE,
                 "--no-editor contradicts 'editor' in the --reviewer list, which "
                 "asks for the editor pass. Drop one of them.",
             )
@@ -978,7 +967,7 @@ def _reject_a_review_that_would_review_nothing(args: argparse.Namespace) -> None
     Inline ``--criteria`` and ``--guidelines`` both override a profile's
     criteria, so either of them makes the run a real review again.
     """
-    from .v3.reviewers import PROFILES
+    from .pipeline.reviewers import PROFILES
 
     names = getattr(args, "reviewers", None) or [args.reviewer]
     # A list is a real review as long as ONE of its reviewers examines
@@ -995,7 +984,7 @@ def _reject_a_review_that_would_review_nothing(args: argparse.Namespace) -> None
         return
     named = ", ".join(PROFILES[n].identity.lower() for n in names)
     _die(
-        1,
+        _EXIT_USAGE,
         f"the {named} runs no review criteria, so with --no-editor this run "
         "would examine nothing and report nothing. Drop --no-editor to get "
         "the tracked changes it exists for, name a reviewer that runs checks, "
@@ -1004,40 +993,33 @@ def _reject_a_review_that_would_review_nothing(args: argparse.Namespace) -> None
 
 
 def _validate_apply_patches_args(args: argparse.Namespace) -> None:
-    """Validate the patch-only path. ``--apply-patches`` is set."""
-    if args.reviewer != _default_reviewer_name():
-        # apply-patches never calls the review pipeline, so a reviewer here
-        # would configure nothing. Refused rather than ignored: a flag that
-        # silently does nothing is the failure this project treats as worse
-        # than a loud one.
-        _die(
-            1,
-            "--reviewer selects a review configuration; apply-patches applies "
-            "patches you supply.",
-        )
+    """Validate the apply-patches command."""
     input_path = Path(args.input)
     if not input_path.exists():
         _die(
-            1,
-            "--apply-patches requires INPUT to be a local .docx file "
-            f"(got {args.input!r}).",
+            _EXIT_INPUT,
+            f"apply-patches needs INPUT to be a local .docx file (got {args.input!r}).",
         )
     if input_path.suffix.lower() != ".docx":
         _die(
-            1,
-            "--apply-patches requires INPUT to be a .docx file "
+            _EXIT_USAGE,
+            "apply-patches needs INPUT to be a .docx file "
             f"(got {input_path.suffix!r}).",
         )
-    if len(args.out) != 1 or args.out[0].suffix.lower() != ".docx":
-        _die(
-            1,
-            "--apply-patches requires exactly one --out FILE ending in .docx.",
-        )
-    if not args.apply_patches.exists():
-        _die(1, f"patches file not found: {args.apply_patches}")
+    if args.out.suffix.lower() != ".docx":
+        _die(_EXIT_USAGE, "apply-patches needs -o FILE to end in .docx.")
+    if not args.patches.exists():
+        _die(_EXIT_INPUT, f"patches file not found: {args.patches}")
     if args.patch_report is not None and not args.patch_report.exists():
-        _die(1, f"patch report file not found: {args.patch_report}")
+        _die(_EXIT_INPUT, f"patch report file not found: {args.patch_report}")
     _validate_author_args(args)
+
+
+def _outputs(args: argparse.Namespace) -> list[Path]:
+    """The files the run writes: a list for the review commands, the one
+    patched file for apply-patches."""
+    out = args.out
+    return list(out) if isinstance(out, list) else [out]
 
 
 def _validate_author_args(args: argparse.Namespace) -> None:
@@ -1054,24 +1036,24 @@ def _validate_author_args(args: argparse.Namespace) -> None:
     """
     if args.patch_author is not None and not args.allow_author_override:
         _die(
-            1,
+            _EXIT_USAGE,
             "--patch-author overrides the AI-attribution default — "
             "pass --allow-author-override to confirm you intend this. "
             "Attributing AI-generated edits to a human name may "
             "constitute research misconduct under most institutional codes.",
         )
     if args.allow_author_override and args.patch_author is None:
-        _die(1, "--allow-author-override requires --patch-author NAME.")
+        _die(_EXIT_USAGE, "--allow-author-override requires --patch-author NAME.")
     if args.patch_author is not None and not any(
-        out.suffix.lower() == ".docx" for out in args.out
+        out.suffix.lower() == ".docx" for out in _outputs(args)
     ):
         # An author is a property of tracked changes, and only .docx carries
         # them. Accepting the flag and writing nowhere it applies would report
         # success on a run that ignored what was asked for.
         _die(
-            1,
+            _EXIT_USAGE,
             "--patch-author names the author of tracked changes, so it needs "
-            "a .docx output. Add --out FILE.docx, or drop the flag.",
+            "a .docx output. Add -o FILE.docx, or drop the flag.",
         )
 
 
@@ -1087,13 +1069,15 @@ def _resolve_author(args: argparse.Namespace) -> str:
     marker; the one path that writes an unmarked name is ``--patch-author``,
     still gated behind ``--allow-author-override``.
     """
-    from .v3.reviewers import EDITOR_PROFILE, PROFILES, author_for
+    from .pipeline.reviewers import EDITOR_PROFILE, PROFILES, author_for
 
     # The LAST reviewer in the list signs the tracked changes and any comment
     # without a reviewer of its own. In a list, each reviewer's comments are
     # signed by that reviewer (see comment_authors in _review_and_write), and a
     # list whose final entry is the line editor is signed by the line editor.
-    names = getattr(args, "reviewers", None) or _parse_reviewers(args.reviewer)
+    names = getattr(args, "reviewers", None) or _parse_reviewers(
+        getattr(args, "reviewer", _default_reviewer_name())
+    )
     # When a list ends in the single editor pass, the line editor is the one
     # whose changes the final render writes, so it signs them.
     signing = (
@@ -1129,7 +1113,7 @@ def _print_reviewer_listing(*, document_type: str = "auto") -> None:
     the run, and printing a fit marker against a type nobody has determined
     yet would be an answer to a question that has not been asked.
     """
-    from .v3.reviewers import DEFAULT_PROFILE_NAME, PROFILES, fits
+    from .pipeline.reviewers import DEFAULT_PROFILE_NAME, PROFILES, fits
 
     known_type = document_type != "auto"
     labels = {
@@ -1187,7 +1171,7 @@ def _resolve_guidelines(value: str) -> str:
         try:
             return path.read_text(encoding="utf-8")
         except OSError as exc:
-            _die(2, f"could not read guidelines file {path}: {exc}")
+            _die(_EXIT_INPUT, f"could not read guidelines file {path}: {exc}")
     return value
 
 
@@ -1275,7 +1259,7 @@ def _next_steps(args: argparse.Namespace, result: Any) -> list[str]:
         parts += ["--guidelines", shlex.quote(args.guidelines)]
     if args.document_type != "auto":
         parts += ["--document-type", args.document_type]
-    first = args.out[0]
+    first = _outputs(args)[0]
     goal_out = shlex.quote(str(first.with_name(f"{first.stem}.goal{first.suffix}")))
     base = " ".join(parts)
 
@@ -1287,7 +1271,7 @@ def _next_steps(args: argparse.Namespace, result: Any) -> list[str]:
             f"To let whetstone revise the draft and review it again until none "
             f"remain, run:\n\n"
             f'`{base} --goal "no major or moderate problems remain" '
-            f"--goal-check structure --out {goal_out}`"
+            f"--goal-check structure -o {goal_out}`"
         )
     if citations_open:
         n = len(citations_open)
@@ -1296,7 +1280,7 @@ def _next_steps(args: argparse.Namespace, result: Any) -> list[str]:
             f"that an edit can fix. To let whetstone correct {'them' if n != 1 else 'it'} and check "
             f"again until the citations and the list agree, run:\n\n"
             f'`{base} --goal "every citation matches the reference list" '
-            f"--goal-check citations --out {goal_out}`"
+            f"--goal-check citations -o {goal_out}`"
         )
     steps.append(
         f"*Each round of the loop is a full review, so it costs up to "
@@ -1328,8 +1312,8 @@ async def _edit_after_the_reviewers(
     editor's job, and ``claims,methods --editor`` should edit exactly as
     ``claims,methods,editor`` does.
     """
-    from .v3.editor import edit_findings
-    from .v3.reviewers import EDITOR_PROFILE
+    from .pipeline.editor import edit_findings
+    from .pipeline.reviewers import EDITOR_PROFILE
     from .schemas import DeclinedFinding
 
     criteria = editor_criteria or list(EDITOR_PROFILE.editor_criteria or ())
@@ -1373,24 +1357,24 @@ def _parse_reviewers(value: str) -> list[str]:
     comma-separated list, and which reports an unknown value in a form that
     does not say what the alternatives mean.
     """
-    from .v3.reviewers import PROFILES
+    from .pipeline.reviewers import PROFILES
 
     names = [chunk.strip() for chunk in value.split(",") if chunk.strip()]
     if not names:
-        _die(1, "--reviewer needs at least one name. Run --list-reviewers.")
+        _die(_EXIT_USAGE, "--reviewer needs at least one name. Run `andamentum-whetstone reviewers`.")
     unknown = [n for n in names if n not in PROFILES]
     if unknown:
         _die(
-            1,
+            _EXIT_USAGE,
             f"unknown reviewer(s): {', '.join(unknown)}. "
             f"Available: {', '.join(PROFILES)}. "
-            f"Run --list-reviewers for what each one asks.",
+            f"Run `andamentum-whetstone reviewers` for what each one asks.",
         )
     seen: set[str] = set()
     repeated = [n for n in names if n in seen or seen.add(n)]  # type: ignore[func-returns-value]
     if repeated:
         _die(
-            1,
+            _EXIT_USAGE,
             f"reviewer named more than once: {', '.join(sorted(set(repeated)))}. "
             f"Each reviewer runs a full review, so a repeat is a typo rather "
             f"than a request.",
@@ -1430,14 +1414,19 @@ def _editor_criteria(args: argparse.Namespace) -> list[str] | None:
     placeholder for an empty list and it proposes edits anyway — so the honest
     reading of ``--editor-criteria ""`` is the same as not passing it.
     """
-    if args.editor_criteria is None:
+    typed = getattr(args, "editor_criteria", None)
+    if typed is None:
         return None
-    parsed = [c.strip() for c in args.editor_criteria.split(",") if c.strip()]
+    parsed = [c.strip() for c in typed.split(",") if c.strip()]
     return parsed or None
 
 
-async def _run(args: argparse.Namespace, console: Console) -> None:
-    """Resolve the input once, then review it and write every output."""
+async def _run(args: argparse.Namespace, console: Console) -> int:
+    """Resolve the input once, then review it and write every output.
+
+    Returns the exit code: 0, or 1 when a ``--goal`` run did not reach its
+    goal (its output is still written).
+    """
     editor_criteria = _editor_criteria(args)
 
     # Always-on one-line scope banner — short, unmissable, not gated on
@@ -1462,7 +1451,7 @@ async def _run(args: argparse.Namespace, console: Console) -> None:
     try:
         document = await open_source(args.input)
     except Exception as exc:
-        _die(2, f"could not load input {args.input!r}: {exc}")
+        _die(_EXIT_INPUT, f"could not load input {args.input!r}: {exc}")
     for warning in document.warnings:
         console.print(f"[yellow]note:[/yellow] {warning}")
 
@@ -1472,14 +1461,16 @@ async def _run(args: argparse.Namespace, console: Console) -> None:
     from andamentum.core.decisions import DecisionModel, DecisionModelUnavailable
 
     decision_model = None
-    if args.decision_model:
+    if getattr(args, "decision_model", None):
         try:
             decision_model = await DecisionModel.open(args.decision_model)
         except DecisionModelUnavailable as exc:
             document.cleanup()
-            _die(1, str(exc))
+            _die(_EXIT_USAGE, str(exc))
     try:
-        await _review_and_write(args, console, document, decision_model=decision_model)
+        return await _review_and_write(
+            args, console, document, decision_model=decision_model
+        )
     finally:
         document.cleanup()
         if decision_model is not None:
@@ -1492,7 +1483,7 @@ def _novelty_research(args: argparse.Namespace) -> NoveltyResearch | None:
     Credentials for the scholarly sources come from the environment (loaded
     from .env in ``main``); they are never flags.
     """
-    if not args.check_novelty:
+    if not getattr(args, "check_novelty", False):
         return None
     from andamentum.deep_research import NoveltyResearch, SourceConfig
 
@@ -1512,25 +1503,26 @@ async def _review_and_write(
     document,
     *,
     decision_model: DecisionModel | None = None,
-) -> None:
+) -> int:
     """Run the requested pipeline over *document* and write every output.
 
     *decision_model* is the opened ``--decision-model`` handle (the caller
-    closes it), or None.
+    closes it), or None. Returns the exit code (see :func:`_run`).
     """
     novelty_research = _novelty_research(args)
     from .renderers import render_docx, render_html, render_markdown
-    from .v3 import Criterion, review_document_v3
-    from .v3.checklist import checklist_document_v3
-    from .v3.panel import run_panel_v3
-    from .v3.reviewers import PROFILES
+    from .pipeline import Criterion, review_document
+    from .pipeline.checklist import checklist_document
+    from .pipeline.panel import run_panel
+    from .pipeline.reviewers import PROFILES
 
     logger = logging.getLogger(_LOGGER_NAME)
     editor_criteria = _editor_criteria(args)
-    panel_disciplines = tuple(
-        d.strip() for d in args.panel_disciplines.split(",") if d.strip()
+    guidelines_text = (
+        _resolve_guidelines(getattr(args, "guidelines", ""))
+        if getattr(args, "guidelines", "")
+        else ""
     )
-    guidelines_text = _resolve_guidelines(args.guidelines) if args.guidelines else ""
 
     # Where a --goal run keeps the document between rounds. Temporary because
     # only the LAST round's file is the user's; the ones in between are working
@@ -1556,7 +1548,10 @@ async def _review_and_write(
             # Panel mode runs its own graph (different shape — multi-
             # expert fan-out + synthesis); criterion-cascade kwargs do
             # not apply.
-            result = await run_panel_v3(
+            panel_disciplines = tuple(
+                d.strip() for d in args.panel_disciplines.split(",") if d.strip()
+            )
+            result = await run_panel(
                 document.text,
                 model=args.model,
                 n_experts=args.n_experts,
@@ -1566,7 +1561,7 @@ async def _review_and_write(
                 # The panel subcommand already required --i-am-the-author
                 # (gated above) — that affirmation is what disarms the
                 # confidentiality tripwire, mirroring review's
-                # --confirm-own-draft. Library callers of run_panel_v3 that
+                # --confirm-own-draft. Library callers of run_panel that
                 # omit confirm_own_draft still get the marker scan.
                 confirm_own_draft=True,
             )
@@ -1578,7 +1573,7 @@ async def _review_and_write(
             # as it is for review, and unlike panel there is no mandatory
             # authorship affirmation, because checklist output is a defect
             # table rather than a simulated peer-review report.
-            result = await checklist_document_v3(
+            result = await checklist_document(
                 document,
                 model=args.model,
                 document_type=args.document_type,
@@ -1592,13 +1587,13 @@ async def _review_and_write(
         else:
             # Default review path — Phase C unified criteria/guidelines
             # input is mutually exclusive (CLI validator enforces).
-            v3_criteria: list[Criterion] | None = None
-            v3_guidelines: str | None = None
+            criteria_list: list[Criterion] | None = None
+            guidelines_for_run: str | None = None
             if args.criteria:
                 parsed = _parse_criteria(args.criteria)
-                v3_criteria = [Criterion(name=s, questions=[s]) for s in parsed]
+                criteria_list = [Criterion(name=s, questions=[s]) for s in parsed]
             if args.guidelines:
-                v3_guidelines = guidelines_text
+                guidelines_for_run = guidelines_text
 
             if args.goal is not None:
                 # --goal takes one reviewer (_validate_goal_args refuses a
@@ -1621,12 +1616,12 @@ async def _review_and_write(
                         check=args.goal_check,
                         max_rounds=args.max_rounds,
                         figures=goal_figures,
-                        figure_model=args.goal_figure_model,
+                        figure_model=args.figure_model,
                     ),
                     model=args.model,
                     reviewer=PROFILES[reviewer_name],
-                    criteria=v3_criteria,
-                    guidelines_text=v3_guidelines,
+                    criteria=criteria_list,
+                    guidelines_text=guidelines_for_run,
                     document_type=args.document_type,
                     confirm_own_draft=args.confirm_own_draft,
                     editor_criteria=editor_criteria,
@@ -1683,14 +1678,14 @@ async def _review_and_write(
                             f"[dim]reviewer {index + 1} of {len(reviewer_names)}: "
                             f"{profile.identity}[/dim]"
                         )
-                    result = await review_document_v3(
+                    result = await review_document(
                         document,
                         model=args.model,
                         cap=args.rounds,
                         document_type=args.document_type,
                         confirm_own_draft=args.confirm_own_draft,
-                        criteria=v3_criteria,
-                        guidelines_text=v3_guidelines,
+                        criteria=criteria_list,
+                        guidelines_text=guidelines_for_run,
                         # A list never edits round by round: the rounds raise
                         # findings on one unchanged text, and a single editor
                         # pass answers all of them afterwards (below).
@@ -1735,8 +1730,8 @@ async def _review_and_write(
                 # that raised it. A failed reconciliation merges nothing and
                 # says so in the summary — every finding is still there.
                 if len(reviews) > 1:
-                    from .v3.reconcile import combine_reviews, reconcile_reviewers
-                    from .v3.reviewers import author_for
+                    from .pipeline.reconcile import combine_reviews, reconcile_reviewers
+                    from .pipeline.reviewers import author_for
 
                     reconciliation = await reconcile_reviewers(
                         reviews, model=args.model
@@ -1783,16 +1778,16 @@ async def _review_and_write(
         from ._confidentiality import ConfidentialityMarkerError
 
         if isinstance(exc, ConfidentialityMarkerError):
-            _die(1, str(exc))
+            _die(_EXIT_USAGE, str(exc))
         # Distinguish "couldn't load the input" from "review crashed"
         # so users know whether to fix their input or their config.
         msg = str(exc)
         if any(
             t in msg.lower() for t in ("fetch", "harvest", "no such file", "not found")
         ):
-            _die(2, f"could not load input {args.input!r}: {exc}")
+            _die(_EXIT_INPUT, f"could not load input {args.input!r}: {exc}")
         else:
-            _die(3, f"review pipeline failed: {exc}")
+            _die(_EXIT_FAILED, f"review pipeline failed: {exc}")
 
     _print_reviewer_configuration(console, result)
 
@@ -1843,13 +1838,14 @@ async def _review_and_write(
 
     # A --goal run's own outcome, printed after everything else is written:
     # the output above is real and usable regardless of whether the goal
-    # was met, so the note comes last rather than pre-empting it. Exit 4
-    # says "the pipeline ran and wrote its output, but the goal was not
-    # met" — distinct from exit 3 (the pipeline itself crashed).
+    # was met, so the note comes last rather than pre-empting it. Exit 1
+    # says "the pipeline ran and wrote its output, but the goal was not met";
+    # a crash is exit 4.
     if goal_run_result is not None:
         _print_goal_outcome(console, goal_run_result)
         if not goal_run_result.goal_met:
-            sys.exit(4)
+            return _EXIT_NEGATIVE
+    return 0
 
 
 def _log_run_config(
@@ -1863,11 +1859,13 @@ def _log_run_config(
     table.add_column()
     table.add_row("input:", str(args.input))
     table.add_row("model:", args.model or "")
-    table.add_row("document type:", args.document_type)
+    if hasattr(args, "document_type"):
+        table.add_row("document type:", args.document_type)
     # What the reviewer resolves TO is only known after the run (the document
     # type decides it), and is printed then — see _print_reviewer_configuration.
     # This is the name that was asked for.
-    table.add_row("reviewer:", args.reviewer)
+    if hasattr(args, "reviewer"):
+        table.add_row("reviewer:", args.reviewer)
     if args.mode == "panel":
         table.add_row("pipeline:", "panel (multi-expert simulated peer review)")
         table.add_row("n_experts:", str(args.n_experts))
@@ -1995,128 +1993,20 @@ def _print_goal_outcome(console: Console, goal_run_result: Any) -> None:
     )
 
 
-# ── Subcommand front-end (Phase F) ──────────────────────────────────────────
-#
-# The CLI is internally a single flat argparse parser (the canonical surface
-# tests build against), with a thin subcommand alias layer in front of it.
-# Recognised verbs:
-#
-#   review         — default; the bare positional invocation also routes here
-#                    (`andamentum-whetstone draft.md --model X --out r.md`)
-#   panel          — equivalent to `--mode panel`
-#   checklist      — equivalent to `--mode checklist`
-#   proofread      — shells out to `andamentum.proofread` (no whetstone review
-#                    pipeline at all; the two are intentionally disjoint)
-#   apply-patches  — equivalent to `--apply-patches PATH`; INPUT and PATCHES
-#                    become positional args in the subcommand form
-#
-# The flat-flag form keeps working for every existing test + script. Users
-# who want the subcommand UX get it. v2's mode flag stays callable until
-# Phase I deletes v2.
-
-_KNOWN_SUBCOMMANDS: frozenset[str] = frozenset(
-    {"review", "panel", "checklist", "proofread", "apply-patches"}
-)
-# ``proofread`` and ``verify-provenance`` short-circuit the main flat-argparse
-# pipeline entirely (see ``main()`` below); they have their own argv handlers
-# and never reach _build_parser(). All other subcommands go through
-# _rewrite_subcommand().
+# ── Commands that are not a review ──────────────────────────────────────────
 
 
-def _rewrite_subcommand(argv: list[str]) -> list[str]:
-    """Translate a subcommand-style invocation into the underlying flat-CLI
-    argv. Returns ``argv`` unchanged when no subcommand verb is present
-    (back-compat for the existing bare-positional form)."""
-    if not argv:
-        return argv
-    head = argv[0]
-    rest = argv[1:]
-    if head == "review":
-        # `review draft.md --model X --out r.md`  →  `draft.md --model X --out r.md`
-        return rest
-    if head == "panel":
-        # `panel draft.md ...`  →  `draft.md --mode panel ...`
-        if not rest or rest[0].startswith("-"):
-            return ["--mode", "panel", *rest]
-        return [rest[0], "--mode", "panel", *rest[1:]]
-    if head == "checklist":
-        # `checklist draft.md ...`  →  `draft.md --mode checklist ...`
-        # Same shape as the panel branch, including the leading-flag case
-        # (`checklist --model X draft.md`), where there is no positional to
-        # keep in front and argparse sorts the order out itself.
-        if not rest or rest[0].startswith("-"):
-            return ["--mode", "checklist", *rest]
-        return [rest[0], "--mode", "checklist", *rest[1:]]
-    if head == "apply-patches":
-        # `apply-patches draft.docx --patches p.json --out r.docx`  →
-        # `draft.docx --apply-patches p.json --out r.docx`
-        # The subcommand requires the patches as a positional or via --patches.
-        if not rest or rest[0].startswith("-"):
-            _die(
-                1,
-                "apply-patches subcommand: positional INPUT required.\n"
-                "Usage: andamentum-whetstone apply-patches INPUT.docx "
-                "--patches PATCHES.json --out OUTPUT.docx",
-            )
-        out: list[str] = [rest[0]]
-        skip_next = False
-        for i, tok in enumerate(rest[1:], start=1):
-            if skip_next:
-                skip_next = False
-                continue
-            if tok == "--patches":
-                if i + 1 >= len(rest):
-                    _die(1, "apply-patches: --patches needs a value.")
-                out.extend(["--apply-patches", rest[i + 1]])
-                skip_next = True
-            else:
-                out.append(tok)
-        return out
-    return argv
-
-
-def _run_proofread_subcommand(argv: list[str]) -> int:
-    """The proofread subcommand is a thin shell over ``andamentum.proofread.cli``.
-    Whetstone's idea-review pipeline and the deterministic style check are
-    intentionally separate jobs (see the project memory entry on this).
-    Passes through stdin / file / URL handling unchanged."""
-    from andamentum.proofread.cli import main as proofread_main
-
-    return proofread_main(argv)
-
-
-def _run_verify_provenance_subcommand(argv: list[str]) -> int:
+def _run_verify_provenance(args: argparse.Namespace) -> int:
     """Report which AI-provenance markers are present in a .docx file.
-
-    Usage:
-        andamentum-whetstone verify-provenance INPUT.docx [--format human|json]
 
     Exit codes:
         0 — at least one provenance marker found
-        1 — file unreadable / not a .docx zip
-        2 — readable but no markers found
+        1 — readable but no markers found
+        3 — file unreadable / not a .docx zip
     """
-    sub = argparse.ArgumentParser(
-        prog="andamentum-whetstone verify-provenance",
-        description=(
-            "Inspect a .docx and report which whetstone provenance markers "
-            "are present. Read-only — never modifies the input file. Useful "
-            "for editors and integrity teams checking whether a file was "
-            "produced or modified by whetstone."
-        ),
-    )
-    sub.add_argument("input", type=Path, help="Path to a .docx file.")
-    sub.add_argument(
-        "--format",
-        choices=("human", "json"),
-        default="human",
-        help="Report format. Default: human.",
-    )
-    parsed = sub.parse_args(argv)
-
     from ._watermark import read_provenance_markers
 
-    markers = read_provenance_markers(parsed.input)
+    markers = read_provenance_markers(args.input)
     customxml = markers.get("customxml_provenance")
     found_any = bool(
         markers.get("core_properties_marker")
@@ -2124,16 +2014,17 @@ def _run_verify_provenance_subcommand(argv: list[str]) -> int:
         or customxml
     )
 
-    if parsed.format == "json":
+    if args.json:
         import json as _json
 
         print(_json.dumps(markers, indent=2, default=str))
     else:
         # Human-readable summary. Plain ASCII so it pipes cleanly.
-        print(f"File: {parsed.input}")
+        print(f"File: {args.input}")
         if not markers.get("readable"):
             print("  Readable: NO (not a valid .docx zip)")
-            return 1
+            print(f"error: {args.input} is not a readable .docx file", file=sys.stderr)
+            return _EXIT_INPUT
         print("  Readable: yes")
         print(
             "  Core-properties keywords/comments marker: "
@@ -2161,235 +2052,80 @@ def _run_verify_provenance_subcommand(argv: list[str]) -> int:
         )
 
     if not markers.get("readable"):
-        return 1
-    return 0 if found_any else 2
+        return _EXIT_INPUT
+    return 0 if found_any else _EXIT_NEGATIVE
 
 
-def _run_references_subcommand(argv: list[str]) -> int:
-    """Check a draft's references and write the problems as a review.
-
-    Usage:
-        andamentum-whetstone references INPUT --out OUT [--out OUT ...]
-            [--no-lookup] [--lookup-email ADDRESS] [--confirm-own-draft]
-            [--decision-model NAME]
-
-    No model. The citation numbers are checked against the reference list
-    offline; each entry is then looked up in Crossref unless --no-lookup is
-    given. Only the entries' text is sent — never the draft.
-
-    Exit codes: 0 — ran (problems or not); 1 — configuration or
-    confidentiality refusal; 2 — the input could not be read.
-    """
-    sub = argparse.ArgumentParser(
-        prog="andamentum-whetstone references",
-        description=(
-            "Check a draft's references: citation numbers against the list "
-            "(offline), then each entry against Crossref — does the work exist, "
-            "and do its title, year and first author match? Writes the "
-            "problems as comments (.docx) or a report (.md / .html). No model "
-            "is used. The lookup sends each reference entry's text to "
-            "Crossref, never the draft's own text; --no-lookup keeps "
-            "everything offline."
-        ),
-    )
-    sub.add_argument("input", help="The draft: .docx, .pdf, .md, .html or a URL.")
-    sub.add_argument(
-        "--out",
-        action="append",
-        required=True,
-        type=Path,
-        help="Output file; .docx, .md or .html. Repeat for several.",
-    )
-    sub.add_argument(
-        "--no-lookup",
-        action="store_true",
-        help="Check citations against the list only; send nothing to Crossref.",
-    )
-    sub.add_argument(
-        "--model",
-        default=None,
-        help=(
-            "A model to settle what the text leaves open: how the document "
-            "cites, and whether an ambiguous number is a citation. Used only "
-            "then, with short excerpts; a local model (ollama:...) keeps them "
-            "local. Without it, such cases are reported as undecided."
-        ),
-    )
-    sub.add_argument(
-        "--decision-model",
-        default=None,
-        metavar="NAME",
-        help=(
-            "A local Ollama decision model (for example nimble:9b) that "
-            "answers each citation-candidate question instead of --model. The "
-            "server and the model are checked before the draft is read."
-        ),
-    )
-    sub.add_argument(
-        "--lookup-email",
-        default=None,
-        help=(
-            "An email address sent to Crossref with each lookup, which puts "
-            "the requests in its faster 'polite pool'. Optional."
-        ),
-    )
-    sub.add_argument(
-        "--confirm-own-draft",
-        action="store_true",
-        help="Bypass the confidentiality check for a draft that is yours.",
-    )
-    parsed = sub.parse_args(argv)
-    for out in parsed.out:
-        if out.suffix.lower() not in (".docx", ".md", ".html"):
-            _die(1, f"--out {out}: use a .docx, .md or .html file name.")
-
-    console = Console(stderr=True)
-    _configure_logging(console, False)
-
-    from andamentum.core.decisions import DecisionError
-
-    from ._confidentiality import ConfidentialityMarkerError
-    from .references_check import REFERENCE_CHECKER_AUTHOR, check_document_references
-    from .renderers import render_docx, render_html, render_markdown
-
-    try:
-        result, document = asyncio.run(
-            check_document_references(
-                parsed.input,
-                model=parsed.model,
-                lookup=not parsed.no_lookup,
-                mailto=parsed.lookup_email,
-                confirm_own_draft=parsed.confirm_own_draft,
-                decision_model=parsed.decision_model,
-            )
-        )
-    except ConfidentialityMarkerError as exc:
-        _die(1, str(exc))
-    except DecisionError as exc:
-        _die(1, f"--decision-model {parsed.decision_model}: {exc}")
-    except (OSError, ValueError) as exc:
-        _die(2, f"could not read {parsed.input!r}: {exc}")
-
-    for out in parsed.out:
-        out.parent.mkdir(parents=True, exist_ok=True)
-        ext = out.suffix.lower()
-        if ext == ".md":
-            render_markdown(result, out)
-        elif ext == ".html":
-            render_html(result, out)
-        else:
-            report = render_docx(
-                result,
-                document=document,
-                output_path=out,
-                author=REFERENCE_CHECKER_AUTHOR,
-            )
-            _warn_on_dropped_annotations(console, report)
-        console.print(f"wrote {out}")
-
-    console.print(
-        f"{len(result.findings)} reference problem(s)."
-        + (f" [yellow]{result.degraded_reason}.[/yellow]" if result.degraded else "")
-    )
-    return 0
-
-
-def main(argv: Sequence[str] | None = None) -> None:
+def main(argv: Sequence[str] | None = None) -> int:
     """Entry point — invoked by the ``andamentum-whetstone`` script.
 
-    Accepts either the bare-positional form (``andamentum-whetstone draft.md
-    --model X --out r.md``) or the subcommand form (``andamentum-whetstone
-    review draft.md ...`` / ``... panel ...`` / ``... checklist ...`` /
-    ``... proofread draft.md`` / ``... apply-patches draft.docx --patches
-    p.json --out r.docx`` / ``... verify-provenance reviewed.docx`` /
-    ``... references draft.docx --out r.docx``)."""
+    ``review`` is the default: when the first argument is not a command or a
+    flag, it is taken to be the document to review.
+    """
     # Secrets only (API keys), here in the CLI and never in the library.
     load_dotenv()
     raw = list(sys.argv[1:] if argv is None else argv)
-    if raw and raw[0] == "proofread":
-        # proofread short-circuits the whetstone pipeline entirely
-        rc = _run_proofread_subcommand(raw[1:])
-        raise SystemExit(rc)
-    if raw and raw[0] == "references":
-        # No model and none of the review flags: its own small parser.
-        rc = _run_references_subcommand(raw[1:])
-        raise SystemExit(rc)
-    if raw and raw[0] == "verify-provenance":
-        # verify-provenance is a read-only inspection: no LLM, no
-        # pipeline, no harvest. Short-circuit the main argparse entirely.
-        rc = _run_verify_provenance_subcommand(raw[1:])
-        raise SystemExit(rc)
-
-    if "--list-reviewers" in raw:
-        # Short-circuited before the main parser, which requires an input file
-        # and at least one --out: listing the reviewers is a question about the
-        # tool, not about a document. --document-type is the only other flag
-        # that changes the answer, so it is the only one read here.
-        listing = argparse.ArgumentParser(
-            prog="andamentum-whetstone --list-reviewers", add_help=False
-        )
-        listing.add_argument("--list-reviewers", action="store_true")
-        # The same choices the main parser enforces, from the same list. Left
-        # open, a mistyped type would reach the fit column as an unknown
-        # value, match no profile's `fits` set and print "no" against every
-        # reviewer including the default one, which fits all six by
-        # construction — a confidently wrong answer where the run itself would
-        # have refused the flag.
-        listing.add_argument(
-            "--document-type", choices=_DOCUMENT_TYPE_CHOICES, default="auto"
-        )
-        parsed, _unused = listing.parse_known_args(raw)
-        _print_reviewer_listing(document_type=parsed.document_type)
-        raise SystemExit(0)
-
-    if raw and raw[0] in _KNOWN_SUBCOMMANDS:
-        raw = _rewrite_subcommand(raw)
-
-    parser = _build_parser()
-    args = parser.parse_args(raw)
-    _validate_args(args)
-
-    console = Console(stderr=True)
-    _configure_logging(console, args.verbose)
+    if raw and raw[0] not in _COMMANDS and not raw[0].startswith("-"):
+        raw = ["review", *raw]
 
     try:
-        if args.apply_patches is not None:
-            _apply_patches_only(args, console)
-        else:
-            asyncio.run(_run(args, console))
+        args = build_parser().parse_args(raw)
+        _validate_args(args)
+        if args.command == "reviewers":
+            _print_reviewer_listing(document_type=args.document_type)
+            return 0
+        if args.command == "verify-provenance":
+            return _run_verify_provenance(args)
+
+        console = Console(stderr=True)
+        _configure_logging(console, args.verbose)
+        if args.command == "apply-patches":
+            return _apply_patches_only(args, console)
+        return asyncio.run(_run(args, console))
     except KeyboardInterrupt:
-        _die(1, "interrupted")
+        print("error: interrupted", file=sys.stderr)
+        return _EXIT_FAILED
+    except SystemExit as exc:
+        # argparse (--help, --version, usage errors) and _die exit through
+        # SystemExit; hand the code back so main() always returns an int.
+        if exc.code is None:
+            return 0
+        return exc.code if isinstance(exc.code, int) else _EXIT_USAGE
 
 
-def _apply_patches_only(args: argparse.Namespace, console: Console) -> None:
+def _apply_patches_only(args: argparse.Namespace, console: Console) -> int:
     """Patch-only path: load JSON patches and apply to INPUT.docx → OUT.docx.
 
     No LLM, no review pipeline. Reuses ``finalize_reviewed_document`` so
     the output is byte-identical to what the full review pipeline would
-    produce given the same patches.
+    produce given the same patches. Returns 1 when some patches could not be
+    applied (the output is still written).
     """
     import json
 
     from .docx.finalization import finalize_reviewed_document
     from .models import DocumentPatch
 
-    raw = json.loads(args.apply_patches.read_text(encoding="utf-8"))
+    try:
+        raw = json.loads(args.patches.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        _die(_EXIT_INPUT, f"could not read patches file {args.patches}: {exc}")
     if not isinstance(raw, list):
         _die(
-            1,
+            _EXIT_INPUT,
             f"patches file must contain a JSON array, got {type(raw).__name__}.",
         )
 
     try:
         patches = [DocumentPatch(**p) for p in raw]
     except Exception as exc:
-        _die(1, f"invalid patch in {args.apply_patches}: {exc}")
+        _die(_EXIT_INPUT, f"invalid patch in {args.patches}: {exc}")
 
     review_summary = ""
     if args.patch_report is not None:
         review_summary = args.patch_report.read_text(encoding="utf-8")
 
-    output_path: Path = args.out[0]
+    output_path: Path = args.out
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     resolved_author = _resolve_author(args)
@@ -2409,9 +2145,10 @@ def _apply_patches_only(args: argparse.Namespace, console: Console) -> None:
 
         stamp_docx_core_properties(output_path, model=None)
     except Exception as exc:
-        _die(3, f"patch application failed: {exc}")
+        _die(_EXIT_FAILED, f"patch application failed: {exc}")
 
     _print_apply_patches_summary(console, patch_result, output_path)
+    return _EXIT_NEGATIVE if patch_result.failed_patches else 0
 
 
 def _warn_on_dropped_annotations(console: Console, report) -> None:

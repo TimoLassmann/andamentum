@@ -25,7 +25,7 @@ from andamentum.core.models import resolve_model
 
 from .criteria import Criterion
 
-logger = logging.getLogger("andamentum.whetstone.v3")
+logger = logging.getLogger("andamentum.whetstone.pipeline")
 
 _DEFAULT_MAX_CRITERIA: int = 8
 
@@ -106,7 +106,7 @@ async def extract_criteria_from_guidelines(
         )
 
     defn = AgentDefinition(
-        name="v3_extract_criteria",
+        name="extract_criteria",
         prompt=_PROMPT,
         output_model=_ExtractionResult,
         retries=2,
@@ -142,7 +142,7 @@ async def extract_criteria_from_guidelines(
         for i, ec in enumerate(capped)
     ]
     logger.info(
-        "[v3.extract_criteria] %d criteria extracted from %d-char prose",
+        "[extract_criteria] %d criteria extracted from %d-char prose",
         len(out),
         len(stripped),
     )

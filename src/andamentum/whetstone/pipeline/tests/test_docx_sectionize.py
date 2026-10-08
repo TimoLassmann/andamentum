@@ -13,7 +13,7 @@ from lxml import etree  # type: ignore
 from andamentum.whetstone.docx.atoms import document_atoms, projection, qn
 from andamentum.whetstone.docx.reading import read_docx
 from andamentum.whetstone.docx.textmap import TextMap
-from andamentum.whetstone.v3.docx_source import load_docx, sectionize_docx
+from andamentum.whetstone.pipeline.docx_source import load_docx, sectionize_docx
 
 
 def _write(tmp_path, build) -> str:

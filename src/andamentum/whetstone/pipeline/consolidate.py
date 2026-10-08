@@ -25,7 +25,7 @@ from andamentum.core.models import resolve_model
 from .prompt_blocks import split_fix
 from .review import Finding
 
-logger = logging.getLogger("andamentum.whetstone.v3")
+logger = logging.getLogger("andamentum.whetstone.pipeline")
 
 _SEVERITY_RANK = {"minor": 0, "moderate": 1, "major": 2}
 
@@ -110,7 +110,7 @@ async def consolidate(findings: list[Finding], *, agent_model: str) -> list[Find
         return findings
 
     defn = AgentDefinition(
-        name="v3_consolidate",
+        name="consolidate",
         prompt=_PROMPT,
         output_model=_Consolidation,
         retries=2,
@@ -135,7 +135,7 @@ async def consolidate(findings: list[Finding], *, agent_model: str) -> list[Find
         bump_from_result(result)
         groups = cast(_Consolidation, result.output).groups
     except Exception as exc:
-        logger.warning("[v3.consolidate] crashed, leaving findings as-is: %s", exc)
+        logger.warning("[consolidate] crashed, leaving findings as-is: %s", exc)
         return findings
 
     n = len(findings)
@@ -170,7 +170,7 @@ async def consolidate(findings: list[Finding], *, agent_model: str) -> list[Find
     passthrough = [f for i, f in enumerate(findings) if i not in used]
     if merged:
         logger.info(
-            "[v3.consolidate] %d finding(s) → %d (merged %d group(s))",
+            "[consolidate] %d finding(s) → %d (merged %d group(s))",
             n,
             len(merged) + len(passthrough),
             len(merged),

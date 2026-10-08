@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 from andamentum.references import Hint
-from andamentum.whetstone.v3.digest import (
+from andamentum.whetstone.pipeline.digest import (
     build_document_model,
     citations_line,
     gist_for,
     read_citations,
 )
-from andamentum.whetstone.v3.model import CitationSummary, Claim, Section, Span
+from andamentum.whetstone.pipeline.model import CitationSummary, Claim, Section, Span
 
 
 def _section(text: str, *, id="s1", title="S", start=0) -> Section:
@@ -94,8 +94,8 @@ def test_build_document_model_assembles_the_facets() -> None:
 
 
 def test_only_a_citations_facet_criterion_sees_the_citation_line() -> None:
-    from andamentum.whetstone.v3.criteria import Criterion
-    from andamentum.whetstone.v3.review import _project
+    from andamentum.whetstone.pipeline.criteria import Criterion
+    from andamentum.whetstone.pipeline.review import _project
 
     src = "We recover 4x more [1]."
     summary = CitationSummary(

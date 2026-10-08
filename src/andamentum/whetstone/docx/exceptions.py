@@ -1,7 +1,9 @@
 """Exceptions for document review system."""
 
+from ..errors import WhetstoneError
 
-class DocumentReviewError(Exception):
+
+class DocumentReviewError(WhetstoneError):
     """Base exception for document review errors."""
 
     pass

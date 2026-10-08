@@ -33,7 +33,7 @@ from pydantic_ai import ModelRetry, RunContext
 
 from .model import DocumentModel, Section
 
-logger = logging.getLogger("andamentum.whetstone.v3")
+logger = logging.getLogger("andamentum.whetstone.pipeline")
 
 # Width of the snippet returned per match — chars on each side of the
 # hit, so the total snippet is ~200 chars. Small enough that dozens of
@@ -113,7 +113,7 @@ async def read_section(ctx: RunContext[DocDeps], section_id: str) -> str:
     section = ctx.deps.document_model.section_by_id(section_id)
     if section is None:
         logger.info(
-            "[v3.tool] %sread_section(%r) → no such section", _who(ctx), section_id
+            "[tool] %sread_section(%r) → no such section", _who(ctx), section_id
         )
         raise ModelRetry(
             f"no section with id {section_id!r}; valid ids are listed in the "
@@ -122,7 +122,7 @@ async def read_section(ctx: RunContext[DocDeps], section_id: str) -> str:
         )
     if section_id in ctx.deps.seen_sections:
         logger.info(
-            "[v3.tool] %sread_section(%r) → already loaded earlier "
+            "[tool] %sread_section(%r) → already loaded earlier "
             "(returning reminder)",
             _who(ctx),
             section_id,
@@ -136,7 +136,7 @@ async def read_section(ctx: RunContext[DocDeps], section_id: str) -> str:
         )
     ctx.deps.seen_sections.add(section_id)
     logger.info(
-        "[v3.tool] %sread_section(%r) → %d chars",
+        "[tool] %sread_section(%r) → %d chars",
         _who(ctx),
         section_id,
         len(section.text),
@@ -181,7 +181,7 @@ async def search_paper(
     if regex:
         if len(query) > _MAX_REGEX_LENGTH:
             logger.info(
-                "[v3.tool] %ssearch_paper(%r, regex) → too long", _who(ctx), query[:40]
+                "[tool] %ssearch_paper(%r, regex) → too long", _who(ctx), query[:40]
             )
             raise ModelRetry(
                 f"regex pattern too long ({len(query)} chars; max "
@@ -192,7 +192,7 @@ async def search_paper(
             pattern = re.compile(query, re.IGNORECASE)
         except re.error as e:
             logger.info(
-                "[v3.tool] %ssearch_paper(%r, regex) → compile error: %s",
+                "[tool] %ssearch_paper(%r, regex) → compile error: %s",
                 _who(ctx),
                 query,
                 e,
@@ -208,7 +208,7 @@ async def search_paper(
             )
         except asyncio.TimeoutError:
             logger.info(
-                "[v3.tool] %ssearch_paper(%r, regex) → timed out", _who(ctx), query
+                "[tool] %ssearch_paper(%r, regex) → timed out", _who(ctx), query
             )
             raise ModelRetry(
                 f"regex {query!r} timed out (>{_REGEX_TIMEOUT_S}s) — "
@@ -220,7 +220,7 @@ async def search_paper(
 
     matches = [_build_match(start, end, source, sections) for start, end in positions]
     logger.info(
-        "[v3.tool] %ssearch_paper(%r, %s) → %d match(es)",
+        "[tool] %ssearch_paper(%r, %s) → %d match(es)",
         _who(ctx),
         query,
         mode,

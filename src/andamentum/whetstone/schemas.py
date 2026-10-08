@@ -77,7 +77,7 @@ class Finding(BaseModel):
     quotes: list[Quote] = Field(default_factory=list)
     sections_involved: list[str] = Field(default_factory=list)  # section_id list
     # "checklist" marks a finding produced by a quota-driven probe in
-    # checklist mode (whetstone.v3.checklist) rather than by the criterion
+    # checklist mode (whetstone.pipeline.checklist) rather than by the criterion
     # cascade. Such a finding was extracted against ONE named defect class and
     # its quote (or, for an absence finding, the absence of its search terms)
     # was verified deterministically against the source — so the provenance is
@@ -460,7 +460,7 @@ class ConfigurationLine(BaseModel):
 class ReviewerHeader(BaseModel):
     """The reviewer block a renderer prints at the top of a review.
 
-    Built once by ``andamentum.whetstone.v3.reviewers.resolve`` and formatted
+    Built once by ``andamentum.whetstone.pipeline.reviewers.resolve`` and formatted
     by each of the three renderers, so the markdown, HTML and Word reports
     cannot describe the same run differently.
 
@@ -488,15 +488,13 @@ class ReviewResult(BaseModel):
     Designed to be machine-friendly — every consumer (the user, another
     agent, a CLI rendering, a CI gate) reads the same flat structure.
 
-    In ``mode="panel"`` runs, the panel-only fields (``expert_profiles``,
-    ``expert_reviews``, ``panel_synthesis``) are populated; the standard
-    review-mode fields may also carry deterministic findings + the
-    document map from the shared chunk_and_scan substrate.
-
-    In ``mode="guidelines"`` runs, ``checkable_items`` lists what was
-    extracted from the supplied guidelines and ``guideline_evaluations``
-    holds one verdict per item. In ``mode="custom"`` runs,
-    ``custom_evaluations`` is populated.
+    A panel run (``run_panel``) fills the panel-only fields
+    (``expert_profiles``, ``expert_reviews``, ``panel_synthesis``); a review
+    or checklist run leaves them empty. Free-text guidelines are decomposed
+    into criteria before the review (``guidelines_text=``), so
+    ``checkable_items``, ``guideline_evaluations`` and ``custom_evaluations``
+    are not filled by any current pipeline; the renderers still show them
+    when a caller sets them.
     """
 
     summary: str = ""  # filled in Phase 4 (Synthesise)
@@ -539,14 +537,14 @@ class ReviewResult(BaseModel):
     author_questions: list[AuthorQuestion] = Field(default_factory=list)
     document_map: list[SectionCard] = Field(default_factory=list)
     metrics: ReviewMetrics = Field(default_factory=ReviewMetrics)
-    # Panel mode (mode="panel") populates these; otherwise empty.
+    # A panel run populates these; otherwise empty.
     expert_profiles: list[ExpertProfile] = Field(default_factory=list)
     expert_reviews: list[ExpertReview] = Field(default_factory=list)
     panel_synthesis: PanelSynthesis | None = None
-    # Guidelines mode (mode="guidelines") populates these; otherwise empty.
+    # Not filled by any current pipeline (see the class docstring).
     checkable_items: list[CheckableItem] = Field(default_factory=list)
     guideline_evaluations: list[GuidelineEvaluation] = Field(default_factory=list)
-    # Custom mode (mode="custom") populates this; otherwise empty.
+    # Not filled by any current pipeline (see the class docstring).
     custom_evaluations: list[CustomEvaluation] = Field(default_factory=list)
     # Which reviewer profile produced this and how it was configured.
     # None when the default reviewer ran — see ReviewerHeader.

@@ -12,7 +12,7 @@ from ..model import Section
 from .agents import EXTRACT_KEYWORDS_DEFN, KeywordExtractionOutput
 from .document_view import build_document_view
 
-logger = logging.getLogger("andamentum.whetstone.v3.panel")
+logger = logging.getLogger("andamentum.whetstone.pipeline.panel")
 
 
 async def extract_keywords(

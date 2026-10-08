@@ -1,4 +1,4 @@
-"""``--reviewer`` and ``--list-reviewers``, and the reviewer block in reports.
+"""``--reviewer`` and the ``reviewers`` listing, and the reviewer block in reports.
 
 Two halves, and they share one property: **naming no reviewer changes
 nothing**. The command line gains a flag whose default is the run that
@@ -30,11 +30,13 @@ from andamentum.whetstone.schemas import (
     ReviewerHeader,
     ReviewResult,
 )
-from andamentum.whetstone.v3.reviewers import PROFILES, resolve
+from andamentum.whetstone.pipeline.reviewers import PROFILES, resolve
 
 
 def _args(argv: list[str]):
-    return cli_mod._build_parser().parse_args(argv)
+    return cli_mod.build_parser().parse_args(
+        argv if argv[0] in cli_mod._COMMANDS else ["review", *argv]
+    )
 
 
 BASE = ["draft.md", "--model", "stub:none", "--out", "review.md"]
@@ -64,15 +66,7 @@ def test_an_unknown_reviewer_is_refused_before_anything_is_loaded() -> None:
 
     with pytest.raises(SystemExit) as exc:
         cli_mod._parse_reviewers("statistician")
-    assert exc.value.code == 1
-
-
-def test_a_reviewer_is_not_a_review_only_flag() -> None:
-    """Checklist mode honours it — a named bank is reproducible, which is what
-    the argument against checklist flags was protecting."""
-    assert "reviewer" not in {
-        dest for dest, _flag, _unset in cli_mod._REVIEW_ONLY_FLAGS
-    }
+    assert exc.value.code == 2
 
 
 # ── the refusals ────────────────────────────────────────────────────────────
@@ -85,66 +79,68 @@ def _validate(argv: list[str]) -> None:
 def test_panel_refuses_a_reviewer(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit) as exc:
         _validate(
-            [*BASE, "--mode", "panel", "--i-am-the-author", "--reviewer", "claims"]
+            ["panel", *BASE, "--i-am-the-author", "--reviewer", "claims"]
         )
-    assert exc.value.code == 1
-    assert "panel generates its own reviewers" in capsys.readouterr().err
+    assert exc.value.code == 2
+    assert "unrecognized arguments: --reviewer" in capsys.readouterr().err
 
 
-def test_panel_tolerates_the_default(monkeypatch: pytest.MonkeyPatch) -> None:
-    """`--reviewer default` under panel asks for nothing panel does not do."""
+def test_panel_needs_the_flag_not_an_environment_variable(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The affirmation is a flag on the command line; nothing in the
+    environment stands in for it."""
     monkeypatch.setenv("ANDAMENTUM_PANEL_OWN_AUTHOR", "1")
-    _validate([*BASE, "--mode", "panel", "--reviewer", "default"])
+    with pytest.raises(SystemExit) as exc:
+        _validate(["panel", *BASE])
+    assert exc.value.code == 2
+    assert "--i-am-the-author" in capsys.readouterr().err
+    _validate(["panel", *BASE, "--i-am-the-author"])
 
 
 def test_apply_patches_refuses_a_reviewer(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    source = tmp_path / "draft.docx"
-    Document().save(str(source))
-    patches = tmp_path / "patches.json"
-    patches.write_text("[]")
     with pytest.raises(SystemExit) as exc:
-        _validate(
+        _args(
             [
-                str(source),
-                "--apply-patches",
-                str(patches),
-                "--out",
+                "apply-patches",
+                str(tmp_path / "draft.docx"),
+                "--patches",
+                str(tmp_path / "patches.json"),
+                "-o",
                 str(tmp_path / "out.docx"),
                 "--reviewer",
                 "claims",
             ]
         )
-    assert exc.value.code == 1
-    assert "apply-patches applies patches you supply" in capsys.readouterr().err
+    assert exc.value.code == 2
+    assert "unrecognized arguments: --reviewer" in capsys.readouterr().err
 
 
 def test_checklist_refuses_the_line_editor(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit) as exc:
-        _validate([*BASE, "--mode", "checklist", "--reviewer", "editor"])
-    assert exc.value.code == 1
+        _validate(["checklist", *BASE, "--reviewer", "editor"])
+    assert exc.value.code == 2
     assert "runs no checks" in capsys.readouterr().err
 
 
 def test_checklist_accepts_a_reviewer_that_selects_probes() -> None:
-    _validate([*BASE, "--mode", "checklist", "--reviewer", "methods"])
+    _validate(["checklist", *BASE, "--reviewer", "methods"])
 
 
 # ── the listing ─────────────────────────────────────────────────────────────
 
 
 def _listing(argv: list[str], capsys: pytest.CaptureFixture[str]) -> str:
-    with pytest.raises(SystemExit) as exc:
-        cli_mod.main(argv)
-    assert exc.value.code == 0
+    assert cli_mod.main(argv) == 0
     return capsys.readouterr().out
 
 
 def test_listing_needs_no_input_file_and_no_model(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    out = _listing(["--list-reviewers"], capsys)
+    out = _listing(["reviewers"], capsys)
     for name, profile in PROFILES.items():
         assert out.count(profile.description) == 1
         assert name in out
@@ -154,7 +150,7 @@ def test_listing_prints_every_profile_once_in_display_order(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """One row per profile, no repeats, no omissions, registry order."""
-    out = _listing(["--list-reviewers"], capsys)
+    out = _listing(["reviewers"], capsys)
     rows = [
         line
         for line in out.splitlines()
@@ -165,14 +161,14 @@ def test_listing_prints_every_profile_once_in_display_order(
 
 
 def test_listing_marks_the_default(capsys: pytest.CaptureFixture[str]) -> None:
-    out = _listing(["--list-reviewers"], capsys)
+    out = _listing(["reviewers"], capsys)
     assert "default (default)" in out
 
 
 def test_listing_carries_the_recommended_sequence(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    out = _listing(["--list-reviewers"], capsys)
+    out = _listing(["reviewers"], capsys)
     assert "Recommended sequence" in out
     assert "Editor last" in out
 
@@ -180,10 +176,10 @@ def test_listing_carries_the_recommended_sequence(
 def test_listing_shows_fit_only_when_the_type_is_stated(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    without = _listing(["--list-reviewers"], capsys)
+    without = _listing(["reviewers"], capsys)
     assert "suits" not in without.splitlines()[2]
 
-    with_type = _listing(["--list-reviewers", "--document-type", "creative"], capsys)
+    with_type = _listing(["reviewers", "--document-type", "creative"], capsys)
     assert "suits creative?" in with_type
     claims_row = next(
         line for line in with_type.splitlines() if line.strip().startswith("claims")
@@ -244,7 +240,7 @@ async def test_the_cli_hands_the_review_the_named_profile(
         return ReviewResult(summary="Stubbed.")
 
     monkeypatch.setattr(
-        "andamentum.whetstone.v3.review_document_v3", fake_review, raising=True
+        "andamentum.whetstone.pipeline.review_document", fake_review, raising=True
     )
     await cli_mod._run(
         _args(
@@ -276,16 +272,15 @@ async def test_the_cli_hands_the_checklist_the_named_profile(
         return ReviewResult(summary="Stubbed.")
 
     monkeypatch.setattr(
-        "andamentum.whetstone.v3.checklist.checklist_document_v3",
+        "andamentum.whetstone.pipeline.checklist.checklist_document",
         fake_checklist,
         raising=True,
     )
     await cli_mod._run(
         _args(
             [
-                str(source),
-                "--mode",
                 "checklist",
+                str(source),
                 "--model",
                 "stub:none",
                 "--out",
@@ -514,15 +509,15 @@ def test_an_all_blank_editor_criteria_flag_reads_as_not_given() -> None:
 def test_checklist_still_refuses_an_editor_criteria_flag(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """The sentinel default must not turn the rejection off."""
+    """Checklist has no editor, so its parser has no such flag."""
     with pytest.raises(SystemExit) as exc:
-        _validate([*BASE, "--mode", "checklist", "--editor-criteria", "clarity"])
-    assert exc.value.code == 1
-    assert "--editor-criteria is a review-mode flag" in capsys.readouterr().err
+        _validate(["checklist", *BASE, "--editor-criteria", "clarity"])
+    assert exc.value.code == 2
+    assert "unrecognized arguments: --editor-criteria" in capsys.readouterr().err
 
 
 def test_checklist_tolerates_the_editor_criteria_flag_being_absent() -> None:
-    _validate([*BASE, "--mode", "checklist"])
+    _validate(["checklist", *BASE])
 
 
 # ── a review that would review nothing ──────────────────────────────────────
@@ -539,7 +534,7 @@ def test_review_refuses_the_line_editor_without_the_editor(
     """
     with pytest.raises(SystemExit) as exc:
         _validate([*BASE, "--reviewer", "editor", "--no-editor"])
-    assert exc.value.code == 1
+    assert exc.value.code == 2
     assert "runs no review criteria" in capsys.readouterr().err
 
 
@@ -571,20 +566,18 @@ def test_the_refusal_is_stated_as_a_property_not_as_a_name() -> None:
 
 
 def test_the_listing_refuses_a_document_type_the_run_would_refuse() -> None:
-    """--list-reviewers is parsed separately; it must not be more permissive.
+    """`reviewers` has its own parser; it must not be more permissive.
 
     An unrecognised type matches no profile's ``fits`` set, so the fit column
     would read "no" against every reviewer — including the default one, which
     fits all six by construction.
     """
-    with pytest.raises(SystemExit) as exc:
-        cli_mod.main(["--list-reviewers", "--document-type", "acadmic"])
-    assert exc.value.code == 2
+    assert cli_mod.main(["reviewers", "--document-type", "acadmic"]) == 2
 
 
 def test_the_listing_accepts_every_type_the_run_accepts(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     for document_type in cli_mod._DOCUMENT_TYPE_CHOICES:
-        out = _listing(["--list-reviewers", "--document-type", document_type], capsys)
+        out = _listing(["reviewers", "--document-type", document_type], capsys)
         assert "default (default)" in out

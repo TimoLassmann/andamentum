@@ -654,7 +654,7 @@ def apply_edits(
     # because it is stable and explicable, not because it is right.
     #
     # The real decision belongs upstream, in an edit gate mirroring
-    # `v3/gate.py`, which already does exactly this for findings — dropping
+    # `pipeline/gate.py`, which already does exactly this for findings — dropping
     # overlapping ones and keeping the most severe. Edits have no such gate,
     # so the choice falls through to here, which is the one place without the
     # information to make it. Collisions are rare today (0 of 41 suggested

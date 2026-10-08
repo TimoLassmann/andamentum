@@ -42,7 +42,7 @@ from .review import Finding
 if TYPE_CHECKING:
     from andamentum.deep_research import NoveltyResearch
 
-logger = logging.getLogger("andamentum.whetstone.v3")
+logger = logging.getLogger("andamentum.whetstone.pipeline")
 
 
 _DEFAULT_TARGET_CAP: int = 8
@@ -173,7 +173,7 @@ async def flag_novelty_targets(
         raw = cast(NoveltyTargetList, result.output).targets[:cap]
     except Exception as exc:
         logger.warning(
-            "[v3.novelty] target extractor crashed (%s); skipping novelty check",
+            "[novelty] target extractor crashed (%s); skipping novelty check",
             exc,
         )
         return []
@@ -189,7 +189,7 @@ async def flag_novelty_targets(
                 origin_id = sec.id
                 break
         enriched.append(target.model_copy(update={"origin_section_id": origin_id}))
-    logger.info("[v3.novelty] %d targets extracted", len(enriched))
+    logger.info("[novelty] %d targets extracted", len(enriched))
     return enriched
 
 
@@ -286,7 +286,7 @@ async def run_novelty_searches(
                 )
             except Exception as exc:
                 logger.warning(
-                    "[v3.novelty] target '%s...' novelty check crashed: %s",
+                    "[novelty] target '%s...' novelty check crashed: %s",
                     target.short_summary[:60],
                     exc,
                 )

@@ -12,7 +12,7 @@ from andamentum.core.models import resolve_model
 from ...schemas import ExpertProfile
 from .agents import EXPERT_GENERATOR_DEFN
 
-logger = logging.getLogger("andamentum.whetstone.v3.panel")
+logger = logging.getLogger("andamentum.whetstone.pipeline.panel")
 
 _MAX_CONCURRENT_GENERATIONS: int = 2
 

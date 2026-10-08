@@ -5,16 +5,16 @@ tasks all increment the same object instance (asyncio tasks inherit
 their parent's context snapshot; the snapshot is shallow, so the
 mutable counter object is shared across tasks).
 
-Used by ``run_review_v3`` to populate ``ReviewMetrics.llm_calls`` and
+Used by ``run_review`` to populate ``ReviewMetrics.llm_calls`` and
 ``ReviewMetrics.reflection_rounds_used`` honestly — before this module
 existed those fields silently reported ``0`` in v3 because the v2
 manual-increment plumbing was never ported across the consolidation.
-Panel-mode (``run_panel_v3``) uses the same mechanism: its workers bump
+Panel-mode (``run_panel``) uses the same mechanism: its workers bump
 the shared counter after each agent run (a State counter cannot reach
 concurrently-gathered calls).
 
 Single-call-per-task contract: ``start_run()`` resets the counter for
-the current context. Concurrent ``run_review_v3`` calls from the same
+the current context. Concurrent ``run_review`` calls from the same
 task context would share counters; in practice each top-level call
 runs in its own asyncio task and gets its own context, so this is
 not a problem.
@@ -27,7 +27,7 @@ from dataclasses import dataclass
 
 
 @dataclass
-class V3Counters:
+class ReviewCounters:
     """Mutable counter object — fields are bumped from many concurrent
     coroutines via the shared contextvar reference."""
 
@@ -35,18 +35,18 @@ class V3Counters:
     gap_rounds: int = 0
 
 
-_CTX: ContextVar[V3Counters | None] = ContextVar("v3_counters", default=None)
+_CTX: ContextVar[ReviewCounters | None] = ContextVar("counters", default=None)
 
 
-def start_run() -> V3Counters:
+def start_run() -> ReviewCounters:
     """Initialise a fresh counter for the current context. Returns the
     counter so the caller can read it after the run completes."""
-    c = V3Counters()
+    c = ReviewCounters()
     _CTX.set(c)
     return c
 
 
-def current() -> V3Counters | None:
+def current() -> ReviewCounters | None:
     """The active counter for this context, or None if no run is in
     progress. Helpers tolerate None — increments are silently dropped
     so importing this module never breaks an isolated unit test."""

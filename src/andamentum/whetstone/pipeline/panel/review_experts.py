@@ -14,7 +14,7 @@ from ..model import Section
 from .agents import EXPERT_REVIEWER_DEFN
 from .document_view import build_document_view
 
-logger = logging.getLogger("andamentum.whetstone.v3.panel")
+logger = logging.getLogger("andamentum.whetstone.pipeline.panel")
 
 _MAX_CONCURRENT_REVIEWS: int = 2
 

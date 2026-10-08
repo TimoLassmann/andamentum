@@ -20,7 +20,7 @@ Public API:
                                        several reviewers' findings
 
 Off by default. Wired into the graph via the optional ``editor=True``
-kwarg on :func:`run_review_v3`.
+kwarg on :func:`run_review`.
 """
 
 from __future__ import annotations
@@ -43,7 +43,7 @@ from .model import Section, Span
 from .prompt_blocks import brief_block
 from .review import Finding
 
-logger = logging.getLogger("andamentum.whetstone.v3")
+logger = logging.getLogger("andamentum.whetstone.pipeline")
 
 
 _MAX_CONCURRENT_EDITORS: int = 5
@@ -281,7 +281,7 @@ def make_edit_validator(
     telling anyone — the finding it was answering came back as "the proposed
     rewrite did not quote the document verbatim", which is true and useless.
 
-    This is :func:`~andamentum.whetstone.v3.review.make_anchor_validator`
+    This is :func:`~andamentum.whetstone.pipeline.review.make_anchor_validator`
     applied to the editor's shape, and it is the same bargain: entries that
     pass are LOCKED and survive whatever the model does next, so a retry can
     only add. The review agent adopted lock-and-refine after smoke logs caught
@@ -344,7 +344,7 @@ def make_edit_validator(
                     f"with a reason in `why`."
                 )
             logger.info(
-                "[v3.editor.validator] attempt %d: %d locked, %d problem(s), "
+                "[editor.validator] attempt %d: %d locked, %d problem(s), "
                 "%d unanswered%s",
                 ctx.retry,
                 len(locked),
@@ -359,7 +359,7 @@ def make_edit_validator(
 
         if problems or unanswered:
             logger.info(
-                "[v3.editor.validator] attempts spent: keeping %d, dropped %d "
+                "[editor.validator] attempts spent: keeping %d, dropped %d "
                 "malformed, %d finding(s) unanswered",
                 len(locked),
                 len(problems),
@@ -406,7 +406,7 @@ def _passage(finding: Finding, section: Section) -> str:
     # A span outside the section it was routed to is a bug upstream, not
     # something to paper over silently.
     logger.warning(
-        "[v3.editor] finding span %d-%d falls outside section %s (%d-%d); "
+        "[editor] finding span %d-%d falls outside section %s (%d-%d); "
         "showing the reviewer's quote instead",
         span.start,
         span.end,
@@ -438,7 +438,7 @@ async def _run_editor_on_section(
     byte-identical to the one this function built before profiles existed.
     """
     defn = AgentDefinition(
-        name="v3_editor",
+        name="editor",
         prompt=EDITOR_PROMPT,
         output_model=EditorOutput,
         retries=2,
@@ -517,7 +517,7 @@ async def _run_editor_on_section(
     answered: set[int] = set()
 
     logger.debug(
-        "[v3.editor] %s: %d finding(s) in, %d proposal(s) back (%d of the "
+        "[editor] %s: %d finding(s) in, %d proposal(s) back (%d of the "
         "editor's own, %d declined)",
         section.id,
         len(ordered),
@@ -550,7 +550,7 @@ async def _run_editor_on_section(
         span = locate(prop.original_text, section.text)
         if span is None:
             logger.debug(
-                "[v3.editor] dropped unanchored edit in %s: %r",
+                "[editor] dropped unanchored edit in %s: %r",
                 section.id,
                 prop.original_text[:60],
             )
@@ -646,7 +646,7 @@ async def run_editor(
         by_section.setdefault(finding.span.section_id, []).append(finding)
     if unanchored:
         logger.info(
-            "[v3.editor] %d finding(s) not sent to the editor — they have no "
+            "[editor] %d finding(s) not sent to the editor — they have no "
             "span, so there is no passage to rewrite",
             unanchored,
         )
@@ -665,7 +665,7 @@ async def run_editor(
                 )
             except Exception as exc:
                 logger.warning(
-                    "[v3.editor] section %s crashed (%s) — no edits emitted",
+                    "[editor] section %s crashed (%s) — no edits emitted",
                     section.id,
                     exc,
                 )
@@ -680,7 +680,7 @@ async def run_editor(
 
     directed = sum(1 for e in edits if e.finding_id is not None)
     logger.info(
-        "[v3.editor] %d edit(s) across %d section(s) — %d answering a finding, "
+        "[editor] %d edit(s) across %d section(s) — %d answering a finding, "
         "%d of the editor's own; %d finding(s) need the author (criteria: %s)",
         len(edits),
         len(sections),
@@ -691,7 +691,7 @@ async def run_editor(
     )
     for entry in declined:
         logger.info(
-            "[v3.editor] no local fix — [%s] %s\n              because: %s",
+            "[editor] no local fix — [%s] %s\n              because: %s",
             entry.criterion,
             entry.issue[:70],
             entry.why,
@@ -795,7 +795,7 @@ async def edit_findings(
     skipped = len(findings) - len(internal)
     if skipped:
         logger.info(
-            "[v3.editor] %d finding(s) not sent to the editor — they quote no "
+            "[editor] %d finding(s) not sent to the editor — they quote no "
             "passage, so there is nothing to rewrite",
             skipped,
         )

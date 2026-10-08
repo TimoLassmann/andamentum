@@ -65,7 +65,7 @@ from ..prompt_blocks import (
 from ..tools import DocDeps, read_section, search_paper
 from .probes import Probe, ProbeFinding, ProbeShape, normalise_tag
 
-logger = logging.getLogger("andamentum.whetstone.v3")
+logger = logging.getLogger("andamentum.whetstone.pipeline")
 
 # Per-probe budgets, tighter than the criterion cascade's (200 / 100 / 1M).
 # A probe asks ONE narrowly-scoped question, so it needs far fewer tool turns
@@ -358,7 +358,7 @@ def _finalise(
                 )
         except ValidationError as exc:
             logger.warning(
-                "[v3.checklist] %s: dropped a malformed finding (%r): %s",
+                "[checklist] %s: dropped a malformed finding (%r): %s",
                 probe.id,
                 item.issue[:80],
                 exc,
@@ -371,7 +371,7 @@ def _finalise(
         # probe's closed set is the cheapest available read on whether that
         # model can run the bank at all, so it is reported rather than absorbed.
         logger.warning(
-            "[v3.checklist] %s: dropped %d/%d tag(s) outside the allowed set (%s)",
+            "[checklist] %s: dropped %d/%d tag(s) outside the allowed set (%s)",
             probe.id,
             dropped_tags,
             len(raw_items),
@@ -405,7 +405,7 @@ def _log_probe_start(probe: Probe, *, index: int, total: int) -> None:
     """
     quota = f"quota {probe.quota}" if probe.quota is not None else "no quota"
     logger.info(
-        "[v3.checklist] probe %d/%d %s (%s, %s)\n    %s",
+        "[checklist] probe %d/%d %s (%s, %s)\n    %s",
         index,
         total,
         probe.id,
@@ -505,7 +505,7 @@ async def run_probes(
         #    gathering would buy nothing and break the rule.
         try:
             found = await run_probe(probe, model, agent_model=agent_model, brief=brief)
-            logger.info("[v3.checklist] %s → %d finding(s)", probe.id, len(found))
+            logger.info("[checklist] %s → %d finding(s)", probe.id, len(found))
             collected.extend(found)
         except UnexpectedModelBehavior as exc:
             # Per-tool retry caps, output-retry exhaustion, content filters,
@@ -516,7 +516,7 @@ async def run_probes(
             body = getattr(exc, "body", None)
             body_part = f" — body: {str(body)[:500]!r}" if body else ""
             logger.warning(
-                "[v3.checklist] %s: model behaviour error (%s)%s",
+                "[checklist] %s: model behaviour error (%s)%s",
                 probe.id,
                 exc,
                 body_part,
@@ -524,16 +524,16 @@ async def run_probes(
             failed.append(probe.id)
             continue
         except UsageLimitExceeded as exc:
-            logger.warning("[v3.checklist] %s: usage limit hit (%s)", probe.id, exc)
+            logger.warning("[checklist] %s: usage limit hit (%s)", probe.id, exc)
             failed.append(probe.id)
             continue
         except Exception as exc:
-            logger.warning("[v3.checklist] %s crashed: %s", probe.id, exc)
+            logger.warning("[checklist] %s crashed: %s", probe.id, exc)
             failed.append(probe.id)
             continue
     if failed:
         logger.warning(
-            "[v3.checklist] %d/%d probe(s) produced no findings (crashed): %s",
+            "[checklist] %d/%d probe(s) produced no findings (crashed): %s",
             len(failed),
             len(probes),
             ", ".join(failed),

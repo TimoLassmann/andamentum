@@ -13,7 +13,9 @@ BASE = ["draft.md", "--model", "stub:none", "--out", "review.md"]
 
 
 def _args(argv: list[str]):
-    return cli_mod._build_parser().parse_args(argv)
+    return cli_mod.build_parser().parse_args(
+        argv if argv[0] in cli_mod._COMMANDS else ["review", *argv]
+    )
 
 
 def _validate(argv: list[str]) -> None:
@@ -26,7 +28,7 @@ def test_the_flag_defaults_to_off() -> None:
 
 def test_review_and_checklist_accept_a_decision_model() -> None:
     _validate([*BASE, "--decision-model", "nimble:9b"])
-    _validate([*BASE, "--mode", "checklist", "--decision-model", "nimble:9b"])
+    _validate(["checklist", *BASE, "--decision-model", "nimble:9b"])
 
 
 def test_panel_refuses_a_decision_model(
@@ -35,16 +37,15 @@ def test_panel_refuses_a_decision_model(
     with pytest.raises(SystemExit) as exc:
         _validate(
             [
-                *BASE,
-                "--mode",
                 "panel",
+                *BASE,
                 "--i-am-the-author",
                 "--decision-model",
                 "nimble:9b",
             ]
         )
-    assert exc.value.code == 1
-    assert "no effect under `panel`" in capsys.readouterr().err
+    assert exc.value.code == 2
+    assert "unrecognized arguments: --decision-model" in capsys.readouterr().err
 
 
 def test_an_explicit_document_type_leaves_nothing_to_decide(
@@ -52,7 +53,7 @@ def test_an_explicit_document_type_leaves_nothing_to_decide(
 ) -> None:
     with pytest.raises(SystemExit) as exc:
         _validate([*BASE, "--document-type", "essay", "--decision-model", "nimble:9b"])
-    assert exc.value.code == 1
+    assert exc.value.code == 2
     assert "already settles" in capsys.readouterr().err
 
 
@@ -76,7 +77,7 @@ async def test_an_unavailable_decision_model_stops_the_run_before_any_review(
             await cli_mod._run(
                 _args([*BASE, "--decision-model", "nimble:9b"]), mock.Mock()
             )
-    assert exc.value.code == 1
+    assert exc.value.code == 2
     assert "ollama pull nimble:9b" in capsys.readouterr().err
     review.assert_not_called()
     document.cleanup.assert_called_once()

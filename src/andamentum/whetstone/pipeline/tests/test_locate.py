@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from andamentum.whetstone.v3.locate import is_present, locate
+from andamentum.whetstone.pipeline.locate import is_present, locate
 
 
 def test_locates_exact_substring() -> None:

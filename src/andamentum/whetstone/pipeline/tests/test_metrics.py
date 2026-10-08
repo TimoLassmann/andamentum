@@ -16,7 +16,7 @@ from __future__ import annotations
 import asyncio
 
 
-from andamentum.whetstone.v3._metrics import (
+from andamentum.whetstone.pipeline._metrics import (
     bump_from_result,
     current,
     increment_gap_rounds,
@@ -44,7 +44,7 @@ def test_increments_outside_a_run_do_not_raise() -> None:
 
     def _no_counter():
         # Reset the contextvar to its default by setting None explicitly.
-        from andamentum.whetstone.v3 import _metrics
+        from andamentum.whetstone.pipeline import _metrics
 
         _metrics._CTX.set(None)
         assert current() is None
@@ -143,14 +143,14 @@ async def test_to_review_result_passes_through_metrics() -> None:
     """The to_review_result adapter must populate ReviewMetrics.llm_calls
     and .reflection_rounds_used from its new kwargs — the gap in this
     glue was the original 2026-05-26 bug."""
-    from andamentum.whetstone.v3.model import (
+    from andamentum.whetstone.pipeline.model import (
         Claim,
         DocumentModel,
         Section,
         SectionGist,
         Span,
     )
-    from andamentum.whetstone.v3.synth import StructuredReview, to_review_result
+    from andamentum.whetstone.pipeline.synth import StructuredReview, to_review_result
 
     sections = [Section(id="s1", title="Intro", text="Hello", start=0, end=5)]
     claims: list[Claim] = []

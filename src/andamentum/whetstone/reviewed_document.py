@@ -66,7 +66,7 @@ class ReviewedDocument:
     """The document as a reader sees it — and the coordinate system for every
     ``Quote`` and ``Edit`` the review produces."""
 
-    sections: list  # list[andamentum.whetstone.v3.model.Section]
+    sections: list  # list[andamentum.whetstone.pipeline.model.Section]
     """Heading-delimited units, indexing into :attr:`text`."""
 
     docx_path: Path
@@ -165,7 +165,7 @@ def _open_docx(path: Path, *, is_temp: bool) -> ReviewedDocument:
     # Imported here: the .docx reader pulls in lxml, and a caller that only
     # wants the path heuristics should not pay for it.
     from .docx.reading import auxiliary_text
-    from .v3.docx_source import load_docx
+    from .pipeline.docx_source import load_docx
 
     document = load_docx(path)
     warnings: list[str] = []

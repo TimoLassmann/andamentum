@@ -1,8 +1,8 @@
 """Panel-mode graph for v3.
 
 Five-node pydantic-graph chain — same shape as v2's panel pipeline,
-minus the harvest/chunk substrate (run_panel_v3 receives already-
-harvested markdown the same way run_review_v3 does):
+minus the harvest/chunk substrate (run_panel receives already-
+harvested markdown the same way run_review does):
 
     Sectionize → ExtractKeywords → GenerateExpertPanel → ExpertReview
        (D)            (A)                    (A)               (A)
@@ -56,7 +56,7 @@ from .generate_panel import generate_panel
 from .review_experts import review_experts
 from .synthesise_panel import synthesise_panel
 
-logger = logging.getLogger("andamentum.whetstone.v3.panel")
+logger = logging.getLogger("andamentum.whetstone.pipeline.panel")
 
 
 @dataclass(frozen=True)
@@ -232,7 +232,7 @@ def _build_panel_graph() -> Graph[PanelState, PanelDeps, Sectionize, ReviewResul
     return annotation.
     """
     g = GraphBuilder[PanelState, PanelDeps, Sectionize, ReviewResult](
-        name="panel_graph_v3",
+        name="panel_graph",
         state_type=PanelState,
         deps_type=PanelDeps,
         input_type=Sectionize,
@@ -250,10 +250,10 @@ def _build_panel_graph() -> Graph[PanelState, PanelDeps, Sectionize, ReviewResul
 
 
 # linear pipeline — topology test exempt
-panel_graph_v3 = _build_panel_graph()
+panel_graph = _build_panel_graph()
 
 
-async def run_panel_v3(
+async def run_panel(
     markdown: str,
     *,
     model: str,
@@ -316,4 +316,4 @@ async def run_panel_v3(
         panel_disciplines=list(panel_disciplines) if panel_disciplines else [],
     )
     state = PanelState(source=markdown, sections=list(sections or []))
-    return await panel_graph_v3.run(state=state, deps=deps, inputs=Sectionize())
+    return await panel_graph.run(state=state, deps=deps, inputs=Sectionize())

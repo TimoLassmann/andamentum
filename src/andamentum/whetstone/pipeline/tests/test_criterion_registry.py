@@ -15,8 +15,8 @@ from __future__ import annotations
 
 import pytest
 
-from andamentum.whetstone.v3 import criteria as registry
-from andamentum.whetstone.v3.criteria import Criterion, criterion_set_for
+from andamentum.whetstone.pipeline import criteria as registry
+from andamentum.whetstone.pipeline.criteria import Criterion, criterion_set_for
 
 DOCUMENT_TYPES = (
     "academic",

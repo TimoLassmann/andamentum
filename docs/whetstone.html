@@ -521,7 +521,7 @@ andamentum-whetstone draft.docx --model openai:gpt-5.4-mini \
   <p><code>--criteria</code>, <code>--probes</code>, <code>--editor-criteria</code> and <code>--patch-author</code> override a profile field by field, which is how the next profile gets written — start from one, change one thing. The run prints the effective configuration with the source of every value, so what actually ran is never a guess.</p>
 
   <pre><code><span class="tok-com"># list them, with a fit marker for a given kind of document</span>
-andamentum-whetstone --list-reviewers --document-type academic
+andamentum-whetstone reviewers --document-type academic
 
 <span class="tok-com"># one reviewer</span>
 andamentum-whetstone draft.docx --reviewer claims --model openai:gpt-5.4-nano \
@@ -584,15 +584,15 @@ andamentum-whetstone draft.docx --reviewer methods \
         <td>Before submitting, on your own work</td>
       </tr>
       <tr>
-        <td><code>proofread</code></td>
+        <td><code>andamentum-proofread</code> (separate tool)</td>
         <td>“Is the prose clean”</td>
         <td>Readability scores and style flags</td>
         <td>Any time — no model needed</td>
       </tr>
       <tr>
-        <td><code>references</code></td>
+        <td><code>andamentum-references</code> (separate tool)</td>
         <td>“Do my citations and my reference list agree”</td>
-        <td>A comment on each problem citation or entry, and a summary</td>
+        <td>In a review: a comment on each problem citation or entry, and a summary. Alone: a list of problems</td>
         <td>Part of every review; alone, with no model — section 07</td>
       </tr>
     </tbody>
@@ -638,12 +638,11 @@ andamentum-whetstone draft.docx --reviewer methods \
   <table>
     <thead><tr><th>Subcommand</th><th>What it does</th><th>Model</th></tr></thead>
     <tbody>
-      <tr><td><code>review</code></td><td>Criterion cascade. The verb is optional — it is the default.</td><td><span class="badge badge--warn">required</span></td></tr>
+      <tr><td><code>review</code></td><td>Criterion cascade. The word is optional when the first argument is a file — it is the default.</td><td><span class="badge badge--warn">required</span></td></tr>
       <tr><td><code>checklist</code></td><td>Probe bank plus coverage table.</td><td><span class="badge badge--warn">required</span></td></tr>
       <tr><td><code>panel</code></td><td>Multi-expert simulated review. Needs <code>--i-am-the-author</code>.</td><td><span class="badge badge--warn">required</span></td></tr>
-      <tr><td><code>proofread</code></td><td>Readability and style. Delegates to <code>andamentum-proofread</code>.</td><td><span class="badge badge--success">none</span></td></tr>
-      <tr><td><code>references</code></td><td>Citations against the reference list, then each entry against Crossref. Section 07.</td><td><span class="badge badge--info">optional</span></td></tr>
-      <tr><td><code>apply-patches</code></td><td>Apply a pre-built JSON patch list to a <code>.docx</code>.</td><td><span class="badge badge--success">none</span></td></tr>
+      <tr><td><code>reviewers</code></td><td>List the named reviewers, with the fit for a <code>--document-type</code>. Needs no input.</td><td><span class="badge badge--success">none</span></td></tr>
+      <tr><td><code>apply-patches</code></td><td>Apply a pre-built JSON patch list to a <code>.docx</code>: <code>apply-patches draft.docx --patches p.json -o out.docx</code>.</td><td><span class="badge badge--success">none</span></td></tr>
       <tr><td><code>verify-provenance</code></td><td>Read-only: report the AI-provenance markers a <code>.docx</code> carries.</td><td><span class="badge badge--success">none</span></td></tr>
     </tbody>
   </table>
@@ -657,13 +656,13 @@ andamentum-whetstone draft.docx --model openai:gpt-5.4-nano \
 andamentum-whetstone checklist draft.docx --model ollama:gemma4:26b \
     --document-type academic --out checklist.md --verbose
 
-<span class="tok-com"># style only — no model involved</span>
-andamentum-whetstone proofread draft.md</code></pre>
+<span class="tok-com"># style only — a separate tool, no model involved</span>
+andamentum-proofread draft.md</code></pre>
 
 
-  <p>Input may be a path or URL — PDF, DOCX, HTML, Markdown or plain text, detected automatically. Output format is inferred from each <code>--out</code> extension. For <code>.docx</code> output from a non-Word source, a clean baseline document is generated to patch.</p>
+  <p>Input may be a path or URL — PDF, DOCX, HTML, Markdown or plain text, detected automatically. Output format is inferred from each <code>-o/--out</code> extension; nothing is written anywhere else. For <code>.docx</code> output from a non-Word source, a clean baseline document is generated to patch.</p>
 
-  <p><code>--document-type</code> defaults to <code>auto</code> on the CLI, which spends one classifier call; the Python API defaults to <code>general</code> to keep the default path free of it. Pass the type explicitly to skip the call.</p>
+  <p><code>--document-type</code> defaults to <code>auto</code> on the command line and in the Python functions alike, which spends one classifier call. Pass the type explicitly to skip the call. The editor is also on by default in both.</p>
 
   <h2><span class="n">06</span>The goal loop — review until it holds</h2>
 
@@ -694,7 +693,7 @@ andamentum-whetstone draft.docx --model openai:gpt-5.4-nano \
       </tr>
       <tr>
         <td><code>figures</code></td>
-        <td>Each named figure's image matches its caption and the sentences that mention it. Needs <code>--goal-figure</code> and <code>--goal-figure-model</code> below.</td>
+        <td>Each named figure's image matches its caption and the sentences that mention it. Needs <code>--goal-figure</code> and <code>--figure-model</code> below.</td>
       </tr>
     </tbody>
   </table>
@@ -709,8 +708,8 @@ andamentum-whetstone draft.docx --model openai:gpt-5.4-nano \
       <tr><td><code>--goal TEXT</code></td><td>Turns the loop on. The win condition, in your own words.</td></tr>
       <tr><td><code>--goal-check KIND</code></td><td>One of the four above. Default <code>judged</code>.</td></tr>
       <tr><td><code>--max-rounds N</code></td><td>Hard cap on review-edit-review rounds. Default 4. Not the same flag as <code>--rounds</code>, which caps the gap loop inside one review pass.</td></tr>
-      <tr><td><code>--goal-figure LABEL=PATH</code></td><td>One figure to check, e.g. <code>"Figure 1=fig1.png"</code>. Repeat for more than one. Required with <code>--goal-check figures</code>.</td></tr>
-      <tr><td><code>--goal-figure-model MODEL</code></td><td>A multimodal model id, e.g. <code>ollama:qwen3.8</code>. Required with <code>--goal-check figures</code>.</td></tr>
+      <tr><td><code>--goal-figure LABEL=FILE</code></td><td>One figure to check, e.g. <code>"Figure 1=fig1.png"</code>. Repeat for more than one. Required with <code>--goal-check figures</code>.</td></tr>
+      <tr><td><code>--figure-model MODEL</code></td><td>A multimodal model id, e.g. <code>ollama:qwen3.8</code>. Required with <code>--goal-check figures</code>.</td></tr>
     </tbody>
   </table>
   </div>
@@ -733,7 +732,7 @@ andamentum-whetstone draft.docx --model openai:gpt-5.4-nano \
   </table>
   </div>
 
-  <p>A run that stops without meeting the goal still writes a real, usable review. The CLI exits with code <strong>4</strong> instead of the usual 0, and one author question in the report names what it could not settle.</p>
+  <p>A run that stops without meeting the goal still writes a real, usable review. The CLI exits with code <strong>1</strong> instead of the usual 0, and one author question in the report names what it could not settle.</p>
 
   <div class="callout tone-info">
     <p class="eyebrow">Figures need naming</p>
@@ -742,19 +741,18 @@ andamentum-whetstone draft.docx --model openai:gpt-5.4-nano \
 
   <h2><span class="n">07</span>Checking references</h2>
 
-  <p><code>andamentum-whetstone references</code> checks the citations of a draft against its reference list, and then looks up each entry in Crossref. Each problem becomes a Word comment on the citation or entry that it concerns, with what is wrong and what to do.</p>
+  <p><code>andamentum-references</code> checks the citations of a draft against its reference list, and then looks up each entry in Crossref. It lists each problem with the text it concerns, what is wrong and what to do. Inside a review, the same check becomes a Word comment on the citation or entry.</p>
 
   <pre><code><span class="tok-com"># check the references; the lookup is on by default</span>
-andamentum-whetstone references draft.docx --out draft.refs.docx
+andamentum-references draft.docx
 
 <span class="tok-com"># offline: citations against the list only, nothing sent anywhere</span>
-andamentum-whetstone references draft.docx --no-lookup --out refs.md
+andamentum-references draft.md --no-lookup --json -o refs.json
 
 <span class="tok-com"># a model for what the text leaves open — a local one keeps it local</span>
-andamentum-whetstone references draft.pdf --model ollama:gemma4:26b \
-    --out draft.refs.docx</code></pre>
+andamentum-references draft.pdf --model ollama:gemma4:26b</code></pre>
 
-  <p><strong>Every review runs it</strong> (section 01), before the review, so the editor answers its problems beside the review's own; each of its comments is signed by the reference checker. The <code>references</code> command runs it alone, and needs no model. It is also a goal for the loop in section 06 (<code>--goal-check citations</code>). In the loop it runs every round, without the Crossref lookup, because an edit cannot change what Crossref finds.</p>
+  <p><strong>Every review runs it</strong> (section 01), before the review, so the editor answers its problems beside the review's own; each of its comments is signed by the reference checker. <code>andamentum-references</code> runs it alone, and needs no model. It exits 1 when it finds problems. It is also a goal for the loop in section 06 (<code>--goal-check citations</code>). In the loop it runs every round, without the Crossref lookup, because an edit cannot change what Crossref finds.</p>
 
   <h3>How it reads a draft</h3>
 
@@ -774,7 +772,7 @@ andamentum-whetstone references draft.pdf --model ollama:gemma4:26b \
   </table>
   </div>
 
-  <p>A Word file gives more evidence than its text: superscript formatting, Zotero, Mendeley and EndNote citation fields, and real footnotes and endnotes. A PDF gives the same evidence, read from the PDF's own characters.</p>
+  <p>Inside a review, a Word file gives more evidence than its text: superscript formatting, Zotero, Mendeley and EndNote citation fields, and real footnotes and endnotes, and a PDF gives the same evidence, read from the PDF's own characters. <code>andamentum-references</code> reads a Word or PDF file as converted text, so it works from the text alone there.</p>
 
   <div class="callout tone-info">
     <p class="eyebrow">A model only when the text leaves it open</p>

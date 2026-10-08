@@ -36,13 +36,13 @@ from andamentum.whetstone.docx.atoms import document_atoms, projection
 from andamentum.whetstone.docx.reading import read_docx
 from andamentum.whetstone.renderers.docx import render_docx
 from andamentum.whetstone.reviewed_document import ReviewedDocument, open_source
-from andamentum.whetstone.v3.consolidate import _Consolidation
-from andamentum.whetstone.v3.editor import EditorOutput, EditProposal
-from andamentum.whetstone.v3.extract import _ClaimSpans, _Requote
-from andamentum.whetstone.v3.gaps import _DemandList
-from andamentum.whetstone.v3.graph import review_document_v3
-from andamentum.whetstone.v3.review import _CriterionFindings, _RawFinding
-from andamentum.whetstone.v3.synth import StructuredReview
+from andamentum.whetstone.pipeline.consolidate import _Consolidation
+from andamentum.whetstone.pipeline.editor import EditorOutput, EditProposal
+from andamentum.whetstone.pipeline.extract import _ClaimSpans, _Requote
+from andamentum.whetstone.pipeline.gaps import _DemandList
+from andamentum.whetstone.pipeline.graph import review_document
+from andamentum.whetstone.pipeline.review import _CriterionFindings, _RawFinding
+from andamentum.whetstone.pipeline.synth import StructuredReview
 
 W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 
@@ -77,21 +77,21 @@ def _stub_agents(*, rewrite: tuple[str, str], quote: str) -> ExitStack:
                 return fn
 
             async def run(self, _prompt, **_kwargs):
-                if name == "v3_extract_claims":
+                if name == "extract_claims":
                     out = _ClaimSpans(claims=[quote])
-                elif name == "v3_requote":
+                elif name == "requote":
                     out = _Requote(quote="")
-                elif name == "v3_gap_analysis":
+                elif name == "gap_analysis":
                     out = _DemandList(demands=[])
-                elif name == "v3_consolidate":
+                elif name == "consolidate":
                     out = _Consolidation(groups=[])
-                elif name in ("v3_synthesise", "v3_critique_revise"):
+                elif name in ("synthesise", "critique_revise"):
                     out = StructuredReview(
                         synopsis="A short methods note.",
                         strengths=["clear"],
                         weaknesses=["thin"],
                     )
-                elif name == "v3_editor":
+                elif name == "editor":
                     original, replacement = rewrite
                     out = EditorOutput(
                         edits=[
@@ -133,14 +133,14 @@ def _stub_agents(*, rewrite: tuple[str, str], quote: str) -> ExitStack:
     for module in ("extract", "gaps", "consolidate", "synth", "editor"):
         stack.enter_context(
             patch(
-                f"andamentum.whetstone.v3.{module}.build_pydantic_ai_agent", new=_router
+                f"andamentum.whetstone.pipeline.{module}.build_pydantic_ai_agent", new=_router
             )
         )
         stack.enter_context(
-            patch(f"andamentum.whetstone.v3.{module}.resolve_model", new=lambda x: None)
+            patch(f"andamentum.whetstone.pipeline.{module}.resolve_model", new=lambda x: None)
         )
     stack.enter_context(
-        patch("andamentum.whetstone.v3.review._build_agent", new=_review_agent)
+        patch("andamentum.whetstone.pipeline.review._build_agent", new=_review_agent)
     )
     return stack
 
@@ -155,7 +155,7 @@ async def _round(
 ) -> Path:
     """One complete review round: pipeline, then annotated .docx."""
     with _stub_agents(rewrite=rewrite, quote=quote):
-        result = await review_document_v3(
+        result = await review_document(
             document, model="stub", cap=1, document_type="academic", editor=True
         )
     assert result.edits, "the stubbed editor proposed an edit and it must survive"

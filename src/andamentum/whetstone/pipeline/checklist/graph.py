@@ -31,7 +31,7 @@ them back.**
     would have collapsed the fact that the passage was reached twice.
 
 ``gap_loop``
-    Bounded (``V3Deps.cap`` rounds, 2 by default) but demand-driven: whether a
+    Bounded (``ReviewDeps.cap`` rounds, 2 by default) but demand-driven: whether a
     round fires at all, and how many demands it raises, depends on what the
     first pass happened to return, so two runs of an unchanged document cost
     differently. Predictability is the product.
@@ -50,8 +50,8 @@ What IS reused is the substrate every mode needs and nothing above it:
 ``read_section`` / ``search_paper`` tools (inside :mod:`.run_probes`), and
 ``schemas.ReviewResult`` so all three renderers consume the output unchanged.
 
-Entry points: :func:`run_checklist_v3` (already-harvested markdown) and
-:func:`checklist_document_v3` (a path or URL, harvested first).
+Entry points: :func:`run_checklist` (already-harvested markdown) and
+:func:`checklist_document` (a path or URL, harvested first).
 """
 
 from __future__ import annotations
@@ -80,7 +80,7 @@ if TYPE_CHECKING:
     from ...reviewed_document import ReviewedDocument
     from ..reviewers import ReviewerProfile
 
-logger = logging.getLogger("andamentum.whetstone.v3")
+logger = logging.getLogger("andamentum.whetstone.pipeline")
 
 
 @dataclass(frozen=True)
@@ -134,7 +134,7 @@ def _stage(name: str, detail: str, *args: object) -> None:
     ``VerifyProbes`` deliberately has no call here — :mod:`.verify` emits its
     own kept/dropped summary, and two lines for one stage is worse than one.
     """
-    logger.info("[v3.checklist] stage: %s — " + detail, name, *args)
+    logger.info("[checklist] stage: %s — " + detail, name, *args)
 
 
 # ── Node 1-3: the shared deterministic/extraction substrate ────────────────
@@ -200,7 +200,7 @@ class RunProbes(BaseNode[ChecklistState, ChecklistDeps, ReviewResult]):
         assert model is not None
         if not ctx.deps.probes:
             logger.warning(
-                "[v3.checklist] probe bank is empty — nothing will be checked "
+                "[checklist] probe bank is empty — nothing will be checked "
                 "and the coverage table will have no rows"
             )
             return VerifyProbes()
@@ -296,7 +296,7 @@ def _build_checklist_graph() -> Graph[
     return annotation, so the topology is declared by the return types.
     """
     g = GraphBuilder[ChecklistState, ChecklistDeps, Sectionize, ReviewResult](
-        name="checklist_graph_v3",
+        name="checklist_graph",
         state_type=ChecklistState,
         deps_type=ChecklistDeps,
         input_type=Sectionize,
@@ -316,16 +316,16 @@ def _build_checklist_graph() -> Graph[
 
 
 # linear pipeline — topology test exempt
-checklist_graph_v3 = _build_checklist_graph()
+checklist_graph = _build_checklist_graph()
 
 
-async def run_checklist_v3(
+async def run_checklist(
     markdown: str,
     *,
     model: str,
     sections: list[Section] | None = None,
     confidentiality_text: str | None = None,
-    document_type: str = "general",
+    document_type: str = "auto",
     probes: list[Probe] | None = None,
     confirm_own_draft: bool = False,
     reviewer: "ReviewerProfile | None" = None,
@@ -343,7 +343,7 @@ async def run_checklist_v3(
     ----------
     markdown:
         Pre-harvested document body (use `harvest.extract` to get this from a
-        PDF / DOCX / URL, or call :func:`checklist_document_v3`).
+        PDF / DOCX / URL, or call :func:`checklist_document`).
     model:
         pydantic-ai model id (e.g. "openai:gpt-5.4-nano",
         "ollama:gemma4:31b").
@@ -358,11 +358,10 @@ async def run_checklist_v3(
         projection, and a "CONFIDENTIAL" stamp usually lives in a header.
     document_type:
         Selects the probe bank via :func:`~.bank.probe_bank_for`. Defaults to
-        ``"general"`` — NOT to ``"auto"``, unlike review mode: the default path
-        of a mode whose selling point is predictable cost must not spend an
-        LLM call on a classifier the caller did not ask for. Pass ``"auto"``
-        explicitly to get the same one-shot classifier review mode uses (one
-        extra call, counted in the metrics). Ignored when *probes* is given.
+        ``"auto"``, the same as review mode and the command line: a one-shot
+        classifier picks the bank (one extra call, counted in the metrics).
+        Pass a type such as ``"general"`` to skip the classifier and keep the
+        cost fixed. Ignored when *probes* is given.
     probes:
         An explicit bank, bypassing document-type routing entirely. This is the
         supported way to run a house checklist: the machinery is fixed and the
@@ -441,7 +440,7 @@ async def run_checklist_v3(
     if resolved.fit_warning:
         # The run proceeds; the same line goes into the report header. See
         # ``reviewers.fits`` for why a miss is not a refusal.
-        logger.warning("[v3.checklist] %s", resolved.fit_warning)
+        logger.warning("[checklist] %s", resolved.fit_warning)
 
     deps = ChecklistDeps(
         agent_model=model,
@@ -450,14 +449,14 @@ async def run_checklist_v3(
         reviewer_header=resolved.header,
     )
     state = ChecklistState(source=markdown, sections=list(sections or []))
-    return await checklist_graph_v3.run(state=state, deps=deps, inputs=Sectionize())
+    return await checklist_graph.run(state=state, deps=deps, inputs=Sectionize())
 
 
-async def checklist_document_v3(
+async def checklist_document(
     source: "str | ReviewedDocument",
     *,
     model: str,
-    document_type: str = "general",
+    document_type: str = "auto",
     probes: list[Probe] | None = None,
     confirm_own_draft: bool = False,
     reviewer: "ReviewerProfile | None" = None,
@@ -466,7 +465,7 @@ async def checklist_document_v3(
 ) -> ReviewResult:
     """Checklist entry from a path / URL / markdown blob, or an open document.
 
-    Thin wrapper over :func:`run_checklist_v3`; see it for argument semantics.
+    Thin wrapper over :func:`run_checklist`; see it for argument semantics.
     Source resolution is
     :func:`~andamentum.whetstone.reviewed_document.open_source`, shared with
     review mode, so a ``.docx`` is sectionised by its own heading styles here
@@ -479,7 +478,7 @@ async def checklist_document_v3(
     document = await open_source(source) if owned else source
     assert isinstance(document, _Opened)
     try:
-        return await run_checklist_v3(
+        return await run_checklist(
             document.text,
             model=model,
             sections=document.sections,

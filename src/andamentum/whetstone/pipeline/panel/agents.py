@@ -77,7 +77,7 @@ class KeywordExtractionOutput(BaseModel):
 
 
 EXTRACT_KEYWORDS_DEFN = AgentDefinition(
-    name="v3_panel_extract_keywords",
+    name="panel_extract_keywords",
     prompt=EXTRACT_KEYWORDS_PROMPT,
     output_model=KeywordExtractionOutput,
     retries=2,
@@ -129,7 +129,7 @@ reviewer in their field."""
 
 
 EXPERT_GENERATOR_DEFN = AgentDefinition(
-    name="v3_panel_expert_generator",
+    name="panel_expert_generator",
     prompt=EXPERT_GENERATOR_PROMPT,
     output_model=ExpertProfile,
     retries=2,
@@ -230,7 +230,7 @@ persona."""
 
 
 EXPERT_REVIEWER_DEFN = AgentDefinition(
-    name="v3_panel_expert_reviewer",
+    name="panel_expert_reviewer",
     prompt=EXPERT_REVIEWER_PROMPT,
     output_model=ExpertReview,
     retries=2,
@@ -344,7 +344,7 @@ Return a PanelSynthesis with all fields populated."""
 
 
 PANEL_SYNTHESISE_DEFN = AgentDefinition(
-    name="v3_panel_synthesise",
+    name="panel_synthesise",
     prompt=PANEL_SYNTHESISE_PROMPT,
     output_model=PanelSynthesis,
     retries=2,

@@ -19,8 +19,10 @@ from __future__ import annotations
 
 import re
 
+from .errors import WhetstoneError
 
-class ConfidentialityMarkerError(RuntimeError):
+
+class ConfidentialityMarkerError(WhetstoneError, RuntimeError):
     """Raised when the document text matches a confidentiality marker.
 
     Includes ``marker`` (the matched phrase) so callers can produce a

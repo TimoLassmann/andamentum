@@ -24,13 +24,13 @@ from typing import cast
 import pytest
 from pydantic_ai import ModelRetry, RunContext
 
-from andamentum.whetstone.v3.model import DocumentModel, Section
-from andamentum.whetstone.v3.review import (
+from andamentum.whetstone.pipeline.model import DocumentModel, Section
+from andamentum.whetstone.pipeline.review import (
     _CriterionFindings,
     _RawFinding,
     make_anchor_validator,
 )
-from andamentum.whetstone.v3.tools import DocDeps
+from andamentum.whetstone.pipeline.tools import DocDeps
 
 
 def _model() -> DocumentModel:

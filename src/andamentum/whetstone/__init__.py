@@ -7,6 +7,9 @@ for the same three renderers:
   harvests a path or URL first; ``await run_review(markdown, *, model)``
   takes text you already have.
 - **panel** — ``await run_panel(markdown, *, model)``.
+- **goal loop** — ``await run_goal_loop(document, GoalSpec(...), *, model)``
+  reviews, edits and re-reviews until a stated condition holds (the
+  ``--goal`` flag of ``andamentum-whetstone review``).
 - **checklist** — ``await checklist_document(source, *, model)`` harvests
   first; ``await run_checklist(markdown, *, model)`` takes text.
 
@@ -28,10 +31,10 @@ optional editor → finalize. Optional novelty check via deep_research
 (opt-in with ``check_novelty=True``).
 
 Panel mode (multi-expert simulated peer review) lives in
-``whetstone.v3.panel`` and is invoked via the ``andamentum-whetstone
-panel`` subcommand or ``await run_panel(markdown, *, model)``.
+``whetstone.pipeline.panel`` and is invoked via the ``andamentum-whetstone
+panel`` command or ``await run_panel(markdown, *, model)``.
 
-Checklist mode lives in ``whetstone.v3.checklist`` and is invoked via
+Checklist mode lives in ``whetstone.pipeline.checklist`` and is invoked via
 the ``andamentum-whetstone checklist`` subcommand, ``await
 checklist_document(source, *, model)`` (path or URL, harvested first)
 or ``await run_checklist(markdown, *, model)``. It runs a bank of
@@ -44,28 +47,29 @@ responsible-use scope: your own drafts only, and the confidentiality
 tripwire applies to checklist mode exactly as it does to review.
 
 Deterministic style / readability checks are a separate concern — use
-``andamentum.proofread`` (or ``andamentum-whetstone proofread <source>``).
+``andamentum.proofread`` (or the ``andamentum-proofread`` command).
 The two pipelines are intentionally disjoint; whetstone reviews IDEAS,
 proofread reviews STYLE.
 """
 
 from pathlib import Path
 
-from ._confidentiality import check_confidentiality
+from ._confidentiality import ConfidentialityMarkerError, check_confidentiality
 from ._watermark import (
     provenance_line,
     stamp_docx_core_properties,
     write_provenance_customxml,
 )
-from .docx.atoms import (
+from .docx.atoms import (  # noqa: F401  (read by compose.harness; not part of __all__)
     EXCLUDED_SUBTREES,
     Atom,
     AtomKind,
     document_atoms,
     paragraph_atoms,
 )
-from .docx.reading import body_paragraphs, main_document_part
-from .docx.surgery import (
+from .docx.exceptions import DocumentReviewError
+from .docx.reading import body_paragraphs, main_document_part  # noqa: F401
+from .docx.surgery import (  # noqa: F401  (read by compose.harness; not part of __all__)
     Edit as SpanEdit,
     EditReport,
     apply_edits,
@@ -75,11 +79,26 @@ from .docx.surgery import (
     tracked_paragraph,
     translate_span,
 )
-from .docx.textmap import AtomSpan, TextMap
-from .docx.xml_builder import XMLElementBuilder
+from .docx.textmap import AtomSpan, TextMap  # noqa: F401
+from .docx.xml_builder import XMLElementBuilder  # noqa: F401
+from .errors import WhetstoneError
+from .goal import FigureRef, GoalRunResult, GoalSpec, run_goal_loop
+from .pipeline import (
+    Criterion,
+    Probe,
+    checklist_document,
+    criterion_set_for,  # noqa: F401
+    extract_criteria_from_guidelines,  # noqa: F401
+    probe_bank_for,  # noqa: F401
+    review_document,
+    run_checklist,
+    run_review,
+)
+from .pipeline.panel import run_panel
+from .pipeline.reviewers import PROFILES, ReviewerProfile
 from .renderers import render_docx, render_html, render_markdown
 from .reviewed_document import ReviewedDocument, open_source
-from .schemas import (
+from .schemas import (  # noqa: F401
     AuthorQuestion,
     CheckableItem,
     CustomEvaluation,
@@ -94,19 +113,6 @@ from .schemas import (
     ReviewResult,
     SectionCard,
 )
-from .v3 import (
-    Criterion,
-    Probe,
-    checklist_document_v3 as checklist_document,
-    criterion_set_for,
-    extract_criteria_from_guidelines,
-    probe_bank_for,
-    review_document_v3 as review_document,
-    run_checklist_v3 as run_checklist,
-    run_review_v3 as run_review,
-)
-from .v3.panel import run_panel_v3 as run_panel
-from .v3.reviewers import PROFILES, ReviewerProfile
 
 
 def stamp_provenance(docx_path: str | Path, *, model: str | None) -> None:
@@ -129,56 +135,43 @@ def reviewer_profile(name: str) -> ReviewerProfile:
         ) from None
 
 
+# The docx primitives imported above (Atom, TextMap, apply_edits, ...) stay
+# importable from here because ``compose.harness`` reads them from this
+# namespace; they are internals, so they are not in ``__all__``.
 __all__ = [
+    # main functions
     "review_document",
     "run_review",
     "run_panel",
     "checklist_document",
     "run_checklist",
-    "Criterion",
-    "Probe",
-    "criterion_set_for",
-    "probe_bank_for",
-    "extract_criteria_from_guidelines",
-    "ReviewedDocument",
+    "run_goal_loop",
     "open_source",
-    "Atom",
-    "AtomKind",
-    "paragraph_atoms",
-    "EXCLUDED_SUBTREES",
-    "document_atoms",
-    "body_paragraphs",
-    "main_document_part",
-    "AtomSpan",
-    "TextMap",
-    "SpanEdit",
-    "EditReport",
-    "apply_edits",
-    "next_change_id",
-    "tracked_paragraph",
-    "run_bounds",
-    "split_at_boundaries",
-    "translate_span",
-    "XMLElementBuilder",
+    # renderers
     "render_docx",
     "render_html",
     "render_markdown",
+    # inputs
+    "Criterion",
+    "Probe",
+    "ReviewerProfile",
+    "reviewer_profile",
+    "ReviewedDocument",
+    "GoalSpec",
+    "FigureRef",
+    # results
+    "ReviewResult",
+    "Finding",
+    "Edit",
+    "Quote",
+    "AuthorQuestion",
+    "GoalRunResult",
+    # provenance and the confidentiality check
     "check_confidentiality",
     "stamp_provenance",
     "provenance_line",
-    "ReviewerProfile",
-    "reviewer_profile",
-    "AuthorQuestion",
-    "CheckableItem",
-    "CustomEvaluation",
-    "Edit",
-    "ExpertProfile",
-    "ExpertReview",
-    "Finding",
-    "GuidelineEvaluation",
-    "PanelSynthesis",
-    "Quote",
-    "ReviewMetrics",
-    "ReviewResult",
-    "SectionCard",
+    # errors
+    "WhetstoneError",
+    "ConfidentialityMarkerError",
+    "DocumentReviewError",
 ]

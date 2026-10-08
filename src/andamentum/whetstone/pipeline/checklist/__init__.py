@@ -52,12 +52,12 @@ from .bank import (
     TUTORIAL_PROBES,
     probe_bank_for,
 )
-from .graph import checklist_document_v3, run_checklist_v3
+from .graph import checklist_document, run_checklist
 from .probes import Probe, ProbeFinding
 
 __all__ = [
-    "run_checklist_v3",
-    "checklist_document_v3",
+    "run_checklist",
+    "checklist_document",
     "Probe",
     "ProbeFinding",
     "probe_bank_for",

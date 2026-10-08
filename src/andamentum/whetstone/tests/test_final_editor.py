@@ -22,16 +22,18 @@ from rich.console import Console
 
 from andamentum.whetstone import cli as cli_mod
 from andamentum.whetstone.schemas import Edit, Finding, Quote, ReviewResult
-from andamentum.whetstone.v3 import editor as editor_mod
-from andamentum.whetstone.v3.editor import Declined, to_editor_finding, edit_findings
-from andamentum.whetstone.v3.model import Section
-from andamentum.whetstone.v3.reviewers import EDITOR_PROFILE, PROFILES, author_for
+from andamentum.whetstone.pipeline import editor as editor_mod
+from andamentum.whetstone.pipeline.editor import Declined, to_editor_finding, edit_findings
+from andamentum.whetstone.pipeline.model import Section
+from andamentum.whetstone.pipeline.reviewers import EDITOR_PROFILE, PROFILES, author_for
 
 BASE = ["draft.md", "--model", "stub:none", "--out", "review.md"]
 
 
 def _args(argv: list[str]):
-    args = cli_mod._build_parser().parse_args(argv)
+    args = cli_mod.build_parser().parse_args(
+        argv if argv[0] in cli_mod._COMMANDS else ["review", *argv]
+    )
     cli_mod._validate_args(args)
     return args
 
@@ -114,10 +116,10 @@ def test_checklist_still_reads_the_list_as_typed(
     """Checklist refuses a list and refuses the line editor; splitting the
     editor off first would have let ``claims,editor`` through as ``claims``."""
     with pytest.raises(SystemExit):
-        _args([*BASE, "--mode", "checklist", "--reviewer", "claims,editor"])
+        _args(["checklist", *BASE, "--reviewer", "claims,editor"])
     assert "line editor runs no checks" in capsys.readouterr().err
     with pytest.raises(SystemExit):
-        _args([*BASE, "--mode", "checklist", "--reviewer", "claims,methods"])
+        _args(["checklist", *BASE, "--reviewer", "claims,methods"])
     assert "one reviewer" in capsys.readouterr().err
 
 
@@ -286,12 +288,12 @@ async def test_the_rounds_do_not_edit_and_the_editor_runs_once_over_all_of_them(
             Declined(section_id="s1", criterion="c", issue="i", why="author's call")
         ]
 
-    monkeypatch.setattr("andamentum.whetstone.v3.review_document_v3", fake_review)
+    monkeypatch.setattr("andamentum.whetstone.pipeline.review_document", fake_review)
     monkeypatch.setattr(
-        "andamentum.whetstone.v3.reconcile.reconcile_reviewers", fake_reconcile
+        "andamentum.whetstone.pipeline.reconcile.reconcile_reviewers", fake_reconcile
     )
     monkeypatch.setattr(
-        "andamentum.whetstone.v3.editor.edit_findings", fake_edit_findings
+        "andamentum.whetstone.pipeline.editor.edit_findings", fake_edit_findings
     )
 
     rendered: dict[str, Any] = {}
@@ -366,12 +368,12 @@ async def test_editor_criteria_typed_on_the_command_line_win(
         editor_calls.append(kwargs)
         return [], []
 
-    monkeypatch.setattr("andamentum.whetstone.v3.review_document_v3", fake_review)
+    monkeypatch.setattr("andamentum.whetstone.pipeline.review_document", fake_review)
     monkeypatch.setattr(
-        "andamentum.whetstone.v3.reconcile.reconcile_reviewers", fake_reconcile
+        "andamentum.whetstone.pipeline.reconcile.reconcile_reviewers", fake_reconcile
     )
     monkeypatch.setattr(
-        "andamentum.whetstone.v3.editor.edit_findings", fake_edit_findings
+        "andamentum.whetstone.pipeline.editor.edit_findings", fake_edit_findings
     )
     monkeypatch.setattr(
         "andamentum.whetstone.renderers.render_markdown",
@@ -404,7 +406,7 @@ async def test_a_point_both_reviewers_raised_is_one_comment_in_the_docx(
     its own comments into the file, so the author read the point twice."""
     import zipfile
 
-    from andamentum.whetstone.v3.reconcile import AgreedPoint, ReviewerReconciliation
+    from andamentum.whetstone.pipeline.reconcile import AgreedPoint, ReviewerReconciliation
 
     source = tmp_path / "draft.docx"
     _draft(source)
@@ -435,9 +437,9 @@ async def test_a_point_both_reviewers_raised_is_one_comment_in_the_docx(
             ],
         )
 
-    monkeypatch.setattr("andamentum.whetstone.v3.review_document_v3", fake_review)
+    monkeypatch.setattr("andamentum.whetstone.pipeline.review_document", fake_review)
     monkeypatch.setattr(
-        "andamentum.whetstone.v3.reconcile.reconcile_reviewers", fake_reconcile
+        "andamentum.whetstone.pipeline.reconcile.reconcile_reviewers", fake_reconcile
     )
     out = tmp_path / "review.docx"
     args = _args(

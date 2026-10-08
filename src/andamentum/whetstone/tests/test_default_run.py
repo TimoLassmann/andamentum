@@ -22,7 +22,9 @@ from andamentum.whetstone.schemas import Finding, Quote, ReviewResult
 
 
 def _args(argv: list[str]):
-    args = cli_mod._build_parser().parse_args(argv)
+    args = cli_mod.build_parser().parse_args(
+        argv if argv[0] in cli_mod._COMMANDS else ["review", *argv]
+    )
     cli_mod._validate_args(args)
     return args
 
@@ -56,7 +58,7 @@ def _stub_review(
             findings=[*(findings or []), *(kwargs.get("extra_findings") or [])],
         )
 
-    monkeypatch.setattr("andamentum.whetstone.v3.review_document_v3", fake_review)
+    monkeypatch.setattr("andamentum.whetstone.pipeline.review_document", fake_review)
     return seen
 
 
@@ -107,7 +109,7 @@ async def test_reference_problems_reach_the_editor_and_the_report(
     # The next step names the goal loop, with a command that writes elsewhere.
     assert "## Next step" in report
     assert "--goal-check citations" in report
-    assert f"--out {tmp_path / 'review.goal.md'}" in report
+    assert f"-o {tmp_path / 'review.goal.md'}" in report
     assert "--goal-check structure" not in report  # no review finding was raised
 
 
@@ -182,7 +184,7 @@ async def test_the_confidentiality_check_runs_before_any_reference_leaves(
             ),
             Console(stderr=True),
         )
-    assert exc.value.code == 1
+    assert exc.value.code == 2
     assert lookups == []
 
 
@@ -198,9 +200,8 @@ def test_checklist_refuses_the_review_switches(
     with pytest.raises(SystemExit):
         _args(
             [
-                "d.md",
-                "--mode",
                 "checklist",
+                "d.md",
                 "--model",
                 "m",
                 "--out",
@@ -208,4 +209,4 @@ def test_checklist_refuses_the_review_switches(
                 "--no-lookup",
             ]
         )
-    assert "--no-lookup is a review-mode flag" in capsys.readouterr().err
+    assert "unrecognized arguments: --no-lookup" in capsys.readouterr().err

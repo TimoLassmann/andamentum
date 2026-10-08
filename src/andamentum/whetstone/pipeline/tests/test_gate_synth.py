@@ -5,10 +5,10 @@ from __future__ import annotations
 import types
 from unittest.mock import patch
 
-from andamentum.whetstone.v3.gate import gate_and_aggregate
-from andamentum.whetstone.v3.model import DocumentModel, Section, Span
-from andamentum.whetstone.v3.review import Finding
-from andamentum.whetstone.v3.synth import (
+from andamentum.whetstone.pipeline.gate import gate_and_aggregate
+from andamentum.whetstone.pipeline.model import DocumentModel, Section, Span
+from andamentum.whetstone.pipeline.review import Finding
+from andamentum.whetstone.pipeline.synth import (
     StructuredReview,
     _flatten,
     _synopsis_length_band,
@@ -129,7 +129,7 @@ async def test_critique_receives_three_ground_truth_blocks() -> None:
     CLAIMS, and SUPPORTED FINDINGS as separate labeled blocks. The
     previous version validated against claims alone, which structurally
     cannot support absence-based weaknesses."""
-    from andamentum.whetstone.v3.model import Claim, SectionGist
+    from andamentum.whetstone.pipeline.model import Claim, SectionGist
 
     received_prompts: list[str] = []
     revised = StructuredReview(synopsis="ok", strengths=["s"], weaknesses=["w"])
@@ -169,8 +169,8 @@ async def test_critique_receives_three_ground_truth_blocks() -> None:
         )
     ]
     with (
-        patch("andamentum.whetstone.v3.synth.build_pydantic_ai_agent", new=factory),
-        patch("andamentum.whetstone.v3.synth.resolve_model", new=lambda m: None),
+        patch("andamentum.whetstone.pipeline.synth.build_pydantic_ai_agent", new=factory),
+        patch("andamentum.whetstone.pipeline.synth.resolve_model", new=lambda m: None),
     ):
         out = await critique_and_revise(model, draft, findings, agent_model="stub")
 
@@ -203,8 +203,8 @@ async def test_synthesise_returns_structured_review() -> None:
 
     model = DocumentModel(source="x", sections=[])
     with (
-        patch("andamentum.whetstone.v3.synth.build_pydantic_ai_agent", new=factory),
-        patch("andamentum.whetstone.v3.synth.resolve_model", new=lambda m: None),
+        patch("andamentum.whetstone.pipeline.synth.build_pydantic_ai_agent", new=factory),
+        patch("andamentum.whetstone.pipeline.synth.resolve_model", new=lambda m: None),
     ):
         r = await synthesise(model, [], agent_model="stub")
     assert r.synopsis == "ok"

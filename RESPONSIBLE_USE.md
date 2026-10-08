@@ -202,5 +202,5 @@ for the canonical URL once published).
 
 - `src/andamentum/whetstone/RESPONSIBLE_USE.md` — whetstone-specific
   guidance: peer-review prohibition, data classification, novelty
-  check warnings, `--apply-patches` provenance, suggested
+  check warnings, `apply-patches` provenance, suggested
   ICMJE-style disclosure wording.

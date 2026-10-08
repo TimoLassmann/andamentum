@@ -49,7 +49,7 @@ from ..locate import is_present, locate
 from ..model import DocumentModel, Span
 from .probes import ProbeFinding
 
-logger = logging.getLogger("andamentum.whetstone.v3")
+logger = logging.getLogger("andamentum.whetstone.pipeline")
 
 
 def _refuting_term(finding: ProbeFinding, *, source: str) -> str | None:
@@ -64,7 +64,7 @@ def _refuting_term(finding: ProbeFinding, *, source: str) -> str | None:
         needle = term.strip()
         if not needle:
             logger.warning(
-                "[v3.verify_probe_findings] %s: blank search term ignored "
+                "[verify_probe_findings] %s: blank search term ignored "
                 "(missing_item=%r) — an empty term matches everything and "
                 "would refute the finding spuriously",
                 finding.probe_id,
@@ -127,7 +127,7 @@ def verify_probe_findings(
                 # unverifiable absence is indistinguishable from a guess — the
                 # exact thing the search-term requirement exists to prevent.
                 logger.warning(
-                    "[v3.verify_probe_findings] %s: dropped absence finding with "
+                    "[verify_probe_findings] %s: dropped absence finding with "
                     "no usable search terms (missing_item=%r) — nothing to check "
                     "it against",
                     finding.probe_id,
@@ -139,7 +139,7 @@ def verify_probe_findings(
             refuted_by = _refuting_term(finding, source=model.source)
             if refuted_by is not None:
                 logger.info(
-                    "[v3.verify_probe_findings] %s: dropped (refuted, %r is in "
+                    "[verify_probe_findings] %s: dropped (refuted, %r is in "
                     "the source): %r",
                     finding.probe_id,
                     refuted_by,
@@ -155,7 +155,7 @@ def verify_probe_findings(
         location = locate(finding.quote, model.source)
         if location is None:
             logger.info(
-                "[v3.verify_probe_findings] %s: dropped (not in source): %r",
+                "[verify_probe_findings] %s: dropped (not in source): %r",
                 finding.probe_id,
                 finding.quote[:60],
             )
@@ -174,7 +174,7 @@ def verify_probe_findings(
         kept.append(finding.model_copy(update={"span": span}))
 
     logger.info(
-        "[v3.verify_probe_findings] %d/%d kept — presence %d kept / %d dropped, "
+        "[verify_probe_findings] %d/%d kept — presence %d kept / %d dropped, "
         "absence %d kept / %d dropped",
         len(kept),
         len(findings),

@@ -262,7 +262,8 @@ async def test_a_service_failure_is_unchecked_not_wrong(monkeypatch) -> None:
 
 def test_the_module_is_a_leaf() -> None:
     """It must not import another andamentum sub-module but core (for the
-    model calls)."""
+    model calls). The one exception is ``cli.py``, which reads a Word or PDF
+    file through ``harvest`` (a lazy import)."""
     import pathlib
     import re
 
@@ -271,7 +272,8 @@ def test_the_module_is_a_leaf() -> None:
         imports = re.findall(
             r"^\s*(?:from|import)\s+andamentum\.(\w+)", path.read_text(), re.M
         )
-        assert not [m for m in imports if m not in ("references", "core")], path.name
+        allowed = {"references", "core"} | ({"harvest"} if path.name == "cli.py" else set())
+        assert not [m for m in imports if m not in allowed], path.name
 
 
 async def test_the_print_year_counts_as_well_as_the_online_year() -> None:

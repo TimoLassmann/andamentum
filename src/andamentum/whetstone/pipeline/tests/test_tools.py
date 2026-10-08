@@ -15,8 +15,8 @@ from typing import cast
 import pytest
 from pydantic_ai import ModelRetry, RunContext
 
-from andamentum.whetstone.v3.model import DocumentModel, Section
-from andamentum.whetstone.v3.tools import (
+from andamentum.whetstone.pipeline.model import DocumentModel, Section
+from andamentum.whetstone.pipeline.tools import (
     DocDeps,
     _section_id_at,
     _substring_positions,
@@ -235,7 +235,7 @@ async def test_search_paper_raises_modelretry_on_regex_timeout(
     thread misses the 0-second deadline. The tool surface should fail with
     ``ModelRetry`` rather than ``asyncio.TimeoutError``.
     """
-    monkeypatch.setattr("andamentum.whetstone.v3.tools._REGEX_TIMEOUT_S", 0.0)
+    monkeypatch.setattr("andamentum.whetstone.pipeline.tools._REGEX_TIMEOUT_S", 0.0)
     with pytest.raises(ModelRetry) as exc:
         await search_paper(_ctx(_model()), r"a+b", regex=True)
     assert "timed out" in str(exc.value).lower()
@@ -299,7 +299,7 @@ async def test_tool_log_lines_name_the_caller() -> None:
             records.append(record)
 
     handler = _ListHandler(level=logging.INFO)
-    logger = logging.getLogger("andamentum.whetstone.v3")
+    logger = logging.getLogger("andamentum.whetstone.pipeline")
     prior_level = logger.level
     logger.setLevel(logging.INFO)
     logger.addHandler(handler)

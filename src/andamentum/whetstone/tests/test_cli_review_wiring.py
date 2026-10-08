@@ -78,8 +78,9 @@ def _seen_and_result() -> tuple[dict[str, Any], Any]:
 
 
 def _args(argv: list[str]):
-    parser = cli_mod._build_parser()
-    return parser.parse_args(argv)
+    return cli_mod.build_parser().parse_args(
+        argv if argv[0] in cli_mod._COMMANDS else ["review", *argv]
+    )
 
 
 async def test_a_docx_input_is_the_file_that_gets_annotated(
@@ -91,7 +92,7 @@ async def test_a_docx_input_is_the_file_that_gets_annotated(
 
     seen, fake_review = _seen_and_result()
     monkeypatch.setattr(
-        "andamentum.whetstone.v3.review_document_v3", fake_review, raising=True
+        "andamentum.whetstone.pipeline.review_document", fake_review, raising=True
     )
 
     await cli_mod._run(
@@ -124,7 +125,7 @@ async def test_a_markdown_input_leaves_no_baseline_behind(
 
     seen, fake_review = _seen_and_result()
     monkeypatch.setattr(
-        "andamentum.whetstone.v3.review_document_v3", fake_review, raising=True
+        "andamentum.whetstone.pipeline.review_document", fake_review, raising=True
     )
 
     await cli_mod._run(
@@ -154,7 +155,7 @@ async def test_the_reviewed_text_does_not_depend_on_which_outputs_were_asked_for
     for outputs in (["review.md"], ["review.md", "reviewed.docx"]):
         seen, fake_review = _seen_and_result()
         monkeypatch.setattr(
-            "andamentum.whetstone.v3.review_document_v3", fake_review, raising=True
+            "andamentum.whetstone.pipeline.review_document", fake_review, raising=True
         )
         argv = [str(source), "--model", "stub:none"]
         for name in outputs:
@@ -188,7 +189,7 @@ async def test_a_crashed_review_still_removes_the_baseline(
     async def boom(*_a: Any, **_k: Any) -> ReviewResult:
         raise RuntimeError("the model fell over")
 
-    monkeypatch.setattr("andamentum.whetstone.v3.review_document_v3", boom)
+    monkeypatch.setattr("andamentum.whetstone.pipeline.review_document", boom)
 
     with pytest.raises(SystemExit):
         await cli_mod._run(
@@ -217,7 +218,7 @@ async def test_the_review_path_attributes_changes_to_the_named_author(
 
     _, fake_review = _seen_and_result()
     monkeypatch.setattr(
-        "andamentum.whetstone.v3.review_document_v3", fake_review, raising=True
+        "andamentum.whetstone.pipeline.review_document", fake_review, raising=True
     )
 
     await cli_mod._run(
@@ -253,7 +254,7 @@ async def test_the_default_author_names_the_tool_not_a_person(
 
     _, fake_review = _seen_and_result()
     monkeypatch.setattr(
-        "andamentum.whetstone.v3.review_document_v3", fake_review, raising=True
+        "andamentum.whetstone.pipeline.review_document", fake_review, raising=True
     )
 
     await cli_mod._run(

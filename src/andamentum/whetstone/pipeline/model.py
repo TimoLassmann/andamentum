@@ -60,7 +60,7 @@ class CitationSummary(BaseModel):
     """How the document cites, as the reference checker reads it.
 
     Read by :mod:`andamentum.references` with no model and no lookup — the
-    same reader as ``andamentum-whetstone references``, so a review and a
+    same reader as ``andamentum-references``, so a review and a
     reference check cannot disagree about whether a draft cites anything.
     ``style`` is that checker's style id (``"undecided"`` when the text does
     not settle it), or ``None`` when there is neither a list nor citing notes.

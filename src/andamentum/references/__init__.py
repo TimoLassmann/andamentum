@@ -35,9 +35,18 @@ Also the home of three pieces of shared bibliographic code, usable alone:
 (PubMed XML to records, and the efetch call).
 
 Depends on ``pydantic``, ``httpx``, ``rapidfuzz`` and — for the model calls
-only — ``andamentum.core``. Imports no other andamentum sub-module.
+only — ``andamentum.core``. Imports no other andamentum sub-module; the one
+exception is the command-line entry point, ``references/cli.py``, which reads
+a Word or PDF file through ``andamentum.harvest`` (a lazy import).
+
+Command line: ``andamentum-references DRAFT`` (see ``references/cli.py``).
 """
 
+# ruff: noqa: F401
+# Names imported below but absent from ``__all__`` stay importable from here
+# (``from andamentum.references import ReferenceHttp``): other sub-modules
+# read them from this namespace. ``__all__`` lists only the main function, its
+# result types and the errors.
 from __future__ import annotations
 
 import re
@@ -51,6 +60,7 @@ from .check import check_citations
 from .cited import resolve_cited_work, resolve_entry
 from .crossref import CrossrefError, fetch_work, search_crossref, to_csl
 from .decide import decide_style, judge_candidates
+from .errors import ReferencesError
 from .http import Cache, ReferenceHttp, UrlHealth, UrlStatus
 from .identifiers import Identifiers, extract_identifiers
 from .lookup import lookup_entries
@@ -90,52 +100,19 @@ from .works import (
 )
 
 __all__ = [
-    "LICENCE_NO_REDISTRIBUTE",
-    "LOOKUP_KINDS",
-    "Cache",
-    "CrossrefError",
-    "Identifiers",
-    "PubMedRecord",
-    "extract_identifiers",
-    "fetch_pubmed",
-    "fetch_work",
-    "parse_pubmed_xml",
-    "search_crossref",
-    "to_csl",
-    "NoticeKind",
-    "ReferenceHttp",
-    "RetractionStatus",
-    "UpdateNotice",
-    "UrlHealth",
-    "UrlStatus",
-    "lookup_retraction",
-    "resolve_cited_work",
-    "resolve_entry",
-    "Candidate",
-    "CitedWork",
-    "Hint",
-    "Judged",
-    "LookupResult",
-    "Match",
+    # main function
+    "check_references",
+    # result types
+    "ReferenceReport",
     "Problem",
     "ReferenceEntry",
-    "ReferenceReport",
+    "LookupResult",
     "StyleDecision",
+    "Hint",
     "Work",
-    "WorkAccess",
-    "WorkRetraction",
-    "canonical_url",
-    "check_references",
-    "merge_works",
-    "normalise_arxiv_id",
-    "normalise_doi",
-    "normalise_local_id",
-    "normalise_openalex_id",
-    "normalise_pmcid",
-    "normalise_pmid",
-    "normalise_s2_id",
-    "title_key",
-    "works_compatible",
+    # errors
+    "ReferencesError",
+    "CrossrefError",
 ]
 
 

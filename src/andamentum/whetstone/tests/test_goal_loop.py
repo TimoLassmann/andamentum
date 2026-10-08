@@ -2,8 +2,8 @@
 ``test_sequential_rounds.py``: a real ``.docx`` on disk, every LLM call
 stubbed, and the round trip exercised for real.
 
-The editor agent (``v3_editor``) is called exactly once per round for this
-test's single-section document (see ``v3/editor.py:run_editor`` — it calls
+The editor agent (``editor``) is called exactly once per round for this
+test's single-section document (see ``pipeline/editor.py:run_editor`` — it calls
 every section regardless of whether findings were routed to it), so a
 counter advanced on that call is a reliable "which round is this" signal for
 the rest of the stub.
@@ -20,12 +20,12 @@ from docx import Document
 
 from andamentum.whetstone.goal import GoalSpec, run_goal_loop
 from andamentum.whetstone.reviewed_document import open_source
-from andamentum.whetstone.v3.consolidate import _Consolidation
-from andamentum.whetstone.v3.editor import EditorOutput, EditProposal
-from andamentum.whetstone.v3.extract import _ClaimSpans, _Requote
-from andamentum.whetstone.v3.gaps import _DemandList
-from andamentum.whetstone.v3.review import _CriterionFindings, _RawFinding
-from andamentum.whetstone.v3.synth import StructuredReview
+from andamentum.whetstone.pipeline.consolidate import _Consolidation
+from andamentum.whetstone.pipeline.editor import EditorOutput, EditProposal
+from andamentum.whetstone.pipeline.extract import _ClaimSpans, _Requote
+from andamentum.whetstone.pipeline.gaps import _DemandList
+from andamentum.whetstone.pipeline.review import _CriterionFindings, _RawFinding
+from andamentum.whetstone.pipeline.synth import StructuredReview
 
 ORIGINAL_SENTENCE = "The evidence layer earns its place in the analysis."
 SECOND_SENTENCE = "We sampled twelve participants across three sites."
@@ -63,21 +63,21 @@ def _stub_agents(
 
             async def run(self, _prompt, **_kwargs):
                 spec = _current()
-                if name == "v3_extract_claims":
+                if name == "extract_claims":
                     out = _ClaimSpans(claims=[SECOND_SENTENCE])
-                elif name == "v3_requote":
+                elif name == "requote":
                     out = _Requote(quote="")
-                elif name == "v3_gap_analysis":
+                elif name == "gap_analysis":
                     out = _DemandList(demands=[])
-                elif name == "v3_consolidate":
+                elif name == "consolidate":
                     out = _Consolidation(groups=[])
-                elif name in ("v3_synthesise", "v3_critique_revise"):
+                elif name in ("synthesise", "critique_revise"):
                     out = StructuredReview(
                         synopsis="A short methods note.",
                         strengths=["clear"],
                         weaknesses=["thin"],
                     )
-                elif name == "v3_editor":
+                elif name == "editor":
                     if editor_prompts is not None:
                         editor_prompts.append(_prompt)
                     edit = spec["edit"]
@@ -97,7 +97,7 @@ def _stub_agents(
                         )
                     # Editor is the last call in a round for a one-section
                     # document — advance the round counter here so the NEXT
-                    # review_document_v3 call reads the next round's spec.
+                    # review_document call reads the next round's spec.
                     state["round"] += 1
                 else:
                     out = _CriterionFindings(findings=[])
@@ -126,14 +126,14 @@ def _stub_agents(
     for module in ("extract", "gaps", "consolidate", "synth", "editor"):
         stack.enter_context(
             patch(
-                f"andamentum.whetstone.v3.{module}.build_pydantic_ai_agent", new=_router
+                f"andamentum.whetstone.pipeline.{module}.build_pydantic_ai_agent", new=_router
             )
         )
         stack.enter_context(
-            patch(f"andamentum.whetstone.v3.{module}.resolve_model", new=lambda x: None)
+            patch(f"andamentum.whetstone.pipeline.{module}.resolve_model", new=lambda x: None)
         )
     stack.enter_context(
-        patch("andamentum.whetstone.v3.review._build_agent", new=_review_agent)
+        patch("andamentum.whetstone.pipeline.review._build_agent", new=_review_agent)
     )
     return stack
 
@@ -416,7 +416,7 @@ async def test_the_novelty_setup_reaches_the_first_round_only(
     """Novelty is checked once, in round 1 (the claims do not change between
     rounds), so the setup is handed to that round's review and no other."""
     from andamentum.deep_research import NoveltyResearch
-    from andamentum.whetstone.v3.graph import review_document_v3
+    from andamentum.whetstone.pipeline.graph import review_document
 
     document = await _open(tmp_path)
     setup = NoveltyResearch()
@@ -427,8 +427,8 @@ async def test_the_novelty_setup_reaches_the_first_round_only(
     with (
         _stub_agents(rounds=rounds),
         patch(
-            "andamentum.whetstone.goal.loop.review_document_v3",
-            wraps=review_document_v3,
+            "andamentum.whetstone.goal.loop.review_document",
+            wraps=review_document,
         ) as review,
     ):
         await run_goal_loop(

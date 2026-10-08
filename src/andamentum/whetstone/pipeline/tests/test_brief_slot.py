@@ -26,15 +26,15 @@ from unittest.mock import patch
 
 import pytest
 
-from andamentum.whetstone.v3.checklist.bank import probe_bank_for
-from andamentum.whetstone.v3.checklist.run_probes import _build_prompt
-from andamentum.whetstone.v3.criteria import criterion_set_for
-from andamentum.whetstone.v3.digest import build_document_model
-from andamentum.whetstone.v3.editor import EditorOutput, _run_editor_on_section
-from andamentum.whetstone.v3.model import Section
-from andamentum.whetstone.v3.prompt_blocks import brief_block
-from andamentum.whetstone.v3.review import _CriterionFindings, review_criterion
-from andamentum.whetstone.v3.reviewers import DEFAULT_PROFILE_NAME, PROFILES
+from andamentum.whetstone.pipeline.checklist.bank import probe_bank_for
+from andamentum.whetstone.pipeline.checklist.run_probes import _build_prompt
+from andamentum.whetstone.pipeline.criteria import criterion_set_for
+from andamentum.whetstone.pipeline.digest import build_document_model
+from andamentum.whetstone.pipeline.editor import EditorOutput, _run_editor_on_section
+from andamentum.whetstone.pipeline.model import Section
+from andamentum.whetstone.pipeline.prompt_blocks import brief_block
+from andamentum.whetstone.pipeline.review import _CriterionFindings, review_criterion
+from andamentum.whetstone.pipeline.reviewers import DEFAULT_PROFILE_NAME, PROFILES
 
 BRIEF = PROFILES["methods"].brief
 
@@ -100,7 +100,7 @@ class _CapturingAgent:
 
 async def _criterion_prompt(brief: str) -> str:
     agent = _CapturingAgent()
-    with patch("andamentum.whetstone.v3.review._build_agent", return_value=agent):
+    with patch("andamentum.whetstone.pipeline.review._build_agent", return_value=agent):
         await review_criterion(
             criterion_set_for("academic")[0],
             _model(),
@@ -164,10 +164,10 @@ async def _editor_prompt(brief: str) -> str:
     agent = _CapturingEditorAgent()
     with (
         patch(
-            "andamentum.whetstone.v3.editor.build_pydantic_ai_agent",
+            "andamentum.whetstone.pipeline.editor.build_pydantic_ai_agent",
             return_value=agent,
         ),
-        patch("andamentum.whetstone.v3.editor.resolve_model", return_value="stub"),
+        patch("andamentum.whetstone.pipeline.editor.resolve_model", return_value="stub"),
     ):
         await _run_editor_on_section(
             SECTIONS[0],

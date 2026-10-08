@@ -9,8 +9,8 @@ tells the author the document is clean of something nobody established.
 
 from __future__ import annotations
 
-from andamentum.whetstone.v3.checklist.probes import Probe, ProbeFinding
-from andamentum.whetstone.v3.checklist.summary import coverage_table
+from andamentum.whetstone.pipeline.checklist.probes import Probe, ProbeFinding
+from andamentum.whetstone.pipeline.checklist.summary import coverage_table
 
 
 def _probe(probe_id: str, title: str, *, quota: int | None = None) -> Probe:

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from urllib.parse import quote
 
+from .errors import ReferencesError
 from .http import ReferenceHttp
 from .works import normalise_doi
 
@@ -29,7 +30,7 @@ _TYPE_MAP = {
 }
 
 
-class CrossrefError(RuntimeError):
+class CrossrefError(ReferencesError, RuntimeError):
     """Crossref could not answer, or has no usable record; never an empty result."""
 
 

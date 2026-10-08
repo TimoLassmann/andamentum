@@ -1,6 +1,6 @@
 """The goal loop's ``citations`` check: the reference checker, every round.
 
-The same checker as ``andamentum-whetstone references``
+The same checker as ``andamentum-references``
 (:mod:`andamentum.references`), so the loop and the subcommand cannot disagree
 about a document: every citation style — numbers in brackets or parentheses,
 superscript, author-year, footnotes and endnotes, Pandoc keys — and the

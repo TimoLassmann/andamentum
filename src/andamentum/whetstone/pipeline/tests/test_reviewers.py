@@ -19,17 +19,17 @@ import re
 
 import pytest
 
-from andamentum.whetstone.v3 import criteria as registry
-from andamentum.whetstone.v3.checklist.bank import (
+from andamentum.whetstone.pipeline import criteria as registry
+from andamentum.whetstone.pipeline.checklist.bank import (
     ALL_PROBE_IDS,
     GENERAL_PROBES,
     TUTORIAL_PROBES,
     probe_bank_for,
     probe_for,
 )
-from andamentum.whetstone.v3.criteria import Criterion, criterion_set_for
-from andamentum.whetstone.v3.editor import DEFAULT_EDITOR_CRITERIA
-from andamentum.whetstone.v3.reviewers import (
+from andamentum.whetstone.pipeline.criteria import Criterion, criterion_set_for
+from andamentum.whetstone.pipeline.editor import DEFAULT_EDITOR_CRITERIA
+from andamentum.whetstone.pipeline.reviewers import (
     ALL_DOCUMENT_TYPES,
     DEFAULT_PROFILE_NAME,
     PROFILES,

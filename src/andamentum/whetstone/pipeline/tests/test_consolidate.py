@@ -5,9 +5,9 @@ from __future__ import annotations
 import types
 from unittest.mock import patch
 
-from andamentum.whetstone.v3.consolidate import _Consolidation, _Group, consolidate
-from andamentum.whetstone.v3.model import Span
-from andamentum.whetstone.v3.review import Finding
+from andamentum.whetstone.pipeline.consolidate import _Consolidation, _Group, consolidate
+from andamentum.whetstone.pipeline.model import Span
+from andamentum.whetstone.pipeline.review import Finding
 
 
 def _route(consolidation: _Consolidation | None, *, crash: bool = False):
@@ -22,9 +22,9 @@ def _route(consolidation: _Consolidation | None, *, crash: bool = False):
 
     return (
         patch(
-            "andamentum.whetstone.v3.consolidate.build_pydantic_ai_agent", new=factory
+            "andamentum.whetstone.pipeline.consolidate.build_pydantic_ai_agent", new=factory
         ),
-        patch("andamentum.whetstone.v3.consolidate.resolve_model", new=lambda m: None),
+        patch("andamentum.whetstone.pipeline.consolidate.resolve_model", new=lambda m: None),
     )
 
 
@@ -99,9 +99,9 @@ async def test_agent_sees_quotes_and_sections_in_prompt() -> None:
     ]
     with (
         patch(
-            "andamentum.whetstone.v3.consolidate.build_pydantic_ai_agent", new=factory
+            "andamentum.whetstone.pipeline.consolidate.build_pydantic_ai_agent", new=factory
         ),
-        patch("andamentum.whetstone.v3.consolidate.resolve_model", new=lambda m: None),
+        patch("andamentum.whetstone.pipeline.consolidate.resolve_model", new=lambda m: None),
     ):
         await consolidate(findings, agent_model="stub")
 

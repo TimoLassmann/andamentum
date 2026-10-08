@@ -11,7 +11,7 @@ from andamentum.core.models import resolve_model
 from ...schemas import ExpertReview, PanelSynthesis
 from .agents import PANEL_SYNTHESISE_DEFN
 
-logger = logging.getLogger("andamentum.whetstone.v3.panel")
+logger = logging.getLogger("andamentum.whetstone.pipeline.panel")
 
 
 def _format_expert_review(r: ExpertReview) -> str:

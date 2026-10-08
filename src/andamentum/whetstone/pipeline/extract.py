@@ -20,7 +20,7 @@ from andamentum.core.models import resolve_model
 from .locate import locate
 from .model import Claim, Section, Span
 
-logger = logging.getLogger("andamentum.whetstone.v3")
+logger = logging.getLogger("andamentum.whetstone.pipeline")
 
 # Dropped from 4 → 2: per-section extract fans out across many sections
 # at once, and the resulting concurrent burst was saturating the OpenAI
@@ -104,7 +104,7 @@ def _agent(name: str, prompt: str, output_model: type[BaseModel], model: str):
 async def _extract_section(section: Section, *, model: str) -> list[str]:
     from ._metrics import bump_from_result
 
-    agent = _agent("v3_extract_claims", _EXTRACT_PROMPT, _ClaimSpans, model)
+    agent = _agent("extract_claims", _EXTRACT_PROMPT, _ClaimSpans, model)
     result = await agent.run(
         f"SECTION: {section.title}\n\n--- BEGIN ---\n{section.text}\n--- END ---"
     )
@@ -126,14 +126,14 @@ async def _verify(
         try:
             from ._metrics import bump_from_result
 
-            agent = _agent("v3_requote", _REQUOTE_PROMPT, _Requote, model)
+            agent = _agent("requote", _REQUOTE_PROMPT, _Requote, model)
             res = await agent.run(
                 f"SECTION:\n{section.text}\n\nCLAIM (not found verbatim):\n{requote}"
             )
             bump_from_result(res)
             requote = cast(_Requote, res.output).quote
         except Exception as exc:
-            logger.warning("[v3.verify] requote crashed: %s", exc)
+            logger.warning("[verify] requote crashed: %s", exc)
             break
         span = locate(requote, source, within=within)
     if span is None:
@@ -154,7 +154,7 @@ async def build_claims(
             try:
                 raw = await _extract_section(section, model=model)
             except Exception as exc:
-                logger.warning("[v3.extract] %s crashed: %s", section.id, exc)
+                logger.warning("[extract] %s crashed: %s", section.id, exc)
                 return []
         verified: list[tuple[str, Span]] = []
         for q in raw:

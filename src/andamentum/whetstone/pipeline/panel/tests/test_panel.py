@@ -1,7 +1,7 @@
 """Panel-mode graph for v3.
 
 Coverage:
-  - run_panel_v3 returns a ReviewResult with panel fields populated
+  - run_panel returns a ReviewResult with panel fields populated
   - ExtractKeywords skipped when caller supplies panel_disciplines
   - Per-discipline profile generation isolates failures (None filtered)
   - Per-expert review isolates failures (None filtered)
@@ -23,13 +23,13 @@ from andamentum.whetstone.schemas import (
     ExpertReview,
     PanelSynthesis,
 )
-from andamentum.whetstone.v3.panel.agents import KeywordExtractionOutput
-from andamentum.whetstone.v3.panel.graph import (
+from andamentum.whetstone.pipeline.panel.agents import KeywordExtractionOutput
+from andamentum.whetstone.pipeline.panel.graph import (
     PanelDeps,
     PanelState,
     Sectionize,
-    panel_graph_v3,
-    run_panel_v3,
+    panel_graph,
+    run_panel,
 )
 
 
@@ -138,7 +138,7 @@ def _patch_panel_workers(build) -> ExitStack:
     worker modules with the same side_effect callable."""
     stack = ExitStack()
     for mod in _WORKER_MODULES:
-        base = f"andamentum.whetstone.v3.panel.{mod}"
+        base = f"andamentum.whetstone.pipeline.panel.{mod}"
         stack.enter_context(patch(f"{base}.build_pydantic_ai_agent", side_effect=build))
         stack.enter_context(patch(f"{base}.resolve_model", return_value="stub"))
     return stack
@@ -147,7 +147,7 @@ def _patch_panel_workers(build) -> ExitStack:
 # ── Tests ──────────────────────────────────────────────────────────────────
 
 
-async def test_run_panel_v3_populates_review_result_panel_fields() -> None:
+async def test_run_panel_populates_review_result_panel_fields() -> None:
     """End-to-end: all four agents stubbed; result carries
     expert_profiles, expert_reviews, panel_synthesis."""
     build, agents = _patch_build_agent_chain(
@@ -159,7 +159,7 @@ async def test_run_panel_v3_populates_review_result_panel_fields() -> None:
         _synthesis(n=2),
     )
     with _patch_panel_workers(build):
-        result = await run_panel_v3(SRC, model="stub", n_experts=2)
+        result = await run_panel(SRC, model="stub", n_experts=2)
     assert len(result.expert_profiles) == 2
     assert {p.discipline for p in result.expert_profiles} == {"AI", "Linguistics"}
     assert len(result.expert_reviews) == 2
@@ -185,7 +185,7 @@ async def test_panel_disciplines_skip_extract_keywords_call() -> None:
         _synthesis(n=1),
     )
     with _patch_panel_workers(build):
-        result = await run_panel_v3(
+        result = await run_panel(
             SRC,
             model="stub",
             n_experts=1,
@@ -231,7 +231,7 @@ async def test_profile_generation_isolates_per_discipline_failures() -> None:
         return next(iter_seq)
 
     with _patch_panel_workers(_build):
-        result = await run_panel_v3(SRC, model="stub", n_experts=2)
+        result = await run_panel(SRC, model="stub", n_experts=2)
     # First discipline (AI) crashed; second (Linguistics) succeeded.
     assert len(result.expert_profiles) == 1
     assert result.expert_profiles[0].discipline == "Linguistics"
@@ -257,7 +257,7 @@ async def test_panel_synthesise_crash_is_loud_fail_safe() -> None:
         return next(iter_seq)
 
     with _patch_panel_workers(_build):
-        result = await run_panel_v3(SRC, model="stub", n_experts=1)
+        result = await run_panel(SRC, model="stub", n_experts=1)
     assert result.panel_synthesis is None
     assert len(result.expert_reviews) == 1
     assert "synthesis" in result.summary.lower()
@@ -286,7 +286,7 @@ async def test_n_experts_caps_the_discipline_fan_out() -> None:
         return next(iter_seq)
 
     with _patch_panel_workers(_build):
-        result = await run_panel_v3(SRC, model="stub", n_experts=2)
+        result = await run_panel(SRC, model="stub", n_experts=2)
     assert len(result.expert_profiles) == 2
     assert len(result.expert_reviews) == 2
 
@@ -303,7 +303,7 @@ async def test_no_disciplines_skips_review_and_synthesis() -> None:
         return next(iter_seq)
 
     with _patch_panel_workers(_build):
-        result = await run_panel_v3(SRC, model="stub", n_experts=4)
+        result = await run_panel(SRC, model="stub", n_experts=4)
     assert result.expert_profiles == []
     assert result.expert_reviews == []
     assert result.panel_synthesis is None
@@ -332,7 +332,7 @@ async def test_all_profile_failures_flag_the_result_degraded() -> None:
         return next(iter_seq)
 
     with _patch_panel_workers(_build):
-        result = await run_panel_v3(SRC, model="stub", n_experts=2)
+        result = await run_panel(SRC, model="stub", n_experts=2)
     assert result.expert_profiles == []
     assert result.expert_reviews == []
     assert result.degraded
@@ -361,7 +361,7 @@ async def test_all_review_failures_flag_the_result_degraded() -> None:
         return next(iter_seq)
 
     with _patch_panel_workers(_build):
-        result = await run_panel_v3(SRC, model="stub", n_experts=2)
+        result = await run_panel(SRC, model="stub", n_experts=2)
     assert len(result.expert_profiles) == 2
     assert result.expert_reviews == []
     assert result.degraded
@@ -371,7 +371,7 @@ async def test_all_review_failures_flag_the_result_degraded() -> None:
 
 def test_panel_graph_is_importable_and_has_entry_node() -> None:
     """Sanity: the graph and its entry node are importable as a unit."""
-    assert panel_graph_v3 is not None
+    assert panel_graph is not None
     assert Sectionize is not None
     # Smoke: PanelDeps + PanelState construct without args (defaults
     # work) — useful as a guard against accidental required-field
@@ -387,8 +387,8 @@ def test_panel_graph_is_importable_and_has_entry_node() -> None:
 # ---------------------------------------------------------------------------
 
 
-async def test_run_panel_v3_refuses_confidential_marker_without_affirmation() -> None:
-    """run_panel_v3 (the public ``run_panel``) must refuse confidentiality-
+async def test_run_panel_refuses_confidential_marker_without_affirmation() -> None:
+    """run_panel (the public ``run_panel``) must refuse confidentiality-
     marked text unless the caller affirms authorship — the marker scan fires
     before any LLM call, so no model is needed."""
     from andamentum.whetstone._confidentiality import ConfidentialityMarkerError
@@ -398,10 +398,10 @@ async def test_run_panel_v3_refuses_confidential_marker_without_affirmation() ->
         "Please do not share this document outside the review panel.\n"
     )
     with pytest.raises(ConfidentialityMarkerError):
-        await run_panel_v3(marked, model="stub", n_experts=1)
+        await run_panel(marked, model="stub", n_experts=1)
 
 
-async def test_run_panel_v3_confirm_own_draft_bypasses_marker_scan() -> None:
+async def test_run_panel_confirm_own_draft_bypasses_marker_scan() -> None:
     """confirm_own_draft=True disarms the tripwire (mirrors --i-am-the-author).
     With a stub model the graph won't really call out, but the scan must not
     be what stops it."""
@@ -409,7 +409,7 @@ async def test_run_panel_v3_confirm_own_draft_bypasses_marker_scan() -> None:
 
     marked = "Manuscript ID: 4242\n\nbody text follows.\n"
     try:
-        await run_panel_v3(marked, model="stub", n_experts=1, confirm_own_draft=True)
+        await run_panel(marked, model="stub", n_experts=1, confirm_own_draft=True)
     except ConfidentialityMarkerError:  # pragma: no cover
         raise AssertionError("confirm_own_draft must bypass the marker scan")
     except Exception:

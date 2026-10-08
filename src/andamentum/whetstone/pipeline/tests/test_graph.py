@@ -6,12 +6,12 @@ import types
 from contextlib import ExitStack
 from unittest.mock import patch
 
-from andamentum.whetstone.v3.consolidate import _Consolidation
-from andamentum.whetstone.v3.extract import _ClaimSpans, _Requote
-from andamentum.whetstone.v3.gaps import _DemandList
-from andamentum.whetstone.v3.graph import run_review_v3
-from andamentum.whetstone.v3.review import _CriterionFindings, _RawFinding
-from andamentum.whetstone.v3.synth import StructuredReview
+from andamentum.whetstone.pipeline.consolidate import _Consolidation
+from andamentum.whetstone.pipeline.extract import _ClaimSpans, _Requote
+from andamentum.whetstone.pipeline.gaps import _DemandList
+from andamentum.whetstone.pipeline.graph import run_review
+from andamentum.whetstone.pipeline.review import _CriterionFindings, _RawFinding
+from andamentum.whetstone.pipeline.synth import StructuredReview
 
 SRC = (
     "# Introduction\n\nWe propose a fast method.\n\n"
@@ -30,20 +30,20 @@ def _router(defn, _model):
             return fn
 
         async def run(self, _prompt, **_kwargs):
-            if name == "v3_extract_claims":
+            if name == "extract_claims":
                 out = _ClaimSpans(
                     claims=[
                         "We propose a fast method.",
                         "We achieve 95% accuracy on the benchmark.",
                     ]
                 )
-            elif name == "v3_requote":
+            elif name == "requote":
                 out = _Requote(quote="")  # give up → unmatched claims drop
-            elif name == "v3_gap_analysis":
+            elif name == "gap_analysis":
                 out = _DemandList(demands=[])  # no gaps → loop exits at once
-            elif name == "v3_consolidate":
+            elif name == "consolidate":
                 out = _Consolidation(groups=[])  # no merges in this smoke test
-            elif name in ("v3_synthesise", "v3_critique_revise"):
+            elif name in ("synthesise", "critique_revise"):
                 out = StructuredReview(
                     synopsis="A short methods paper.",
                     strengths=["clear contribution"],
@@ -87,17 +87,17 @@ async def test_graph_runs_end_to_end_to_review_result() -> None:
         for m in mods_using_legacy:
             stack.enter_context(
                 patch(
-                    f"andamentum.whetstone.v3.{m}.build_pydantic_ai_agent", new=_router
+                    f"andamentum.whetstone.pipeline.{m}.build_pydantic_ai_agent", new=_router
                 )
             )
             stack.enter_context(
-                patch(f"andamentum.whetstone.v3.{m}.resolve_model", new=lambda x: None)
+                patch(f"andamentum.whetstone.pipeline.{m}.resolve_model", new=lambda x: None)
             )
         # review.py no longer uses build_pydantic_ai_agent; it constructs
         # its own Agent via _build_agent. Stub that directly.
         stack.enter_context(
             patch(
-                "andamentum.whetstone.v3.review._build_agent",
+                "andamentum.whetstone.pipeline.review._build_agent",
                 new=_build_review_agent_stub,
             )
         )
@@ -105,7 +105,7 @@ async def test_graph_runs_end_to_end_to_review_result() -> None:
         # SPECS criterion category set, so we must skip the classifier
         # (which with model="stub" would default to "general" → GENERAL
         # criterion set with different category names).
-        result = await run_review_v3(SRC, model="stub", cap=1, document_type="academic")
+        result = await run_review(SRC, model="stub", cap=1, document_type="academic")
 
     # It produced a ReviewResult the renderers can consume.
     assert result.summary.startswith("## Summary")
@@ -146,19 +146,19 @@ async def test_all_criteria_crashed_flags_the_result_degraded() -> None:
         for m in mods_using_legacy:
             stack.enter_context(
                 patch(
-                    f"andamentum.whetstone.v3.{m}.build_pydantic_ai_agent", new=_router
+                    f"andamentum.whetstone.pipeline.{m}.build_pydantic_ai_agent", new=_router
                 )
             )
             stack.enter_context(
-                patch(f"andamentum.whetstone.v3.{m}.resolve_model", new=lambda x: None)
+                patch(f"andamentum.whetstone.pipeline.{m}.resolve_model", new=lambda x: None)
             )
         stack.enter_context(
             patch(
-                "andamentum.whetstone.v3.review._build_agent",
+                "andamentum.whetstone.pipeline.review._build_agent",
                 new=_crashing_review_agent,
             )
         )
-        result = await run_review_v3(SRC, model="stub", cap=1, document_type="academic")
+        result = await run_review(SRC, model="stub", cap=1, document_type="academic")
 
     # Every criterion is recorded as failed and the gate tripped.
     assert len(result.failed_criteria) == 5

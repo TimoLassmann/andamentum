@@ -48,7 +48,7 @@ from andamentum.core.models import resolve_model
 
 from ..schemas import Finding, ReviewResult
 
-logger = logging.getLogger("andamentum.whetstone.v3")
+logger = logging.getLogger("andamentum.whetstone.pipeline")
 
 
 class AgreedPoint(BaseModel):
@@ -180,7 +180,7 @@ async def reconcile_reviewers(
     )
 
     defn = AgentDefinition(
-        name="v3_reconcile",
+        name="reconcile",
         prompt=_PROMPT,
         output_model=ReviewerReconciliation,
         retries=2,
@@ -191,7 +191,7 @@ async def reconcile_reviewers(
         res = await agent.run(prompt)
     except Exception as exc:
         logger.warning(
-            "[v3.reconcile] reconciliation failed (%s) — every reviewer's "
+            "[reconcile] reconciliation failed (%s) — every reviewer's "
             "findings are kept unmerged",
             exc,
         )
@@ -202,7 +202,7 @@ async def reconcile_reviewers(
     bump_from_result(res)
     out = res.output
     logger.info(
-        "[v3.reconcile] %d reviewer(s) → %d agreed point(s), %d disagreement(s)",
+        "[reconcile] %d reviewer(s) → %d agreed point(s), %d disagreement(s)",
         len(reviews),
         len(out.agreed),
         len(out.disagreements),
@@ -298,16 +298,16 @@ def merge_agreed(
         for raw in point.finding_ids:
             ref = raw.strip().strip("[]").upper()
             if ref not in by_ref:
-                logger.warning("[v3.reconcile] agreed point names no finding %r", raw)
+                logger.warning("[reconcile] agreed point names no finding %r", raw)
             elif ref in claimed:
-                logger.info("[v3.reconcile] %s is already in another point", ref)
+                logger.info("[reconcile] %s is already in another point", ref)
             elif ref not in refs:
                 refs.append(ref)
         members = [by_ref[ref] for ref in refs]
         reviewers = list(dict.fromkeys(identity for _, identity, _ in members))
         if len(reviewers) < 2:
             logger.info(
-                "[v3.reconcile] point %r has findings from %d reviewer(s) — not merged",
+                "[reconcile] point %r has findings from %d reviewer(s) — not merged",
                 point.issue[:60],
                 len(reviewers),
             )
@@ -331,7 +331,7 @@ def merge_agreed(
             findings.append(groups[group].finding)
     if groups:
         logger.info(
-            "[v3.reconcile] %d finding(s) → %d after merging %d agreed point(s)",
+            "[reconcile] %d finding(s) → %d after merging %d agreed point(s)",
             len(order),
             len(findings),
             len(groups),

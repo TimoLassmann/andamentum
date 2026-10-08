@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 from pydantic_ai.exceptions import UnexpectedModelBehavior, UsageLimitExceeded
 
-from andamentum.whetstone.v3.criteria import (
+from andamentum.whetstone.pipeline.criteria import (
     CREATIVE,
     ESSAY,
     EXTERNAL_COMMS,
@@ -20,8 +20,8 @@ from andamentum.whetstone.v3.criteria import (
     Criterion,
     criterion_set_for,
 )
-from andamentum.whetstone.v3.model import DocumentModel, Section
-from andamentum.whetstone.v3.review import (
+from andamentum.whetstone.pipeline.model import DocumentModel, Section
+from andamentum.whetstone.pipeline.review import (
     Finding,
     _CriterionFindings,
     _RawFinding,
@@ -31,7 +31,7 @@ from andamentum.whetstone.v3.review import (
 
 
 @contextmanager
-def _capture_v3_logs() -> Iterator[list[logging.LogRecord]]:
+def _capture_logs() -> Iterator[list[logging.LogRecord]]:
     """Attach a handler directly to the v3 logger. ``caplog`` is unreliable
     here because ``whetstone/cli.py`` flips ``andamentum.whetstone.propagate``
     to False, breaking propagation to the root caplog handler when CLI tests
@@ -43,7 +43,7 @@ def _capture_v3_logs() -> Iterator[list[logging.LogRecord]]:
             records.append(record)
 
     handler = _ListHandler(level=logging.WARNING)
-    logger = logging.getLogger("andamentum.whetstone.v3")
+    logger = logging.getLogger("andamentum.whetstone.pipeline")
     prior_level = logger.level
     logger.setLevel(logging.WARNING)
     logger.addHandler(handler)
@@ -159,7 +159,7 @@ def test_six_sets_are_disjoint() -> None:
             if i != j:
                 assert a is not b, (
                     f"criterion sets at positions {i} and {j} are the same "
-                    f"object — copy/paste bug in v3/criteria.py"
+                    f"object — copy/paste bug in pipeline/criteria.py"
                 )
 
 
@@ -188,7 +188,7 @@ async def test_run_criteria_tags_findings_by_criterion() -> None:
     def _build(_criterion, _agent_model):
         return _Agent()
 
-    with patch("andamentum.whetstone.v3.review._build_agent", new=_build):
+    with patch("andamentum.whetstone.pipeline.review._build_agent", new=_build):
         findings, failed = await run_criteria(SPECS, _model("x"), agent_model="stub")
     # one finding per criterion, each tagged with its criterion name
     assert {f.criterion for f in findings} == {c.name for c in SPECS}
@@ -217,8 +217,8 @@ async def test_run_criteria_logs_unexpected_model_behaviour_body() -> None:
         return _Agent()
 
     one_criterion = [Criterion(name="Story", questions=["q?"], facets=[])]
-    with patch("andamentum.whetstone.v3.review._build_agent", new=_build):
-        with _capture_v3_logs() as records:
+    with patch("andamentum.whetstone.pipeline.review._build_agent", new=_build):
+        with _capture_logs() as records:
             findings, failed = await run_criteria(
                 one_criterion, _model("x"), agent_model="stub"
             )
@@ -246,8 +246,8 @@ async def test_run_criteria_logs_usage_limit_exceeded() -> None:
         return _Agent()
 
     one_criterion = [Criterion(name="Story", questions=["q?"], facets=[])]
-    with patch("andamentum.whetstone.v3.review._build_agent", new=_build):
-        with _capture_v3_logs() as records:
+    with patch("andamentum.whetstone.pipeline.review._build_agent", new=_build):
+        with _capture_logs() as records:
             findings, failed = await run_criteria(
                 one_criterion, _model("x"), agent_model="stub"
             )
@@ -274,8 +274,8 @@ async def test_run_criteria_still_catches_generic_exception() -> None:
         return _Agent()
 
     one_criterion = [Criterion(name="Story", questions=["q?"], facets=[])]
-    with patch("andamentum.whetstone.v3.review._build_agent", new=_build):
-        with _capture_v3_logs() as records:
+    with patch("andamentum.whetstone.pipeline.review._build_agent", new=_build):
+        with _capture_logs() as records:
             findings, failed = await run_criteria(
                 one_criterion, _model("x"), agent_model="stub"
             )

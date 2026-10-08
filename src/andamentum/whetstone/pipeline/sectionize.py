@@ -26,7 +26,7 @@ def sectionize(source: str, *, target_max: int = DEFAULT_TARGET_MAX) -> list[Sec
     Headings come from markdown ``#`` lines — the right rule for markdown, PDF
     and HTML input, where that is the only structure the text carries. A Word
     document says which paragraphs are headings in their style, and is
-    sectionised by :func:`~andamentum.whetstone.v3.docx_source.sectionize_docx`
+    sectionised by :func:`~andamentum.whetstone.pipeline.docx_source.sectionize_docx`
     instead; both funnel into :func:`sectionize_from_headings`, so the banding
     and the ``Section`` contract are shared rather than reimplemented.
     """

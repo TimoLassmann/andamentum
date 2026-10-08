@@ -5,8 +5,8 @@ from __future__ import annotations
 import types
 from unittest.mock import patch
 
-from andamentum.whetstone.v3.extract import _ClaimSpans, _Requote, build_claims
-from andamentum.whetstone.v3.model import Section
+from andamentum.whetstone.pipeline.extract import _ClaimSpans, _Requote, build_claims
+from andamentum.whetstone.pipeline.model import Section
 
 
 def _section(text: str) -> Section:
@@ -19,7 +19,7 @@ def _fake_agents(*, extract_claims: list[str], requote: str = ""):
     def _factory(name: str, prompt: str, output_model, model: str):
         class _Agent:
             async def run(self, _prompt: str):
-                if name == "v3_extract_claims":
+                if name == "extract_claims":
                     out = _ClaimSpans(claims=extract_claims)
                 else:
                     out = _Requote(quote=requote)
@@ -27,7 +27,7 @@ def _fake_agents(*, extract_claims: list[str], requote: str = ""):
 
         return _Agent()
 
-    return patch("andamentum.whetstone.v3.extract._agent", new=_factory)
+    return patch("andamentum.whetstone.pipeline.extract._agent", new=_factory)
 
 
 async def test_verbatim_claim_kept_with_source_text() -> None:

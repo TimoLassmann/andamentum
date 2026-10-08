@@ -1,7 +1,7 @@
 """The goal-driven loop: review, edit, re-review until a win condition holds.
 
 A plain bounded loop over functions whetstone already has — not a second
-pydantic-graph graph beside ``v3/graph.py``. The house style
+pydantic-graph graph beside ``pipeline/graph.py``. The house style
 (``agentic_dialect``'s laws) allows this explicitly: a bounded loop that
 generates, checks, and retries within one run is ordinary control flow, not
 an external driver, as long as the stop decision is a deterministic function
@@ -12,7 +12,7 @@ imported, since whetstone must not depend on ``forge`` for a two-line helper).
 
 Each round:
 
-1. Run the ordinary ``review_document_v3(..., editor=True)`` over the
+1. Run the ordinary ``review_document(..., editor=True)`` over the
    document as it currently stands.
 2. Compute the goal verdict for THAT document (from the round's findings,
    for ``structure``; from the reference checker, for ``citations``, whose
@@ -47,9 +47,9 @@ from andamentum.core.decisions import DecisionModel
 
 from ..reviewed_document import ReviewedDocument, carry_forward_edits
 from ..schemas import AuthorQuestion, ReviewResult
-from ..v3.criteria import Criterion
-from ..v3.graph import review_document_v3
-from ..v3.reviewers import DEFAULT_PROFILE, ReviewerProfile, author_for
+from ..pipeline.criteria import Criterion
+from ..pipeline.graph import review_document
+from ..pipeline.reviewers import DEFAULT_PROFILE, ReviewerProfile, author_for
 from .figures import check_figure_text_match, unmentioned_figures
 from .references import ReferenceGoalReport, check_reference_goal
 from .spec import GoalSpec
@@ -243,10 +243,10 @@ async def run_goal_loop(
 
     *decision_model* is handed to every round's review, where it may answer
     the document-type question instead of the LLM classifier
-    (see :func:`~..v3.graph.run_review_v3`); ``None`` changes nothing.
+    (see :func:`~..v3.graph.run_review`); ``None`` changes nothing.
 
     *novelty_research* runs the first round's novelty check on deep_research
-    (see :func:`~..v3.graph.run_review_v3`); it needs ``check_novelty=True``.
+    (see :func:`~..v3.graph.run_review`); it needs ``check_novelty=True``.
 
     See :mod:`.loop`'s module docstring for the stop conditions.
     """
@@ -351,7 +351,7 @@ async def _run_goal_loop(
         round_idx += 1
         if goal.check == "citations" and round_idx > 1:
             references = await check_reference_goal(document, model=model)
-        result = await review_document_v3(
+        result = await review_document(
             document,
             model=model,
             reviewer=reviewer,

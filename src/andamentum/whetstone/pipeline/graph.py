@@ -7,7 +7,7 @@ Linear flow with the gap loop encapsulated in its own node:
       → Synthesise(A) → CritiqueRevise(A) → Finalize(D) → End[ReviewResult]
 
 Each node wraps a tested phase function; the deterministic/agent split is kept
-at the node level. Entry point: `run_review_v3(markdown, *, model=…)`.
+at the node level. Entry point: `run_review(markdown, *, model=…)`.
 """
 
 from __future__ import annotations
@@ -54,11 +54,11 @@ if TYPE_CHECKING:
     from ..reviewed_document import ReviewedDocument
     from .reviewers import ReviewerProfile
 
-logger = logging.getLogger("andamentum.whetstone.v3")
+logger = logging.getLogger("andamentum.whetstone.pipeline")
 
 
 @dataclass(frozen=True)
-class V3Deps:
+class ReviewDeps:
     agent_model: str
     cap: int = 2  # gap-loop round cap
     # Aggregate-failure gate: when this fraction (or more) of the active
@@ -110,7 +110,7 @@ class V3Deps:
 
 
 @dataclass
-class V3State:
+class ReviewState:
     source: str
     sections: list[Section] = field(default_factory=list)
     claims: list[Claim] = field(default_factory=list)
@@ -129,7 +129,7 @@ class V3State:
 
 
 @dataclass
-class Sectionize(BaseNode[V3State, V3Deps, ReviewResult]):
+class Sectionize(BaseNode[ReviewState, ReviewDeps, ReviewResult]):
     """Split the source into reviewable units — unless it arrived split.
 
     A Word document says which paragraphs are headings in their style, and
@@ -139,15 +139,15 @@ class Sectionize(BaseNode[V3State, V3Deps, ReviewResult]):
     one unit.
     """
 
-    async def run(self, ctx: GraphRunContext[V3State, V3Deps]) -> "ExtractClaims":
+    async def run(self, ctx: GraphRunContext[ReviewState, ReviewDeps]) -> "ExtractClaims":
         if not ctx.state.sections:
             ctx.state.sections = sectionize(ctx.state.source)
         return ExtractClaims()
 
 
 @dataclass
-class ExtractClaims(BaseNode[V3State, V3Deps, ReviewResult]):
-    async def run(self, ctx: GraphRunContext[V3State, V3Deps]) -> "BuildModel":
+class ExtractClaims(BaseNode[ReviewState, ReviewDeps, ReviewResult]):
+    async def run(self, ctx: GraphRunContext[ReviewState, ReviewDeps]) -> "BuildModel":
         ctx.state.claims = await build_claims(
             ctx.state.sections, ctx.state.source, model=ctx.deps.agent_model
         )
@@ -155,8 +155,8 @@ class ExtractClaims(BaseNode[V3State, V3Deps, ReviewResult]):
 
 
 @dataclass
-class BuildModel(BaseNode[V3State, V3Deps, ReviewResult]):
-    async def run(self, ctx: GraphRunContext[V3State, V3Deps]) -> "ReviewCriteria":
+class BuildModel(BaseNode[ReviewState, ReviewDeps, ReviewResult]):
+    async def run(self, ctx: GraphRunContext[ReviewState, ReviewDeps]) -> "ReviewCriteria":
         citations = await read_citations(
             ctx.state.source, ctx.state.sections, hints=ctx.deps.citation_hints
         )
@@ -167,8 +167,8 @@ class BuildModel(BaseNode[V3State, V3Deps, ReviewResult]):
 
 
 @dataclass
-class ReviewCriteria(BaseNode[V3State, V3Deps, ReviewResult]):
-    async def run(self, ctx: GraphRunContext[V3State, V3Deps]) -> "VerifyFindings":
+class ReviewCriteria(BaseNode[ReviewState, ReviewDeps, ReviewResult]):
+    async def run(self, ctx: GraphRunContext[ReviewState, ReviewDeps]) -> "VerifyFindings":
         model = ctx.state.document_model
         assert model is not None
         ctx.state.findings, ctx.state.failed_criteria = await run_criteria(
@@ -181,8 +181,8 @@ class ReviewCriteria(BaseNode[V3State, V3Deps, ReviewResult]):
 
 
 @dataclass
-class VerifyFindings(BaseNode[V3State, V3Deps, ReviewResult]):
-    async def run(self, ctx: GraphRunContext[V3State, V3Deps]) -> "GapLoop":
+class VerifyFindings(BaseNode[ReviewState, ReviewDeps, ReviewResult]):
+    async def run(self, ctx: GraphRunContext[ReviewState, ReviewDeps]) -> "GapLoop":
         model = ctx.state.document_model
         assert model is not None
         ctx.state.findings = verify_findings(ctx.state.findings, model)
@@ -190,8 +190,8 @@ class VerifyFindings(BaseNode[V3State, V3Deps, ReviewResult]):
 
 
 @dataclass
-class GapLoop(BaseNode[V3State, V3Deps, ReviewResult]):
-    async def run(self, ctx: GraphRunContext[V3State, V3Deps]) -> "Consolidate":
+class GapLoop(BaseNode[ReviewState, ReviewDeps, ReviewResult]):
+    async def run(self, ctx: GraphRunContext[ReviewState, ReviewDeps]) -> "Consolidate":
         model = ctx.state.document_model
         assert model is not None
         if not ctx.deps.criteria:
@@ -212,8 +212,8 @@ class GapLoop(BaseNode[V3State, V3Deps, ReviewResult]):
 
 
 @dataclass
-class Consolidate(BaseNode[V3State, V3Deps, ReviewResult]):
-    async def run(self, ctx: GraphRunContext[V3State, V3Deps]) -> "FlagNoveltyTargets":
+class Consolidate(BaseNode[ReviewState, ReviewDeps, ReviewResult]):
+    async def run(self, ctx: GraphRunContext[ReviewState, ReviewDeps]) -> "FlagNoveltyTargets":
         ctx.state.findings = await consolidate(
             ctx.state.findings, agent_model=ctx.deps.agent_model
         )
@@ -221,7 +221,7 @@ class Consolidate(BaseNode[V3State, V3Deps, ReviewResult]):
 
 
 @dataclass
-class FlagNoveltyTargets(BaseNode[V3State, V3Deps, ReviewResult]):
+class FlagNoveltyTargets(BaseNode[ReviewState, ReviewDeps, ReviewResult]):
     """List what the draft claims as new. Runs on EVERY review.
 
     Unconditional, unlike the two nodes after it, and the asymmetry is the
@@ -245,7 +245,7 @@ class FlagNoveltyTargets(BaseNode[V3State, V3Deps, ReviewResult]):
     from round one and flagging again would be a discarded call.
     """
 
-    async def run(self, ctx: GraphRunContext[V3State, V3Deps]) -> "RunNoveltySearches":
+    async def run(self, ctx: GraphRunContext[ReviewState, ReviewDeps]) -> "RunNoveltySearches":
         if not ctx.deps.flag_novelty:
             return RunNoveltySearches()
         ctx.state.novelty_targets = await flag_novelty_targets(
@@ -258,11 +258,11 @@ class FlagNoveltyTargets(BaseNode[V3State, V3Deps, ReviewResult]):
 
 
 @dataclass
-class RunNoveltySearches(BaseNode[V3State, V3Deps, ReviewResult]):
+class RunNoveltySearches(BaseNode[ReviewState, ReviewDeps, ReviewResult]):
     """deep_research per target. Per-target failures are
     captured in NoveltyEvidence.error rather than aborting the loop."""
 
-    async def run(self, ctx: GraphRunContext[V3State, V3Deps]) -> "JudgeNovelty":
+    async def run(self, ctx: GraphRunContext[ReviewState, ReviewDeps]) -> "JudgeNovelty":
         if not ctx.deps.check_novelty or not ctx.state.novelty_targets:
             return JudgeNovelty()
         ctx.state.novelty_evidence = await run_novelty_searches(
@@ -275,11 +275,11 @@ class RunNoveltySearches(BaseNode[V3State, V3Deps, ReviewResult]):
 
 
 @dataclass
-class JudgeNovelty(BaseNode[V3State, V3Deps, ReviewResult]):
+class JudgeNovelty(BaseNode[ReviewState, ReviewDeps, ReviewResult]):
     """Pure adaptation: evidence → verdict → Finding. Verdicts where
     is_novel=True are silenced (no Finding emitted)."""
 
-    async def run(self, ctx: GraphRunContext[V3State, V3Deps]) -> "Gate":
+    async def run(self, ctx: GraphRunContext[ReviewState, ReviewDeps]) -> "Gate":
         if not ctx.deps.check_novelty or not ctx.state.novelty_evidence:
             return Gate()
         # A target the check could not assess is not a novel one: name it in
@@ -297,15 +297,15 @@ class JudgeNovelty(BaseNode[V3State, V3Deps, ReviewResult]):
 
 
 @dataclass
-class Gate(BaseNode[V3State, V3Deps, ReviewResult]):
-    async def run(self, ctx: GraphRunContext[V3State, V3Deps]) -> "Synthesise":
+class Gate(BaseNode[ReviewState, ReviewDeps, ReviewResult]):
+    async def run(self, ctx: GraphRunContext[ReviewState, ReviewDeps]) -> "Synthesise":
         ctx.state.findings = gate_and_aggregate(ctx.state.findings)
         return Synthesise()
 
 
 @dataclass
-class Synthesise(BaseNode[V3State, V3Deps, ReviewResult]):
-    async def run(self, ctx: GraphRunContext[V3State, V3Deps]) -> "CritiqueRevise":
+class Synthesise(BaseNode[ReviewState, ReviewDeps, ReviewResult]):
+    async def run(self, ctx: GraphRunContext[ReviewState, ReviewDeps]) -> "CritiqueRevise":
         model = ctx.state.document_model
         assert model is not None
         ctx.state.review = await synthesise(
@@ -315,8 +315,8 @@ class Synthesise(BaseNode[V3State, V3Deps, ReviewResult]):
 
 
 @dataclass
-class CritiqueRevise(BaseNode[V3State, V3Deps, ReviewResult]):
-    async def run(self, ctx: GraphRunContext[V3State, V3Deps]) -> "EditSections":
+class CritiqueRevise(BaseNode[ReviewState, ReviewDeps, ReviewResult]):
+    async def run(self, ctx: GraphRunContext[ReviewState, ReviewDeps]) -> "EditSections":
         model = ctx.state.document_model
         assert model is not None and ctx.state.review is not None
         ctx.state.review = await critique_and_revise(
@@ -329,8 +329,8 @@ class CritiqueRevise(BaseNode[V3State, V3Deps, ReviewResult]):
 
 
 @dataclass
-class EditSections(BaseNode[V3State, V3Deps, ReviewResult]):
-    """Optional per-section editor pass. Off by default.
+class EditSections(BaseNode[ReviewState, ReviewDeps, ReviewResult]):
+    """Optional per-section editor pass. On by default.
 
     Gated on ``ctx.deps.editor_enabled``. When enabled, runs the
     editor agent once per section (≤5 concurrent) and populates
@@ -338,7 +338,7 @@ class EditSections(BaseNode[V3State, V3Deps, ReviewResult]):
     renderer turns into track-changes.
     """
 
-    async def run(self, ctx: GraphRunContext[V3State, V3Deps]) -> "Finalize":
+    async def run(self, ctx: GraphRunContext[ReviewState, ReviewDeps]) -> "Finalize":
         if not ctx.deps.editor_enabled:
             return Finalize()
         ctx.state.edits, ctx.state.declined_findings = await run_editor(
@@ -362,8 +362,8 @@ class EditSections(BaseNode[V3State, V3Deps, ReviewResult]):
 
 
 @dataclass
-class Finalize(BaseNode[V3State, V3Deps, ReviewResult]):
-    async def run(self, ctx: GraphRunContext[V3State, V3Deps]) -> End[ReviewResult]:
+class Finalize(BaseNode[ReviewState, ReviewDeps, ReviewResult]):
+    async def run(self, ctx: GraphRunContext[ReviewState, ReviewDeps]) -> End[ReviewResult]:
         from ._metrics import current as current_counters
 
         model = ctx.state.document_model
@@ -409,7 +409,7 @@ class Finalize(BaseNode[V3State, V3Deps, ReviewResult]):
         return End(result)
 
 
-def _build_review_graph() -> Graph[V3State, V3Deps, Sectionize, ReviewResult]:
+def _build_review_graph() -> Graph[ReviewState, ReviewDeps, Sectionize, ReviewResult]:
     """Assemble the graph from the `BaseNode` classes above.
 
     pydantic-graph v2 dropped `Graph(nodes=[...])`; the builder is now the
@@ -417,10 +417,10 @@ def _build_review_graph() -> Graph[V3State, V3Deps, Sectionize, ReviewResult]:
     reads each `run` return annotation and derives the edges, so the
     topology is still declared by the return types, not here.
     """
-    g = GraphBuilder[V3State, V3Deps, Sectionize, ReviewResult](
-        name="review_graph_v3",
-        state_type=V3State,
-        deps_type=V3Deps,
+    g = GraphBuilder[ReviewState, ReviewDeps, Sectionize, ReviewResult](
+        name="review_graph",
+        state_type=ReviewState,
+        deps_type=ReviewDeps,
         input_type=Sectionize,
         output_type=ReviewResult,
     )
@@ -446,10 +446,10 @@ def _build_review_graph() -> Graph[V3State, V3Deps, Sectionize, ReviewResult]:
 
 
 # linear pipeline — topology test exempt
-review_graph_v3 = _build_review_graph()
+review_graph = _build_review_graph()
 
 
-async def run_review_v3(
+async def run_review(
     markdown: str,
     *,
     model: str,
@@ -460,7 +460,7 @@ async def run_review_v3(
     confirm_own_draft: bool = False,
     criteria: list[Criterion] | None = None,
     guidelines_text: str | None = None,
-    editor: bool = False,
+    editor: bool = True,
     editor_criteria: list[str] | None = None,
     check_novelty: bool = False,
     flag_novelty: bool = True,
@@ -509,7 +509,7 @@ async def run_review_v3(
 
     ``citation_hints`` are the Word file's superscript runs, reference-manager
     fields and note marks, for the citation line the ``citations``-facet
-    criteria read. :func:`review_document_v3` reads them from the file it
+    criteria read. :func:`review_document` reads them from the file it
     opened; a caller with text only leaves them out.
 
     ``decision_model`` is an opened ``core.decisions.DecisionModel`` that may
@@ -554,7 +554,7 @@ async def run_review_v3(
     """
     if criteria is not None and guidelines_text is not None:
         raise ValueError(
-            "run_review_v3: pass either `criteria=` (pre-decomposed) or "
+            "run_review: pass either `criteria=` (pre-decomposed) or "
             "`guidelines_text=` (free-text to extract from), not both. "
             "These are two different ways to supply the active criterion "
             "set and choosing between them must be explicit."
@@ -562,7 +562,7 @@ async def run_review_v3(
 
     if novelty_research is not None and not check_novelty:
         raise ValueError(
-            "run_review_v3: `novelty_research` configures the novelty check; "
+            "run_review: `novelty_research` configures the novelty check; "
             "pass `check_novelty=True` with it"
         )
 
@@ -638,9 +638,9 @@ async def run_review_v3(
         # failure mode is findings about something the document was never
         # doing — not damage. The same line goes into the report header, so it
         # survives being scrolled off a terminal.
-        logger.warning("[v3.review] %s", resolved.fit_warning)
+        logger.warning("[review] %s", resolved.fit_warning)
 
-    deps = V3Deps(
+    deps = ReviewDeps(
         agent_model=model,
         cap=cap,
         criteria=active_criteria,
@@ -656,11 +656,11 @@ async def run_review_v3(
         extra_findings=list(extra_findings or []),
         citation_hints=list(citation_hints or []),
     )
-    state = V3State(source=markdown, sections=list(sections or []))
-    return await review_graph_v3.run(state=state, deps=deps, inputs=Sectionize())
+    state = ReviewState(source=markdown, sections=list(sections or []))
+    return await review_graph.run(state=state, deps=deps, inputs=Sectionize())
 
 
-async def review_document_v3(
+async def review_document(
     source: str | ReviewedDocument,
     *,
     model: str,
@@ -669,7 +669,7 @@ async def review_document_v3(
     confirm_own_draft: bool = False,
     criteria: list[Criterion] | None = None,
     guidelines_text: str | None = None,
-    editor: bool = False,
+    editor: bool = True,
     editor_criteria: list[str] | None = None,
     check_novelty: bool = False,
     flag_novelty: bool = True,
@@ -692,7 +692,7 @@ async def review_document_v3(
     ``ReviewResult`` passes the string and this function cleans up after
     itself.
 
-    See :func:`run_review_v3` for argument semantics (criterion-set resolution
+    See :func:`run_review` for argument semantics (criterion-set resolution
     precedence, confidentiality gate, classifier behaviour).
     """
     from ..reviewed_document import ReviewedDocument as _Opened
@@ -703,7 +703,7 @@ async def review_document_v3(
     document = await open_source(source) if owned else source
     assert isinstance(document, _Opened)
     try:
-        return await run_review_v3(
+        return await run_review(
             document.text,
             model=model,
             cap=cap,

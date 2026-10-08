@@ -8,14 +8,14 @@ that invariant holding.
 
 Note the deliberately narrow claim under test: cross-linking says the checks
 covered the same passage, NOT that they agree — see
-:mod:`~andamentum.whetstone.v3.checklist.corroborate`.
+:mod:`~andamentum.whetstone.pipeline.checklist.corroborate`.
 """
 
 from __future__ import annotations
 
-from andamentum.whetstone.v3.checklist.corroborate import corroborate
-from andamentum.whetstone.v3.checklist.probes import ProbeFinding
-from andamentum.whetstone.v3.model import Span
+from andamentum.whetstone.pipeline.checklist.corroborate import corroborate
+from andamentum.whetstone.pipeline.checklist.probes import ProbeFinding
+from andamentum.whetstone.pipeline.model import Span
 
 
 def _presence(

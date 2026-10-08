@@ -30,7 +30,7 @@ firmly enough. A single combined assertion would report both as one red line.
 ``cloud``, like every other model-calling test in this repository). Run them by
 hand::
 
-    uv run pytest src/andamentum/whetstone/v3/tests/test_planted_defects.py -m cloud -s
+    uv run pytest src/andamentum/whetstone/pipeline/tests/test_planted_defects.py -m cloud -s
 
 Run once per model class in use and record the result per profile — that is the
 honest answer to which reviewer needs which model, and it changes as models
@@ -54,9 +54,9 @@ import pytest
 from dotenv import load_dotenv
 
 from andamentum.whetstone.schemas import ReviewResult
-from andamentum.whetstone.v3.criteria import MISSING_COMPARISON
-from andamentum.whetstone.v3.graph import run_review_v3
-from andamentum.whetstone.v3.reviewers import (
+from andamentum.whetstone.pipeline.criteria import MISSING_COMPARISON
+from andamentum.whetstone.pipeline.graph import run_review
+from andamentum.whetstone.pipeline.reviewers import (
     DEFAULT_PROFILE_NAME,
     PROFILES,
     ReviewerProfile,
@@ -276,7 +276,7 @@ async def _run_profile(
     """
     key = (label, model)
     if key not in _CACHE:
-        _CACHE[key] = await run_review_v3(
+        _CACHE[key] = await run_review(
             SOURCE,
             model=model,
             document_type=DOCUMENT_TYPE,

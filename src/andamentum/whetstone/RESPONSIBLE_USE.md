@@ -15,9 +15,8 @@ the in-code protections that exist to make accidental misuse hard.
 - Authors running the `andamentum-whetstone checklist <source>`
   subcommand over their own draft as a standard pre-submission sweep,
   or to compare one of their drafts against a later version of it.
-- Anyone running the `andamentum-whetstone proofread <source>`
-  subcommand for deterministic style + readability checks on their
-  own text (no LLM call — wraps `andamentum.proofread`).
+- Anyone running `andamentum-proofread <source>` for deterministic
+  style + readability checks on their own text (no LLM call).
 
 ## Who whetstone is NOT for
 
@@ -70,8 +69,8 @@ andamentum-whetstone draft.md \
 
 Whetstone supports local-only operation in every mode that calls a
 model — `review`, `panel` and `checklist` all accept an `ollama:*`
-id. The `proofread` and `verify-provenance` subcommands involve no
-model calls at all.
+id. The `apply-patches` and `verify-provenance` commands (and the
+separate `andamentum-proofread`) involve no model calls at all.
 
 **What leaves the machine in a default review, besides the model
 call.** The reference check looks up each entry of the draft's
@@ -120,10 +119,11 @@ mode requires an explicit affirmation:
 
 ```bash
 andamentum-whetstone panel draft.md \
-    --model ... --i-am-the-author --out panel.md
+    --model ... --i-am-the-author -o panel.md
 ```
 
-Or pre-set `ANDAMENTUM_PANEL_OWN_AUTHOR=1` once per shell session.
+The affirmation is a flag on the command line; no environment variable
+stands in for it.
 
 ### AI-author attribution lock
 
@@ -131,8 +131,8 @@ Track-changes in the produced `.docx` are attributed to
 `"andamentum-whetstone (AI)"` by default. Overriding this attribution
 requires `--allow-author-override` AND emits a stderr warning that
 misrepresenting AI-generated edits as a human reviewer's may
-constitute research misconduct. This applies to the `--apply-patches`
-path too.
+constitute research misconduct. This applies to the `apply-patches`
+command too.
 
 ### Tiered watermarking
 
@@ -159,19 +159,18 @@ can read the part out with the `verify-provenance` subcommand:
 
 ```bash
 andamentum-whetstone verify-provenance suspicious.docx
-andamentum-whetstone verify-provenance suspicious.docx --format json
+andamentum-whetstone verify-provenance suspicious.docx --json
 ```
 
-Exit code: 0 if any provenance marker is found, 2 if readable
-but no markers found, 1 if the file can't be read as a .docx zip.
+Exit code: 0 if any provenance marker is found, 1 if readable
+but no markers found, 3 if the file can't be read as a .docx zip.
 
 For **review-report outputs** (the `.docx`/`.md`/`.html` summarising
 the review) there is also a **visible "AI-generated review content"
-banner** by default. For the `--apply-patches` path (which produces
-your modified manuscript) the visible banner is OFF by default to
-avoid polluting your submission — the invisible metadata and
-customXml provenance part are still written. Override with
-`--visible-watermark` / `--no-visible-watermark`.
+banner** by default; `--no-visible-watermark` suppresses it. The
+`apply-patches` command (which produces your modified manuscript)
+writes no visible banner, to avoid polluting your submission — the
+invisible metadata and customXml provenance part are still written.
 
 ### Novelty-check network surface
 

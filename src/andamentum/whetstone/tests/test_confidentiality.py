@@ -134,4 +134,4 @@ class TestCheckConfidentiality:
 
 # The v2 node-integration tests (TestNodeIntegration) were deleted with
 # the v2 review_document surface. v3's equivalent integration coverage
-# lives in src/andamentum/whetstone/v3/tests/test_confidentiality.py.
+# lives in src/andamentum/whetstone/pipeline/tests/test_confidentiality.py.

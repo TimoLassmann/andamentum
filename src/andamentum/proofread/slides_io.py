@@ -17,6 +17,7 @@ from pathlib import Path
 from pptx import Presentation
 from pptx.util import Emu
 
+from .errors import DeckReadError
 from .slides import Slide
 
 _HEADLINE_MIN_PT = 24
@@ -63,8 +64,14 @@ def _frames(shapes) -> list[_Frame]:  # noqa: ANN001 — python-pptx shape colle
 
 
 def read_pptx(path: str | Path) -> list[Slide]:
-    """Return one ``Slide`` per slide in ``path``, in deck order."""
-    prs = Presentation(str(path))
+    """Return one ``Slide`` per slide in ``path``, in deck order.
+
+    Raises :class:`DeckReadError` when the file is not a readable deck.
+    """
+    try:
+        prs = Presentation(str(path))
+    except Exception as exc:  # python-pptx raises several unrelated types on a bad file
+        raise DeckReadError(f"could not read {str(path)!r} as a deck: {exc}") from exc
     slides: list[Slide] = []
     for number, sl in enumerate(prs.slides, start=1):
         frames = sorted(_frames(sl.shapes), key=lambda f: (f.top, f.left))

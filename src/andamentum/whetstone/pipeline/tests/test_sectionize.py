@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from andamentum.whetstone.v3.sectionize import sectionize
+from andamentum.whetstone.pipeline.sectionize import sectionize
 
 
 def test_no_headings_yields_one_section_covering_source() -> None:

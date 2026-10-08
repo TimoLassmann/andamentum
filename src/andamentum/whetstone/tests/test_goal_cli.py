@@ -5,7 +5,7 @@ Most of this file mirrors ``test_reviewer_cli.py``'s pattern: parse with the
 real parser, then call ``_validate_args`` directly and check the exit code
 and message — the argument-time refusals, with no review run at all. The
 last two tests mirror ``test_cli_review_wiring.py`` instead: they stub
-``review_document_v3`` at the loop's own import site (not the pydantic-ai
+``review_document`` at the loop's own import site (not the pydantic-ai
 agents underneath it — that round-by-round behaviour is
 ``test_goal_loop.py``'s job) and check that ``_run`` writes real output and
 exits with the right code.
@@ -24,7 +24,9 @@ BASE = ["draft.md", "--model", "stub:none", "--out", "review.md"]
 
 
 def _args(argv: list[str]):
-    return cli_mod._build_parser().parse_args(argv)
+    return cli_mod.build_parser().parse_args(
+        argv if argv[0] in cli_mod._COMMANDS else ["review", *argv]
+    )
 
 
 def _validate(argv: list[str]) -> None:
@@ -56,7 +58,7 @@ def test_goal_check_without_goal_is_refused(
 ) -> None:
     with pytest.raises(SystemExit) as exc:
         _validate([*BASE, "--goal-check", "structure"])
-    assert exc.value.code == 1
+    assert exc.value.code == 2
     assert "--goal-check has no effect without --goal" in capsys.readouterr().err
 
 
@@ -65,7 +67,7 @@ def test_max_rounds_without_goal_is_refused(
 ) -> None:
     with pytest.raises(SystemExit) as exc:
         _validate([*BASE, "--max-rounds", "2"])
-    assert exc.value.code == 1
+    assert exc.value.code == 2
     assert "--max-rounds has no effect without --goal" in capsys.readouterr().err
 
 
@@ -77,25 +79,24 @@ def test_goal_under_checklist_is_refused(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     with pytest.raises(SystemExit) as exc:
-        _validate([*BASE, "--mode", "checklist", "--goal", "the flow is correct"])
-    assert exc.value.code == 1
-    assert "--goal only applies to review mode" in capsys.readouterr().err
+        _validate(["checklist", *BASE, "--goal", "the flow is correct"])
+    assert exc.value.code == 2
+    assert "unrecognized arguments: --goal" in capsys.readouterr().err
 
 
 def test_goal_under_panel_is_refused(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit) as exc:
         _validate(
             [
-                *BASE,
-                "--mode",
                 "panel",
+                *BASE,
                 "--i-am-the-author",
                 "--goal",
                 "the flow is correct",
             ]
         )
-    assert exc.value.code == 1
-    assert "--goal only applies to review mode" in capsys.readouterr().err
+    assert exc.value.code == 2
+    assert "unrecognized arguments: --goal" in capsys.readouterr().err
 
 
 def test_goal_with_a_reviewer_list_is_refused(
@@ -105,14 +106,14 @@ def test_goal_with_a_reviewer_list_is_refused(
         _validate(
             [*BASE, "--reviewer", "claims,methods", "--goal", "the flow is correct"]
         )
-    assert exc.value.code == 1
+    assert exc.value.code == 2
     assert "--goal takes one reviewer, not a list" in capsys.readouterr().err
 
 
 def test_max_rounds_below_one_is_refused(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit) as exc:
         _validate([*BASE, "--goal", "the flow is correct", "--max-rounds", "0"])
-    assert exc.value.code == 1
+    assert exc.value.code == 2
     assert "--max-rounds must be at least 1" in capsys.readouterr().err
 
 
@@ -122,7 +123,7 @@ def test_an_unknown_goal_check_is_refused_by_argparse() -> None:
     assert exc.value.code == 2
 
 
-# ── --goal-figure / --goal-figure-model ──────────────────────────────────
+# ── --goal-figure / --figure-model ──────────────────────────────────
 
 
 def test_goal_figure_without_goal_check_figures_is_refused(
@@ -140,7 +141,7 @@ def test_goal_figure_without_goal_check_figures_is_refused(
                 f"Figure 1={figure}",
             ]
         )
-    assert exc.value.code == 1
+    assert exc.value.code == 2
     assert (
         "--goal-figure only applies to --goal-check figures" in capsys.readouterr().err
     )
@@ -155,12 +156,12 @@ def test_goal_figure_model_without_goal_check_figures_is_refused(
                 *BASE,
                 "--goal",
                 "the flow is correct",
-                "--goal-figure-model",
+                "--figure-model",
                 "ollama:qwen3.8",
             ]
         )
-    assert exc.value.code == 1
-    assert "--goal-figure-model only applies" in capsys.readouterr().err
+    assert exc.value.code == 2
+    assert "--figure-model only applies" in capsys.readouterr().err
 
 
 def test_goal_check_figures_needs_at_least_one_goal_figure(
@@ -174,11 +175,11 @@ def test_goal_check_figures_needs_at_least_one_goal_figure(
                 "figures match",
                 "--goal-check",
                 "figures",
-                "--goal-figure-model",
+                "--figure-model",
                 "ollama:qwen3.8",
             ]
         )
-    assert exc.value.code == 1
+    assert exc.value.code == 2
     assert "needs at least one --goal-figure" in capsys.readouterr().err
 
 
@@ -199,8 +200,8 @@ def test_goal_check_figures_needs_a_figure_model(
                 f"Figure 1={figure}",
             ]
         )
-    assert exc.value.code == 1
-    assert "needs --goal-figure-model" in capsys.readouterr().err
+    assert exc.value.code == 2
+    assert "needs --figure-model" in capsys.readouterr().err
 
 
 def test_goal_figure_with_a_missing_file_is_refused(
@@ -216,11 +217,11 @@ def test_goal_figure_with_a_missing_file_is_refused(
                 "figures",
                 "--goal-figure",
                 "Figure 1=does/not/exist.png",
-                "--goal-figure-model",
+                "--figure-model",
                 "ollama:qwen3.8",
             ]
         )
-    assert exc.value.code == 2
+    assert exc.value.code == 3
     assert "no such file" in capsys.readouterr().err
 
 
@@ -237,12 +238,12 @@ def test_goal_figure_needing_label_and_equals_is_refused(
                 "figures",
                 "--goal-figure",
                 "not-a-label-path-pair",
-                "--goal-figure-model",
+                "--figure-model",
                 "ollama:qwen3.8",
             ]
         )
     assert exc.value.code == 2
-    assert "is not LABEL=PATH" in capsys.readouterr().err
+    assert "is not LABEL=FILE" in capsys.readouterr().err
 
 
 def test_a_valid_goal_check_figures_run_is_accepted(tmp_path) -> None:
@@ -257,7 +258,7 @@ def test_a_valid_goal_check_figures_run_is_accepted(tmp_path) -> None:
             "figures",
             "--goal-figure",
             f"Figure 1={figure}",
-            "--goal-figure-model",
+            "--figure-model",
             "ollama:qwen3.8",
         ]
     )
@@ -323,7 +324,7 @@ async def test_a_goal_met_run_writes_output_and_exits_zero(
 
     _calls, fake_review = _goal_review_stub(rounds=3)
     monkeypatch.setattr(
-        "andamentum.whetstone.goal.loop.review_document_v3", fake_review, raising=True
+        "andamentum.whetstone.goal.loop.review_document", fake_review, raising=True
     )
 
     await cli_mod._run(
@@ -349,7 +350,7 @@ async def test_a_goal_met_run_writes_output_and_exits_zero(
     assert _calls["n"] == 3
 
 
-async def test_a_goal_not_met_run_still_writes_output_and_exits_four(
+async def test_a_goal_not_met_run_still_writes_output_and_exits_one(
     tmp_path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     source = tmp_path / "draft.docx"
@@ -372,27 +373,26 @@ async def test_a_goal_not_met_run_still_writes_output_and_exits_four(
         )
 
     monkeypatch.setattr(
-        "andamentum.whetstone.goal.loop.review_document_v3",
+        "andamentum.whetstone.goal.loop.review_document",
         always_failing,
         raising=True,
     )
 
-    with pytest.raises(SystemExit) as exc:
-        await cli_mod._run(
-            _args(
-                [
-                    str(source),
-                    "--model",
-                    "stub:none",
-                    "--out",
-                    str(out),
-                    "--goal",
-                    "the flow is correct",
-                    "--goal-check",
-                    "structure",
-                ]
-            ),
-            Console(stderr=True),
-        )
-    assert exc.value.code == 4
+    code = await cli_mod._run(
+        _args(
+            [
+                str(source),
+                "--model",
+                "stub:none",
+                "--out",
+                str(out),
+                "--goal",
+                "the flow is correct",
+                "--goal-check",
+                "structure",
+            ]
+        ),
+        Console(stderr=True),
+    )
+    assert code == 1
     assert out.exists(), "the output is written even though the goal was not met"

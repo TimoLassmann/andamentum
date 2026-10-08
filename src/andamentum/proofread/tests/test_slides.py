@@ -123,7 +123,7 @@ def _deck(path: Path) -> None:
 def test_cli_slides_json(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     deck = tmp_path / "deck.pptx"
     _deck(deck)
-    assert main([str(deck), "--slides", "--format", "json"]) == 0
+    assert main([str(deck), "--slides", "--json"]) == 0
     payload = json.loads(capsys.readouterr().out)
     checks = {f["check"] for f in payload["findings"]}
     assert {"deixis", "acronym", "restatement"} <= checks
@@ -140,9 +140,7 @@ def test_cli_slides_allow(tmp_path: Path, capsys: pytest.CaptureFixture[str]) ->
 def test_cli_slides_rejects_non_pptx(tmp_path: Path) -> None:
     f = tmp_path / "notes.txt"
     f.write_text("hello")
-    with pytest.raises(SystemExit) as exc:
-        main([str(f), "--slides"])
-    assert exc.value.code == 1
+    assert main([str(f), "--slides"]) == 2
 
 
 def test_placeholders_are_not_acronyms() -> None:
@@ -166,3 +164,12 @@ def test_statement_slide_takes_three_lines() -> None:
     assert _checks(
         [Slide(number=1, headline="x" * 105, headline_pt=44)], "headline_length"
     ) == [1]
+
+
+def test_cli_slides_unreadable_deck_exits_3(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    deck = tmp_path / "broken.pptx"
+    deck.write_bytes(b"not a deck")
+    assert main([str(deck), "--slides"]) == 3
+    assert "could not read" in capsys.readouterr().err

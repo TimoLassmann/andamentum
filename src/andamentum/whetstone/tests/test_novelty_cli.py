@@ -13,7 +13,9 @@ NOVELTY = [*BASE, "--check-novelty"]
 
 
 def _args(argv: list[str]):
-    return cli_mod._build_parser().parse_args(argv)
+    return cli_mod.build_parser().parse_args(
+        argv if argv[0] in cli_mod._COMMANDS else ["review", *argv]
+    )
 
 
 def _validate(argv: list[str]) -> None:
@@ -23,7 +25,7 @@ def _validate(argv: list[str]) -> None:
 def _refused(argv: list[str], capsys: pytest.CaptureFixture[str]) -> str:
     with pytest.raises(SystemExit) as exc:
         _validate(argv)
-    assert exc.value.code == 1
+    assert exc.value.code == 2
     return capsys.readouterr().err
 
 
@@ -65,7 +67,7 @@ def test_a_store_with_check_novelty_is_accepted() -> None:
 def test_checklist_refuses_the_novelty_flags(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    argv = [*BASE, "--mode", "checklist", "--novelty-store", "n.db"]
+    argv = ["checklist", *BASE, "--novelty-store", "n.db"]
     assert "--novelty-store" in _refused(argv, capsys)
 
 

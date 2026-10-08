@@ -23,9 +23,9 @@ from andamentum.whetstone.schemas import (
     ReviewResult,
     SectionCard,
 )
-from andamentum.whetstone.v3.model import Span
-from andamentum.whetstone.v3.review import Finding as V3Finding
-from andamentum.whetstone.v3.synth import _to_wfinding, synopsis_of
+from andamentum.whetstone.pipeline.model import Span
+from andamentum.whetstone.pipeline.review import Finding as RawFinding
+from andamentum.whetstone.pipeline.synth import _to_wfinding, synopsis_of
 
 
 def _finding(
@@ -227,7 +227,7 @@ def test_a_partial_review_is_flagged_in_every_format() -> None:
 
 
 def test_the_headline_heads_the_finding_and_the_criterion_moves_to_category() -> None:
-    f = V3Finding(
+    f = RawFinding(
         criterion="Evidence support",
         issue="You give no source.",
         quote="q",
@@ -243,7 +243,7 @@ def test_the_headline_heads_the_finding_and_the_criterion_moves_to_category() ->
 
 
 def test_a_finding_without_a_headline_falls_back_to_its_criterion() -> None:
-    f = V3Finding(criterion="Story", issue="x", quote="q")
+    f = RawFinding(criterion="Story", issue="x", quote="q")
     assert _to_wfinding(f, model=None).title == "Story"  # type: ignore[arg-type]
 
 
@@ -261,7 +261,7 @@ def test_synopsis_of_takes_the_first_part_only() -> None:
 def test_a_fix_written_into_the_issue_is_cut_out_of_it() -> None:
     """gpt-5.4-nano on a real manuscript ended issues with "Fix: …" and then
     filled the fix field too, so the comment gave the fix twice."""
-    from andamentum.whetstone.v3.prompt_blocks import split_fix
+    from andamentum.whetstone.pipeline.prompt_blocks import split_fix
 
     assert split_fix("The metric is unclear. Fix: State it.", "State the metric.") == (
         "The metric is unclear.",

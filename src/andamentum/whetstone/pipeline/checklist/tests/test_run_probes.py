@@ -24,8 +24,8 @@ from unittest.mock import patch
 
 from pydantic_ai.exceptions import UnexpectedModelBehavior, UsageLimitExceeded
 
-from andamentum.whetstone.v3.checklist.probes import Probe
-from andamentum.whetstone.v3.checklist.run_probes import (
+from andamentum.whetstone.pipeline.checklist.probes import Probe
+from andamentum.whetstone.pipeline.checklist.run_probes import (
     _AbsenceFinding,
     _AbsenceFindings,
     _PresenceFinding,
@@ -33,13 +33,13 @@ from andamentum.whetstone.v3.checklist.run_probes import (
     run_probe,
     run_probes,
 )
-from andamentum.whetstone.v3.model import DocumentModel, Section
+from andamentum.whetstone.pipeline.model import DocumentModel, Section
 
-_AGENT_FACTORY = "andamentum.whetstone.v3.checklist.run_probes._build_agent"
+_AGENT_FACTORY = "andamentum.whetstone.pipeline.checklist.run_probes._build_agent"
 
 
 @contextmanager
-def _capture_v3_logs() -> Iterator[list[logging.LogRecord]]:
+def _capture_logs() -> Iterator[list[logging.LogRecord]]:
     """Attach a handler directly to the v3 logger. ``caplog`` is unreliable
     here because ``whetstone/cli.py`` flips ``andamentum.whetstone.propagate``
     to False, breaking propagation to the root caplog handler when CLI tests
@@ -51,7 +51,7 @@ def _capture_v3_logs() -> Iterator[list[logging.LogRecord]]:
             records.append(record)
 
     handler = _ListHandler(level=logging.WARNING)
-    logger = logging.getLogger("andamentum.whetstone.v3")
+    logger = logging.getLogger("andamentum.whetstone.pipeline")
     prior_level = logger.level
     logger.setLevel(logging.WARNING)
     logger.addHandler(handler)
@@ -229,7 +229,7 @@ async def test_out_of_set_tag_is_dropped_to_empty_and_logged() -> None:
     )
 
     with patch(_AGENT_FACTORY, new=agents.factory):
-        with _capture_v3_logs() as records:
+        with _capture_logs() as records:
             findings = await run_probe(probe, _model(), agent_model="stub")
 
     # Both findings survive — a bad tag is a label problem, not a finding one.
@@ -267,7 +267,7 @@ async def test_untagged_probe_drops_any_volunteered_tag_without_warning() -> Non
     )
 
     with patch(_AGENT_FACTORY, new=agents.factory):
-        with _capture_v3_logs() as records:
+        with _capture_logs() as records:
             findings = await run_probe(probe, _model(), agent_model="stub")
 
     assert [f.tag for f in findings] == [""]
@@ -300,7 +300,7 @@ async def test_malformed_presence_finding_is_dropped_without_killing_the_probe()
     )
 
     with patch(_AGENT_FACTORY, new=agents.factory):
-        with _capture_v3_logs() as records:
+        with _capture_logs() as records:
             findings = await run_probe(probe, _model(), agent_model="stub")
 
     assert [f.issue for f in findings] == ["a real one"]
@@ -363,7 +363,7 @@ async def test_a_crashing_probe_is_recorded_and_the_others_still_run() -> None:
     )
 
     with patch(_AGENT_FACTORY, new=agents.factory):
-        with _capture_v3_logs() as records:
+        with _capture_logs() as records:
             findings, failed = await run_probes(probes, _model(), agent_model="stub")
 
     assert failed == ["p2"]
@@ -390,7 +390,7 @@ async def test_unexpected_model_behaviour_body_reaches_the_log() -> None:
     )
 
     with patch(_AGENT_FACTORY, new=agents.factory):
-        with _capture_v3_logs() as records:
+        with _capture_logs() as records:
             findings, failed = await run_probes(probes, _model(), agent_model="stub")
 
     assert findings == []
@@ -419,7 +419,7 @@ async def test_usage_limit_exceeded_is_recorded_as_a_failed_probe() -> None:
     )
 
     with patch(_AGENT_FACTORY, new=agents.factory):
-        with _capture_v3_logs() as records:
+        with _capture_logs() as records:
             findings, failed = await run_probes(probes, _model(), agent_model="stub")
 
     assert failed == ["p1"]

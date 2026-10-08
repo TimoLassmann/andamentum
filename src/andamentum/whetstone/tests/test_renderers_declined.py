@@ -51,8 +51,8 @@ def test_to_review_result_carries_declined_through() -> None:
     This is the join the plumbing exists for: a caller can now ask, per
     finding, whether it was fixed, refused with a reason, or never reached.
     """
-    from andamentum.whetstone.v3.model import DocumentModel, Section
-    from andamentum.whetstone.v3.synth import StructuredReview, to_review_result
+    from andamentum.whetstone.pipeline.model import DocumentModel, Section
+    from andamentum.whetstone.pipeline.synth import StructuredReview, to_review_result
 
     model = DocumentModel(
         source="hello world",

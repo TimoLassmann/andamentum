@@ -9,7 +9,7 @@ One review function, run per criterion in the active set. The agent receives:
 - prior-stage findings (from the SPECS cascade),
 
 and two layer-1 tools (``read_section``, ``search_paper`` — see
-``whetstone/v3/tools.py``) it can call to investigate the source beyond
+``whetstone/pipeline/tools.py``) it can call to investigate the source beyond
 what the digest gave it. Findings come back as ``_RawFinding``s with
 verbatim quotes; VerifyFindings then locates each quote in the source
 and drops any that can't be anchored (the hallucination gate).
@@ -51,7 +51,7 @@ from .prompt_blocks import (
 )
 from .tools import DocDeps, read_section, search_paper
 
-logger = logging.getLogger("andamentum.whetstone.v3")
+logger = logging.getLogger("andamentum.whetstone.pipeline")
 
 # Per-criterion budgets. The cascade runs five criteria sequentially, so
 # the per-call budget needs to be tight enough that one stalled stage
@@ -262,7 +262,7 @@ def make_anchor_validator(
         if unanchored and ctx.retry < max_attempts:
             preview = "\n".join(f"  - {q!r}" for q in unanchored[:5])
             logger.info(
-                "[v3.validator] %d locked, %d unanchored on attempt %d — refining bad ones",
+                "[validator] %d locked, %d unanchored on attempt %d — refining bad ones",
                 n_locked,
                 len(unanchored),
                 ctx.retry,
@@ -279,7 +279,7 @@ def make_anchor_validator(
 
         if unanchored:
             logger.info(
-                "[v3.validator] attempts exhausted; keeping %d locked, dropping %d unanchored",
+                "[validator] attempts exhausted; keeping %d locked, dropping %d unanchored",
                 n_locked,
                 len(unanchored),
             )
@@ -420,7 +420,7 @@ async def run_criteria(
         # Logged BEFORE the call, not just after: a criterion that stalls or
         # loops is exactly when someone reads the log, and until it returns
         # the only output is unattributed tool lines.
-        logger.info("[v3.review] criterion %d/%d %s", index, len(criteria), c.name)
+        logger.info("[review] criterion %d/%d %s", index, len(criteria), c.name)
         try:
             stage = await review_criterion(
                 c,
@@ -429,7 +429,7 @@ async def run_criteria(
                 prior_findings=accumulated,
                 brief=brief,
             )
-            logger.info("[v3.review] %s → %d finding(s)", c.name, len(stage))
+            logger.info("[review] %s → %d finding(s)", c.name, len(stage))
             accumulated.extend(stage)
         except UnexpectedModelBehavior as exc:
             # Per-tool retry caps, output_retries exhaustion, content filter,
@@ -440,7 +440,7 @@ async def run_criteria(
             body = getattr(exc, "body", None)
             body_part = f" — body: {str(body)[:500]!r}" if body else ""
             logger.warning(
-                "[v3.review] %s: model behaviour error (%s)%s",
+                "[review] %s: model behaviour error (%s)%s",
                 c.name,
                 exc,
                 body_part,
@@ -448,16 +448,16 @@ async def run_criteria(
             failed.append(c.name)
             continue
         except UsageLimitExceeded as exc:
-            logger.warning("[v3.review] %s: usage limit hit (%s)", c.name, exc)
+            logger.warning("[review] %s: usage limit hit (%s)", c.name, exc)
             failed.append(c.name)
             continue
         except Exception as exc:
-            logger.warning("[v3.review] %s crashed: %s", c.name, exc)
+            logger.warning("[review] %s crashed: %s", c.name, exc)
             failed.append(c.name)
             continue
     if failed:
         logger.warning(
-            "[v3.review] %d/%d criteria produced no findings (crashed): %s",
+            "[review] %d/%d criteria produced no findings (crashed): %s",
             len(failed),
             len(criteria),
             ", ".join(failed),
@@ -477,7 +477,7 @@ def verify_findings(findings: list[Finding], model: DocumentModel) -> list[Findi
         span = anchor_span(f.quote, model)
         if span is None:
             logger.info(
-                "[v3.verify_findings] dropped (not in source): %r", f.quote[:60]
+                "[verify_findings] dropped (not in source): %r", f.quote[:60]
             )
             continue
         f.span = span

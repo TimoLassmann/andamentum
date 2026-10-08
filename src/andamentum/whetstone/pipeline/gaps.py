@@ -34,7 +34,7 @@ from .prompt_blocks import (
 )
 from .review import Finding, Severity, make_anchor_validator, verify_findings
 
-logger = logging.getLogger("andamentum.whetstone.v3")
+logger = logging.getLogger("andamentum.whetstone.pipeline")
 
 _DEFAULT_CAP = 2
 
@@ -151,7 +151,7 @@ async def analyze_gaps(
     agent_model: str,
 ) -> list[Demand]:
     defn = AgentDefinition(
-        name="v3_gap_analysis",
+        name="gap_analysis",
         prompt=_GAP_PROMPT,
         output_model=_DemandList,
         retries=2,
@@ -196,7 +196,7 @@ async def _satisfy_reexamine(
     # attempts plus one reserve for pydantic-ai's own structured-output
     # coercion — matches the cascade's _build_agent.
     defn = AgentDefinition(
-        name="v3_reexamine",
+        name="reexamine",
         prompt=(
             "Re-read this section of the document and report any real problems "
             "matching the request. Quote VERBATIM (non-verbatim quotes are "
@@ -271,7 +271,7 @@ async def _satisfy_recheck(
     section = model.section_by_id(f.span.section_id) if f.span else None
     context = section.text if section else model.source
     defn = AgentDefinition(
-        name="v3_recheck",
+        name="recheck",
         prompt=(
             "Decide whether a review finding is genuinely supported by the "
             "document text shown. Answer holds=true only if the text really "
@@ -328,11 +328,11 @@ async def gap_loop(
         try:
             demands = await analyze_gaps(model, current, prior, agent_model=agent_model)
         except Exception as exc:
-            logger.warning("[v3.gaps] round %d — analysis crashed: %s", round_idx, exc)
+            logger.warning("[gaps] round %d — analysis crashed: %s", round_idx, exc)
             break
         if not demands:
             logger.info(
-                "[v3.gaps] round %d — no demands, exiting (%.1fs)",
+                "[gaps] round %d — no demands, exiting (%.1fs)",
                 round_idx,
                 time.monotonic() - round_start,
             )
@@ -342,14 +342,14 @@ async def gap_loop(
         # the loop's wall-clock budget.
         if len(demands) > per_round_demand_cap:
             logger.info(
-                "[v3.gaps] round %d — %d demand(s) emitted, truncating to %d",
+                "[gaps] round %d — %d demand(s) emitted, truncating to %d",
                 round_idx,
                 len(demands),
                 per_round_demand_cap,
             )
             demands = demands[:per_round_demand_cap]
         else:
-            logger.info("[v3.gaps] round %d — %d demand(s)", round_idx, len(demands))
+            logger.info("[gaps] round %d — %d demand(s)", round_idx, len(demands))
         for d in demands:
             prior.add(d.signature())
         drop_idxs: set[int] = set()
@@ -377,12 +377,12 @@ async def gap_loop(
                     if not keep and d.finding_index is not None:
                         drop_idxs.add(d.finding_index)
             except Exception as exc:
-                logger.warning("[v3.gaps] satisfy crashed: %s", exc)
+                logger.warning("[gaps] satisfy crashed: %s", exc)
         current = [f for i, f in enumerate(current) if i not in drop_idxs]
         added_anchored = verify_findings(new, model)
         current += added_anchored
         logger.info(
-            "[v3.gaps] round %d — added %d finding(s), dropped %d, total %d (%.1fs)",
+            "[gaps] round %d — added %d finding(s), dropped %d, total %d (%.1fs)",
             round_idx,
             len(added_anchored),
             len(drop_idxs),

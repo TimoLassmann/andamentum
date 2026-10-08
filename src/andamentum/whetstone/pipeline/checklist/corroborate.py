@@ -49,7 +49,7 @@ import logging
 from ..model import Span
 from .probes import ProbeFinding
 
-logger = logging.getLogger("andamentum.whetstone.v3")
+logger = logging.getLogger("andamentum.whetstone.pipeline")
 
 
 # A pair of spans counts as the same passage only when they share at least this
@@ -123,7 +123,7 @@ def corroborate(findings: list[ProbeFinding]) -> list[ProbeFinding]:
     unanchored = [f for f in findings if f.shape == "presence" and f.span is None]
     if unanchored:
         logger.warning(
-            "[v3.corroborate] %d presence finding(s) have no span and cannot be "
+            "[corroborate] %d presence finding(s) have no span and cannot be "
             "corroborated (verification should have located or dropped them): %s",
             len(unanchored),
             ", ".join(sorted({f.probe_id for f in unanchored})),
@@ -165,7 +165,7 @@ def corroborate(findings: list[ProbeFinding]) -> list[ProbeFinding]:
 
     if pair_count:
         logger.info(
-            "[v3.corroborate] %d co-detection pair(s) across %d/%d finding(s); "
+            "[corroborate] %d co-detection pair(s) across %d/%d finding(s); "
             "all kept",
             pair_count,
             linked,

@@ -17,14 +17,14 @@ from andamentum.deep_research.novelty import (
     Relevance,
     SimilarWork,
 )
-from andamentum.whetstone.v3.graph import (
+from andamentum.whetstone.pipeline.graph import (
     JudgeNovelty,
     RunNoveltySearches,
-    V3Deps,
-    V3State,
-    run_review_v3,
+    ReviewDeps,
+    ReviewState,
+    run_review,
 )
-from andamentum.whetstone.v3.novelty import (
+from andamentum.whetstone.pipeline.novelty import (
     NoveltyTarget,
     judge_novelty,
     run_novelty_searches,
@@ -41,8 +41,8 @@ def _target(n: int) -> NoveltyTarget:
 
 @dataclass
 class _Ctx:
-    state: V3State
-    deps: V3Deps
+    state: ReviewState
+    deps: ReviewDeps
 
 
 def _setup(**kw) -> NoveltyResearch:
@@ -169,10 +169,10 @@ async def test_without_a_setup_the_defaults_run_in_memory() -> None:
 
 async def test_the_node_hands_the_setup_to_the_search() -> None:
     setup = _setup()
-    state = V3State(source="...", novelty_targets=[_target(1)])
-    deps = V3Deps(agent_model="stub", check_novelty=True, novelty_research=setup)
+    state = ReviewState(source="...", novelty_targets=[_target(1)])
+    deps = ReviewDeps(agent_model="stub", check_novelty=True, novelty_research=setup)
     with patch(
-        "andamentum.whetstone.v3.graph.run_novelty_searches",
+        "andamentum.whetstone.pipeline.graph.run_novelty_searches",
         new=AsyncMock(return_value=[]),
     ) as search:
         result = await RunNoveltySearches().run(_Ctx(state, deps))  # type: ignore[arg-type]
@@ -190,15 +190,15 @@ async def test_the_search_asks_nothing_of_a_decision_model() -> None:
 
 async def test_a_setup_without_check_novelty_is_refused() -> None:
     with pytest.raises(ValueError, match="check_novelty"):
-        await run_review_v3("# T\n\ntext", model="stub", novelty_research=_setup())
+        await run_review("# T\n\ntext", model="stub", novelty_research=_setup())
 
 
 async def test_a_target_that_could_not_be_assessed_is_listed_in_the_result() -> None:
     """Undetermined and crashed targets are named in ``failed_criteria`` and
     produce no finding, so "not assessed" is distinguishable from "novel"."""
-    from andamentum.whetstone.v3.novelty import NoveltyEvidence
+    from andamentum.whetstone.pipeline.novelty import NoveltyEvidence
 
-    state = V3State(
+    state = ReviewState(
         source="...",
         novelty_evidence=[
             NoveltyEvidence(
@@ -208,7 +208,7 @@ async def test_a_target_that_could_not_be_assessed_is_listed_in_the_result() -> 
             NoveltyEvidence(target=_target(3), is_novel=True, confidence=0.8),
         ],
     )
-    deps = V3Deps(agent_model="stub", check_novelty=True)
+    deps = ReviewDeps(agent_model="stub", check_novelty=True)
     await JudgeNovelty().run(_Ctx(state, deps))  # type: ignore[arg-type]
     assert state.findings == []
     assert len(state.failed_criteria) == 2

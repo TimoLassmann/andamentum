@@ -11,7 +11,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from andamentum.whetstone.v3.checklist.probes import (
+from andamentum.whetstone.pipeline.checklist.probes import (
     Probe,
     ProbeFinding,
     normalise_tag,
