@@ -7,7 +7,7 @@
 #   B="uv run python -m andamentum.deep_research.bench"
 #   $B experiment run src/andamentum/deep_research/bench/experiments/dev-check.yaml \
 #     --out-dir $OUT --simpleqa-dir $SQA --browser
-#   (a Chrome started with --remote-debugging-port=9222 and its own --user-data-dir)
+#   (needs podman; the isolated Chrome is started and removed by the run)
 #   $B experiment report src/andamentum/deep_research/bench/experiments/dev-check.yaml \
 #     --out-dir $OUT
 #   $B experiment losses src/andamentum/deep_research/bench/experiments/dev-check.yaml \

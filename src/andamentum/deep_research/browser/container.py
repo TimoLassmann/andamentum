@@ -19,7 +19,7 @@ random host port.
 One container per ``research()`` run: the cold start measured 0.55 to 0.76 s with
 the image built, small against a run's minutes. A caller that runs many
 researches and wants one container opens ``browser_session()`` itself and passes
-it to ``research(browser_session=...)``.
+it to ``research(browser=...)``.
 """
 
 from __future__ import annotations
