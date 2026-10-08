@@ -148,10 +148,10 @@ class SourceConfig(BaseModel):
     """How the sources are set up. Every secret and address is an explicit field.
 
     ``scholarly`` names the sources a scholarly run searches; Crossref is not
-    among them because it verifies rather than discovers. ``browser_cdp_url``
-    (a Chrome's debugging address) makes web search go through that browser
-    instead of SearxNG (``deep_research.browser_search``). ``searxng_url`` is
-    required for web mode. ``openalex_search`` picks the OpenAlex endpoint:
+    among them because it verifies rather than discovers. ``browser`` makes web
+    search and page reads go through the isolated Chrome (a podman container the
+    run starts and removes, ``deep_research.browser``) instead of SearxNG.
+    Web mode needs ``browser`` or ``searxng_url``. ``openalex_search`` picks the OpenAlex endpoint:
     both cost credits (about ten per call), so ``keyword`` is the default and
     ``semantic`` or ``both`` is a choice. ``arxiv_query`` joins the words of an
     arXiv query by AND (``all_terms``) or OR (``any_term``). ``expand_with``
@@ -173,7 +173,7 @@ class SourceConfig(BaseModel):
     openalex_api_key: str | None = None
     semantic_scholar_api_key: str | None = None
     searxng_url: str | None = None
-    browser_cdp_url: str | None = None
+    browser: bool = False
     tdm_allowed_hosts: frozenset[str] = frozenset()
     scholarly: tuple[
         Literal["openalex", "europepmc", "arxiv", "semantic_scholar", "local_corpus"],

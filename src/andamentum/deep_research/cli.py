@@ -1,7 +1,7 @@
 """``andamentum-research``: the research engine from the command line.
 
     andamentum-research "QUESTION" --mode both --model M
-        [--store PATH] [--cache PATH] [--searxng-url URL | --browser-cdp-url URL]
+        [--store PATH] [--cache PATH] [--searxng-url URL | --browser]
         [--sources openalex,europepmc,arxiv] [--local-corpus PATH]
         [--openalex-search keyword]
         [--tdm-host HOST ...] [--results-per-query N]
@@ -94,12 +94,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--searxng-url", default=None, help="the SearxNG instance (web and both modes)"
     )
     parser.add_argument(
-        "--browser-cdp-url",
-        default=None,
-        metavar="URL",
-        help="search the web through this Chrome instead of SearxNG (its debugging "
-        "address, e.g. http://127.0.0.1:9222; start Chrome with "
-        "--remote-debugging-port=9222 and its own --user-data-dir)",
+        "--browser",
+        action="store_true",
+        help="search the web and read pages through an isolated Chrome in a podman "
+        "container the run starts and removes (instead of SearxNG; needs podman; "
+        "the image is built on first use)",
     )
     parser.add_argument(
         "--sources",
@@ -185,7 +184,7 @@ def _source_config(args: argparse.Namespace) -> SourceConfig:
         openalex_api_key=os.environ.get("OPENALEX_API_KEY") or None,
         semantic_scholar_api_key=os.environ.get("SEMANTIC_SCHOLAR_API_KEY") or None,
         searxng_url=args.searxng_url,
-        browser_cdp_url=args.browser_cdp_url,
+        browser=args.browser,
         tdm_allowed_hosts=frozenset(args.tdm_host),
         scholarly=args.sources,
         local_corpus=args.local_corpus,

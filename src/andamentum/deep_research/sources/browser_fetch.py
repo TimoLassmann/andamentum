@@ -1,12 +1,11 @@
-"""Read a page through the Chrome that searches (Chrome DevTools Protocol).
+"""Read a page through the isolated Chrome (Chrome DevTools Protocol).
 
 The fallback of ``WebSource.fetch_text``: when the plain fetch fails (HTTP 403
 from a site that blocks scripts, a page that needs JavaScript to show its
-text), a real Chrome opens the page in a new tab, waits for the load event,
-waits until the visible text stops growing, and returns it. The same CDP
-mechanics as ``deep_research.browser_search._evaluate_in_new_tab`` (a tab from
-``/json/new``, a websocket to it, the tab always closed); here the tab is asked
-more than once, so it has its own session.
+text), the Chrome opens the page in a new tab of a new browser context
+(``browser.cdp.isolated_page``: no cookie or storage outlives the read,
+downloads are denied), waits for the load event, waits until the visible text
+stops growing, and returns it.
 
 Two guards are part of the contract:
 
@@ -19,16 +18,14 @@ Two guards are part of the contract:
 from __future__ import annotations
 
 import asyncio
-import itertools
 import json
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
-import httpx
-
 from andamentum.core import url_safety
 
+from ..browser.cdp import CdpError, isolated_page
 from .base import SourceError
 
 SOURCE = "web"
@@ -82,7 +79,8 @@ def looks_like_bot_check(page: BrowserPage) -> bool:
 
 
 async def browser_page_text(cdp_url: str, url: str) -> BrowserPage:
-    """The visible text of *url* as the Chrome at *cdp_url* shows it.
+    """The visible text of *url* as the Chrome at *cdp_url* shows it, read in a
+    browser context of its own.
 
     Raises ``SourceError``: ``transport`` when Chrome does not answer or the
     page does not load, ``parse`` when the tab gave no reading, ``refused``
@@ -106,72 +104,28 @@ async def browser_page_text(cdp_url: str, url: str) -> BrowserPage:
 async def _read_in_new_tab(cdp_url: str, url: str) -> BrowserPage:
     import websockets
 
-    base = cdp_url.rstrip("/")
     try:
-        async with httpx.AsyncClient(timeout=10.0) as http:
-            tab = (await http.put(f"{base}/json/new?about:blank")).json()
-    except (httpx.HTTPError, ValueError) as exc:
+        async with isolated_page(cdp_url) as page:
+            async with asyncio.timeout(PAGE_LOAD_TIMEOUT_S):
+                await page.call("Page.enable")
+                await page.call("Page.navigate", url=url)
+                await page.wait_loaded(timeout=LOAD_WAIT_S)  # else read what shows
+                await _settle(page.evaluate)
+                raw = await page.evaluate(_READ_SCRIPT)
+    except CdpError as exc:
         raise SourceError(
             SOURCE,
-            f"no Chrome answers at {cdp_url} ({type(exc).__name__}); start Chrome "
-            "with --remote-debugging-port and its own --user-data-dir",
+            f"the browser could not read {url}: {exc}",
             kind="transport",
-            url=cdp_url,
+            url=url,
         ) from exc
-    ids = itertools.count(1)
-    try:
-        async with websockets.connect(
-            tab["webSocketDebuggerUrl"], max_size=None
-        ) as socket:
-            loaded = asyncio.Event()
-
-            async def call(method: str, **params: object) -> dict[str, object]:
-                wanted = next(ids)
-                await socket.send(
-                    json.dumps({"id": wanted, "method": method, "params": params})
-                )
-                while True:
-                    message = json.loads(await socket.recv())
-                    if message.get("method") == "Page.loadEventFired":
-                        loaded.set()
-                    if message.get("id") == wanted:
-                        if "error" in message:
-                            raise RuntimeError(f"{method}: {message['error']}")
-                        return message.get("result") or {}
-
-            async def evaluate(script: str) -> object:
-                answer = await call(
-                    "Runtime.evaluate", expression=script, returnByValue=True
-                )
-                result = answer.get("result")
-                return result.get("value") if isinstance(result, dict) else None
-
-            async with asyncio.timeout(PAGE_LOAD_TIMEOUT_S):
-                await call("Page.enable")
-                await call("Page.navigate", url=url)
-                try:
-                    async with asyncio.timeout(LOAD_WAIT_S):
-                        while not loaded.is_set():
-                            message = json.loads(await socket.recv())
-                            if message.get("method") == "Page.loadEventFired":
-                                loaded.set()
-                except TimeoutError:
-                    pass  # read what the tab shows
-                await _settle(evaluate)
-                raw = await evaluate(_READ_SCRIPT)
-    except (OSError, TimeoutError, RuntimeError, websockets.WebSocketException) as exc:
+    except (OSError, TimeoutError, websockets.WebSocketException) as exc:
         raise SourceError(
             SOURCE,
             f"the browser could not read {url}: {type(exc).__name__}: {exc}",
             kind="transport",
             url=url,
         ) from exc
-    finally:
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as http:
-                await http.get(f"{base}/json/close/{tab['id']}")
-        except httpx.HTTPError:
-            pass  # a tab left open costs nothing; the reading stands
     return _page_of(raw, url)
 
 

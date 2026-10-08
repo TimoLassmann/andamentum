@@ -41,13 +41,15 @@ def _searxng_is_healthy(url: str, timeout: float = 3.0) -> bool:
         return False
 
 
-def _browser_is_healthy(cdp_url: str, timeout: float = 3.0) -> bool:
-    """Check if a Chrome answers on its debugging address."""
+def _browser_is_available() -> bool:
+    """Check that podman, which runs the isolated Chrome, is installed."""
+    from andamentum.deep_research.browser import BrowserUnavailable, require_podman
+
     try:
-        urllib.request.urlopen(f"{cdp_url.rstrip('/')}/json/version", timeout=timeout)
-        return True
-    except Exception:
+        require_podman()
+    except BrowserUnavailable:
         return False
+    return True
 
 
 class WebSearchGatherer:
@@ -62,9 +64,9 @@ class WebSearchGatherer:
     ``None``: the engine gives no per-finding relevance score, and a number made up here
     would be a hidden judgement, so the downstream scorer decides.
 
-    Search goes through a Chrome (``browser_cdp_url``) when one is given, else
-    through the SearXNG at ``searxng_url``. One of the two is required; the
-    library starts no search service of its own.
+    Search goes through the isolated Chrome (``browser``: a podman container
+    each ``gather`` starts and removes) when it is set, else through the SearXNG
+    at ``searxng_url``. One of the two is required.
     """
 
     def __init__(
@@ -72,25 +74,25 @@ class WebSearchGatherer:
         *,
         model: str,
         searxng_url: str | None = None,
-        browser_cdp_url: str | None = None,
+        browser: bool = False,
     ):
-        if not searxng_url and not browser_cdp_url:
+        if not searxng_url and not browser:
             raise ValueError(
-                "web search needs an address: a SearXNG instance (searxng_url) "
-                "or a Chrome's debugging address (browser_cdp_url)"
+                "web search needs a SearXNG instance (searxng_url) or the "
+                "isolated browser (browser=True)"
             )
         self.model = model
         self.searxng_url = searxng_url
-        self.browser_cdp_url = browser_cdp_url
+        self.browser = browser
 
     async def check_health(self) -> "CheckResult":
-        """Test reachability of the search address (the Chrome, else SearXNG)."""
+        """Test that the search can start (podman for the browser, else SearXNG)."""
         from .preflight import CheckResult
 
         t0 = time.monotonic()
-        if self.browser_cdp_url:
-            healthy = _browser_is_healthy(self.browser_cdp_url, timeout=5.0)
-            where = f"Chrome at {self.browser_cdp_url}"
+        if self.browser:
+            healthy = _browser_is_available()
+            where = "podman for the isolated Chrome"
         else:
             assert self.searxng_url is not None  # __init__ requires one address
             healthy = _searxng_is_healthy(self.searxng_url, timeout=5.0)
@@ -133,9 +135,7 @@ class WebSearchGatherer:
             budget=Budget(
                 max_rounds=GATHER_MAX_ROUNDS, reads_per_round=GATHER_READS_PER_ROUND
             ),
-            sources=SourceConfig(
-                searxng_url=self.searxng_url, browser_cdp_url=self.browser_cdp_url
-            ),
+            sources=SourceConfig(searxng_url=self.searxng_url, browser=self.browser),
         )
         for reason in result.degraded:
             logger.warning(
@@ -349,7 +349,7 @@ def get_default_gatherer(
     providers: Optional[ProviderRegistry] = None,
     use_web_search: bool = True,
     searxng_url: Optional[str] = None,
-    browser_cdp_url: Optional[str] = None,
+    browser: bool = False,
 ) -> EvidenceGatherer:
     """Create the default evidence gatherer.
 
@@ -361,8 +361,8 @@ def get_default_gatherer(
             by source_type and falls back to web search.
         use_web_search: False for providers only (requires ``providers``).
         searxng_url: The address of a SearXNG instance for web search.
-        browser_cdp_url: A Chrome's debugging address; web search goes through
-            that browser instead of SearXNG. With ``use_web_search`` one of the
+        browser: Search the web through the isolated Chrome (a podman
+            container) instead of SearXNG. With ``use_web_search`` one of the
             two is required (``ValueError`` otherwise).
 
     Returns a ``CompositeGatherer`` when ``providers`` are given, else a
@@ -389,9 +389,7 @@ def get_default_gatherer(
             )
         return CompositeGatherer(None, providers)  # type: ignore[return-value]
 
-    web = WebSearchGatherer(
-        model=model, searxng_url=searxng_url, browser_cdp_url=browser_cdp_url
-    )
+    web = WebSearchGatherer(model=model, searxng_url=searxng_url, browser=browser)
     if providers:
         return CompositeGatherer(web, providers)  # type: ignore[return-value]
     return web

@@ -736,7 +736,7 @@ async def test_a_failed_cell_writes_the_partial_log_its_error_carries(
 
 def test_the_research_arm_takes_the_mode_the_sources_and_the_arms_name() -> None:
     spec = ArmSpec(name="new-engine", system="research", model="ollama:m")
-    sources = SourceConfig(browser_cdp_url="http://127.0.0.1:9222")
+    sources = SourceConfig(browser=True)
     arm = build_answer_arm(spec, "scholarly", Services(source_config=sources))
     assert arm.name == "new-engine"
     assert getattr(arm, "mode") == "scholarly" and getattr(arm, "sources") is sources
@@ -806,8 +806,7 @@ def test_the_cli_keeps_the_run_flags_and_drops_the_old_ones() -> None:
             "f.yaml",
             "--out-dir",
             "o",
-            "--browser-cdp-url",
-            "http://127.0.0.1:9222",
+            "--browser",
             "--cache",
             "c.db",
             "--concurrency",

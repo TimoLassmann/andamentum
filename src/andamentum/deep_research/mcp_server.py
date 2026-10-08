@@ -6,7 +6,7 @@ Tools:
 
 - ``search_works`` and ``expand_citations`` find scholarly works (OpenAlex and
   the other adapters) and one-hop references or citations; ``search_web``
-  searches the web (needs ``--searxng-url`` or ``--browser-cdp-url``). All
+  searches the web (needs ``--searxng-url`` or ``--browser``). All
   three merge duplicates and keep the works in the store.
 - ``read_work`` returns a stored work with its passages. With ``fetch`` it first
   checks Crossref for a retraction, loads the text (full text where open,
@@ -32,6 +32,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+from contextlib import AsyncExitStack
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any, Literal
@@ -54,6 +55,7 @@ from pydantic_ai.models import Model
 from andamentum.references import Work
 
 from .ask import Asker
+from .browser import BrowserSession, browser_session
 from .engine import research
 from .identity import merge
 from .read import ReadDeps, load_page, locate_quote, read_page
@@ -196,6 +198,8 @@ class ResearchTools:
         )
         self._owns_client = client is None
         self._model_lock = anyio.Lock()
+        # the isolated Chrome serve_stdio started (None until then, or without --browser)
+        self.browser: BrowserSession | None = None
 
     async def aclose(self) -> None:
         if self._owns_client:
@@ -209,7 +213,13 @@ class ResearchTools:
         config = self.config
         if scholarly is not None:
             config = config.model_copy(update={"scholarly": scholarly})
-        return build_sources(config, store=self.store, mode=mode, client=self.client)
+        return build_sources(
+            config,
+            store=self.store,
+            mode=mode,
+            client=self.client,
+            browser=self.browser,
+        )
 
     async def _asker(self, run_id: str) -> Asker:
         """The run's models behind one Asker, counted from zero for this call."""
@@ -301,10 +311,10 @@ class ResearchTools:
         return {"works": self._keep(found), "source_errors": errors}
 
     async def search_web(self, params: SearchWebParams) -> JsonObject:
-        if not (self.config.searxng_url or self.config.browser_cdp_url):
+        if not (self.config.searxng_url or self.config.browser):
             raise ValueError(
-                "search_web needs a SearxNG instance or a Chrome: start the server "
-                "with --searxng-url or --browser-cdp-url"
+                "search_web needs a SearxNG instance or the isolated browser: start "
+                "the server with --searxng-url or --browser"
             )
         (web,) = self._sources("web").search
         found = await web.search(params.query, limit=params.limit)
@@ -352,7 +362,7 @@ class ResearchTools:
                 asker = await self._asker(run_id)
                 sources = self._sources(
                     "both"
-                    if self.config.searxng_url or self.config.browser_cdp_url
+                    if self.config.searxng_url or self.config.browser
                     else "scholarly"
                 )
                 deps = ReadDeps(
@@ -489,6 +499,7 @@ class ResearchTools:
                 budget=params.budget,
                 sources=self.config,
                 source_client=self.client,
+                browser=self.browser,
             )
         data = _jsonable(result)
         assert isinstance(data, dict)
@@ -620,8 +631,11 @@ def build_server(tools: ResearchTools) -> Server:
 async def serve_stdio(tools: ResearchTools) -> None:
     server = build_server(tools)
     try:
-        async with stdio_server() as (read, write):
-            await server.run(read, write, server.create_initialization_options())
+        async with AsyncExitStack() as stack:
+            if tools.config.browser:
+                tools.browser = await stack.enter_async_context(browser_session())
+            async with stdio_server() as (read, write):
+                await server.run(read, write, server.create_initialization_options())
     finally:
         await tools.aclose()
 
@@ -648,11 +662,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--searxng-url", default=None, help="SearXNG instance for search_web"
     )
     parser.add_argument(
-        "--browser-cdp-url",
-        default=None,
-        metavar="URL",
-        help="search the web (and read pages the plain fetch cannot) through this "
-        "Chrome instead of SearxNG, e.g. http://127.0.0.1:9222",
+        "--browser",
+        action="store_true",
+        help="search the web (and read pages the plain fetch cannot) through an "
+        "isolated Chrome in a podman container the server starts and removes, "
+        "instead of SearxNG",
     )
     return parser
 
@@ -671,7 +685,7 @@ def main(argv: list[str]) -> None:
         openalex_api_key=os.environ.get("OPENALEX_API_KEY") or None,
         semantic_scholar_api_key=os.environ.get("SEMANTIC_SCHOLAR_API_KEY") or None,
         searxng_url=args.searxng_url,
-        browser_cdp_url=args.browser_cdp_url,
+        browser=args.browser,
     )
     tools = ResearchTools(store, model=args.model, sources=sources)
     try:

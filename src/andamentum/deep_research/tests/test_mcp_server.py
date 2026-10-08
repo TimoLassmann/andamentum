@@ -166,7 +166,7 @@ async def test_search_web_keeps_results_as_works(
 async def test_search_web_needs_an_address(client: ClientSession, store: ResearchStore):
     result = await client.call_tool("search_web", {"query": "apollo"})
     text = message(result)
-    assert result.isError and "--searxng-url" in text and "--browser-cdp-url" in text
+    assert result.isError and "--searxng-url" in text and "--browser" in text
 
 
 @serve()
@@ -471,20 +471,20 @@ def test_main_opens_the_store_at_the_given_path(
         opened["path"] = tools.store.path
         opened["model"] = tools.model
         opened["searxng"] = tools.config.searxng_url
-        opened["chrome"] = tools.config.browser_cdp_url
+        opened["browser"] = tools.config.browser
         await tools.aclose()
 
     monkeypatch.setattr(mcp_server, "serve_stdio", fake_serve)
     path = tmp_path / "lab" / "research.db"
     mcp_server.main(
         ["--store", str(path), "--model", "m", "--searxng-url", "http://searx.test"]
-        + ["--browser-cdp-url", "http://127.0.0.1:9222"]
+        + ["--browser"]
     )
     assert opened == {
         "path": path,
         "model": "m",
         "searxng": "http://searx.test",
-        "chrome": "http://127.0.0.1:9222",
+        "browser": True,
     }
     assert path.exists()
 

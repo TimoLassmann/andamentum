@@ -360,19 +360,17 @@ async def test_web_research_without_a_search_address_is_refused(
 ) -> None:
     fake = FakeResearch()
     monkeypatch.setattr("andamentum.deep_research.research", fake)
-    with pytest.raises(ResearchSetupError, match="SearxNG.*browser_cdp_url"):
+    with pytest.raises(ResearchSetupError, match="SearxNG.*browser"):
         await _write(tmp_path, research=ResearchSetup(sources=SourceConfig()))
     assert fake.calls == []
 
 
-async def test_a_chrome_address_is_enough_for_web_research(
+async def test_the_isolated_browser_is_enough_for_web_research(
     tmp_path: Path, script, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     fake = FakeResearch()
     monkeypatch.setattr("andamentum.deep_research.research", fake)
-    chrome = ResearchSetup(
-        sources=SourceConfig(browser_cdp_url="http://127.0.0.1:9222")
-    )
+    chrome = ResearchSetup(sources=SourceConfig(browser=True))
     await _write(tmp_path, research=chrome)
     assert fake.calls[0]["mode"] == "web"
     assert fake.calls[0]["sources"] == chrome.sources

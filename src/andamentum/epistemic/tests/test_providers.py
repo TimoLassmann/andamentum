@@ -1492,12 +1492,27 @@ class TestWebSearchProvider:
     async def test_source_receives_the_search_address(self, monkeypatch):
         from ..providers.web_search import WebSearchProvider
 
+        from contextlib import asynccontextmanager
+
+        import andamentum.deep_research.browser as research_browser
+        from andamentum.deep_research.browser import BrowserSession
+
+        events: list[str] = []
+
+        @asynccontextmanager
+        async def fake_session(**_kw):
+            events.append("started")
+            yield BrowserSession(cdp_url="http://chrome.test", container="c")
+            events.append("stopped")
+
+        monkeypatch.setattr(research_browser, "browser_session", fake_session)
         built = _install_fake_source(monkeypatch, results=[], pages={})
-        await WebSearchProvider(
-            searxng_url="http://searx.test", browser_cdp_url="http://chrome.test"
-        ).gather("claim")
+        await WebSearchProvider(searxng_url="http://searx.test", browser=True).gather(
+            "claim"
+        )
         assert built[0]["searxng_url"] == "http://searx.test"
-        assert built[0]["browser_cdp_url"] == "http://chrome.test"
+        assert built[0]["browser"].cdp_url == "http://chrome.test"
+        assert events == ["started", "stopped"]
 
     async def test_a_missing_address_raises_instead_of_searching_nothing(
         self, monkeypatch

@@ -130,11 +130,11 @@ async def test_write_validates_arguments_before_creating_anything(tmp_path):
 def test_research_flags_need_research(tmp_path, capsys):
     base = ["write", "t", "--out", str(tmp_path / "d"), "--model", "m"]
     for flag, value in (
-        ("--research-mode", "web"),
-        ("--browser-cdp-url", "http://127.0.0.1:9222"),
-        ("--searxng-url", "http://searx.test"),
+        ("--research-mode", ["web"]),
+        ("--browser", []),
+        ("--searxng-url", ["http://searx.test"]),
     ):
-        assert run([*base, flag, value]) == 2
+        assert run([*base, flag, *value]) == 2
         err = capsys.readouterr().err
         assert flag in err and "need --research" in err
 

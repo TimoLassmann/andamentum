@@ -105,13 +105,13 @@ class WriteParams(BaseModel):
     searxng_url: str | None = Field(
         default=None,
         description="with --research: your SearxNG address (web search needs "
-        "this or --browser-cdp-url)",
+        "this or --browser)",
     )
-    browser_cdp_url: str | None = Field(
-        default=None,
-        description="with --research: a Chrome's debugging address (for example "
-        "http://127.0.0.1:9222) to search the web and read pages through "
-        "instead of SearxNG",
+    browser: bool = Field(
+        default=False,
+        description="with --research: search the web and read pages through an "
+        "isolated Chrome in a podman container (started for the research, "
+        "removed after) instead of SearxNG",
     )
     format: list[str] = Field(
         default=[], description="bundle only: output format (repeatable)"
@@ -155,7 +155,7 @@ def research_setup(
     *,
     mailto: str | None,
     searxng_url: str | None,
-    browser_cdp_url: str | None,
+    browser: bool,
     mode: Literal["web", "scholarly", "both"] | None,
 ) -> ResearchSetup:
     """The research settings from CLI flags; credentials come from the
@@ -168,7 +168,7 @@ def research_setup(
             openalex_api_key=os.environ.get("OPENALEX_API_KEY") or None,
             semantic_scholar_api_key=os.environ.get("SEMANTIC_SCHOLAR_API_KEY") or None,
             searxng_url=searxng_url,
-            browser_cdp_url=browser_cdp_url,
+            browser=browser,
         ),
         mode=mode,
     )
@@ -180,7 +180,7 @@ def _research_setup(params: WriteParams) -> ResearchSetup | None:
     return research_setup(
         mailto=params.mailto,
         searxng_url=params.searxng_url,
-        browser_cdp_url=params.browser_cdp_url,
+        browser=params.browser,
         mode=params.research_mode,
     )
 
@@ -192,7 +192,7 @@ def _refuse_foreign_flags(params: WriteParams, *, word: bool) -> None:
             for flag, on in (
                 ("--research-mode", params.research_mode is not None),
                 ("--searxng-url", params.searxng_url is not None),
-                ("--browser-cdp-url", params.browser_cdp_url is not None),
+                ("--browser", params.browser),
             )
             if on
         ]

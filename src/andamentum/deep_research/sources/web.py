@@ -21,6 +21,7 @@ from urllib.parse import urlparse
 
 from pydantic import JsonValue
 
+from andamentum.deep_research.browser import BrowserSession
 from andamentum.deep_research.browser_search import browser_query
 from andamentum.deep_research.searxng_search import (
     SearchEnginesBlocked,
@@ -56,8 +57,8 @@ PLAIN_FETCH_TIMEOUT_S = 15.0
 
 
 class WebSource:
-    """Web search (SearxNG, or a Chrome when ``browser_cdp_url`` is given:
-    ``deep_research.browser_search``, one page of results) and page fetch."""
+    """Web search (SearxNG, or the isolated Chrome when a ``browser`` session is
+    given: ``deep_research.browser_search``, one page of results) and page fetch."""
 
     name = NAME
 
@@ -65,20 +66,20 @@ class WebSource:
         self,
         *,
         searxng_url: str | None = None,
-        browser_cdp_url: str | None = None,
+        browser: BrowserSession | None = None,
         store: ResearchStore | None = None,
         client: SourceClient | None = None,
         tdm_allowed_hosts: frozenset[str] = frozenset(),
     ) -> None:
-        if not searxng_url and not browser_cdp_url:
+        if not searxng_url and browser is None:
             raise SourceError(
                 NAME,
-                "web search needs a SearxNG instance (searxng_url) or a Chrome "
-                "(browser_cdp_url)",
+                "web search needs a SearxNG instance (searxng_url) or the isolated "
+                "browser (SourceConfig.browser)",
                 kind="config",
             )
         self._client = resolve_client(NAME, store=store, client=client)
-        self._browser = browser_cdp_url
+        self._browser = browser.cdp_url if browser is not None else None
         self._endpoint = f"{(searxng_url or '').rstrip('/')}/search"
         self._tdm = tdm_allowed_hosts
         self._warnings: list[str] = []

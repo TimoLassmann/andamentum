@@ -78,7 +78,7 @@ class TestWebSearchGathererFindings:
             findings=[_finding(passage, quote="Water boils at 100 C.")],
         )
 
-        gatherer = WebSearchGatherer(model="test", browser_cdp_url="http://chrome.test")
+        gatherer = WebSearchGatherer(model="test", browser=True)
         with _run_with(result) as run:
             gathered = await gatherer.gather("web_search", "boiling point of water")
 
@@ -103,7 +103,7 @@ class TestWebSearchGathererFindings:
         assert kwargs["mode"] == "web"
         assert kwargs["model"] == "test"
         assert kwargs["budget"].max_rounds == GATHER_MAX_ROUNDS
-        assert kwargs["sources"].browser_cdp_url == "http://chrome.test"
+        assert kwargs["sources"].browser is True
 
     @pytest.mark.asyncio
     async def test_unverified_finding_is_not_evidence_and_is_logged(self, caplog):
@@ -117,7 +117,7 @@ class TestWebSearchGathererFindings:
             ],
         )
 
-        gatherer = WebSearchGatherer(model="test", browser_cdp_url="http://chrome.test")
+        gatherer = WebSearchGatherer(model="test", browser=True)
         with _run_with(result), caplog.at_level("WARNING"):
             gathered = await gatherer.gather("web_search", "q")
 
@@ -133,7 +133,7 @@ class TestWebSearchGathererFindings:
             passages=[passage],
             findings=[_finding(passage, quote="nope", verified=False)],
         )
-        gatherer = WebSearchGatherer(model="test", browser_cdp_url="http://chrome.test")
+        gatherer = WebSearchGatherer(model="test", browser=True)
         with _run_with(result):
             assert await gatherer.gather("web_search", "q") == []
 
@@ -146,7 +146,7 @@ class TestWebSearchGathererFindings:
             passages=[passage],
             findings=[_finding(passage, quote="A finding sits here.")],
         )
-        gatherer = WebSearchGatherer(model="test", browser_cdp_url="http://chrome.test")
+        gatherer = WebSearchGatherer(model="test", browser=True)
         with _run_with(result):
             gathered = await gatherer.gather("web_search", "q")
         assert gathered[0].source_ref == "https://doi.org/10.1234/abc"
@@ -157,7 +157,7 @@ class TestWebSearchGathererFindings:
         result = _result(
             works=[], passages=[passage], findings=[_finding(passage, quote="Text.")]
         )
-        gatherer = WebSearchGatherer(model="test", browser_cdp_url="http://chrome.test")
+        gatherer = WebSearchGatherer(model="test", browser=True)
         with _run_with(result), pytest.raises(RuntimeError, match="not among"):
             await gatherer.gather("web_search", "q")
 

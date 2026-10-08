@@ -77,7 +77,7 @@ async def preflight(
     providers: ProviderRegistry | None = None,
     verbose: bool = False,
     searxng_url: str | None = None,
-    browser_cdp_url: str | None = None,
+    browser: bool = False,
 ) -> PreflightResult:
     """Run preflight checks on LLM, web search, and evidence providers.
 
@@ -90,8 +90,8 @@ async def preflight(
             that has a ``check_health()`` method will be checked.
         verbose: If True, log progress.
         searxng_url: The SearXNG instance web search is checked at.
-        browser_cdp_url: A Chrome's debugging address; web search is checked
-            there instead of at SearXNG. With neither, web search is not
+        browser: Web search goes through the isolated Chrome; podman is checked
+            instead of SearXNG. With neither, web search is not
             checked (and the run that follows must say where it searches).
 
     Returns:
@@ -121,15 +121,15 @@ async def preflight(
             ]
         )
 
-    # 2. Web search (a Chrome when given, else SearXNG); without an address
+    # 2. Web search (the isolated Chrome when set, else SearXNG); without an address
     # there is nothing to check, and a run would refuse to start.
     skipped: list[CheckResult] = []
-    if searxng_url or browser_cdp_url:
+    if searxng_url or browser:
         try:
             from .evidence_gathering import WebSearchGatherer
 
             web = WebSearchGatherer(
-                model=model, searxng_url=searxng_url, browser_cdp_url=browser_cdp_url
+                model=model, searxng_url=searxng_url, browser=browser
             )
             tasks.append(("WebSearch", web))
         except ImportError:
@@ -139,7 +139,7 @@ async def preflight(
             CheckResult(
                 name="WebSearch",
                 status="skip",
-                message="no address given (--searxng-url or --browser-cdp-url)",
+                message="no address given (--searxng-url or --browser)",
                 elapsed_ms=0.0,
             )
         )

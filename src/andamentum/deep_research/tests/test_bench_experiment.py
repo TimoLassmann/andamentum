@@ -441,33 +441,25 @@ async def test_web_work_without_a_url_is_refused() -> None:
         await require_searxng(None)
 
 
-async def test_a_browser_that_answers_is_healthy_and_one_that_does_not_is_down(
+async def test_a_browser_whose_image_exists_is_healthy_and_a_missing_podman_is_down(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    real = httpx.AsyncClient
+    from andamentum.deep_research.bench import health as health_module
+    from andamentum.deep_research.browser import BrowserUnavailable
 
-    def answering(*args: Any, **kwargs: Any) -> httpx.AsyncClient:
-        return real(
-            transport=httpx.MockTransport(
-                lambda request: httpx.Response(
-                    200, json={"Browser": "HeadlessChrome/1.0"}
-                )
-            )
-        )
+    async def present(*, progress: Any = None) -> str:
+        return "andamentum-chrome:abc"
 
-    monkeypatch.setattr(httpx, "AsyncClient", answering)
-    health = await require_browser("http://127.0.0.1:9222/")
-    assert health.ok and health.detail == "HeadlessChrome/1.0"
+    monkeypatch.setattr(health_module, "ensure_image", present)
+    health = await require_browser()
+    assert health.ok and "andamentum-chrome:abc" in health.detail
 
-    def refusing(*args: Any, **kwargs: Any) -> httpx.AsyncClient:
-        def refuse(_request: httpx.Request) -> httpx.Response:
-            raise httpx.ConnectError("connection refused")
+    async def missing(*, progress: Any = None) -> str:
+        raise BrowserUnavailable("the isolated browser needs podman")
 
-        return real(transport=httpx.MockTransport(refuse))
-
-    monkeypatch.setattr(httpx, "AsyncClient", refusing)
-    with pytest.raises(SearxDown, match="no Chrome answers"):
-        await require_browser("http://127.0.0.1:9222")
+    monkeypatch.setattr(health_module, "ensure_image", missing)
+    with pytest.raises(SearxDown, match="needs podman"):
+        await require_browser()
 
 
 # -- the no_harm guard -------------------------------------------------------------

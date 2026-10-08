@@ -197,7 +197,7 @@ def create_operations(
     *,
     judge_model: Optional[str] = None,
     searxng_url: Optional[str] = None,
-    browser_cdp_url: Optional[str] = None,
+    browser: bool = False,
 ) -> dict[str, BaseOperation]:
     """Create all operation instances.
 
@@ -218,8 +218,8 @@ def create_operations(
             — three same-typed model ids (``model``, ``embedding_model``,
             ``judge_model``) sit on this signature, and the ``*`` is what makes
             a transposition a pyright error rather than a silent swap.
-        searxng_url, browser_cdp_url: Where the default gatherer's web search
-            goes (a SearXNG instance or a Chrome's debugging address); one is
+        searxng_url, browser: Where the default gatherer's web search
+            goes (a SearXNG instance, or the isolated Chrome); one is
             required when a default gatherer is created.
 
     Returns:
@@ -233,7 +233,7 @@ def create_operations(
             model=model,
             providers=providers,
             searxng_url=searxng_url,
-            browser_cdp_url=browser_cdp_url,
+            browser=browser,
         )
 
     return {

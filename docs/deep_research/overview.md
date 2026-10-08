@@ -29,7 +29,7 @@ async def main() -> None:
         "Who wrote the novel Middlemarch?",
         mode="web",
         model="ollama:gemma4:31b-cloud",
-        sources=SourceConfig(browser_cdp_url="http://127.0.0.1:9222"),
+        sources=SourceConfig(browser=True),
     )
     print(result.report_markdown)
     print(result.stop_reason, len(result.findings), "findings")
@@ -38,7 +38,7 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-`mode` is `web`, `scholarly` or `both`. Web mode needs an address, either a Chrome (`browser_cdp_url`) or a SearxNG instance (`searxng_url`); the library starts neither. `model` is the one language model the engine uses. A runnable version is `examples/deep_research/quickstart.py`.
+`mode` is `web`, `scholarly` or `both`. Web mode needs the isolated browser (`browser=True`: a Chrome in a podman container the run starts and removes; podman is required and the image is built on first use) or a SearxNG instance (`searxng_url`; the library does not start it). `model` is the one language model the engine uses. A runnable version is `examples/deep_research/quickstart.py`.
 
 ## What it provides
 
@@ -52,10 +52,10 @@ asyncio.run(main())
 
 ```bash
 andamentum-research "Who wrote the novel Middlemarch?" --mode web \
-  --model ollama:gemma4:31b-cloud --browser-cdp-url http://127.0.0.1:9222
+  --model ollama:gemma4:31b-cloud --browser
 ```
 
-`--model` is required. `andamentum-research --help` lists every flag: `--store`, `--cache`, `--searxng-url`, `--browser-cdp-url`, `--sources`, `--local-corpus`, the budget flags, `--json` / `--md`, `--out`, `--log`. `andamentum-research mcp --store PATH` serves the engine and its store to an agent over MCP; `cache-info` and `cache-prune` look at and trim an HTTP cache.
+`--model` is required. `andamentum-research --help` lists every flag: `--store`, `--cache`, `--searxng-url`, `--browser`, `--sources`, `--local-corpus`, the budget flags, `--json` / `--md`, `--out`, `--log`. `andamentum-research mcp --store PATH` serves the engine and its store to an agent over MCP; `cache-info` and `cache-prune` look at and trim an HTTP cache.
 
 Every run writes a Markdown log and a JSONL log of what happened at each step, including the text the model saw. `uv run python -m andamentum.deep_research.bench experiment losses ...` reads those logs and says, for each wrong answer, at which stage the right one was lost.
 

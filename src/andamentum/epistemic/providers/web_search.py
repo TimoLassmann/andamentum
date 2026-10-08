@@ -13,12 +13,12 @@ the dedicated providers handle better.
 Unlike the legacy fallback, this is a pure retrieval provider matching the
 provider contract (CONTRIBUTING.md): no LLM synthesis, ``quality_score=None``
 always, returns ``list[GatheredEvidence]`` (empty on error, never raises). It
-composes the model-free ``deep_research`` web source (SearXNG or Chrome
-search, safe page fetch/extract), which carries SSRF protection, robots/paywall
+composes the model-free ``deep_research`` web source (SearXNG or the isolated
+Chrome search, safe page fetch/extract), which carries SSRF protection, robots/paywall
 gating and safe redirects.
 
-API docs: a SearXNG instance (``searxng_url``), or a Chrome over its debugging
-address (``browser_cdp_url``); one of the two is required to gather
+API docs: a SearXNG instance (``searxng_url``), or the isolated Chrome
+(``browser``); one of the two is required to gather
 Authentication: none
 
 Architecture: Layer 1 (standalone; depends on deep_research, an allowed
@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from contextlib import AsyncExitStack
 from typing import TYPE_CHECKING, Any
 
 from ..operations import GatheredEvidence
@@ -114,44 +115,45 @@ class WebSearchProvider:
         self,
         *,
         searxng_url: str | None = None,
-        browser_cdp_url: str | None = None,
+        browser: bool = False,
         max_results: int = 8,
         max_pages: int = 4,
     ) -> None:
         """Args:
         searxng_url: Base URL of a SearXNG instance. With neither this nor
-            ``browser_cdp_url``, ``gather`` and ``check_health`` raise
+            ``browser``, ``gather`` and ``check_health`` raise
             ``ValueError`` (a configuration error is not a failed search).
-        browser_cdp_url: A Chrome's debugging address; search goes through that
-            browser instead of SearXNG.
+        browser: Search through the isolated Chrome (a podman container each
+            call starts and removes) instead of SearXNG.
         max_results: Search results to request.
         max_pages: Top results to fetch + extract full content from (the rest
             contribute their snippet only).
         """
         self.searxng_url = searxng_url
-        self.browser_cdp_url = browser_cdp_url
+        self.browser = browser
         self.max_results = max_results
         self.max_pages = max_pages
 
     def _require_address(self) -> None:
-        if not self.searxng_url and not self.browser_cdp_url:
+        if not self.searxng_url and not self.browser:
             raise ValueError(
-                "web search needs an address: a SearXNG instance (searxng_url) "
-                "or a Chrome's debugging address (browser_cdp_url)"
+                "web search needs a SearXNG instance (searxng_url) or the "
+                "isolated browser (browser=True)"
             )
 
-    def _open(self) -> tuple[Any, Any]:
-        """A web source over an in-memory store, and the client to close."""
+    async def _open(self, stack: AsyncExitStack) -> Any:
+        """A web source over an in-memory store (and the isolated Chrome when
+        ``browser`` is set); the stack closes what was opened."""
         from andamentum.deep_research import ResearchStore
+        from andamentum.deep_research.browser import browser_session
         from andamentum.deep_research.sources import SourceClient, WebSource
 
         client = SourceClient(ResearchStore.in_memory())
-        source = WebSource(
-            searxng_url=self.searxng_url,
-            browser_cdp_url=self.browser_cdp_url,
-            client=client,
+        stack.push_async_callback(client.aclose)
+        session = (
+            await stack.enter_async_context(browser_session()) if self.browser else None
         )
-        return source, client
+        return WebSource(searxng_url=self.searxng_url, browser=session, client=client)
 
     async def check_health(self) -> "CheckResult":
         """Probe search reachability via the same search path ``gather`` uses."""
@@ -161,12 +163,12 @@ class WebSearchProvider:
 
         self._require_address()
         t0 = time.monotonic()
-        client = None
+        stack = AsyncExitStack()
         try:
-            source, client = self._open()
+            source = await self._open(stack)
             await source.search("health check", limit=1)
             elapsed = (time.monotonic() - t0) * 1000
-            where = "Chrome" if self.browser_cdp_url else "SearXNG"
+            where = "isolated Chrome" if self.browser else "SearXNG"
             return CheckResult(
                 name="WebSearchProvider",
                 status="pass",
@@ -182,8 +184,7 @@ class WebSearchProvider:
                 elapsed_ms=elapsed,
             )
         finally:
-            if client is not None:
-                await client.aclose()
+            await stack.aclose()
 
     async def gather(self, query: str) -> list[GatheredEvidence]:
         """Search the web and return extracted page content as evidence.
@@ -193,9 +194,9 @@ class WebSearchProvider:
         address is a configuration error and raises ``ValueError``.
         """
         self._require_address()
-        client = None
+        stack = AsyncExitStack()
         try:
-            source, client = self._open()
+            source = await self._open(stack)
             results = await source.search(query, limit=self.max_results)
             if not results:
                 return []
@@ -251,5 +252,4 @@ class WebSearchProvider:
             logger.warning("Web search query failed for '%s': %s", query, e)
             return []
         finally:
-            if client is not None:
-                await client.aclose()
+            await stack.aclose()

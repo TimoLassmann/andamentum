@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from ..browser import BrowserSession
 from ..store import ResearchStore
 from ..types import Mode
 from .arxiv import ArxivSource
@@ -80,15 +81,26 @@ def build_sources(
     store: ResearchStore,
     mode: Mode,
     client: SourceClient | None = None,
+    browser: BrowserSession | None = None,
 ) -> SourceSet:
     """The adapters *config* sets up for *mode* (``web``, ``scholarly`` or ``both``).
 
-    Web mode needs ``searxng_url`` and raises a ``config`` error without it.
+    Web mode needs ``searxng_url`` or ``config.browser`` and raises a ``config``
+    error without one. ``config.browser`` needs the running isolated Chrome as
+    ``browser`` (``research()`` starts one; ``deep_research.browser.browser_session``
+    starts one for a caller that builds sources itself).
     The scholarly sources that read text come first (Europe PMC's open-access
     XML, then arXiv, then OpenAlex's open-access links), the web source last.
     ``config.expand_with`` limits which sources follow citation links (``None``:
     all that can); it does not limit which are searched or read.
     """
+    if config.browser and browser is None and mode in ("web", "both"):
+        raise SourceError(
+            "web",
+            "SourceConfig.browser is set but no isolated browser is running: pass "
+            "the session of deep_research.browser.browser_session() as browser",
+            kind="config",
+        )
     shared = client or SourceClient.for_store(store)
     scholarly: list[Source] = []
     for name in config.scholarly:
@@ -133,7 +145,7 @@ def build_sources(
         [
             WebSource(
                 searxng_url=config.searxng_url,
-                browser_cdp_url=config.browser_cdp_url,
+                browser=browser if config.browser else None,
                 tdm_allowed_hosts=config.tdm_allowed_hosts,
                 client=shared,
             )

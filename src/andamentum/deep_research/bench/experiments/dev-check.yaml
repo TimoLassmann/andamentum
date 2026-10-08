@@ -6,7 +6,7 @@
 # Run (SQA the folder of simple_qa_test_set.csv, OUT a folder under data/):
 #   B="uv run python -m andamentum.deep_research.bench"
 #   $B experiment run src/andamentum/deep_research/bench/experiments/dev-check.yaml \
-#     --out-dir $OUT --simpleqa-dir $SQA --browser-cdp-url http://127.0.0.1:9222
+#     --out-dir $OUT --simpleqa-dir $SQA --browser
 #   (a Chrome started with --remote-debugging-port=9222 and its own --user-data-dir)
 #   $B experiment report src/andamentum/deep_research/bench/experiments/dev-check.yaml \
 #     --out-dir $OUT

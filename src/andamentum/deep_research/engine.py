@@ -24,7 +24,7 @@ from __future__ import annotations
 import asyncio
 import time
 from collections.abc import Callable, Iterator, Sequence
-from contextlib import contextmanager
+from contextlib import AsyncExitStack, contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -42,6 +42,7 @@ from .read import ReadDeps, read_page, unreadable_degraded
 from .reflect import Confidence, reflect
 from .runlog import RunLogger
 from .search import admit, expand, expansion_seeds, is_scholarly, search
+from .browser import BrowserSession, browser_session
 from .sources import SourceClient, SourceConfig, SourceSet, build_sources
 from .store import ResearchStore
 from .types import (
@@ -551,12 +552,13 @@ async def research(
     sources: SourceConfig = SourceConfig(),
     source_client: SourceClient | None = None,
     http_cache: ResearchStore | None = None,
+    browser: BrowserSession | None = None,
     progress: Callable[[str], None] | None = None,
     clock: Callable[[], float] = time.monotonic,
 ) -> ResearchResult:
     """Research *question* and return the evidence table with a verified report.
 
-    ``mode`` picks the sources: ``web`` (a Chrome over CDP, ``sources.browser_cdp_url``,
+    ``mode`` picks the sources: ``web`` (the isolated Chrome, ``sources.browser``,
     or SearxNG, ``sources.searxng_url``; one of them is required), ``scholarly``
     (``sources.scholarly``) or ``both``. ``model`` is the language model (a
     pydantic-ai model id or object); it is the only model the engine uses.
@@ -572,6 +574,12 @@ async def research(
     a store this call opens, so it cannot be combined with an open ``store``
     (open that one with ``shared_cache=``). ``progress`` receives one line per
     step; ``clock`` is the clock ``budget.max_wall_s`` is measured on.
+
+    ``sources.browser`` makes the run start the isolated Chrome (a podman
+    container, removed when the run ends, also when it is cancelled) for a
+    ``web`` or ``both`` run. A caller that runs many researches may start one with
+    ``browser.browser_session()`` and pass it as ``browser`` (it is then left
+    running for the caller to stop); without ``sources.browser`` it is ignored.
 
     Every run fills ``result.log`` (``RunLog``: what happened at each step); with
     a store it is also saved as the run item ``log/run``. A spent budget ends the
@@ -599,18 +607,27 @@ async def research(
         opened, pdf_extraction=sources.pdf_extraction
     )
     try:
-        source_set = build_sources(sources, store=opened, mode=mode, client=client)
-        return await _run(
-            question,
-            mode=mode,
-            model=model,
-            store=opened,
-            budget=budget,
-            sources=sources,
-            source_set=source_set,
-            progress=progress or (lambda _line: None),
-            clock=clock,
-        )
+        async with AsyncExitStack() as stack:
+            if sources.browser and mode in ("web", "both") and browser is None:
+                progress_line = progress or (lambda _line: None)
+                progress_line("starting the isolated browser")
+                browser = await stack.enter_async_context(
+                    browser_session(progress=progress)
+                )
+            source_set = build_sources(
+                sources, store=opened, mode=mode, client=client, browser=browser
+            )
+            return await _run(
+                question,
+                mode=mode,
+                model=model,
+                store=opened,
+                budget=budget,
+                sources=sources,
+                source_set=source_set,
+                progress=progress or (lambda _line: None),
+                clock=clock,
+            )
     finally:
         if source_client is None:
             await client.aclose()

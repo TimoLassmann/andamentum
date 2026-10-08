@@ -1,0 +1,18 @@
+# The isolated Chrome of deep_research: Debian slim plus the distribution's
+# chromium, nothing third-party. The base image is pinned by digest.
+#
+# Isolation is the container plus the firewall installed by entrypoint.sh:
+# Chromium runs with --no-sandbox because its own sandbox needs user namespaces
+# and the container drops every capability. The entrypoint starts as root with
+# only NET_ADMIN, SETUID and SETGID, installs the firewall, then drops to the
+# unprivileged user `browser` with no effective capabilities and no-new-privs
+# (CapBnd still lists the bounding set, which is harmless with permitted and
+# effective empty).
+FROM docker.io/library/debian@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595db4a9d65c06ccc587
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends chromium socat iptables iproute2 util-linux ca-certificates fonts-liberation \
+ && rm -rf /var/lib/apt/lists/* \
+ && useradd --create-home --uid 10001 browser
+COPY entrypoint.sh browser.sh /
+RUN chmod 755 /entrypoint.sh /browser.sh
+ENTRYPOINT ["/entrypoint.sh"]

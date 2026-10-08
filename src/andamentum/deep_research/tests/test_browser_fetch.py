@@ -13,6 +13,7 @@ import websockets
 
 from andamentum.core import url_safety
 
+from ..browser import cdp
 from ..sources import browser_fetch
 from ..sources.base import SourceError
 from ..sources.browser_fetch import BrowserPage, browser_page_text, looks_like_bot_check
@@ -35,18 +36,23 @@ class FakeChrome:
         reading: object = None,
         socket_error: Exception | None = None,
         never_loads: bool = False,
+        fail_on: str | None = None,
     ) -> None:
         self.never_loads = never_loads
         self.page = {"href": href, "title": title, "text": text}
         self.reading = json.dumps(self.page) if reading is None else reading
         self.lengths = list(lengths or [len(text), len(text)])
         self.socket_error = socket_error
-        self.methods: list[str] = []
+        self.fail_on = fail_on
+        self.methods: list[str] = []  # the tab's own commands (they carry a session)
+        self.browser_calls: list[tuple[str, dict[str, object]]] = []
+        self.contexts: list[str] = []
+        self.disposed: list[str] = []
         self.opened: list[str] = []
         self.closed: list[str] = []
         self.navigated: list[str] = []
 
-    # -- the HTTP side (/json/new, /json/close) --
+    # -- the HTTP side (/json/version) --
 
     def http(self, **_kwargs: object) -> FakeHttp:
         return FakeHttp(self)
@@ -77,14 +83,9 @@ class FakeHttp:
     async def __aexit__(self, *_exc: object) -> None:
         return None
 
-    async def put(self, url: str) -> FakeResponse:
-        tab = f"tab{len(self.chrome.opened) + 1}"
-        self.chrome.opened.append(tab)
-        return FakeResponse({"id": tab, "webSocketDebuggerUrl": f"ws://stub/{tab}"})
-
     async def get(self, url: str) -> FakeResponse:
-        self.chrome.closed.append(url.rsplit("/", 1)[-1])
-        return FakeResponse("Target is closing")
+        assert url.endswith("/json/version")
+        return FakeResponse({"webSocketDebuggerUrl": "ws://stub/browser"})
 
 
 class FakeSocket:
@@ -101,7 +102,31 @@ class FakeSocket:
     async def send(self, raw: str) -> None:
         message = json.loads(raw)
         method, params = message["method"], message["params"]
+        chrome = self.chrome
+        if "sessionId" not in message:
+            chrome.browser_calls.append((method, params))
+            result: dict[str, object] = {}
+            if method == "Target.createBrowserContext":
+                chrome.contexts.append(f"ctx{len(chrome.contexts) + 1}")
+                result = {"browserContextId": chrome.contexts[-1]}
+            elif method == "Target.createTarget":
+                chrome.opened.append(f"tab{len(chrome.opened) + 1}")
+                result = {"targetId": chrome.opened[-1]}
+            elif method == "Target.attachToTarget":
+                result = {"sessionId": "s1"}
+            elif method == "Target.closeTarget":
+                chrome.closed.append(params["targetId"])
+            elif method == "Target.disposeBrowserContext":
+                chrome.disposed.append(params["browserContextId"])
+            self.inbox.append(json.dumps({"id": message["id"], "result": result}))
+            return
+        assert message["sessionId"] == "s1"
         self.chrome.methods.append(method)
+        if method == self.chrome.fail_on:
+            self.inbox.append(
+                json.dumps({"id": message["id"], "error": {"message": "boom"}})
+            )
+            return
         value: object = None
         if method == "Page.navigate":
             self.chrome.navigated.append(params["url"])
@@ -114,7 +139,9 @@ class FakeSocket:
         result = {"result": {"value": value}} if method == "Runtime.evaluate" else {}
         self.inbox.append(json.dumps({"id": message["id"], "result": result}))
         if method == "Page.navigate" and not self.chrome.never_loads:
-            self.inbox.append(json.dumps({"method": "Page.loadEventFired"}))
+            self.inbox.append(
+                json.dumps({"method": "Page.loadEventFired", "sessionId": "s1"})
+            )
 
     async def recv(self) -> str:
         while not self.inbox:
@@ -123,7 +150,7 @@ class FakeSocket:
 
 
 def install(monkeypatch: pytest.MonkeyPatch, fake: FakeChrome) -> FakeChrome:
-    monkeypatch.setattr(browser_fetch.httpx, "AsyncClient", fake.http)
+    monkeypatch.setattr(cdp.httpx, "AsyncClient", fake.http)
     monkeypatch.setattr(websockets, "connect", fake.connect)
     monkeypatch.setattr(browser_fetch, "POLL_INTERVAL_S", 0.0)
     monkeypatch.setattr(
@@ -203,13 +230,13 @@ async def test_no_chrome_is_a_transport_error_that_names_the_fix(
     def refuse(**_kwargs: object) -> object:
         raise httpx.ConnectError("refused")
 
-    monkeypatch.setattr(browser_fetch.httpx, "AsyncClient", refuse)
-    with pytest.raises(SourceError, match="remote-debugging-port") as caught:
+    monkeypatch.setattr(cdp.httpx, "AsyncClient", refuse)
+    with pytest.raises(SourceError, match="no Chrome answers") as caught:
         await browser_page_text(CDP, URL)
     assert caught.value.kind == "transport"
 
 
-async def test_a_socket_failure_is_a_transport_error_and_the_tab_is_closed(
+async def test_a_socket_failure_is_a_transport_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     fake = install(monkeypatch, FakeChrome(socket_error=OSError("connection reset")))
@@ -219,7 +246,37 @@ async def test_a_socket_failure_is_a_transport_error_and_the_tab_is_closed(
         caught.value.kind == "transport" and "connection reset" in caught.value.reason
     )
     assert caught.value.source == "web"
-    assert fake.closed == ["tab1"]
+    assert fake.contexts == []
+
+
+async def test_a_protocol_failure_is_a_transport_error_and_the_context_is_disposed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake = install(monkeypatch, FakeChrome(fail_on="Page.navigate"))
+    with pytest.raises(SourceError) as caught:
+        await browser_page_text(CDP, URL)
+    assert caught.value.kind == "transport" and "boom" in caught.value.reason
+    assert fake.closed == ["tab1"] and fake.disposed == ["ctx1"]
+
+
+async def test_every_read_gets_a_new_context_with_downloads_denied(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake = install(monkeypatch, FakeChrome())
+    await browser_page_text(CDP, URL)
+    await browser_page_text(CDP, URL)
+    assert fake.contexts == ["ctx1", "ctx2"] and fake.disposed == ["ctx1", "ctx2"]
+    denials = [
+        params
+        for method, params in fake.browser_calls
+        if method == "Browser.setDownloadBehavior"
+    ]
+    assert denials == [
+        {"behavior": "deny", "browserContextId": ctx, "eventsEnabled": False}
+        for ctx in ("ctx1", "ctx2")
+    ]
+    created = [p for m, p in fake.browser_calls if m == "Target.createTarget"]
+    assert [p["browserContextId"] for p in created] == ["ctx1", "ctx2"]
 
 
 async def test_a_reading_that_is_not_the_scripts_json_is_a_parse_error(

@@ -13,7 +13,9 @@ from urllib.parse import quote
 import pytest
 
 from andamentum.deep_research import browser_search
+from andamentum.deep_research.browser import BrowserSession
 from andamentum.deep_research.browser_search import (
+    ENGINES,
     BING,
     DUCKDUCKGO,
     browser_query,
@@ -150,7 +152,7 @@ async def test_an_offline_client_answers_from_the_cache_only() -> None:
 
 
 async def test_no_chrome_is_a_transport_error_that_names_the_fix() -> None:
-    with pytest.raises(SourceError, match="remote-debugging-port") as caught:
+    with pytest.raises(SourceError, match="no Chrome answers") as caught:
         await browser_query(client(), "http://127.0.0.1:9", "apollo ferry")
     assert caught.value.kind == "transport"
 
@@ -174,12 +176,20 @@ async def test_the_web_source_searches_through_the_browser_one_page(
 ) -> None:
     chrome = FakeChrome({"duckduckgo": reading("results", [("Apollo", DDG_FERRY)])})
     monkeypatch.setattr(browser_search, "_evaluate_in_new_tab", chrome)
-    source = WebSource(browser_cdp_url="http://127.0.0.1:9222", client=client())
+    source = WebSource(
+        browser=BrowserSession(cdp_url="http://127.0.0.1:9222", container="c"),
+        client=client(),
+    )
     found = await source.search("apollo ferry", limit=20)
     assert [c.work.url for c in found] == [FERRY]
     assert chrome.opened == ["duckduckgo"]
 
 
 def test_the_web_source_needs_searxng_or_a_browser() -> None:
-    with pytest.raises(SourceError, match="browser_cdp_url"):
+    with pytest.raises(SourceError, match="SourceConfig.browser"):
         WebSource(client=client())
+
+
+def test_the_readers_fall_back_to_text_content_for_a_row_not_laid_out() -> None:
+    for engine in ENGINES:
+        assert "a.innerText || a.textContent" in engine.script

@@ -64,12 +64,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="A SearXNG instance for web search (e.g. http://127.0.0.1:4070)",
     )
     ask_parser.add_argument(
-        "--browser-cdp-url",
-        default=None,
+        "--browser",
+        action="store_true",
         help=(
-            "A Chrome's debugging address (e.g. http://127.0.0.1:9222); web "
-            "search goes through that browser instead of SearXNG. One of "
-            "--searxng-url and --browser-cdp-url is required"
+            "Search the web through an isolated Chrome in a podman container "
+            "(started and removed per search run) instead of SearXNG. One of "
+            "--searxng-url and --browser is required"
         ),
     )
     ask_parser.add_argument(
@@ -136,12 +136,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="A SearXNG instance for web search (e.g. http://127.0.0.1:4070)",
     )
     verify_parser.add_argument(
-        "--browser-cdp-url",
-        default=None,
+        "--browser",
+        action="store_true",
         help=(
-            "A Chrome's debugging address (e.g. http://127.0.0.1:9222); web "
-            "search goes through that browser instead of SearXNG. One of "
-            "--searxng-url and --browser-cdp-url is required"
+            "Search the web through an isolated Chrome in a podman container "
+            "(started and removed per search run) instead of SearXNG. One of "
+            "--searxng-url and --browser is required"
         ),
     )
     verify_parser.add_argument(
@@ -202,9 +202,9 @@ def _build_parser() -> argparse.ArgumentParser:
         help="A SearXNG instance to check for web search",
     )
     pf_parser.add_argument(
-        "--browser-cdp-url",
-        default=None,
-        help="A Chrome's debugging address to check instead of SearXNG",
+        "--browser",
+        action="store_true",
+        help="Check podman (the isolated Chrome) instead of SearXNG",
     )
     pf_parser.add_argument("--verbose", action="store_true", help="Print extra details")
 
@@ -344,7 +344,7 @@ async def _preflight(args: argparse.Namespace) -> None:
         providers=providers,
         verbose=args.verbose,
         searxng_url=args.searxng_url,
-        browser_cdp_url=args.browser_cdp_url,
+        browser=args.browser,
     )
 
     for check in result.checks:
@@ -416,11 +416,10 @@ async def _ask(args: argparse.Namespace) -> None:
 
     from andamentum.core.models import resolve_embedding_model_from_args
 
-    if not (args.searxng_url or args.browser_cdp_url):
+    if not (args.searxng_url or args.browser):
         print(
             "Error: web search needs an address. Pass --searxng-url (a "
-            "SearXNG instance) or --browser-cdp-url (a Chrome's debugging "
-            "address).",
+            "SearXNG instance) or --browser (the isolated Chrome).",
             file=sys.stderr,
         )
         sys.exit(2)
@@ -445,7 +444,7 @@ async def _ask(args: argparse.Namespace) -> None:
         provider=args.provider,
         output_path=args.output,
         searxng_url=args.searxng_url,
-        browser_cdp_url=args.browser_cdp_url,
+        browser=args.browser,
     )
 
     if not result.success and result.error:

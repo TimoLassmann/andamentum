@@ -61,8 +61,7 @@ def test_flags_become_the_research_arguments(
             str(store),
             "--searxng-url",
             "http://127.0.0.1:4070",
-            "--browser-cdp-url",
-            "http://127.0.0.1:9222",
+            "--browser",
             "--sources",
             "europepmc,openalex",
             "--tdm-host",
@@ -83,7 +82,7 @@ def test_flags_become_the_research_arguments(
     sources: SourceConfig = call["sources"]
     assert sources.scholarly == ("europepmc", "openalex")
     assert sources.searxng_url == "http://127.0.0.1:4070"
-    assert sources.browser_cdp_url == "http://127.0.0.1:9222"
+    assert sources.browser is True
     assert sources.tdm_allowed_hosts == frozenset({"journals.example"})
     assert sources.openalex_api_key is None
     assert "config" not in call and "decision_model" not in call

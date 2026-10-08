@@ -9,11 +9,13 @@ and reports what came back, so the caller can refuse.
 from __future__ import annotations
 
 import json
+import sys
 from urllib.parse import urlencode
 
 import httpx
 from pydantic import BaseModel
 
+from andamentum.deep_research.browser import BrowserUnavailable, ensure_image
 from andamentum.deep_research.searxng_search import parse_unresponsive
 
 PROBE_QUERY = "Mount Kilimanjaro height"
@@ -81,20 +83,17 @@ async def check_searxng(
     return SearxHealth(url=url, ok=True, n_results=n, unresponsive=down)
 
 
-async def require_browser(cdp_url: str) -> SearxHealth:
-    """Is a Chrome answering at *cdp_url* (its debugging address)? ``SearxDown``
-    when not. Only the browser is checked: an engine's bot check shows per
-    search, as an outage of that cell."""
+async def require_browser() -> SearxHealth:
+    """Can the isolated Chrome be started? Podman is present and the image exists
+    (built now when missing); ``SearxDown`` when not. Only the means to start it is
+    checked: an engine's bot check shows per search, as an outage of that cell."""
     try:
-        async with httpx.AsyncClient(timeout=PROBE_TIMEOUT_S) as http:
-            response = await http.get(f"{cdp_url.rstrip('/')}/json/version")
-            browser = str(response.json().get("Browser", ""))
-    except (httpx.HTTPError, ValueError, AttributeError) as error:
-        raise SearxDown(
-            f"no Chrome answers at {cdp_url} ({type(error).__name__}); start Chrome "
-            "with --remote-debugging-port and its own --user-data-dir"
-        ) from error
-    return SearxHealth(url=cdp_url, ok=True, detail=browser)
+        tag = await ensure_image(
+            progress=lambda line: print(line, file=sys.stderr, flush=True)
+        )
+    except BrowserUnavailable as error:
+        raise SearxDown(str(error)) from error
+    return SearxHealth(url="podman", ok=True, detail=f"isolated Chrome image {tag}")
 
 
 async def require_searxng(

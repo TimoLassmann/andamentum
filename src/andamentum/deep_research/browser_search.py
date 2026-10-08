@@ -1,9 +1,8 @@
 """Web search through a real Chrome, over the Chrome DevTools Protocol (CDP).
 
-The alternative to SearxNG when its upstream engines suspend it: a Chrome the
-user starts with a debugging port (``--remote-debugging-port=9222`` and its own
-``--user-data-dir``; Chrome refuses the port on the default profile) opens the
-search page of an engine, and one JavaScript expression reads the result list.
+The alternative to SearxNG when its upstream engines suspend it: the isolated
+Chrome (``deep_research.browser``, a podman container started for the run) opens
+the search page of an engine, and one JavaScript expression reads the result list.
 No language model is involved and nothing is clicked: a search page has a
 fixed structure, so reading it is code.
 
@@ -24,7 +23,7 @@ reads the results of either unchanged:
 - one page of results (about ten) per query: the engines' further pages need
   a form or a session, and one page is what a person reads.
 
-Pages are opened in a new tab each and closed after reading. ``websockets`` is
+Each page is opened in a new browser context and disposed after reading. ``websockets`` is
 the only library used (already installed with the package).
 """
 
@@ -32,15 +31,14 @@ from __future__ import annotations
 
 import asyncio
 import base64
-import itertools
 import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 from urllib.parse import parse_qs, quote_plus, urlparse
 
-import httpx
 from pydantic import JsonValue
 
+from .browser.cdp import CdpError, isolated_page
 from .searxng_search import (
     SEARXNG_CACHE_TTL_S,
     SEARXNG_SOURCE,
@@ -71,14 +69,17 @@ class Engine:
 
 
 def _reader(*, rows: str, link: str, snippet: str, empty: str, skip: str = "") -> str:
-    """A script that returns ``{state, rows: [{title, href, snippet}]}`` as JSON."""
+    """A script that returns ``{state, rows: [{title, href, snippet}]}`` as JSON.
+    ``innerText`` is empty for a result a headless Chrome has not laid out (Bing's
+    lower rows), so ``textContent`` stands in."""
     keep = f"!r.matches({json.dumps(skip)})" if skip else "true"
     return f"""JSON.stringify((() => {{
   const rows = [...document.querySelectorAll({json.dumps(rows)})].filter(r => {keep})
     .map(r => {{
       const a = r.querySelector({json.dumps(link)});
       const s = r.querySelector({json.dumps(snippet)});
-      return a ? {{title: a.innerText, href: a.href, snippet: s ? s.innerText : ''}} : null;
+      return a ? {{title: a.innerText || a.textContent, href: a.href,
+        snippet: s ? (s.innerText || s.textContent) : ''}} : null;
     }}).filter(Boolean);
   const state = rows.length ? 'results'
     : (document.querySelector({json.dumps(empty)}) ? 'empty' : 'blocked');
@@ -161,71 +162,35 @@ def read_page(raw: str) -> tuple[PageState, list[dict[str, JsonValue]]]:
 async def _evaluate_in_new_tab(
     cdp_url: str, *, url: str, script: str, source: str = SEARXNG_SOURCE
 ) -> str:
-    """Open *url* in a new tab of the Chrome at *cdp_url*, run *script* once the
-    page has loaded, close the tab and return the script's string value. A
-    failure is a ``SourceError`` named *source*."""
+    """Open *url* in a new tab of a new browser context of the Chrome at
+    *cdp_url* (cookies and storage die with it, downloads are denied), run
+    *script* once the page has loaded, close the tab and return the script's
+    string value. A failure is a ``SourceError`` named *source*."""
     import websockets
 
     from .sources.base import SourceError
 
-    base = cdp_url.rstrip("/")
     try:
-        async with httpx.AsyncClient(timeout=10.0) as http:
-            tab = (await http.put(f"{base}/json/new?about:blank")).json()
-    except (httpx.HTTPError, ValueError) as exc:
+        async with isolated_page(cdp_url) as page:
+            async with asyncio.timeout(PAGE_LOAD_TIMEOUT_S):
+                await page.call("Page.enable")
+                await page.call("Page.navigate", url=url)
+                await page.wait_loaded()
+                value = await page.evaluate(script)
+    except CdpError as exc:
         raise SourceError(
             source,
-            f"no Chrome answers at {cdp_url} ({type(exc).__name__}); start Chrome "
-            "with --remote-debugging-port and its own --user-data-dir",
+            f"the browser search page {url} failed: {exc}",
             kind="transport",
-            url=cdp_url,
+            url=url,
         ) from exc
-    ids = itertools.count(1)
-    try:
-        async with websockets.connect(
-            tab["webSocketDebuggerUrl"], max_size=None
-        ) as socket:
-            loaded = asyncio.Event()
-
-            async def call(method: str, **params: object) -> dict[str, object]:
-                wanted = next(ids)
-                await socket.send(
-                    json.dumps({"id": wanted, "method": method, "params": params})
-                )
-                while True:
-                    message = json.loads(await socket.recv())
-                    if message.get("method") == "Page.loadEventFired":
-                        loaded.set()
-                    if message.get("id") == wanted:
-                        if "error" in message:
-                            raise RuntimeError(f"{method}: {message['error']}")
-                        return message.get("result") or {}
-
-            async with asyncio.timeout(PAGE_LOAD_TIMEOUT_S):
-                await call("Page.enable")
-                await call("Page.navigate", url=url)
-                while not loaded.is_set():
-                    message = json.loads(await socket.recv())
-                    if message.get("method") == "Page.loadEventFired":
-                        loaded.set()
-                answer = await call(
-                    "Runtime.evaluate", expression=script, returnByValue=True
-                )
-    except (OSError, TimeoutError, RuntimeError, websockets.WebSocketException) as exc:
+    except (OSError, TimeoutError, websockets.WebSocketException) as exc:
         raise SourceError(
             source,
             f"the browser search page {url} failed: {type(exc).__name__}: {exc}",
             kind="transport",
             url=url,
         ) from exc
-    finally:
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as http:
-                await http.get(f"{base}/json/close/{tab['id']}")
-        except httpx.HTTPError:
-            pass  # a tab left open costs nothing; the search result stands
-    result = answer.get("result")
-    value = result.get("value") if isinstance(result, dict) else None
     if not isinstance(value, str):
         raise SourceError(
             source,
@@ -243,7 +208,8 @@ async def browser_query(
     *,
     cache: bool = True,
 ) -> SearxPage:
-    """Search *query* in the Chrome at *cdp_url* and return the page.
+    """Search *query* in the Chrome at *cdp_url* (its address; the isolated
+    Chrome's session provides it) and return the page.
 
     Raises :class:`SearchEnginesBlocked` when every engine showed a bot check,
     and ``SourceError`` when Chrome does not answer, a page fails to load or

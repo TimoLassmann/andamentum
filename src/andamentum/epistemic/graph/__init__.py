@@ -206,7 +206,7 @@ async def run_epistemic_graph(
     ibe_agreement_k: Optional[int] = None,
     use_web_search: bool = True,
     searxng_url: Optional[str] = None,
-    browser_cdp_url: Optional[str] = None,
+    browser: bool = False,
 ) -> "PipelineResult":
     """Run a research question through the epistemic graph pipeline.
 
@@ -226,9 +226,9 @@ async def run_epistemic_graph(
             sub-objective spawned by the decomposed runner). When None,
             falls back to resume-first-objective-or-create behaviour
             from ``question``.
-        searxng_url, browser_cdp_url: Where web search goes: a SearXNG
-            instance, or a Chrome's debugging address (which wins when both
-            are given). One is required whenever web search is in play
+        searxng_url, browser: Where web search goes: a SearXNG
+            instance, or the isolated Chrome (a podman container; it wins when
+            both are given). One is required whenever web search is in play
             (``use_web_search``, or the ``web_search`` provider loaded by
             ``provider``); the run refuses to start without it.
 
@@ -240,10 +240,10 @@ async def run_epistemic_graph(
     web_in_play = use_web_search or (
         providers is None and provider in ("all", "web_search")
     )
-    if web_in_play and not (searxng_url or browser_cdp_url):
+    if web_in_play and not (searxng_url or browser):
         raise ValueError(
             "web search needs an address: pass searxng_url (a SearXNG "
-            "instance) or browser_cdp_url (a Chrome's debugging address), or "
+            "instance) or browser=True (the isolated Chrome), or "
             "turn web search off (use_web_search=False with providers that "
             "need none)"
         )
@@ -335,7 +335,7 @@ async def run_epistemic_graph(
         # The addresses given for web search serve the web provider too.
         if providers and "web_search" in providers:
             providers["web_search"] = get_provider(
-                "web_search", searxng_url=searxng_url, browser_cdp_url=browser_cdp_url
+                "web_search", searxng_url=searxng_url, browser=browser
             )
 
     evidence_gatherer = (
@@ -344,7 +344,7 @@ async def run_epistemic_graph(
             providers=providers,
             use_web_search=use_web_search,
             searxng_url=searxng_url,
-            browser_cdp_url=browser_cdp_url,
+            browser=browser,
         )
         if model
         else None

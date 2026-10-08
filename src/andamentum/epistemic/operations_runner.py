@@ -87,7 +87,7 @@ async def run_research_question(
     quality_scorer: Optional[Any] = None,
     db_dir: Optional[str] = None,
     searxng_url: Optional[str] = None,
-    browser_cdp_url: Optional[str] = None,
+    browser: bool = False,
 ) -> PipelineResult:
     """Run a research question through the epistemic pipeline.
 
@@ -127,8 +127,8 @@ async def run_research_question(
         db_dir: Custom directory for database files. When provided, the database
             is written here instead of ~/.config/andamentum/databases/.
         searxng_url: The SearXNG instance web search goes to.
-        browser_cdp_url: A Chrome's debugging address; web search goes through
-            that browser instead of SearXNG. One of the two is required.
+        browser: Search the web through the isolated Chrome (a podman
+            container) instead of SearXNG. One of the two is required.
 
     Returns:
         PipelineResult with execution summary
@@ -149,5 +149,5 @@ async def run_research_question(
         quality_scorer=quality_scorer,
         db_dir=db_dir,
         searxng_url=searxng_url,
-        browser_cdp_url=browser_cdp_url,
+        browser=browser,
     )

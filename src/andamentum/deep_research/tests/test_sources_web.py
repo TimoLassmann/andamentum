@@ -8,6 +8,7 @@ import httpx
 import pytest
 
 from andamentum.core import fetch_gate, url_safety
+from andamentum.deep_research.browser import BrowserSession
 from andamentum.deep_research.sources import browser_fetch
 from andamentum.deep_research.sources.browser_fetch import BrowserPage
 from andamentum.deep_research.sources import (
@@ -306,7 +307,8 @@ def chrome_web(
     monkeypatch.setattr(url_safety, "is_safe_url", lambda url, **_kw: (True, ""))
     fetch_gate._robots_cache_clear()
     monkeypatch.setattr(browser_fetch, "browser_page_text", browser)
-    return WebSource(searxng_url=SEARX, browser_cdp_url=cdp, client=kit.client)
+    session = BrowserSession(cdp_url=cdp, container="c") if cdp else None
+    return WebSource(searxng_url=SEARX, browser=session, client=kit.client)
 
 
 def apollo_page(url: str = PAGE) -> Work:
@@ -449,7 +451,7 @@ async def test_an_offline_client_never_opens_the_browser(
     browser = FakeBrowser()
     monkeypatch.setattr(browser_fetch, "browser_page_text", browser)
     source = WebSource(
-        browser_cdp_url=CDP,
+        browser=BrowserSession(cdp_url=CDP, container="c"),
         client=SourceClient(ResearchStore.in_memory(), offline=True),
     )
     with pytest.raises(SourceError) as caught:

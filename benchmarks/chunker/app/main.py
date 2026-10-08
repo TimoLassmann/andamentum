@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import re
 import sys
+from contextlib import AsyncExitStack
 from pathlib import Path
 from typing import Callable, Literal, Protocol
 from urllib.parse import urljoin, urlparse
@@ -37,6 +38,7 @@ from andamentum.chunker.extractor import (
 from andamentum.chunker.validation import find_anchor
 from andamentum.core.agents import AgentRunner
 from andamentum.deep_research import ResearchStore
+from andamentum.deep_research.browser import browser_session
 from andamentum.deep_research.sources import SourceClient, SourceError, WebSource
 from andamentum.deep_research.types import Candidate
 
@@ -80,11 +82,7 @@ def _cases_dir() -> Path:
 
 # ---------- Web search (overridable for tests) ----------------------------
 
-# The Chrome that answers the searches: start it with
-# --remote-debugging-port=9222 and its own --user-data-dir.
-BROWSER_CDP_URL = "http://127.0.0.1:9222"
-
-
+# The searches go through deep_research's isolated Chrome (needs podman).
 class WebSearch(Protocol):
     async def search(self, query: str, *, limit: int) -> list[Candidate]: ...
 
@@ -92,24 +90,30 @@ class WebSearch(Protocol):
 
 
 class _BrowserSearch:
-    """deep_research's web search through a Chrome, with a throwaway in-memory
-    store (nothing is kept between searches)."""
+    """deep_research's web search through the isolated Chrome (a podman
+    container, started at the first search and removed by ``close``), with a
+    throwaway in-memory store (nothing is kept between searches)."""
 
-    def __init__(self, cdp_url: str) -> None:
+    def __init__(self) -> None:
         self._store = ResearchStore.in_memory()
         self._client = SourceClient.for_store(self._store)
-        self._source = WebSource(browser_cdp_url=cdp_url, client=self._client)
+        self._stack = AsyncExitStack()
+        self._source: WebSource | None = None
 
     async def search(self, query: str, *, limit: int) -> list[Candidate]:
+        if self._source is None:
+            session = await self._stack.enter_async_context(browser_session())
+            self._source = WebSource(browser=session, client=self._client)
         return await self._source.search(query, limit=limit)
 
     async def close(self) -> None:
+        await self._stack.aclose()
         await self._client.aclose()
         self._store.close()
 
 
 def _default_web_search_factory() -> WebSearch:
-    return _BrowserSearch(BROWSER_CDP_URL)
+    return _BrowserSearch()
 
 
 _web_search_factory: Callable[[], WebSearch] = _default_web_search_factory
@@ -518,10 +522,10 @@ class FetchResponse(BaseModel):
 
 @app.post("/api/search", response_model=SearchResponse)
 async def search(req: SearchRequest) -> SearchResponse:
-    """Search the web through the Chrome at ``BROWSER_CDP_URL``.
+    """Search the web through the isolated Chrome.
 
-    Returns 503 with the reason when the search cannot be made (no Chrome
-    answering, every engine showing a bot check) instead of an empty list.
+    Returns 503 with the reason when the search cannot be made (podman
+    missing, every engine showing a bot check) instead of an empty list.
     """
     backend = _web_search_factory()
     try:

@@ -21,7 +21,7 @@ import argparse
 import asyncio
 import os
 import sys
-from collections.abc import Awaitable, Callable, Coroutine, Sequence
+from collections.abc import Callable, Coroutine, Sequence
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -95,11 +95,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     run.add_argument("--searxng-url", default=DEFAULT_SEARXNG_URL)
     run.add_argument(
-        "--browser-cdp-url",
-        default=None,
-        metavar="URL",
-        help="search the web through this Chrome (its debugging address) instead "
-        "of SearxNG, for every arm",
+        "--browser",
+        action="store_true",
+        help="search the web through the isolated Chrome (a podman container each "
+        "run starts and removes) instead of SearxNG, for every arm",
     )
     run.add_argument(
         "--only-sets",
@@ -188,13 +187,13 @@ def _source_config(
     pdf_extraction: PdfExtraction = BENCH_PDF_EXTRACTION,
     *,
     keyless: bool = False,
-    browser_cdp_url: str | None = None,
+    browser: bool = False,
 ) -> SourceConfig:
     """The sources' configuration. Keyless: neither API key is looked up at all
     (not read, not checked for), whatever the environment holds."""
     return SourceConfig(
         searxng_url=searxng_url,
-        browser_cdp_url=browser_cdp_url,
+        browser=browser,
         pdf_extraction=pdf_extraction,
         mailto=os.environ.get("OPENALEX_EMAIL"),
         openalex_api_key=None if keyless else os.environ.get("OPENALEX_API_KEY"),
@@ -247,13 +246,9 @@ def _live_web(exp: Experiment, only_sets: Sequence[str] | None = None) -> bool:
     return False
 
 
-def _browser_probe(cdp_url: str) -> Callable[[str | None], Awaitable[SearxHealth]]:
-    """The per-cell web check when the arms search through a browser."""
-
-    async def probe(_searxng_url: str | None) -> SearxHealth:
-        return await require_browser(cdp_url)
-
-    return probe
+async def _browser_probe(_searxng_url: str | None) -> SearxHealth:
+    """The per-cell web check when the arms search through the browser."""
+    return await require_browser()
 
 
 async def _cmd_experiment_run(args: argparse.Namespace) -> int:
@@ -268,11 +263,9 @@ async def _cmd_experiment_run(args: argparse.Namespace) -> int:
 async def _experiment_run(args: argparse.Namespace, cache: ResearchStore | None) -> int:
     exp = load_experiment(args.file)
     if _live_web(exp, args.only_sets):
-        if args.browser_cdp_url:
-            health = await require_browser(args.browser_cdp_url)
-            print(
-                f"web search through {health.detail} at {health.url}", file=sys.stderr
-            )
+        if args.browser:
+            health = await require_browser()
+            print(f"web search through the {health.detail}", file=sys.stderr)
         else:
             health = await require_searxng(args.searxng_url)
             print(health.explain(), file=sys.stderr)
@@ -281,13 +274,9 @@ async def _experiment_run(args: argparse.Namespace, cache: ResearchStore | None)
             args.searxng_url,
             args.pdf_extraction,
             keyless=exp.keyless,
-            browser_cdp_url=args.browser_cdp_url,
+            browser=args.browser,
         ),
-        check_searxng=(
-            _browser_probe(args.browser_cdp_url)
-            if args.browser_cdp_url
-            else require_searxng
-        ),
+        check_searxng=_browser_probe if args.browser else require_searxng,
         http_cache=cache,
         keyless=exp.keyless,
         grader=(AnswerGrader(model=exp.grader) if exp.grader is not None else None),
