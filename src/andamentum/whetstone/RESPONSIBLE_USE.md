@@ -179,10 +179,12 @@ customXml provenance part are still written. Override with
 issues search queries derived from them. The v3 novelty pipeline
 deliberately does NOT persist a per-claim cache to disk — hashed
 digests of unpublished claims should not sit on your filesystem
-between runs. Repeated runs re-query deep_research.
+between runs unless you pass `--novelty-store PATH`, which keeps the works and
+passages found, never your claim text. Repeated runs re-query deep_research.
 
 **The search queries themselves leave your machine** through
-deep_research → your local SearXNG → public search engines. Treat
+deep_research → the scholarly sources (OpenAlex, Europe PMC, arXiv, Semantic
+Scholar). The review model also reads the works found and sees your claim. Treat
 `--check-novelty` as a network-leak surface; do not run it on
 someone else's unpublished work.
 

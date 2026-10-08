@@ -273,25 +273,20 @@ async def test_run_novelty_searches_helper_isolates_per_target_failures() -> Non
         ),
     ]
 
-    @dataclass
-    class _StubReport:
-        is_novel: bool = False
-        confidence: float = 0.8
-        assessment: str = "found prior work"
-        similar_work: tuple = ()
-        sources: tuple = ()
-        search_queries_used: tuple = ()
+    from andamentum.deep_research.v2.novelty import NoveltyReport
 
     call_count = [0]
 
-    async def _stub_run_novelty_check(*, claim, model, search_depth, verbose):
+    async def _stub_run_novelty_check(claim, **_kw):
         call_count[0] += 1
         if call_count[0] == 1:
             raise RuntimeError("simulated deep_research crash")
-        return _StubReport()
+        return NoveltyReport(
+            claim=claim, is_novel=False, confidence=0.8, assessment="found prior work"
+        )
 
     with patch(
-        "andamentum.deep_research.run_novelty_check",
+        "andamentum.deep_research.v2.run_novelty_check_v2",
         new=_stub_run_novelty_check,
     ):
         evidence = await run_novelty_searches(

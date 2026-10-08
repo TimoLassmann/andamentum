@@ -1,4 +1,4 @@
-"""The novelty check on deep_research v2: the opt-in path of ``run_novelty_searches``.
+"""The novelty check on deep_research v2: ``run_novelty_searches``.
 
 ``run_novelty_check_v2`` is stubbed at the package boundary; its own behaviour
 is tested in ``deep_research/v2/tests/test_novelty.py``.
@@ -7,16 +7,16 @@ is tested in ``deep_research/v2/tests/test_novelty.py``.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from andamentum.deep_research.novelty.models import (
+from andamentum.deep_research.v2 import NoveltyResearch, ResearchStore
+from andamentum.deep_research.v2.novelty import (
     NoveltyReport,
     Relevance,
     SimilarWork,
 )
-from andamentum.deep_research.v2 import NoveltyResearch, ResearchStore
 from andamentum.whetstone.v3.graph import (
     JudgeNovelty,
     RunNoveltySearches,
@@ -46,14 +46,15 @@ class _Ctx:
 
 
 def _setup(**kw) -> NoveltyResearch:
-    return NoveltyResearch(decision_model=Mock(), **kw)
+    return NoveltyResearch(**kw)
 
 
 async def test_the_v2_path_runs_every_target_in_order_over_one_store() -> None:
     seen: list[tuple[str, object, object]] = []
 
-    async def stub(claim, *, model, decision_model, store, sources, budget, **_kw):
+    async def stub(claim, *, model, store, sources, budget, **_kw):
         seen.append((claim, store, budget.max_rounds))
+        assert model == "stub"  # the review's own model judges
         return NoveltyReport(
             claim=claim,
             is_novel=False,
@@ -149,22 +150,21 @@ async def test_a_store_path_is_opened_and_kept(tmp_path) -> None:
     assert path.exists()
 
 
-async def test_the_legacy_path_is_unchanged_without_research() -> None:
-    legacy = AsyncMock(
-        return_value=NoveltyReport(
-            claim="c", is_novel=True, confidence=0.5, assessment="x"
-        )
-    )
-    v2 = AsyncMock(side_effect=AssertionError("v2 must not run"))
-    with (
-        patch("andamentum.deep_research.run_novelty_check", new=legacy),
-        patch("andamentum.deep_research.v2.run_novelty_check_v2", new=v2),
-    ):
+async def test_without_a_setup_the_defaults_run_in_memory() -> None:
+    seen: list[object] = []
+
+    async def stub(claim, *, store, sources, budget, **_kw):
+        seen.append((store, sources, budget.max_rounds))
+        return NoveltyReport(claim=claim, is_novel=True, confidence=0.8, assessment="")
+
+    with patch("andamentum.deep_research.v2.run_novelty_check_v2", new=stub):
         evidence = await run_novelty_searches(
             [_target(1)], agent_model="stub", search_depth=2
         )
     assert evidence[0].is_novel is True
-    legacy.assert_awaited_once()
+    store, sources, rounds = seen[0]  # type: ignore[misc]
+    assert isinstance(store, ResearchStore)
+    assert sources == NoveltyResearch().sources and rounds == 2
 
 
 async def test_the_node_hands_the_setup_to_the_search() -> None:
@@ -178,6 +178,14 @@ async def test_the_node_hands_the_setup_to_the_search() -> None:
         result = await RunNoveltySearches().run(_Ctx(state, deps))  # type: ignore[arg-type]
     assert isinstance(result, JudgeNovelty)
     assert search.call_args.kwargs["research"] is setup
+
+
+async def test_the_search_asks_nothing_of_a_decision_model() -> None:
+    """The check needs the review's model alone: no decision model anywhere."""
+    import inspect
+
+    assert "decision_model" not in inspect.signature(run_novelty_searches).parameters
+    assert not hasattr(NoveltyResearch(), "decision_model")
 
 
 async def test_a_setup_without_check_novelty_is_refused() -> None:

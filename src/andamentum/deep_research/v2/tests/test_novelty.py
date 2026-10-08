@@ -1,7 +1,7 @@
 """The v2 novelty check, offline: the verdict comes from judged findings, never a guess.
 
 ``research`` is replaced by a fake returning a hand-built result, so no engine,
-network or language model is involved; the decision model is a stub server.
+network or search is involved; the language model is a scripted stand-in.
 """
 
 from __future__ import annotations
@@ -10,12 +10,11 @@ from typing import Any
 
 import pytest
 
-from andamentum.core.decisions import DecisionModel
-from andamentum.core.decisions.errors import DecisionError
+from pydantic_ai.exceptions import AgentRunError
+
 from andamentum.references import Work
 
 from .. import novelty
-from ..ask import Asker
 from ..novelty import (
     ANTICIPATES_AT,
     MIN_WORKS_ASSESSED,
@@ -199,7 +198,7 @@ def test_novel_needs_every_finding_judged() -> None:
     result = _result(claims={0: "a"})
     report = _verdict(result, _scored(result, 0.1), cut_short=True)
     assert report.is_novel is None
-    assert "decision budget ran out" in report.assessment
+    assert "call budget ran out" in report.assessment
 
 
 def test_works_read_counts_distinct_works_with_a_passage_not_retracted() -> None:
@@ -220,42 +219,49 @@ def test_unverified_quotes_are_mentioned() -> None:
     assert "1 of the 2 judged finding(s)" in anticipated.assessment
 
 
-# -- scoring with a stub decision model ---------------------------------------------
+# -- scoring with a scripted language model -------------------------------------------
 
 
-def _by_finding_text(state: object, instructions: str) -> float:
-    assert isinstance(state, dict)
-    anticipates = instructions.startswith("The finding reports the same")
-    if anticipates:
-        return 0.9 if ANTICIPATING in str(state["finding"]) else 0.1
-    return 0.7 if "latency" in str(state["finding"]) else 0.1
+def _judge(anticipates: float, related: float | None = None) -> llm_stub.LLMRespond:
+    def respond(instructions: str, message: str) -> dict[str, object]:
+        return {
+            "anticipates": anticipates,
+            "related": anticipates if related is None else related,
+        }
+
+    return respond
 
 
-async def test_scoring_judges_each_finding_by_its_text_one_request_each() -> None:
+def _by_finding_text(instructions: str, message: str) -> dict[str, object]:
+    finding = message.split("FINDING:", 1)[1].split("QUOTE:", 1)[0]
+    anticipates = ANTICIPATING in finding
+    return {
+        "anticipates": 0.9 if anticipates else 0.1,
+        "related": 0.7 if "latency" in finding else 0.1,
+    }
+
+
+async def test_scoring_judges_each_finding_by_its_text_one_call_each() -> None:
     result = _result(
         claims={
             0: f"The Apollo cache {ANTICIPATING}.",
             1: "SaltLog rotates its files daily.",
         }
     )
-    handle, stub = llm_stub.decisions(_by_finding_text)
-    store = ResearchStore.in_memory()
-    asker = llm_stub.make_asker(decision_model=handle, store=store)
+    llm = llm_stub.ScriptedLLM(_by_finding_text)
+    asker = llm_stub.make_asker(model=llm)
     scored, cut_short = await novelty._score(asker, CLAIM, result)
     assert cut_short is False
-    assert len(stub.calls) == 2  # one request per finding, both questions in it
-    assert all(set(q) == {"anticipates", "related"} for _, q in stub.calls)
+    assert len(llm.calls) == 2  # one call per finding, both questions in it
     assert [round(s.anticipates, 1) for s in scored] == [0.9, 0.1]
     assert [round(s.related, 1) for s in scored] == [0.7, 0.1]
-    # the state names the claim under review, the finding, its quote, title and year
-    first = stub.calls[0][0]
-    assert isinstance(first, dict)
-    assert first["claim_under_review"] == CLAIM
-    assert first["quote"] == result.findings[0].quote
-    assert first["work"] == "Work 0"
-    assert first["year"] == 2020
-    # logged under the step 'novelty'
-    assert store.decisions(asker.run_id, novelty.STEP)
+    # the message names the claim under review, the finding, its quote, title and year
+    message = llm.calls[0][1]
+    assert CLAIM in message
+    assert result.findings[0].quote in message
+    assert "Work 0 (2020)" in message
+    assert asker.stats.llm_calls == 2
+    assert asker.stats.step_llm_calls == {novelty.STEP: 2}
 
 
 async def test_retracted_works_are_never_evidence() -> None:
@@ -263,11 +269,11 @@ async def test_retracted_works_are_never_evidence() -> None:
         claims={0: f"Prior: {ANTICIPATING}.", 1: "Unrelated."}, retracted={0}
     )
     # a finding of the retracted work is still in the table (hand-built)
-    handle, stub = llm_stub.decisions(_by_finding_text)
-    asker = llm_stub.make_asker(decision_model=handle)
+    llm = llm_stub.ScriptedLLM(_by_finding_text)
+    asker = llm_stub.make_asker(model=llm)
     scored, _ = await novelty._score(asker, CLAIM, result)
     assert [s.finding.work_id for s in scored] == ["w1"]
-    assert len(stub.calls) == 1
+    assert len(llm.calls) == 1
     report = _verdict(result, scored)
     assert report.is_novel is True
 
@@ -276,21 +282,19 @@ async def test_a_work_marked_retracted_but_left_in_works_is_not_evidence() -> No
     result = _result(claims={0: f"Prior: {ANTICIPATING}."})
     retracted = result.works[0].model_copy(update={"retracted": "retracted"})
     result = result.model_copy(update={"works": [retracted, *result.works[1:]]})
-    handle, _ = llm_stub.decisions(_by_finding_text)
-    asker = llm_stub.make_asker(decision_model=handle)
+    asker = llm_stub.make_asker(model=llm_stub.ScriptedLLM(_by_finding_text))
     scored, _ = await novelty._score(asker, CLAIM, result)
     assert scored == []
 
 
-async def test_a_spent_decision_budget_cuts_scoring_short() -> None:
+async def test_a_spent_call_budget_cuts_scoring_short() -> None:
     result = _result(claims={0: "a", 1: "b", 2: "c"})
-    handle, _ = llm_stub.decisions(lambda s, i: 0.1)
     asker = llm_stub.make_asker(
-        decision_model=handle, budget=Budget(max_decision_calls=2)
+        model=llm_stub.ScriptedLLM(_judge(0.1)), budget=Budget(max_llm_calls=2)
     )
     scored, cut_short = await novelty._score(asker, CLAIM, result)
     assert cut_short is True
-    assert len(scored) < 3
+    assert len(scored) == 2
     assert _verdict(result, scored, cut_short=True).is_novel is None
 
 
@@ -318,32 +322,33 @@ def _patch(monkeypatch: pytest.MonkeyPatch, result: ResearchResult) -> FakeResea
     return fake
 
 
-async def test_the_check_calls_research_in_scholarly_mode_without_a_decision_model(
+def _scripted(respond: llm_stub.LLMRespond) -> llm_stub.ScriptedLLM:
+    return llm_stub.ScriptedLLM(respond)
+
+
+async def test_the_check_calls_research_in_scholarly_mode_and_judges_with_the_same_model(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     fake = _patch(monkeypatch, _result(claims={0: f"Prior: {ANTICIPATING}.", 1: "x"}))
-    handle, stub = llm_stub.decisions(_by_finding_text)
+    llm = _scripted(_by_finding_text)
     budget = Budget(max_rounds=5)
-    report = await run_novelty_check_v2(
-        CLAIM, model="test", decision_model=handle, budget=budget
-    )
+    report = await run_novelty_check_v2(CLAIM, model=llm.model, budget=budget)
     assert len(fake.calls) == 1
     question, kwargs = fake.calls[0]
     assert CLAIM in question
     assert kwargs["mode"] == "scholarly"
-    assert "decision_model" not in kwargs
+    assert kwargs["model"] is llm.model
     assert kwargs["budget"].max_rounds == 5
     assert report.is_novel is False
     assert report.search_queries_used == ["apollo cache latency"]
-    assert len(stub.calls) == 2  # one request per finding
+    assert len(llm.calls) == 2  # one judging call per finding, the same model
 
 
 async def test_nothing_anticipating_after_a_healthy_search_is_novel(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _patch(monkeypatch, _result(claims={0: "SaltLog rotates files.", 1: "More."}))
-    handle, _ = llm_stub.decisions(lambda s, i: 0.1)
-    report = await run_novelty_check_v2(CLAIM, model="test", decision_model=handle)
+    report = await run_novelty_check_v2(CLAIM, model=_scripted(_judge(0.1)).model)
     assert report.is_novel is True
     assert report.confidence == pytest.approx(0.9)
     assert ANTICIPATES_AT > 0.1
@@ -353,38 +358,31 @@ async def test_a_degraded_search_is_undetermined(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _patch(monkeypatch, _result(claims={0: "a"}, degraded=["openalex: http 500"]))
-    handle, _ = llm_stub.decisions(lambda s, i: 0.1)
-    report = await run_novelty_check_v2(CLAIM, model="test", decision_model=handle)
+    report = await run_novelty_check_v2(CLAIM, model=_scripted(_judge(0.1)).model)
     assert report.is_novel is None
 
 
-async def test_a_decision_model_failure_is_undetermined(
+async def test_a_language_model_failure_while_judging_is_undetermined(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _patch(monkeypatch, _result(claims={0: "a"}))
-    real = Asker.decide
 
-    async def failing(self: Asker, step: str, **kwargs: Any):
-        if step == novelty.STEP:
-            raise DecisionError("the model is down")
-        return await real(self, step, **kwargs)
+    def failing(instructions: str, message: str) -> dict[str, object]:
+        raise AgentRunError("the model is down")
 
-    monkeypatch.setattr(Asker, "decide", failing)
-    handle, _ = llm_stub.decisions(lambda s, i: 0.9)
-    report = await run_novelty_check_v2(CLAIM, model="test", decision_model=handle)
+    report = await run_novelty_check_v2(CLAIM, model=_scripted(failing).model)
     assert report.is_novel is None
-    assert "the model is down" in report.assessment
+    assert "judgement of the findings failed" in report.assessment
 
 
 async def test_a_language_model_failure_in_the_search_is_undetermined(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     async def failing(question: str, **kwargs: Any) -> ResearchResult:
-        raise DecisionError("no model")
+        raise AgentRunError("no model")
 
     monkeypatch.setattr(novelty, "research", failing)
-    handle, _ = llm_stub.decisions(lambda s, i: 0.9)
-    report = await run_novelty_check_v2(CLAIM, model="test", decision_model=handle)
+    report = await run_novelty_check_v2(CLAIM, model=_scripted(_judge(0.9)).model)
     assert report.is_novel is None
 
 
@@ -395,59 +393,17 @@ async def test_another_error_in_the_search_raises(
         raise RuntimeError("bug")
 
     monkeypatch.setattr(novelty, "research", failing)
-    handle, _ = llm_stub.decisions(lambda s, i: 0.9)
     with pytest.raises(RuntimeError, match="bug"):
-        await run_novelty_check_v2(CLAIM, model="test", decision_model=handle)
-
-
-async def test_a_decision_model_given_by_name_is_opened_and_closed(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _patch(monkeypatch, _result(claims={0: "a"}))
-    handle, _ = llm_stub.decisions(lambda s, i: 0.1)
-    closed: list[bool] = []
-    real_close = handle.aclose
-
-    async def close() -> None:
-        closed.append(True)
-        await real_close()
-
-    opened: list[str] = []
-
-    async def fake_open(name: str, **_kw: Any) -> DecisionModel:
-        opened.append(name)
-        return handle
-
-    monkeypatch.setattr(handle, "aclose", close)
-    monkeypatch.setattr(DecisionModel, "open", staticmethod(fake_open))
-    await run_novelty_check_v2(CLAIM, model="test", decision_model="stub:1b")
-    assert opened == ["stub:1b"]
-    assert closed == [True]
-
-
-async def test_a_handle_is_left_open(monkeypatch: pytest.MonkeyPatch) -> None:
-    _patch(monkeypatch, _result(claims={0: "a"}))
-    handle, _ = llm_stub.decisions(lambda s, i: 0.1)
-    closed: list[bool] = []
-
-    async def close() -> None:
-        closed.append(True)
-
-    monkeypatch.setattr(handle, "aclose", close)
-    await run_novelty_check_v2(CLAIM, model="test", decision_model=handle)
-    assert closed == []
+        await run_novelty_check_v2(CLAIM, model=_scripted(_judge(0.9)).model)
 
 
 async def test_an_open_store_is_left_open(monkeypatch: pytest.MonkeyPatch) -> None:
     _patch(monkeypatch, _result(claims={0: "a"}))
-    handle, _ = llm_stub.decisions(lambda s, i: 0.1)
     store = ResearchStore.in_memory()
-    await run_novelty_check_v2(CLAIM, model="test", decision_model=handle, store=store)
-    run_id = store.list_runs()[0].run_id
-    assert store.decisions(run_id, novelty.STEP)  # usable, with the audit trail
+    await run_novelty_check_v2(CLAIM, model=_scripted(_judge(0.1)).model, store=store)
+    assert store.list_runs()  # still usable after the check
 
 
 async def test_an_empty_claim_is_refused() -> None:
-    handle, _ = llm_stub.decisions(lambda s, i: 0.1)
     with pytest.raises(ValueError, match="empty"):
-        await run_novelty_check_v2("  ", model="m", decision_model=handle)
+        await run_novelty_check_v2("  ", model="m")

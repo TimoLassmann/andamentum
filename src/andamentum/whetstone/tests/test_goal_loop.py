@@ -410,18 +410,16 @@ async def test_a_document_whose_citation_style_cannot_be_told_is_unresolvable(
     assert result.rounds == []
 
 
-async def test_the_v2_novelty_setup_reaches_the_first_round_only(
+async def test_the_novelty_setup_reaches_the_first_round_only(
     tmp_path: Path,
 ) -> None:
     """Novelty is checked once, in round 1 (the claims do not change between
     rounds), so the setup is handed to that round's review and no other."""
-    from unittest.mock import Mock
-
     from andamentum.deep_research.v2 import NoveltyResearch
     from andamentum.whetstone.v3.graph import review_document_v3
 
     document = await _open(tmp_path)
-    setup = NoveltyResearch(decision_model=Mock())
+    setup = NoveltyResearch()
     rounds = [
         {"findings": [("major", "x")], "edit": ("earns its place", "earns its keep")},
         {"findings": [("major", "x")], "edit": ("earns its keep", "earns its salt")},

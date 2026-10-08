@@ -229,7 +229,6 @@ _REVIEW_ONLY_FLAGS: tuple[tuple[str, str, object], ...] = (
     ("editor_criteria", "--editor-criteria", None),
     ("check_novelty", "--check-novelty", False),
     ("novelty_search_depth", "--novelty-search-depth", _DEFAULT_NOVELTY_SEARCH_DEPTH),
-    ("novelty_engine", "--novelty-engine", "web"),
     ("novelty_store", "--novelty-store", None),
     ("rounds", "--rounds", _DEFAULT_ROUNDS),
 )
@@ -302,8 +301,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help=(
             "A local Ollama decision model (e.g. nimble:9b) that answers the "
             "document-type question under --document-type auto instead of "
-            "the LLM classifier, and judges the passages under "
-            "--novelty-engine v2. Review and checklist. Off by default."
+            "the LLM classifier. Review and checklist. Off by default."
         ),
     )
     # Shared by review and checklist for the same reason --document-type is:
@@ -477,13 +475,15 @@ def _build_parser() -> argparse.ArgumentParser:
         "--check-novelty",
         action="store_true",
         help="VERIFY the novelty claims against the literature, by searching "
-        "the web. Every review already LISTS what the draft claims as new — "
+        "the scholarly sources (OpenAlex, Europe PMC, arXiv) and judging what "
+        "they report with the review model; a claim the search cannot settle "
+        "is reported as not assessed, never guessed. Every review already LISTS what the draft claims as new — "
         "that costs one call to the model already reading your draft and "
         "discloses nothing further. This flag takes those sentences and sends "
         "them to a search engine, so it is off by default: an unpublished "
         "manuscript should not reach a third party without you deciding it "
-        "should. Adds one search + one judge call per claim found, over at "
-        "most 8 claims. With a list of reviewers this runs once, before the "
+        "should. Adds one search and one judge call per finding read, for each "
+        "claim found, over at most 8 claims. With a list of reviewers this runs once, before the "
         "second reviewer starts — never once per reviewer.",
     )
     review_grp.add_argument(
@@ -491,29 +491,16 @@ def _build_parser() -> argparse.ArgumentParser:
         type=int,
         default=_DEFAULT_NOVELTY_SEARCH_DEPTH,
         metavar="N",
-        help="Search depth for --check-novelty (1=quick, 2=balanced, "
-        "3=thorough). With --novelty-engine v2 it is the number of search "
-        "rounds. Default: 2.",
-    )
-    review_grp.add_argument(
-        "--novelty-engine",
-        choices=("web", "v2"),
-        default="web",
-        help="What --check-novelty searches with. web (default): the legacy "
-        "web-search pipeline, judged by the language model. v2: the "
-        "scholarly sources (OpenAlex, Europe PMC, arXiv), every passage read "
-        "judged by the local decision model (needs --decision-model); a "
-        "claim the search cannot settle is reported as not assessed, never "
-        "guessed. The sources get the same claim sentences the web engine "
-        "would send.",
+        help="Search depth for --check-novelty: the number of search "
+        "rounds per claim (1=quick, 2=balanced, 3=thorough). Default: 2.",
     )
     review_grp.add_argument(
         "--novelty-store",
         type=Path,
         default=None,
         metavar="PATH",
-        help="With --novelty-engine v2: a research store file (SQLite) that "
-        "keeps the works, passages and answers between runs, so a second "
+        help="With --check-novelty: a research store file (SQLite) that "
+        "keeps the works and passages between runs, so a second "
         "review of the same draft re-reads nothing. Default: in memory, "
         "nothing is kept. No default location is used.",
     )
@@ -782,7 +769,7 @@ def _validate_decision_args(args: argparse.Namespace) -> None:
             "--decision-model has no effect under `panel`, which asks no "
             "document-type question. It applies to review and checklist.",
         )
-    if args.document_type != "auto" and getattr(args, "novelty_engine", "web") != "v2":
+    if args.document_type != "auto":
         _die(
             1,
             "--decision-model answers the document-type question, which "
@@ -791,27 +778,9 @@ def _validate_decision_args(args: argparse.Namespace) -> None:
 
 
 def _validate_novelty_args(args: argparse.Namespace) -> None:
-    """Refuse the v2 novelty flags that would be ignored or cannot run, naming them."""
-    engine = getattr(args, "novelty_engine", "web")
-    store = getattr(args, "novelty_store", None)
-    if engine != "v2":
-        if store is not None:
-            _die(1, "--novelty-store needs --novelty-engine v2.")
-        return
-    if args.mode == "panel":
-        _die(1, "--novelty-engine v2 has no effect under `panel`.")
-    if not args.check_novelty:
-        _die(
-            1,
-            "--novelty-engine v2 chooses how --check-novelty searches; "
-            "pass --check-novelty too, or drop it.",
-        )
-    if args.decision_model is None:
-        _die(
-            1,
-            "--novelty-engine v2 needs --decision-model: the passages are "
-            "judged by the local decision model, and no other judge stands in.",
-        )
+    """Refuse --novelty-store without --check-novelty, which would ignore it."""
+    if getattr(args, "novelty_store", None) is not None and not args.check_novelty:
+        _die(1, "--novelty-store needs --check-novelty.")
 
 
 def _default_reviewer_name() -> str:
@@ -1517,21 +1486,17 @@ async def _run(args: argparse.Namespace, console: Console) -> None:
             await decision_model.aclose()
 
 
-def _novelty_research(
-    args: argparse.Namespace, decision_model: DecisionModel | None
-) -> NoveltyResearch | None:
-    """The v2 novelty setup for ``--novelty-engine v2``, else None.
+def _novelty_research(args: argparse.Namespace) -> NoveltyResearch | None:
+    """The novelty-check setup for ``--check-novelty``, else None.
 
     Credentials for the scholarly sources come from the environment (loaded
     from .env in ``main``); they are never flags.
     """
-    if getattr(args, "novelty_engine", "web") != "v2":
+    if not args.check_novelty:
         return None
-    assert decision_model is not None  # _validate_novelty_args
     from andamentum.deep_research.v2 import NoveltyResearch, SourceConfig
 
     return NoveltyResearch(
-        decision_model=decision_model,
         sources=SourceConfig(
             mailto=os.environ.get("OPENALEX_EMAIL") or None,
             openalex_api_key=os.environ.get("OPENALEX_API_KEY") or None,
@@ -1553,7 +1518,7 @@ async def _review_and_write(
     *decision_model* is the opened ``--decision-model`` handle (the caller
     closes it), or None.
     """
-    novelty_research = _novelty_research(args, decision_model)
+    novelty_research = _novelty_research(args)
     from .renderers import render_docx, render_html, render_markdown
     from .v3 import Criterion, review_document_v3
     from .v3.checklist import checklist_document_v3
