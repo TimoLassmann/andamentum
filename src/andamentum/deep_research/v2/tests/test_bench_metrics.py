@@ -6,13 +6,10 @@ import pytest
 
 from andamentum.deep_research.v2.bench.metrics import (
     Cost,
-    claim_support,
     extract_urls,
     mean_or_none,
     retrieval_score,
-    screening_score,
     total_cost,
-    url_integrity,
     work_matches,
 )
 from andamentum.references import Work
@@ -78,77 +75,7 @@ def test_a_query_without_gold_is_refused() -> None:
         retrieval_score([Work(title="A paper about kilns and salt")], [])
 
 
-# -- screening -----------------------------------------------------------------
-
-
-def test_work_saved_reads_the_ranking_until_95_percent_of_included_are_found() -> None:
-    score = screening_score(
-        scores=[0.9, 0.8, 0.7, 0.1, 0.1, 0.1],
-        kept=[True, True, True, False, False, False],
-        included=[True, False, True, False, False, False],
-    )
-    assert score.n_read_at_target == 3  # both included found after 3 reads
-    assert score.work_saved_at_95 == pytest.approx(0.5)
-    assert score.wss_at_95 == pytest.approx(0.45)
-    assert score.kept_recall == 1.0
-    assert score.kept_precision == pytest.approx(2 / 3)
-    assert score.work_saved_kept == pytest.approx(0.5)
-
-
-def test_tied_scores_are_read_together_never_in_the_arms_favour() -> None:
-    score = screening_score(
-        scores=[0.5, 0.5, 0.5, 0.1],
-        kept=[True, True, True, False],
-        included=[True, False, False, False],
-    )
-    assert score.n_read_at_target == 3
-    assert score.work_saved_at_95 == pytest.approx(0.25)
-
-
-def test_all_scores_equal_saves_no_work() -> None:
-    score = screening_score(
-        scores=[0.4] * 5, kept=[True] * 5, included=[True, False, False, False, False]
-    )
-    assert score.work_saved_at_95 == 0.0
-
-
-def test_the_95_percent_target_rounds_up() -> None:
-    included = [True] * 20 + [False] * 80
-    scores = [1.0 - i / 100 for i in range(100)]
-    score = screening_score(scores, kept=[True] * 100, included=included)
-    assert score.n_read_at_target == 19  # ceil(0.95 * 20)
-
-
-def test_an_arm_that_keeps_nothing_has_no_precision() -> None:
-    score = screening_score(
-        scores=[0.1, 0.2], kept=[False, False], included=[True, False]
-    )
-    assert score.kept_recall == 0.0
-    assert score.kept_precision is None
-
-
-def test_screening_needs_an_included_record_and_equal_lengths() -> None:
-    with pytest.raises(ValueError, match="no included"):
-        screening_score([0.1], [True], [False])
-    with pytest.raises(ValueError, match="same length"):
-        screening_score([0.1, 0.2], [True], [True, False])
-
-
-# -- claim support, links, cost ------------------------------------------------------
-
-
-def test_claim_support_precision_excludes_unsourced_claims() -> None:
-    result = claim_support([True, True, False], n_unsourced=2)
-    assert result.precision == pytest.approx(2 / 3)
-    assert result.n_unsourced == 2
-    assert claim_support([], n_unsourced=3).precision is None
-
-
-def test_url_integrity_leaves_unverified_links_out_of_the_ratio() -> None:
-    result = url_integrity(["ok", "ok", "not_found", "client_error", "timeout"])
-    assert (result.ok, result.dead, result.unverified) == (2, 1, 2)
-    assert result.integrity == pytest.approx(2 / 3)
-    assert url_integrity(["timeout"]).integrity is None
+# -- links and cost ------------------------------------------------------------------
 
 
 def test_extract_urls_trims_punctuation_and_reads_bare_dois() -> None:

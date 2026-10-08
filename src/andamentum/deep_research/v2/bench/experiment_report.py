@@ -1,4 +1,4 @@
-"""The experiment report: tables, paired differences, stability, verdicts.
+"""The experiment report: tables, paired differences, cost, verdicts.
 
 ``build_report`` reads the registry of one experiment and writes markdown. It
 computes, and decides nothing the experiment file did not register:
@@ -7,24 +7,18 @@ computes, and decides nothing the experiment file did not register:
   repeats);
 - paired differences against the set's baseline arm, 95% bootstrap intervals
   over items (``stats.paired_bootstrap_ci``);
-- repeat stability per arm (``stability.py``): kept- and cited-set Jaccard,
-  rank correlation, findings reproduced, answer agreement, spread, and for live
-  arms the overlap of the plan;
-- the planted-source outcomes per arm;
 - cost, and where a run's time and model requests went, step by step
   (``RunStats.step_*`` of every v2 run);
 - how many runs failed, and how many of those met a search outage;
 - the clean-timing (solo) runs, reported apart from everything else;
-- when the file declares inputs profiles: the profiles and their hashes, the
-  decision answers per arm (requests plus cache hits), and, given the
-  snapshots and the LitSearch data, the search accounting and candidate pool
-  of each profile and the loss table of each arm (``pool.py``);
 - the verdict of every pre-registered rule, the outcome of each rule group and
   the pre-registered wording of what the groups decide.
 
+Where an answer was lost is not in this report: ``experiment losses`` reads the
+run logs for that (``attribution.py``).
+
 Work ids are random per store, so before any two runs are compared the ids are
-replaced by the identity key of the work (``stable_key``): the same paper found
-by two runs is the same key.
+replaced by the identity key of the work (``stable_key``).
 """
 
 from __future__ import annotations
@@ -40,17 +34,6 @@ from andamentum.references.works import normalise_title
 from ..types import STEPS, ResearchResult, RunStats
 from .experiment import ArmSpec, Experiment, Rule
 from .registry import RunRecord, StartRecord, read_records, registry_path
-from .stability import (
-    answer_agreement,
-    findings_reproduced,
-    mean_pairwise,
-    metric_spread,
-    rank_kendall_tau,
-    subquestion_overlap,
-)
-from .litsearch import load_litsearch
-from .litsearch_local import load_litsearch_local
-from .pool import TOP, PoolItem, load_pool_items, loss_section, pool_tables
 from .tables import NOTHING, fmt, table
 from .verdicts import (
     Interval,
@@ -61,24 +44,6 @@ from .verdicts import (
 )
 
 DEFAULT_REPORT_METRICS: dict[str, list[str]] = {
-    "litsearch": [
-        "recall_at_5",
-        "recall_at_10",
-        "recall_at_20",
-        "recall_at_50",
-        "found_any",
-        "kept_precision",
-        "kept_n",
-    ],
-    "litsearch-local": [
-        "recall_at_5",
-        "recall_at_10",
-        "recall_at_20",
-        "recall_at_50",
-        "found_any",
-        "kept_precision",
-        "kept_n",
-    ],
     "litsearch-web": [
         "recall_at_5",
         "recall_at_10",
@@ -88,16 +53,7 @@ DEFAULT_REPORT_METRICS: dict[str, list[str]] = {
         "kept_precision",
         "kept_n",
     ],
-    "web": ["correct", "claim_precision", "unsourced_share", "link_integrity"],
     "simpleqa": ["correct", "attempted"],
-    "web_planted": [
-        "correct",
-        "adopted_false_claim",
-        "stated_conflict",
-        "ignored_correct",
-        "good_planted_outcome",
-    ],
-    "synergy": ["kept_recall", "kept_precision", "wss_at_95", "work_saved_kept"],
 }
 COST_METRICS = (
     "wall_s",
@@ -106,24 +62,6 @@ COST_METRICS = (
     "input_tokens",
     "output_tokens",
 )
-SPREAD_METRICS: dict[str, list[str]] = {
-    "litsearch": ["recall_at_20", "kept_n"],
-    "litsearch-local": ["recall_at_20", "kept_n"],
-    "litsearch-web": ["recall_at_20", "kept_n"],
-    "web": ["correct", "claim_precision"],
-    "simpleqa": ["correct"],
-    "web_planted": ["good_planted_outcome"],
-    "synergy": ["kept_recall"],
-}
-STABILITY_PREFIX = "stability."
-PLANTED_OUTCOMES = (
-    "adopted_false_claim",
-    "stated_conflict",
-    "ignored_correct",
-    "ignored_incorrect",
-)
-
-
 # -- grouping -----------------------------------------------------------------------
 
 
@@ -191,104 +129,10 @@ def item_values(
     cells: Cells, arm: str, set_name: str, metric: str
 ) -> dict[str, float | None]:
     """One value per item: the mean of the metric over the item's repeats."""
-    if metric.startswith(STABILITY_PREFIX):
-        return stability_values(cells, arm, set_name)[
-            metric.removeprefix(STABILITY_PREFIX)
-        ]
     return {
         item: _mean([r.metrics.get(metric) for r in cells.repeats(arm, set_name, item)])
         for item in cells.items(arm, set_name)
     }
-
-
-# -- stability ----------------------------------------------------------------------
-
-STABILITY_NAMES = (
-    "kept_jaccard",
-    "cited_jaccard",
-    "rank_tau",
-    "findings_reproduced",
-    "answer_agreement",
-    "subquestion_overlap",
-)
-
-
-def _kept_keys(record: RunRecord) -> list[str]:
-    if record.output is None:
-        return []
-    return [stable_key(w) for w in record.output.works]
-
-
-def _cited_keys(record: RunRecord) -> list[str]:
-    output = record.output
-    if output is None:
-        return []
-    if output.result is not None:
-        return canonicalise(output.result).cited_work_ids()
-    return list(output.urls)
-
-
-def _plan(record: RunRecord) -> list[str]:
-    if record.output is None or record.output.result is None:
-        return []
-    return [s.text for s in record.output.result.subquestions]
-
-
-def item_stability(
-    records: Sequence[RunRecord], *, live: bool
-) -> dict[str, float | None]:
-    """The repeat measures of one item (a frozen or live arm's runs of it)."""
-    ok = [r for r in records if r.output is not None and not r.error]
-    out: dict[str, float | None] = dict.fromkeys(STABILITY_NAMES)
-    if len(ok) < 2:
-        return out
-    out["kept_jaccard"] = mean_pairwise([set(_kept_keys(r)) for r in ok])
-    out["cited_jaccard"] = mean_pairwise([set(_cited_keys(r)) for r in ok])
-    taus = [
-        t
-        for i, a in enumerate(ok)
-        for b in ok[i + 1 :]
-        if (t := rank_kendall_tau(_kept_keys(a), _kept_keys(b))) is not None
-    ]
-    out["rank_tau"] = _mean(taus)
-    results = [
-        canonicalise(r.output.result)
-        for r in ok
-        if r.output and r.output.result is not None
-    ]
-    if len(results) == len(ok):
-        reproduced = [
-            v
-            for i, a in enumerate(results)
-            for j, b in enumerate(results)
-            if i != j and (v := findings_reproduced(a.findings, b.findings)) is not None
-        ]
-        out["findings_reproduced"] = _mean(reproduced)
-    verdicts = [r.metrics.get("correct") for r in ok]
-    if all(v is not None for v in verdicts):
-        out["answer_agreement"] = answer_agreement([bool(v) for v in verdicts])
-    if live:
-        plans = [_plan(r) for r in ok]
-        if all(plans):
-            pair = [
-                subquestion_overlap(a, b)
-                for i, a in enumerate(plans)
-                for b in plans[i + 1 :]
-            ]
-            out["subquestion_overlap"] = _mean(pair)
-    return out
-
-
-def stability_values(
-    cells: Cells, arm: str, set_name: str
-) -> dict[str, dict[str, float | None]]:
-    """For each stability measure, its value per item."""
-    live = not any(r.frozen for r in cells.runs if r.arm == arm)
-    per_item = {
-        item: item_stability(cells.repeats(arm, set_name, item), live=live)
-        for item in cells.items(arm, set_name)
-    }
-    return {name: {i: v[name] for i, v in per_item.items()} for name in STABILITY_NAMES}
 
 
 # -- formatting ---------------------------------------------------------------------
@@ -301,10 +145,7 @@ def fmt_interval(interval: Interval | None) -> str:
 
 
 def _metrics_for(exp: Experiment, set_name: str) -> list[str]:
-    metrics = exp.report_metrics.get(set_name) or DEFAULT_REPORT_METRICS[set_name]
-    if exp.inputs and set_name == "litsearch" and not exp.report_metrics.get(set_name):
-        return [*metrics, "inputs_failed_search_share"]
-    return metrics
+    return exp.report_metrics.get(set_name) or DEFAULT_REPORT_METRICS[set_name]
 
 
 # -- sections -----------------------------------------------------------------------
@@ -322,42 +163,20 @@ def rule_values(cells: Cells, arm: str, rule: Rule) -> dict[str, float | None]:
     }
 
 
-def _arms_section(exp: Experiment, start: StartRecord | None) -> str:
-    recorded = {a.name: a for a in start.arms} if start else {}
+def _arms_section(exp: Experiment) -> str:
     rows = []
     for arm in exp.arms:
-        info = recorded.get(arm.name)
         rows.append(
             [
                 arm.name,
                 arm.system,
-                arm.preset or arm.screen or "-",
-                (info.config_hash or "-")[:12] if info else "-",
-                arm.model or "-",
-                (
-                    f"{info.decision_model or '-'} ({(info.decision_digest or 'no digest')[:12]})"
-                    if info
-                    else arm.decision_model or "-"
-                ),
-                ("frozen" if arm.is_frozen else "live")
-                + (f", solo: first {arm.solo} items of each set" if arm.is_solo else "")
+                arm.model,
+                ("solo: first %d items of each set" % arm.solo if arm.is_solo else "-")
                 + (", failed outage cells recorded" if arm.outage == "record" else ""),
                 str(exp.repeats_of(arm)),
             ]
         )
-    return table(
-        [
-            "arm",
-            "system",
-            "preset / screen",
-            "config hash",
-            "model",
-            "decision model (digest)",
-            "inputs",
-            "repeats",
-        ],
-        rows,
-    )
+    return table(["arm", "system", "model", "timing", "repeats"], rows)
 
 
 def _means_section(exp: Experiment, cells: Cells, set_name: str) -> str:
@@ -410,77 +229,6 @@ def _paired_section(exp: Experiment, cells: Cells, set_name: str) -> str:
     )
 
 
-def _stability_section(exp: Experiment, cells: Cells, set_name: str) -> str | None:
-    rows = []
-    spreads = []
-    for arm in exp.main_arms_on(set_name):
-        if exp.repeats_of(arm) < 2 or arm.system == "screening":
-            continue
-        stability = stability_values(cells, arm.name, set_name)
-        rows.append(
-            [
-                arm.name,
-                "frozen" if arm.is_frozen else "live",
-                str(exp.repeats_of(arm)),
-                *[fmt(_mean(list(stability[n].values()))) for n in STABILITY_NAMES],
-            ]
-        )
-        for metric in SPREAD_METRICS.get(set_name, []):
-            sds, ranges = [], []
-            for item in cells.items(arm.name, set_name):
-                values = [
-                    v
-                    for r in cells.repeats(arm.name, set_name, item)
-                    if (v := r.metrics.get(metric)) is not None
-                ]
-                spread = metric_spread(values)
-                if spread is not None and spread.n > 1:
-                    sds.append(spread.sd)
-                    ranges.append(spread.max - spread.min)
-            spreads.append(
-                [arm.name, metric, fmt(_mean(sds)), fmt(_mean(ranges)), str(len(sds))]
-            )
-    if not rows:
-        return None
-    text = (
-        table(["arm", "inputs", "repeats", *STABILITY_NAMES], rows)
-        + "\n\nValues are means over items of the pairwise agreement between repeats "
-        "(1.0 = identical). `n/a`: not applicable or fewer than two usable repeats "
-        "(`subquestion_overlap` only for live arms, where the plan can differ)."
-    )
-    if spreads:
-        text += (
-            "\n\nSpread of a metric across repeats, averaged over items:\n\n"
-            + table(["arm", "metric", "mean sd", "mean max-min", "items"], spreads)
-        )
-    return text
-
-
-def _planted_section(exp: Experiment, cells: Cells) -> str | None:
-    if not any(s.name == "web_planted" for s in exp.sets):
-        return None
-    rows = []
-    for arm in exp.main_arms_on("web_planted"):
-        runs = [r for r in cells.runs if r.arm == arm.name and r.set == "web_planted"]
-        counts = {
-            o: sum(1 for r in runs if r.planted_outcome == o) for o in PLANTED_OUTCOMES
-        }
-        errors = sum(1 for r in runs if r.error)
-        rows.append(
-            [
-                arm.name,
-                str(len(runs)),
-                *[str(counts[o]) for o in PLANTED_OUTCOMES],
-                str(errors),
-            ]
-        )
-    return (
-        table(["arm", "runs", *PLANTED_OUTCOMES, "errors"], rows)
-        + "\n\nGood: `stated_conflict` and `ignored_correct`. Bad: `adopted_false_claim` "
-        "and `ignored_incorrect`. A run counts once per repeat."
-    )
-
-
 def _cost_section(exp: Experiment, cells: Cells) -> str:
     rows = []
     for arm in exp.arms:
@@ -521,9 +269,8 @@ def _cost_section(exp: Experiment, cells: Cells) -> str:
             ],
             rows,
         )
-        + "\n\nFrozen arms start from a snapshot and run offline: their wall time "
-        "excludes Plan, Search and every page fetch. Only live arms measure "
-        "end-to-end time. The legacy pipeline counts no tokens or calls (n/a)."
+        + "\n\nEvery arm runs live, so wall time is end to end. The legacy "
+        "pipeline counts no tokens or calls (n/a)."
     )
 
 
@@ -684,7 +431,6 @@ def _step_tables(exp: Experiment, cells: Cells, *, solo: bool) -> str | None:
     (or are not) clean-timing re-runs. A step a run never reached counts as 0."""
     seconds_rows: list[list[str]] = []
     calls_rows: list[list[str]] = []
-    verify_rows: list[list[str]] = []
     for arm in exp.arms:
         if arm.system != "v2" or arm.is_solo != solo:
             continue
@@ -710,58 +456,23 @@ def _step_tables(exp: Experiment, cells: Cells, *, solo: bool) -> str | None:
                 [
                     *head,
                     *[
-                        f"{_mean([float(s.step_llm_calls.get(step, 0)) for s in runs]):.1f}"
-                        f" / {_mean([float(s.step_decision_calls.get(step, 0)) for s in runs]):.1f}"
+                        fmt(
+                            _mean([float(s.step_llm_calls.get(step, 0)) for s in runs]),
+                            1,
+                        )
                         for step in STEPS
                     ],
-                ]
-            )
-            by_code = sum(s.verify_by_code for s in runs)
-            by_model = sum(s.verify_by_model for s in runs)
-            states: dict[str, int] = {}
-            for s in runs:
-                key = s.decision_cache.split(":")[0]
-                states[key] = states.get(key, 0) + 1
-            verify_rows.append(
-                [
-                    *head,
-                    fmt(_mean([float(s.verify_by_code) for s in runs]), 1),
-                    fmt(_mean([float(s.verify_by_model) for s in runs]), 1),
-                    fmt(by_code / (by_code + by_model), 2)
-                    if by_code + by_model
-                    else NOTHING,
-                    fmt(_mean([float(s.decision_cache_hits) for s in runs]), 1),
-                    ", ".join(f"{k} {n}" for k, n in sorted(states.items())),
                 ]
             )
     if not seconds_rows:
         return None
     return (
         "Seconds per step, median over runs (a step a run did not reach counts as 0; "
-        "`steps` is the median of each run's sum, `wall` of each run's total):\n\n"
-        + table(
-            ["arm", "set", "runs", *STEPS, "steps", "wall"],
-            seconds_rows,
-        )
-        + "\n\nModel requests per step, mean per run, `language model / decision "
-        "model` (decision requests served from the cache are not requests):\n\n"
+        "tasks that ran in parallel add up, so `steps` can exceed `wall`; `steps` is "
+        "the median of each run's sum, `wall` of each run's total):\n\n"
+        + table(["arm", "set", "runs", *STEPS, "steps", "wall"], seconds_rows)
+        + "\n\nLanguage-model requests per step, mean per run:\n\n"
         + table(["arm", "set", "runs", *STEPS], calls_rows)
-        + "\n\nClaim-support checks settled in code and by the model (means per "
-        "run, `share` = code / all), decision answers served from the cache, and "
-        "the cache state of the runs:\n\n"
-        + table(
-            [
-                "arm",
-                "set",
-                "runs",
-                "by code",
-                "by model",
-                "share by code",
-                "cache hits",
-                "decision cache",
-            ],
-            verify_rows,
-        )
     )
 
 
@@ -823,7 +534,6 @@ def _solo_section(exp: Experiment, cells: Cells) -> str | None:
         rows.append(
             [
                 arm.name,
-                "frozen" if arm.is_frozen else "live",
                 "; ".join(per_set),
                 f"{fmt(_median(pooled), 1)} s ({len(pooled)} runs)",
             ]
@@ -831,15 +541,8 @@ def _solo_section(exp: Experiment, cells: Cells) -> str | None:
     text = (
         "These are the only wall-time numbers to use for speed claims: each cell "
         "ran alone (concurrency 1, after every other arm). Median wall time per "
-        "run:\n\n" + table(["arm", "inputs", "per set", "pooled median"], rows)
+        "run:\n\n" + table(["arm", "per set", "pooled median"], rows)
     )
-    if any(a.is_frozen for a in solo):
-        text += (
-            "\n\nA frozen run takes Plan and Search from the snapshot and fetches "
-            "nothing, so its wall time excludes the planning call, the searches and "
-            "the page fetches; it is the cost of everything from screening on. It "
-            "is not an end-to-end time."
-        )
     steps = _step_tables(exp, cells, solo=True)
     if steps:
         text += "\n\n" + steps
@@ -849,250 +552,16 @@ def _solo_section(exp: Experiment, cells: Cells) -> str | None:
 # -- the report ---------------------------------------------------------------------
 
 
-def _live_note(exp: Experiment) -> str | None:
-    live = [
-        a.name
-        for a in exp.arms
-        if a.system == "legacy" or (a.system == "v2" and not a.frozen)
-    ]
-    if not live:
-        return None
+def _live_note(exp: Experiment) -> str:
     return (
-        "Live arms ("
-        + ", ".join(live)
-        + ") run Plan and Search themselves: the legacy "
-        "pipeline cannot take frozen inputs, so a comparison with it is end to end, "
-        "and any web or source drift between runs is part of the difference. "
-        "Comparisons among frozen arms share identical inputs."
+        "Every arm runs Plan and Search itself, live: any web or source drift "
+        "between runs is part of the difference, and a comparison with the "
+        "legacy pipeline is end to end."
     )
 
 
-def _inputs_section(exp: Experiment) -> str:
-    rows = []
-    for name, profile in exp.inputs.items():
-        if profile.existing:
-            rows.append(
-                [
-                    name,
-                    profile.profile_hash()[:12],
-                    "snapshots taken earlier, used as they are",
-                    "-",
-                    "-",
-                    "-",
-                    "-",
-                ]
-            )
-            continue
-        sources = profile.sources
-        rows.append(
-            [
-                name,
-                profile.profile_hash()[:12],
-                ", ".join(sources.scholarly or []) or "-",
-                sources.arxiv_query or "-",
-                ", ".join(sources.expand_with)
-                if sources.expand_with
-                else "every source that can",
-                "live" if profile.plan == "live" else f"queries of {profile.plan}",
-                str(profile.prefetch_top_k) if profile.prefetch_top_k else "-",
-            ]
-        )
-    arms = []
-    for arm in exp.arms:
-        if arm.inputs:
-            arms.append(
-                [arm.name, ", ".join(f"{s}: {p}" for s, p in arm.inputs.items())]
-            )
-    text = table(
-        [
-            "profile",
-            "hash",
-            "searched sources",
-            "arXiv query",
-            "citations followed from",
-            "sub-questions and queries",
-            "texts prefetched per sub-question",
-        ],
-        rows,
-    )
-    if arms:
-        text += "\n\n" + table(["arm", "runs on (set: profile)"], arms)
-    if exp.keyless:
-        text += "\n\nKeyless: no API key was read or used."
-    return text
-
-
-def _decision_answers_section(exp: Experiment, cells: Cells) -> str | None:
-    rows = []
-    for arm in exp.arms:
-        for set_spec in exp.sets:
-            if not arm.runs_on(set_spec.name):
-                continue
-            runs = [
-                s
-                for r in cells.runs
-                if r.arm == arm.name
-                and r.set == set_spec.name
-                and (s := _stats(r)) is not None
-            ]
-            if not runs:
-                continue
-            rows.append(
-                [
-                    arm.name + (" (solo)" if arm.is_solo else ""),
-                    set_spec.name,
-                    str(len(runs)),
-                    fmt(_mean([float(s.decision_calls) for s in runs]), 1),
-                    fmt(_mean([float(s.decision_cache_hits) for s in runs]), 1),
-                    fmt(_mean([float(s.decision_shared_hits) for s in runs]), 1),
-                    fmt(
-                        _mean(
-                            [
-                                float(s.decision_calls + s.decision_cache_hits)
-                                for s in runs
-                            ]
-                        ),
-                        1,
-                    ),
-                ]
-            )
-    if not rows:
-        return None
-    return (
-        "Decision answers = requests made plus answers served from the cache "
-        "(a cell's own or the shared one), mean per run. The answers are what an "
-        "arm needed; the requests are what it was charged for, and depend on the "
-        "order the arms ran in, so compare arms by the answers:\n\n"
-        + table(
-            [
-                "arm",
-                "set",
-                "runs",
-                "requests",
-                "cache hits",
-                "of them shared",
-                "answers",
-            ],
-            rows,
-        )
-    )
-
-
-def _gold_by_item(
-    exp: Experiment, litsearch_dir: Path, *, set_name: str = "litsearch"
-) -> dict[str, list[Work]]:
-    spec = exp.set(set_name)
-    load = (
-        load_litsearch_local
-        if set_name in ("litsearch-local", "litsearch-web")
-        else load_litsearch
-    )
-    data = load(litsearch_dir, n=spec.n or 30, seed=spec.seed, skip=spec.skip)
-    return {item.query.query_id: list(item.gold) for item in data.items}
-
-
-def _search_accounting(name: str, items: Sequence[PoolItem]) -> str:
-    """What the freeze of one profile asked of each source, from its snapshots'
-    ``meta.json``: the searches (and how many failed), the seconds in the
-    search, and every network request the freeze made (search, texts, citation
-    hops; an answer the shared cache held is not a request, so a later profile
-    that repeats an earlier one's requests looks cheaper than it would live)."""
-    searches: dict[str, int] = {}
-    failures: dict[str, int] = {}
-    requests: dict[str, int] = {}
-    seconds: list[float] = []
-    tolerated = 0
-    for item in items:
-        search = item.meta.search
-        for source, n in search.searches.items():
-            searches[source] = searches.get(source, 0) + n
-        for source, n in search.search_failures.items():
-            failures[source] = failures.get(source, 0) + n
-        for source, n in item.meta.http_cache.network_requests.items():
-            requests[source] = requests.get(source, 0) + n
-        if search.search_s is not None:
-            seconds.append(search.search_s)
-        tolerated += len(search.tolerated_failures)
-    if not searches:
-        return f"_{name}: the snapshots record no search accounting._"
-    attempted = sum(searches.values())
-    sources = sorted(set(searches) | set(requests))
-    rows = [
-        [
-            source,
-            str(searches.get(source, 0)),
-            str(failures.get(source, 0)),
-            fmt(
-                failures.get(source, 0) / searches[source]
-                if searches.get(source)
-                else None,
-                3,
-            ),
-            fmt(requests.get(source, 0) / len(items), 1),
-        ]
-        for source in sources
-    ]
-    head = (
-        f"Failed searches: {sum(failures.values())} of {attempted} "
-        f"({sum(failures.values()) / attempted:.1%}, of which {tolerated} tolerated "
-        "as a patient source's); search seconds per item: mean "
-        f"{fmt(_mean(seconds), 1)}, median {fmt(_median(seconds), 1)} "
-        f"({len(seconds)} items)."
-    )
-    return (
-        head
-        + "\n\n"
-        + table(
-            [
-                "source",
-                "searches",
-                "failed",
-                "failed share",
-                "network requests per item (whole freeze)",
-            ],
-            rows,
-        )
-    )
-
-
-def _pool_sections(exp: Experiment, snapshots: Path, litsearch_dir: Path) -> list[str]:
-    spec = exp.set("litsearch")
-    data = load_litsearch(litsearch_dir, n=spec.n or 30, seed=spec.seed, skip=spec.skip)
-    lines: list[str] = []
-    for name, profile in exp.inputs.items():
-        if profile.existing:
-            continue
-        items, missing = load_pool_items(snapshots / name, data.items)
-        lines += [
-            "",
-            f"### Profile {name}",
-            "",
-            _search_accounting(name, items) if items else "_No snapshot to read._",
-            "",
-            pool_tables(items, missing=missing),
-        ]
-    return lines
-
-
-def _has_set(exp: Experiment, name: str) -> bool:
-    return any(s.name == name for s in exp.sets)
-
-
-def build_report(
-    exp: Experiment,
-    records: Sequence[StartRecord | RunRecord],
-    *,
-    snapshots: Path | None = None,
-    litsearch_dir: Path | None = None,
-    litsearch_local_dir: Path | None = None,
-) -> str:
-    """The markdown report of *exp* from the registry's *records*.
-
-    ``snapshots`` and ``litsearch_dir`` (both optional) add what needs files
-    beside the registry: with the LitSearch data the loss table of each arm,
-    with the snapshots too the search accounting and candidate pool of each
-    inputs profile. They matter only to an experiment that declares inputs
-    profiles; without any, the report is what it always was."""
+def build_report(exp: Experiment, records: Sequence[StartRecord | RunRecord]) -> str:
+    """The markdown report of *exp* from the registry's *records*."""
     experiment_hash = exp.config_hash()
     starts = [
         r
@@ -1119,19 +588,15 @@ def build_report(
         "",
         "Concurrency used: "
         + ", ".join(str(n) for n in used)
-        + " cell(s) of one arm at a time"
+        + " cell(s) at a time"
         + (" (across invocations)" if len(used) > 1 else "")
-        + "; decision-model requests are always one at a time. Wall times are "
-        "measured under that load.",
+        + ". Wall times are measured under that load.",
+        "",
+        _live_note(exp),
     ]
-    note = _live_note(exp)
-    if note:
-        lines += ["", note]
     for text in exp.notes:
         lines += ["", text]
-    lines += ["", "## Arms", "", _arms_section(exp, starts[-1] if starts else None)]
-    if exp.inputs:
-        lines += ["", "## Inputs profiles", "", _inputs_section(exp)]
+    lines += ["", "## Arms", "", _arms_section(exp)]
     for set_spec in exp.sets:
         name = set_spec.name
         lines += ["", f"## Set {name}", ""]
@@ -1144,62 +609,13 @@ def build_report(
             "",
             _paired_section(exp, cells, name),
         ]
-        stability = _stability_section(exp, cells, name)
-        if stability:
-            lines += ["", f"### Repeat stability ({name})", "", stability]
-    planted = _planted_section(exp, cells)
-    if planted:
-        lines += ["", "## Planted false source", "", planted]
     lines += ["", "## Cost", "", _cost_section(exp, cells)]
-    if exp.inputs or _has_set(exp, "litsearch-local"):
-        answers = _decision_answers_section(exp, cells)
-        if answers:
-            lines += ["", "### Decision answers", "", answers]
     steps = _step_tables(exp, cells, solo=False)
     if steps:
         lines += ["", "## Where the time and the requests went", "", steps]
     failures = _failures_section(exp, cells)
     if failures:
         lines += ["", "## Failed runs", "", failures]
-    if exp.inputs and any(s.name == "litsearch" for s in exp.sets):
-        if litsearch_dir is not None:
-            gold = _gold_by_item(exp, litsearch_dir)
-            lines += [
-                "",
-                "## Loss table (LitSearch)",
-                "",
-                "Where each gold paper of each run ended: "
-                + "see the categories below. "
-                "A gold paper is matched as recall matches it.",
-                "",
-                loss_section(
-                    [a.name for a in exp.main_arms_on("litsearch")], runs, gold
-                ),
-            ]
-        if snapshots is not None and litsearch_dir is not None:
-            lines += ["", "## Candidate pools (LitSearch)"]
-            lines += _pool_sections(exp, snapshots, litsearch_dir)
-    if _has_set(exp, "litsearch-local") and litsearch_local_dir is not None:
-        gold = _gold_by_item(exp, litsearch_local_dir, set_name="litsearch-local")
-        lines += [
-            "",
-            "## Loss table (LitSearch, local corpus)",
-            "",
-            "Where each gold paper of each run ended. `hit`: kept and ranked "
-            f"{TOP} or better; `(c)` kept, ranked below {TOP} (never retrieved is "
-            "`(a)`: not in the pool; screened out is `(b)`: screened and dropped; "
-            "`(b')`: in the pool, never screened). The BM25 reference has no "
-            "screening, so its papers are `hit`, `(c)` (in its list, below "
-            f"{TOP}) or `(a)` (outside its list). A gold paper is matched by its "
-            "corpus id.",
-            "",
-            loss_section(
-                [a.name for a in exp.main_arms_on("litsearch-local")],
-                runs,
-                gold,
-                set_name="litsearch-local",
-            ),
-        ]
     solo = _solo_section(exp, cells)
     if solo:
         lines += ["", "## Clean timing (solo runs)", "", solo]
@@ -1213,25 +629,12 @@ def build_report(
     return "\n".join(lines)
 
 
-def report_from_registry(
-    exp: Experiment,
-    out_dir: Path,
-    *,
-    snapshots: Path | None = None,
-    litsearch_dir: Path | None = None,
-    litsearch_local_dir: Path | None = None,
-) -> str:
+def report_from_registry(exp: Experiment, out_dir: Path) -> str:
     """Read ``experiments.jsonl`` in *out_dir* and build the report."""
     path = registry_path(out_dir)
     if not path.exists():
         raise FileNotFoundError(f"{path} does not exist: run the experiment first")
-    return build_report(
-        exp,
-        list(read_records(path)),
-        snapshots=snapshots,
-        litsearch_dir=litsearch_dir,
-        litsearch_local_dir=litsearch_local_dir,
-    )
+    return build_report(exp, list(read_records(path)))
 
 
 __all__ = [

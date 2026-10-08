@@ -1,25 +1,21 @@
 """The benchmark's metrics: pure functions over plain records, no I/O.
 
 Retrieval (LitSearch): recall@k of the gold works and the precision of the kept
-set. Screening: recall and precision of the kept set, and work saved at 95%
-recall from the ranking. Web: answer correctness (``web_set``), claim-support
-precision and URL integrity. Each function states what it does with an empty
+set. Cost: what one run spent. Each function states what it does with an empty
 input, because an empty input is a result worth seeing, not a division by zero.
 """
 
 from __future__ import annotations
 
-import math
 import re
 from collections.abc import Sequence
 
 from pydantic import BaseModel, Field
 
-from andamentum.references import Work, UrlStatus, normalise_doi
+from andamentum.references import Work, normalise_doi
 from andamentum.references.works import normalise_title
 
 DEFAULT_KS: tuple[int, ...] = (5, 10, 20, 50)
-TARGET_RECALL = 0.95
 _MIN_TITLE_CHARS = 15  # as references.works: a shorter title identifies nothing
 
 # -- retrieval ------------------------------------------------------------------
@@ -113,142 +109,11 @@ def mean_or_none(values: Sequence[float]) -> float | None:
     return sum(values) / len(values) if values else None
 
 
-# -- screening ------------------------------------------------------------------
+# -- links ----------------------------------------------------------------------------
 
-
-class ScreeningScore(BaseModel):
-    """How one screening arm fared on one review's records."""
-
-    n: int = Field(ge=1)
-    n_included: int = Field(ge=1)
-    prevalence: float
-    kept_n: int
-    kept_recall: float = Field(description="Included records the arm kept / included.")
-    kept_precision: float | None = Field(
-        description="Included records among the kept; None when nothing was kept."
-    )
-    work_saved_kept: float = Field(description="1 - kept_n / n.")
-    n_read_at_target: int = Field(
-        description="Records read, in ranked order, to find TARGET_RECALL of the included."
-    )
-    work_saved_at_95: float = Field(
-        description="1 - n_read_at_target / n: records never read at 95% recall."
-    )
-    wss_at_95: float = Field(
-        description="work_saved_at_95 - 0.05: the classical WSS@95 (Cohen et al.)."
-    )
-
-
-def screening_score(
-    scores: Sequence[float],
-    kept: Sequence[bool],
-    included: Sequence[bool],
-    *,
-    target_recall: float = TARGET_RECALL,
-) -> ScreeningScore:
-    """Recall, precision and work saved of one arm over one review's records.
-
-    The three sequences run in the same record order. ``work_saved_at_95``
-    ranks the records by score, highest first, and counts how many must be
-    read to find 95% of the included ones; records with equal scores are read
-    together (a tie is never resolved in the arm's favour). Raises
-    ``ValueError`` when the lengths differ or no record is included.
-    """
-    n = len(scores)
-    if not (n == len(kept) == len(included)):
-        raise ValueError("scores, kept and included must be the same length")
-    n_included = sum(included)
-    if n_included == 0:
-        raise ValueError("a review with no included record has no recall")
-    needed = max(1, math.ceil(target_recall * n_included - 1e-9))
-    order = sorted(range(n), key=lambda i: -scores[i])
-    found = 0
-    read = 0
-    position = 0
-    while position < n and found < needed:
-        tied = [i for i in order[position:] if scores[i] == scores[order[position]]]
-        found += sum(1 for i in tied if included[i])
-        read += len(tied)
-        position += len(tied)
-    kept_n = sum(kept)
-    kept_included = sum(1 for k, inc in zip(kept, included, strict=True) if k and inc)
-    saved = 1 - read / n
-    return ScreeningScore(
-        n=n,
-        n_included=n_included,
-        prevalence=n_included / n,
-        kept_n=kept_n,
-        kept_recall=kept_included / n_included,
-        kept_precision=kept_included / kept_n if kept_n else None,
-        work_saved_kept=1 - kept_n / n,
-        n_read_at_target=read,
-        work_saved_at_95=saved,
-        wss_at_95=saved - (1 - target_recall),
-    )
-
-
-# -- web: claim support and URL integrity ---------------------------------------------
-
-
-class ClaimSupport(BaseModel):
-    """How many of an answer's claims the evidence behind them supports.
-
-    ``unsourced`` claims have nothing to check against (an uncited report
-    sentence, a citation to a page that was never fetched). They are counted
-    and reported, and kept out of the precision so that it measures only what
-    a judge could check.
-    """
-
-    n_judged: int = Field(ge=0)
-    n_supported: int = Field(ge=0)
-    n_unsourced: int = Field(ge=0)
-    precision: float | None = Field(description="None when no claim was judged.")
-
-
-def claim_support(verdicts: Sequence[bool], *, n_unsourced: int = 0) -> ClaimSupport:
-    """Precision of judged claims: supported / judged."""
-    supported = sum(verdicts)
-    return ClaimSupport(
-        n_judged=len(verdicts),
-        n_supported=supported,
-        n_unsourced=n_unsourced,
-        precision=supported / len(verdicts) if verdicts else None,
-    )
-
-
-_DEAD: frozenset[str] = frozenset({"not_found", "dns_failure", "server_error", "error"})
 _URL = re.compile(r"https?://[^\s<>\"'`\]]+")
 _DOI_IN_TEXT = re.compile(r"\b10\.\d{4,9}/[^\s<>\"'`\]]+")
 _TRAILING = ".,;:!?)}"
-
-
-class UrlIntegrity(BaseModel):
-    """Do the links of an answer resolve?
-
-    ``ok`` resolved; ``dead`` are 404/410, an unresolvable host, a server error
-    or a failed connection; ``unverified`` could not be settled (a 4xx that is
-    often a bot block, a timeout, a URL our own safety check refused).
-    ``integrity`` is ok / (ok + dead): unverified links count neither way.
-    """
-
-    n: int = Field(ge=0)
-    ok: int = Field(ge=0)
-    dead: int = Field(ge=0)
-    unverified: int = Field(ge=0)
-    integrity: float | None = Field(description="None when no link could be settled.")
-
-
-def url_integrity(statuses: Sequence[UrlStatus]) -> UrlIntegrity:
-    """Sort probe results into resolved, dead and unverified."""
-    ok = sum(1 for s in statuses if s == "ok")
-    dead = sum(1 for s in statuses if s in _DEAD)
-    return UrlIntegrity(
-        n=len(statuses),
-        ok=ok,
-        dead=dead,
-        unverified=len(statuses) - ok - dead,
-        integrity=ok / (ok + dead) if ok + dead else None,
-    )
 
 
 def extract_urls(text: str) -> list[str]:

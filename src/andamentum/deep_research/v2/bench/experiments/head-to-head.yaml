@@ -110,7 +110,7 @@ decisions:
     requires: [Q, S]
     if_accepted: >-
       v2 replaces v1: it is not worse on either set and not slower; v1 is removed (no
-      legacy code is kept) once epistemic is moved to v2.
+      legacy code is kept) once its other users are moved to v2.
     otherwise: >-
       v2 does not replace v1 as it stands: the groups not accepted say where it falls
       short (Q: results, S: speed).

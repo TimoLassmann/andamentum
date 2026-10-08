@@ -1,12 +1,9 @@
-"""How many items a freeze or an experiment run may process at once.
+"""How many items an experiment run may process at once.
 
 A local Ollama model answers one request at a time, so every local model is run
 with concurrency 1. A model served by Ollama's cloud (a ``-cloud`` tag, such as
 ``gemma4:31b-cloud``) takes several requests at once; the cap is
-``MAX_CLOUD_CONCURRENCY`` (4, a decision of 2026-10-06). The decision model is
-always local: its requests are serialised per server by ``core.decisions``'
-lock whatever the concurrency here, so a concurrent item waits its turn for a
-decision and never overlaps another's request.
+``MAX_CLOUD_CONCURRENCY`` (4, a decision of 2026-10-06).
 
 ``resolve_concurrency`` is the one check, used by the library entry points and
 the ``--concurrency`` flag: a request above 1 for a model that is not a
@@ -47,8 +44,7 @@ def resolve_concurrency(requested: int, *, models: Iterable[str | Model | None])
     """*requested* when it is allowed for every model given, else ``ValueError``.
 
     ``None`` entries (an arm that calls no language model) are ignored. With
-    no model at all, only the decision model runs and it is serialised anyway,
-    so any value up to the cap is allowed.
+    no model at all, any value up to the cap is allowed.
     """
     if requested < 1:
         raise ValueError(f"concurrency must be at least 1, not {requested}")

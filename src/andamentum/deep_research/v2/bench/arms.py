@@ -6,35 +6,29 @@ and what the run cost. Two arms exist: the legacy ``run_research`` (web only)
 and v2's ``research()``. Both are mapped onto the same record, so every metric
 is computed by one piece of code from the same fields.
 
-The v2 arm calls ``research()`` with ``store=None`` by default, so nothing
-persists between questions and every question pays for its own searches.
+The v2 arm calls ``research()`` with ``store=None``, so nothing persists
+between questions and every question pays for its own searches.
 """
 
 from __future__ import annotations
 
 import re
 import time
-from pathlib import Path
 from typing import Protocol
 
 from pydantic import BaseModel, Field
 from pydantic_ai.models import Model
 
-from andamentum.core.decisions import DecisionModel
 from andamentum.deep_research.backends import HttpxSearchBackend
 from andamentum.deep_research.models import ResearchResult as LegacyResult
 from andamentum.deep_research.orchestrator import run_research
 from andamentum.references import Work
 from andamentum.references.works import canonical_url
 
-from ..config import PRESETS, ResearchConfig
-from ..frozen import FrozenInputs
-from ..graph import research
-from ..sources.base import SourceClient, SourceConfig
+from ..engine import research
+from ..sources.base import SourceConfig
 from ..sources.extraction import DEFAULT_PDF_EXTRACTION, PdfExtraction, extract_body
-from ..sources.local_corpus import LocalCorpusSource
 from ..store import ResearchStore
-from ..dense import Embedder
 from ..types import _FINDING_REFERENCE, Budget, Mode, ResearchResult, RunLog
 from .judging import ClaimEvidence, best_window
 from .metrics import Cost, extract_urls
@@ -60,19 +54,10 @@ class ArmOutput(BaseModel):
     degraded: list[str] = Field(default_factory=list)
     stop_reason: str = ""
     cost: Cost
-    reference: bool = Field(
-        default=False,
-        description=(
-            "A retrieval reference (BM25 over a corpus): ``works`` is its whole ranked "
-            "list, there is no screening and no result, and a gold paper outside it "
-            "was never retrieved."
-        ),
-    )
     result: ResearchResult | None = Field(
         default=None,
         description=(
-            "v2 only: the run's evidence table (passages, criteria and the log "
-            "left out), which the stability and planted-source measures read."
+            "v2 only: the run's evidence table (passages and the log left out)."
         ),
     )
     log: RunLog | None = Field(
@@ -93,23 +78,6 @@ class AnswerArm(Protocol):
     returns_pages: bool
 
     async def run(self, question: str) -> ArmOutput: ...
-
-
-class ExperimentArm(AnswerArm, Protocol):
-    """An answer arm an experiment can run on frozen inputs.
-
-    ``frozen`` is the snapshot to replay (None: run live) and ``store`` the
-    path of the run's own working store; the legacy pipeline accepts both and
-    refuses a snapshot.
-    """
-
-    async def run(  # type: ignore[override]
-        self,
-        question: str,
-        *,
-        frozen: FrozenInputs | None = None,
-        store: Path | None = None,
-    ) -> ArmOutput: ...
 
 
 # -- legacy -------------------------------------------------------------------------
@@ -200,7 +168,6 @@ class LegacyArm:
         *,
         model: str,
         searxng_url: str,
-        decision_model: DecisionModel | None = None,
         max_iterations: int = 3,
         max_results: int = 10,
         max_pages: int = 5,
@@ -211,22 +178,11 @@ class LegacyArm:
         self.pdf_extraction: PdfExtraction = pdf_extraction
         self.model = model
         self.searxng_url = searxng_url
-        self.decision_model = decision_model
         self.max_iterations = max_iterations
         self.max_results = max_results
         self.max_pages = max_pages
 
-    async def run(
-        self,
-        question: str,
-        *,
-        frozen: FrozenInputs | None = None,
-        store: Path | None = None,
-    ) -> ArmOutput:
-        if frozen is not None:
-            raise ValueError(
-                "the legacy pipeline cannot take frozen inputs; run it live"
-            )
+    async def run(self, question: str) -> ArmOutput:
         started = time.monotonic()
         pdf_extraction = self.pdf_extraction
 
@@ -247,7 +203,6 @@ class LegacyArm:
                 max_iterations=self.max_iterations,
                 max_results=self.max_results,
                 max_pages=self.max_pages,
-                decision_model=self.decision_model,
                 backend=backend,
             )
         return map_legacy(result, wall_s=time.monotonic() - started)
@@ -317,10 +272,10 @@ def map_v2(result: ResearchResult) -> ArmOutput:
             llm_calls=stats.llm_calls,
             input_tokens=stats.input_tokens,
             output_tokens=stats.output_tokens,
-            decision_calls=stats.decision_calls,
+            decision_calls=0,
         ),
         result=result.model_copy(
-            update={"passages": [], "criteria": {}, "log": RunLog(run_id=result.run_id)}
+            update={"passages": [], "log": RunLog(run_id=result.run_id)}
         ),
         log=result.log,
     )
@@ -329,18 +284,8 @@ def map_v2(result: ResearchResult) -> ArmOutput:
 class V2Arm:
     """v2's ``research()`` in one mode.
 
-    ``decision_model`` is a name (opened and closed by each run) or an opened
-    handle (shared by every run). ``store`` defaults to ``None``: nothing
-    persists between questions. ``source_client`` is for offline tests (it
-    must belong to ``store``). ``config`` is the strategy preset (the
-    baseline unless one is given). A run may be given ``frozen`` inputs (Plan and Search
-    from a snapshot) and the ``store`` path that holds the snapshot's cache;
-    both override the arm's own for that run. ``http_cache`` is a shared
-    read-through HTTP cache for the live runs (not for a frozen one, which
-    reads only its snapshot). ``shared_decisions`` is a store the runs share
-    their decision answers through (``research(shared_decisions=)``).
-    ``embedding_model`` goes to a configuration that ranks by dense
-    similarity (the ``hybrid`` preset needs one).
+    The run keeps nothing between questions (``store=None``). ``http_cache`` is
+    a shared read-through HTTP cache for the runs.
     """
 
     returns_pages = False
@@ -351,102 +296,25 @@ class V2Arm:
         mode: Mode,
         model: str | Model,
         sources: SourceConfig,
-        decision_model: str | DecisionModel | None = None,
         budget: Budget | None = None,
-        store: Path | ResearchStore | None = None,
-        source_client: SourceClient | None = None,
-        config: ResearchConfig = PRESETS["baseline"],
-        name: str | None = None,
         http_cache: ResearchStore | None = None,
-        shared_decisions: ResearchStore | None = None,
-        embedding_model: str | Embedder | None = None,
+        name: str | None = None,
     ) -> None:
         self.name = name or f"v2-{mode}"
-        self.embedding_model = embedding_model
-        self.http_cache = http_cache
-        self.shared_decisions = shared_decisions
         self.mode: Mode = mode
         self.model = model
-        self.decision_model = decision_model
         self.sources = sources
         self.budget = budget or Budget()
-        self.store = store
-        self.source_client = source_client
-        self.config = config
+        self.http_cache = http_cache
 
-    async def run(
-        self,
-        question: str,
-        *,
-        frozen: FrozenInputs | None = None,
-        store: Path | None = None,
-    ) -> ArmOutput:
-        use_store = store if store is not None else self.store
-        # a frozen run reads only its snapshot, and an open store brings its own cache
-        cache = (
-            self.http_cache
-            if frozen is None and not isinstance(use_store, ResearchStore)
-            else None
-        )
+    async def run(self, question: str) -> ArmOutput:
         result = await research(
             question,
             mode=self.mode,
             model=self.model,
-            decision_model=self.decision_model,
-            embedding_model=self.embedding_model,
-            store=use_store,
+            store=None,
             budget=self.budget,
             sources=self.sources,
-            config=self.config,
-            frozen=frozen,
-            source_client=self.source_client,
-            http_cache=cache,
-            shared_decisions=self.shared_decisions,
+            http_cache=self.http_cache,
         )
         return map_v2(result)
-
-
-# -- reference ------------------------------------------------------------------------
-
-
-class Bm25Arm:
-    """BM25 over a local corpus with the raw question as the query: the
-    retrieval reference of a local-corpus set. No model, no network, no
-    screening; the answer is the first ``top_k`` records of the corpus' BM25
-    ranking, in rank order. It is what plain lexical retrieval achieves, so an
-    arm that spends language-model calls on query writing and screening can be
-    read against it."""
-
-    returns_pages = False
-
-    def __init__(self, *, corpus_dir: Path, top_k: int, name: str = "bm25-question"):
-        self.name = name
-        self.top_k = top_k
-        self._source = LocalCorpusSource(corpus_dir=corpus_dir)
-
-    async def run(
-        self,
-        question: str,
-        *,
-        frozen: FrozenInputs | None = None,
-        store: Path | None = None,
-    ) -> ArmOutput:
-        if frozen is not None:
-            raise ValueError(
-                "the BM25 reference reads the corpus; it takes no snapshot"
-            )
-        started = time.monotonic()
-        found = await self._source.search(question, limit=self.top_k)
-        return ArmOutput(
-            answer_text="",
-            works=[c.work for c in found],
-            stop_reason="bm25",
-            cost=Cost(
-                wall_s=time.monotonic() - started,
-                llm_calls=0,
-                input_tokens=0,
-                output_tokens=0,
-                decision_calls=0,
-            ),
-            reference=True,
-        )

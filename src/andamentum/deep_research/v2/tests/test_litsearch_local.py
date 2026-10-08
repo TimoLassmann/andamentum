@@ -357,10 +357,19 @@ def test_the_loader_gives_the_seeded_subset_with_gold_corpus_records(
 
 
 def test_a_gold_id_outside_the_corpus_is_counted_not_invented(tmp_path: Path) -> None:
-    from .local_world import write_corpus
-    from ..bench.litsearch import LitSearchQuery
+    from ..bench.litsearch_local import LitSearchQuery
+    from ..sources.local_corpus import CorpusRecord, build_index
 
-    root = write_corpus(tmp_path / "c")
+    root = tmp_path / "c"
+    root.mkdir()
+    (root / CORPUS_FILE).write_text(
+        CorpusRecord(
+            corpus_id="1001", title="Invented cache paper", abstract="About a cache."
+        ).model_dump_json()
+        + "\n",
+        encoding="utf-8",
+    )
+    build_index(root)
     queries = [
         LitSearchQuery(
             query_id="LS0000",

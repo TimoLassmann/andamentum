@@ -1,0 +1,68 @@
+# Final dev set: the legacy pipeline (v1) against the new research loop, on 20
+# SimpleQA questions that the test set does not contain. Iterate here only: read the
+# loss attribution (`experiment losses`), make a general fix, run again. The test set
+# (final-test.yaml) is run once, after the iterating is over.
+#   legacy      run_research: web search through a Chrome over CDP, its own defaults
+#   new-engine  research(): web mode, the plan / search / choose / read / notes /
+#               reflect loop, up to 3 rounds, one write
+# Set:
+#   simpleqa  20 SimpleQA questions (seed 1, positions 64-83; the test set holds
+#             positions 4-63), each answer graded correct / incorrect / not attempted
+#             against the gold answer by gpt-oss:120b-cloud, a model neither arm uses
+# The cells run item by item (legacy, then new-engine, on the same item). The rules
+# below are not gates: a dev run decides nothing.
+# Run (SQA the folder of simple_qa_test_set.csv, OUT a folder under data/):
+#   B="uv run python -m andamentum.deep_research.v2.bench"
+#   $B experiment run src/andamentum/deep_research/v2/bench/experiments/final-dev.yaml \
+#     --out-dir $OUT --simpleqa-dir $SQA --browser-cdp-url http://127.0.0.1:9222
+#   (a Chrome started with --remote-debugging-port=9222 and its own --user-data-dir)
+#   $B experiment report src/andamentum/deep_research/v2/bench/experiments/final-dev.yaml \
+#     --out-dir $OUT
+#   $B experiment losses src/andamentum/deep_research/v2/bench/experiments/final-dev.yaml \
+#     --out-dir $OUT --simpleqa-dir $SQA --arm new-engine
+# A search outage stops the run without recording the cell; the same command resumes.
+name: final-dev
+registered: "2026-10-08"
+description: >-
+  Dev set for the new research loop: SimpleQA answer correctness and wall time per
+  question of the new engine against the legacy pipeline, on 20 questions disjoint
+  from the test set.
+repeats: 1
+grader: "ollama:gpt-oss:120b-cloud"
+
+sets:
+  - {name: simpleqa, n: 20, skip: 63, seed: 1}
+
+arms:
+  - name: legacy
+    system: legacy
+    model: "ollama:gemma4:31b-cloud"
+  - name: new-engine
+    system: v2
+    model: "ollama:gemma4:31b-cloud"
+
+baselines:
+  simpleqa: legacy
+
+rules:
+  - id: D-simpleqa-correct
+    question: "SimpleQA correctness of new-engine against legacy (paired; reported)"
+    set: simpleqa
+    metric: correct
+    arm: new-engine
+    reference: legacy
+    test: noninferior
+    margin: 0.05
+    gate: false
+
+notes:
+  - >-
+    This is the dev set: its numbers guide the fixes and decide nothing. Iterate only
+    here; a fix must be general (better tools, better general prompts), never tuned
+    to a question of this set.
+  - >-
+    Both arms search the web through one Chrome (DuckDuckGo's HTML page, Bing when
+    DuckDuckGo shows a bot check), and both read a fetched PDF from its text layer.
+  - >-
+    The legacy pipeline counts no tokens or model calls, so cost is compared by wall
+    time only.

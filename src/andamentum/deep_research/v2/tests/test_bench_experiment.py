@@ -1,29 +1,32 @@
-"""The experiment file, the verdict rules and the SearxNG health check."""
+"""The experiment file, the verdict rules and the web health checks."""
 
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import httpx
 import pytest
 
 from andamentum.deep_research.v2.bench.experiment import (
+    ArmSpec,
     Experiment,
     Rule,
+    SetSpec,
     load_experiment,
 )
 from andamentum.deep_research.v2.bench.health import (
     SearxDown,
     check_searxng,
+    require_browser,
     require_searxng,
 )
+from andamentum.deep_research.v2.bench.subsets import select_subset
 from andamentum.deep_research.v2.bench.verdicts import (
     aggregate_interval,
     judge_rule,
     paired_values,
 )
-
-ROUND1 = Path(__file__).parent.parent / "bench" / "experiments" / "round1.yaml"
 
 
 def small(**changes: object) -> dict[str, object]:
@@ -32,12 +35,13 @@ def small(**changes: object) -> dict[str, object]:
         "name": "tiny",
         "registered": "2026-10-06",
         "repeats": 2,
-        "sets": [{"name": "web", "n": 3}],
+        "grader": "grader-model",
+        "sets": [{"name": "simpleqa", "n": 3}],
         "arms": [
-            {"name": "base", "system": "v2", "preset": "baseline", "model": "m"},
-            {"name": "other", "system": "v2", "preset": "baseline", "model": "m"},
+            {"name": "base", "system": "legacy", "model": "m"},
+            {"name": "other", "system": "v2", "model": "m"},
         ],
-        "baselines": {"web": "base"},
+        "baselines": {"simpleqa": "base"},
         "rules": [],
     }
     data.update(changes)
@@ -47,70 +51,49 @@ def small(**changes: object) -> dict[str, object]:
 # -- the file --------------------------------------------------------------------
 
 
-def test_round1_is_a_valid_experiment_with_the_registered_shape() -> None:
-    exp = load_experiment(ROUND1)
-    assert exp.name == "round1"
-    assert {s.name for s in exp.sets} == {"litsearch", "web", "web_planted", "synergy"}
-    assert exp.set("litsearch").n == 30
-    assert exp.set("web").n == 15
-    synergy = exp.set("synergy")
-    assert synergy.records == 150 and len(synergy.reviews or []) == 8
-    assert exp.repeats == 3
-    assert exp.repeats_of(exp.arm("v2-baseline")) == 3
-    assert exp.repeats_of(exp.arm("v2-baseline-live")) == 2
-    assert exp.arm("legacy").is_frozen is False
-    assert exp.arm("v2-baseline").is_frozen is True
-    assert exp.arm("v2-baseline-live").is_frozen is False
-    # the criteria preset is a later round's variant
-    assert all(a.preset != "criteria" for a in exp.arms)
-
-
-def test_round1_rules_are_the_registered_ones() -> None:
-    exp = load_experiment(ROUND1)
-    rules = {r.id: r for r in exp.rules}
-    recall = rules["Q1-recall"]
-    assert (recall.metric, recall.test, recall.margin) == (
-        "recall_at_20",
-        "noninferior",
-        0.05,
-    )
-    # legacy runs live, so the end-to-end comparison uses the live v2 arm
-    assert recall.arm == "v2-baseline-live" and recall.reference == "legacy"
-    for rule_id in ("Q1-claim-support", "Q1-unsourced"):
-        assert rules[rule_id].arm == "v2-baseline-live"
-    assert exp.judge is not None and exp.judge.decision_model == "nimble:9b"
-    assert rules["Q2-kept-jaccard"].threshold == 0.8
-    assert rules["Q2-answer-agreement"].threshold == 0.9
-    assert rules["Q3-wall-time"].threshold == 300
-    assert rules["Q3-wall-time"].aggregate == "median"
-    # Q2 and Q3 are reported, not gates; Q1 gates
-    assert not rules["Q2-kept-jaccard"].gate and not rules["Q3-wall-time"].gate
-    assert rules["Q1-recall"].gate
-
-
-def test_the_judge_is_part_of_the_registration() -> None:
-    first = Experiment.model_validate(small())
-    judged = Experiment.model_validate(small(judge={"decision_model": "nimble:9b"}))
-    assert first.config_hash() != judged.config_hash()
-    with pytest.raises(ValueError, match="exactly one"):
-        Experiment.model_validate(small(judge={"model": "m", "decision_model": "d"}))
-
-
-def test_a_rule_that_reads_claim_support_needs_a_named_judge() -> None:
-    rule = {
-        "id": "T",
-        "question": "q",
-        "set": "web",
-        "metric": "claim_precision",
-        "arm": "base",
-        "threshold": 0.5,
-        "test": "at_least",
+def test_an_arm_spec_has_only_the_final_fields() -> None:
+    assert set(ArmSpec.model_fields) == {
+        "name",
+        "system",
+        "model",
+        "repeats",
+        "sets",
+        "solo",
+        "outage",
     }
-    with pytest.raises(ValueError, match="name its judge"):
-        Experiment.model_validate(small(rules=[rule]))
-    Experiment.model_validate(
-        small(rules=[rule], judge={"decision_model": "nimble:9b"})
+    with pytest.raises(ValueError, match="Extra inputs"):
+        ArmSpec.model_validate(
+            {"name": "a", "system": "v2", "model": "m", "preset": "hybrid"}
+        )
+    with pytest.raises(ValueError, match="legacy|v2"):
+        ArmSpec.model_validate({"name": "a", "system": "bm25", "model": "m"})
+
+
+def test_the_sets_are_simpleqa_and_litsearch_web_only() -> None:
+    assert SetSpec(name="litsearch-web", n=2).name == "litsearch-web"
+    for gone in ("litsearch", "litsearch-local", "web", "web_planted", "synergy"):
+        with pytest.raises(ValueError):
+            SetSpec.model_validate({"name": gone, "n": 2})
+
+
+def test_the_experiment_has_no_inputs_judge_or_set_sources() -> None:
+    for gone in ("inputs", "judge", "set_sources"):
+        assert gone not in Experiment.model_fields
+        with pytest.raises(ValueError, match="Extra inputs"):
+            Experiment.model_validate(small(**{gone: {}}))
+    assert not hasattr(Experiment, "profile_of")
+
+
+def test_both_systems_run_on_both_sets() -> None:
+    exp = Experiment.model_validate(
+        small(
+            sets=[{"name": "simpleqa", "n": 3}, {"name": "litsearch-web", "n": 2}],
+            baselines={"simpleqa": "base", "litsearch-web": "base"},
+        )
     )
+    assert [a.name for a in exp.arms_on("litsearch-web")] == ["base", "other"]
+    restricted = ArmSpec(name="r", system="v2", model="m", sets=["simpleqa"])
+    assert restricted.runs_on("simpleqa") and not restricted.runs_on("litsearch-web")
 
 
 def test_config_hash_changes_with_any_registered_value() -> None:
@@ -121,29 +104,34 @@ def test_config_hash_changes_with_any_registered_value() -> None:
     assert first.config_hash() != changed.config_hash()
 
 
+def test_the_grader_must_not_be_an_arms_own_model() -> None:
+    with pytest.raises(ValueError, match="must not grade itself"):
+        Experiment.model_validate(small(grader="m"))
+    with pytest.raises(ValueError, match="needs a grader"):
+        Experiment.model_validate(small(grader=None))
+
+
 @pytest.mark.parametrize(
     "changes, message",
     [
-        ({"baselines": {"web": "nobody"}}, "not an arm"),
-        ({"baselines": {"litsearch": "base"}}, "not a set here"),
+        ({"baselines": {"simpleqa": "nobody"}}, "not an arm"),
+        ({"baselines": {"litsearch-web": "base"}}, "not a set here"),
         (
             {
                 "arms": [
-                    {"name": "a", "system": "v2", "preset": "baseline", "model": "m"},
-                    {"name": "a", "system": "v2", "preset": "baseline", "model": "m"},
+                    {"name": "a", "system": "v2", "model": "m"},
+                    {"name": "a", "system": "v2", "model": "m"},
                 ],
-                "baselines": {"web": "a"},
+                "baselines": {"simpleqa": "a"},
             },
             "unique",
         ),
         (
             {
-                "arms": [
-                    {"name": "a", "system": "v2", "model": "m"},
-                ],
-                "baselines": {"web": "a"},
+                "arms": [{"name": "a", "system": "v2"}],
+                "baselines": {"simpleqa": "a"},
             },
-            "preset",
+            "model",
         ),
         (
             {
@@ -152,21 +140,12 @@ def test_config_hash_changes_with_any_registered_value() -> None:
                         "name": "a",
                         "system": "legacy",
                         "model": "m",
-                        "sets": ["web_planted"],
+                        "sets": ["litsearch"],
                     },
                 ],
-                "baselines": {"web": "a"},
+                "baselines": {"simpleqa": "a"},
             },
-            "cannot run on",
-        ),
-        (
-            {
-                "arms": [
-                    {"name": "a", "system": "legacy", "model": "m", "frozen": True},
-                ],
-                "baselines": {"web": "a"},
-            },
-            "frozen belongs to v2",
+            "litsearch",
         ),
         (
             {
@@ -174,7 +153,7 @@ def test_config_hash_changes_with_any_registered_value() -> None:
                     {
                         "id": "r",
                         "question": "q",
-                        "set": "web",
+                        "set": "simpleqa",
                         "metric": "correct",
                         "arm": "base",
                         "test": "noninferior",
@@ -189,7 +168,7 @@ def test_config_hash_changes_with_any_registered_value() -> None:
                     {
                         "id": "r",
                         "question": "q",
-                        "set": "web",
+                        "set": "simpleqa",
                         "metric": "correct",
                         "arm": "base",
                         "test": "at_least",
@@ -213,6 +192,31 @@ def test_load_refuses_a_file_that_is_not_a_mapping(tmp_path: Path) -> None:
         load_experiment(path)
 
 
+def test_the_old_head_to_head_file_is_history_not_a_valid_experiment() -> None:
+    old = Path(__file__).parent.parent / "bench" / "experiments" / "head-to-head.yaml"
+    with pytest.raises(ValueError, match="Extra inputs"):
+        load_experiment(old)
+
+
+# -- skip ---------------------------------------------------------------------------
+
+
+def test_skip_is_validated() -> None:
+    assert SetSpec(name="simpleqa", n=3, skip=2).skip == 2
+    with pytest.raises(ValueError, match="needs n"):
+        SetSpec(name="simpleqa", skip=2)
+    with pytest.raises(ValueError, match="greater than or equal"):
+        SetSpec(name="simpleqa", n=2, skip=-1)
+
+
+def test_skip_positions_are_the_seeded_order_after_the_first_items() -> None:
+    ids = [f"SQ{i:04d}" for i in range(1, 41)]
+    order = select_subset(ids, 40, seed=1)
+    spec = SetSpec(name="simpleqa", n=5, skip=10, seed=1)
+    chosen = select_subset(ids, spec.skip + (spec.n or 0), seed=spec.seed)[spec.skip :]
+    assert chosen == order[10:15]
+
+
 # -- intervals and verdicts ------------------------------------------------------
 
 
@@ -220,7 +224,7 @@ def rule(**changes: object) -> Rule:
     data: dict[str, object] = {
         "id": "r",
         "question": "q",
-        "set": "web",
+        "set": "simpleqa",
         "metric": "m",
         "arm": "a",
         "reference": "b",
@@ -441,3 +445,79 @@ async def test_an_unreachable_or_broken_searxng_is_not_healthy() -> None:
 async def test_web_work_without_a_url_is_refused() -> None:
     with pytest.raises(SearxDown, match="--searxng-url"):
         await require_searxng(None)
+
+
+async def test_a_browser_that_answers_is_healthy_and_one_that_does_not_is_down(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    real = httpx.AsyncClient
+
+    def answering(*args: Any, **kwargs: Any) -> httpx.AsyncClient:
+        return real(
+            transport=httpx.MockTransport(
+                lambda request: httpx.Response(
+                    200, json={"Browser": "HeadlessChrome/1.0"}
+                )
+            )
+        )
+
+    monkeypatch.setattr(httpx, "AsyncClient", answering)
+    health = await require_browser("http://127.0.0.1:9222/")
+    assert health.ok and health.detail == "HeadlessChrome/1.0"
+
+    def refusing(*args: Any, **kwargs: Any) -> httpx.AsyncClient:
+        def refuse(_request: httpx.Request) -> httpx.Response:
+            raise httpx.ConnectError("connection refused")
+
+        return real(transport=httpx.MockTransport(refuse))
+
+    monkeypatch.setattr(httpx, "AsyncClient", refusing)
+    with pytest.raises(SearxDown, match="no Chrome answers"):
+        await require_browser("http://127.0.0.1:9222")
+
+
+# -- the no_harm guard -------------------------------------------------------------
+
+
+def guard(margin: float = 1.0, *, higher: bool = True) -> Rule:
+    return Rule(
+        id="G",
+        question="no harm",
+        set="simpleqa",
+        metric="correct",
+        arm="x",
+        reference="y",
+        test="no_harm",
+        margin=margin,
+        higher_is_better=higher,
+    )
+
+
+def guard_verdict(diffs: list[float], **kwargs: Any):  # noqa: ANN202
+    arm = {f"i{n}": d for n, d in enumerate(diffs)}
+    reference = {f"i{n}": 0.0 for n in range(len(diffs))}
+    return judge_rule(
+        guard(**kwargs), arm=arm, reference=reference, resamples=2000, seed=0
+    )
+
+
+def test_no_harm_is_accepted_when_nothing_is_lost() -> None:
+    assert guard_verdict([0.0] * 10).outcome == "accepted"
+    assert guard_verdict([1.0] * 10).outcome == "accepted"
+
+
+def test_no_harm_blocks_a_mean_below_minus_the_margin() -> None:
+    just_below = guard_verdict([-5.0, 3.0] * 6 + [-5.1, 3.0])  # mean -1.007
+    assert just_below.interval is not None and just_below.interval.estimate < -1.0
+    assert just_below.outcome == "not accepted"
+
+
+def test_no_harm_blocks_an_interval_wholly_below_zero() -> None:
+    certain = guard_verdict([-0.01] * 10)
+    assert certain.outcome == "not accepted"
+    assert "the whole interval is below 0" in certain.statement
+
+
+def test_no_harm_reads_the_orientation_of_the_metric() -> None:
+    assert guard_verdict([2.0] * 8, higher=False).outcome == "not accepted"
+    assert guard_verdict([-2.0] * 8, higher=False).outcome == "accepted"

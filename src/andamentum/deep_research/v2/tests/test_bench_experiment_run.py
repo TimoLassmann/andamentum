@@ -1,57 +1,135 @@
 """Running and reporting an experiment with stand-in arms over invented items.
 
-No model, no network: an arm is a small class that answers each web question
-from a script, so what is tested is the experiment machinery: sequential
-cells, the registry, resuming, errors counted against the arm, the stability
-and planted-source measures, and the verdicts in the report.
+No model, no network: an arm is a small class that answers each question from a
+script and the grader is a function, so what is tested is the experiment
+machinery: item order, the registry, resuming, errors counted against the arm,
+outages, the run log files of a cell, the report and the verdicts.
 """
 
 from __future__ import annotations
 
+import csv
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
 
+from andamentum.deep_research.v2.bench import cli as bench_cli
 from andamentum.deep_research.v2.bench.arms import ArmOutput
-from andamentum.deep_research.v2.bench.experiment import (
-    ArmSpec,
-    Experiment,
-)
+from andamentum.deep_research.v2.bench.experiment import ArmSpec, Experiment
 from andamentum.deep_research.v2.bench.experiment_report import (
     build_report,
-    canonicalise,
-    item_stability,
     report_from_registry,
     stable_key,
 )
 from andamentum.deep_research.v2.bench.experiment_run import (
     DataDirs,
+    InfrastructureDown,
     Services,
+    arm_record,
+    build_answer_arm,
+    cell_log_path,
+    infrastructure_failure,
     load_items,
-    planted_metrics,
     run_experiment,
+    set_mode,
 )
-from andamentum.deep_research.v2.bench.freeze import SnapshotMissing
+from andamentum.deep_research.v2.bench.litsearch_local import (
+    LitSearchQuery,
+)
 from andamentum.deep_research.v2.bench.metrics import Cost
-from andamentum.deep_research.v2.bench.planted import planted_source
 from andamentum.deep_research.v2.bench.registry import (
+    ArmRecord,
     RegistryMismatch,
     RunRecord,
     StartRecord,
     read_records,
     registry_path,
 )
-from andamentum.deep_research.v2.bench.web_set import WEB_QUESTIONS
+from andamentum.deep_research.v2.sources.base import SourceConfig
+from andamentum.deep_research.v2.sources.local_corpus import (
+    CORPUS_FILE,
+    CorpusRecord,
+    build_index,
+)
 from andamentum.deep_research.v2.types import (
-    Conflict,
     Finding,
+    LogEvent,
     Passage,
     ResearchResult,
+    RunLog,
+    RunStats,
     SubQuestion,
 )
 from andamentum.references import Work
 
-QUESTIONS = {q.question: q for q in WEB_QUESTIONS}
+N_ROWS = 12
+
+
+def question_of(number: int) -> str:
+    return f"What is the lid colour of Apollo kiln number {number}?"
+
+
+def gold_of(number: int) -> str:
+    return f"teal{number}"
+
+
+GOLD_BY_QUESTION = {question_of(n): gold_of(n) for n in range(1, N_ROWS + 1)}
+
+
+def write_simpleqa(root: Path) -> Path:
+    """An invented ``simple_qa_test_set.csv`` of twelve rows."""
+    root.mkdir(parents=True, exist_ok=True)
+    with (root / "simple_qa_test_set.csv").open("w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(["metadata", "problem", "answer"])
+        for number in range(1, N_ROWS + 1):
+            writer.writerow(["{}", question_of(number), gold_of(number)])
+    return root
+
+
+def gold_title(number: int) -> str:
+    return f"An invented paper about kiln lids number {number}"
+
+
+def write_litsearch(root: Path, *, n: int = 6) -> Path:
+    """A local LitSearch folder: queries, a corpus and its index (invented)."""
+    root.mkdir(parents=True, exist_ok=True)
+    queries = [
+        LitSearchQuery(
+            query_id=f"LS{i:04d}",
+            query=f"Which paper studies kiln lids number {i}?",
+            query_set="inline_acl",
+            specificity=1,
+            quality=2,
+            corpus_ids=[1000 + i],
+        )
+        for i in range(n)
+    ]
+    (root / "queries.jsonl").write_text(
+        "".join(q.model_dump_json() + "\n" for q in queries), encoding="utf-8"
+    )
+    (root / CORPUS_FILE).write_text(
+        "".join(
+            CorpusRecord(
+                corpus_id=str(1000 + i), title=gold_title(i), abstract="About kilns."
+            ).model_dump_json()
+            + "\n"
+            for i in range(n)
+        ),
+        encoding="utf-8",
+    )
+    build_index(root)
+    return root
+
+
+class StubGrader:
+    """Grades by the gold string, as a stand-in for the grader model."""
+
+    async def grade(self, *, question: str, gold: str, answer: str) -> str:
+        if not answer.strip():
+            return "not_attempted"
+        return "correct" if gold in answer else "incorrect"
 
 
 def work(number: int) -> Work:
@@ -63,40 +141,31 @@ def work(number: int) -> Work:
     )
 
 
-def finding(number: int, owner: Work, quote: str) -> Finding:
-    return Finding(
-        finding_id=f"F{number}",
-        subquestion_id="S1",
-        claim="claim",
-        quote=quote,
-        passage_id=Passage.make(work_id=owner.work_id, start=0, text=quote).passage_id,
-        work_id=owner.work_id,
-    )
-
-
-def make_result(
-    question: str,
-    kept: list[Work],
-    *,
-    plan: list[str] | None = None,
-    cite: list[int] | None = None,
-    conflicts: list[Conflict] | None = None,
-) -> ResearchResult:
-    findings = [finding(i + 1, w, f"quote from {w.title}") for i, w in enumerate(kept)]
-    cited = findings if cite is None else [findings[i] for i in cite]
-    report = " ".join(f"A claim [{f.finding_id}]." for f in cited)
+def make_result(question: str, kept: list[Work]) -> ResearchResult:
+    findings = [
+        Finding(
+            finding_id=f"F{i + 1}",
+            subquestion_id="S1",
+            claim="claim",
+            quote=f"quote from {w.title}",
+            passage_id=Passage.make(
+                work_id=w.work_id, start=0, text=f"quote from {w.title}"
+            ).passage_id,
+            work_id=w.work_id,
+        )
+        for i, w in enumerate(kept)
+    ]
     return ResearchResult(
         run_id="r",
         question=question,
         mode="web",
-        subquestions=[
-            SubQuestion(id=f"S{n}", text=text)
-            for n, text in enumerate(plan or [question], start=1)
-        ],
+        subquestions=[SubQuestion(id="S1", text=question)],
         works=kept,
         findings=findings,
-        conflicts=conflicts or [],
-        report_markdown=report,
+        report_markdown=" ".join(f"A claim [{f.finding_id}]." for f in findings),
+        stats=RunStats(
+            llm_calls=2, wall_s=1.5, step_seconds={"Plan": 0.5, "Read": 1.0}
+        ),
     )
 
 
@@ -105,843 +174,740 @@ class ScriptedArm:
 
     returns_pages = False
 
-    def __init__(self, name: str, behave) -> None:  # noqa: ANN001
+    def __init__(self, name: str, behave: Callable[[str, int], ArmOutput]) -> None:
         self.name = name
         self.behave = behave
         self.calls: list[str] = []
 
-    async def run(
-        self, question: str, *, frozen: object = None, store: object = None
-    ) -> ArmOutput:
+    async def run(self, question: str) -> ArmOutput:
         self.calls.append(question)
         return self.behave(question, len(self.calls))
 
 
-def output(question: str, answer: str, kept: list[Work], **kw) -> ArmOutput:  # noqa: ANN003
+def output(
+    question: str, answer: str, kept: list[Work] | None = None, **kw: object
+) -> ArmOutput:
+    kept = kept if kept is not None else [work(1), work(2)]
+    kept = [
+        w if w.work_id else w.model_copy(update={"work_id": f"w_kept{n}"})
+        for n, w in enumerate(kept)
+    ]
     return ArmOutput(
         answer_text=answer,
         works=kept,
-        cost=Cost(wall_s=1.5, llm_calls=2, decision_calls=3),
-        result=make_result(question, kept, **kw),
+        cost=Cost(wall_s=1.5, llm_calls=2, decision_calls=0),
+        result=make_result(question, kept),
+        **kw,  # type: ignore[arg-type]
     )
 
 
-def correct_answer(question: str) -> str:
-    return QUESTIONS[question].expected
+def correct_behaviour(question: str, _call: int) -> ArmOutput:
+    return output(question, f"The answer is {GOLD_BY_QUESTION[question]}.")
 
 
-def small_experiment(*, repeats: int = 2, arms: list[dict] | None = None) -> Experiment:
+def small_experiment(*, repeats: int = 2, arms: list[dict] | None = None) -> Experiment:  # type: ignore[type-arg]
     return Experiment.model_validate(
         {
             "name": "tiny",
-            "registered": "2026-10-06",
+            "registered": "2026-10-08",
             "repeats": repeats,
             "resamples": 200,
-            "sets": [{"name": "web", "n": 4, "seed": 0}],
+            "grader": "ollama:invented-grader",
+            "sets": [{"name": "simpleqa", "n": 4, "seed": 0}],
             "arms": arms
             or [
-                {
-                    "name": "base",
-                    "system": "v2",
-                    "preset": "baseline",
-                    "model": "m",
-                    "frozen": False,
-                },
-                {
-                    "name": "other",
-                    "system": "v2",
-                    "preset": "baseline",
-                    "model": "m",
-                    "frozen": False,
-                },
+                {"name": "base", "system": "legacy", "model": "ollama:m"},
+                {"name": "other", "system": "v2", "model": "ollama:m"},
             ],
-            "baselines": {"web": "base"},
+            "baselines": {"simpleqa": "base"},
             "rules": [
                 {
                     "id": "R-correct",
                     "question": "other is not worse than base on correctness",
-                    "set": "web",
+                    "set": "simpleqa",
                     "metric": "correct",
                     "arm": "other",
                     "reference": "base",
                     "test": "noninferior",
                     "margin": 0.1,
                 },
-                {
-                    "id": "R-agree",
-                    "question": "base answers agree across repeats",
-                    "set": "web",
-                    "metric": "stability.answer_agreement",
-                    "arm": "base",
-                    "test": "at_least",
-                    "threshold": 0.9,
-                    "gate": False,
-                },
             ],
         }
     )
 
 
-def services(arms: dict[str, ScriptedArm]) -> Services:
-    return Services(answer_arm=lambda spec, _mode, _decision: arms[spec.name])
+def services(arms: dict[str, ScriptedArm], **kw: object) -> Services:
+    return Services(
+        answer_arm=lambda spec, _mode: arms[spec.name],
+        grader=StubGrader(),  # type: ignore[arg-type]
+        **kw,  # type: ignore[arg-type]
+    )
 
 
-def stable_behaviour(question: str, _call: int) -> ArmOutput:
-    return output(question, correct_answer(question), [work(1), work(2), work(3)])
+def both_arms(behave: Callable[[str, int], ArmOutput] = correct_behaviour):  # noqa: ANN201
+    return {n: ScriptedArm(n, behave) for n in ("base", "other")}
+
+
+@pytest.fixture
+def dirs(tmp_path: Path) -> DataDirs:
+    return DataDirs(
+        simpleqa=write_simpleqa(tmp_path / "sqa"),
+        litsearch_local=write_litsearch(tmp_path / "ls"),
+    )
 
 
 # -- items -----------------------------------------------------------------------
 
 
-def test_web_items_are_a_deterministic_subset() -> None:
+def test_simpleqa_items_are_a_deterministic_subset(dirs: DataDirs) -> None:
     exp = small_experiment()
-    first = load_items(exp.set("web"), DataDirs())
-    second = load_items(exp.set("web"), DataDirs())
+    first = load_items(exp.set("simpleqa"), dirs)
+    second = load_items(exp.set("simpleqa"), dirs)
     assert [i.item_id for i in first] == [i.item_id for i in second]
-    assert len(first) == 4
-    planted = load_items(
-        Experiment.model_validate(
-            {
-                **exp.model_dump(mode="json"),
-                "sets": [{"name": "web_planted", "n": 4, "seed": 0}],
-                "baselines": {},
-                "rules": [],
-                "arms": [
-                    {"name": "base", "system": "v2", "preset": "baseline", "model": "m"}
-                ],
-            }
-        ).set("web_planted"),
-        DataDirs(),
-    )
-    assert [i.item_id for i in planted] == [f"{i.item_id}-planted" for i in first]
-    assert all(i.planted is not None for i in planted)
+    assert len(first) == 4 and all(i.simpleqa is not None for i in first)
 
 
-def test_litsearch_needs_its_directory() -> None:
+def test_skip_extends_a_smaller_subset(dirs: DataDirs) -> None:
+    exp = small_experiment()
+    spec = exp.set("simpleqa")
+    both = load_items(spec.model_copy(update={"n": 8}), dirs)
+    later = load_items(spec.model_copy(update={"n": 4, "skip": 4}), dirs)
+    first = load_items(spec, dirs)
+    assert [i.item_id for i in both] == [i.item_id for i in first + later]
+
+
+def test_each_set_needs_its_directory() -> None:
     exp = Experiment.model_validate(
         {
             "name": "t",
-            "registered": "2026-10-06",
-            "sets": [{"name": "litsearch", "n": 2}],
+            "registered": "2026-10-08",
+            "grader": "g",
+            "sets": [{"name": "simpleqa", "n": 2}, {"name": "litsearch-web", "n": 2}],
             "arms": [{"name": "a", "system": "legacy", "model": "m"}],
-            "baselines": {"litsearch": "a"},
+            "baselines": {"simpleqa": "a"},
         }
     )
-    with pytest.raises(ValueError, match="--litsearch-dir"):
-        load_items(exp.set("litsearch"), DataDirs())
+    with pytest.raises(ValueError, match="--simpleqa-dir"):
+        load_items(exp.set("simpleqa"), DataDirs())
+    with pytest.raises(ValueError, match="--litsearch-local-dir"):
+        load_items(exp.set("litsearch-web"), DataDirs())
+
+
+def test_litsearch_web_is_scholarly_and_simpleqa_is_web() -> None:
+    assert set_mode("litsearch-web") == "scholarly"
+    assert set_mode("simpleqa") == "web"
 
 
 # -- running ---------------------------------------------------------------------
 
 
 async def test_every_arm_runs_every_item_repeat_times_and_is_recorded(
-    tmp_path: Path,
+    tmp_path: Path, dirs: DataDirs
 ) -> None:
     exp = small_experiment()
-    arms = {
-        "base": ScriptedArm("base", stable_behaviour),
-        "other": ScriptedArm("other", stable_behaviour),
-    }
+    arms = both_arms()
     written = await run_experiment(
-        exp, out_dir=tmp_path, dirs=DataDirs(), services=services(arms)
+        exp, out_dir=tmp_path / "out", dirs=dirs, services=services(arms)
     )
     assert len(written) == 2 * 4 * 2
     assert len(arms["base"].calls) == 8
-    records = list(read_records(registry_path(tmp_path)))
+    records = list(read_records(registry_path(tmp_path / "out")))
     starts = [r for r in records if isinstance(r, StartRecord)]
     runs = [r for r in records if isinstance(r, RunRecord)]
     assert len(starts) == 1 and len(runs) == 16
     assert {a.name for a in starts[0].arms} == {"base", "other"}
-    assert all(a.config_hash for a in starts[0].arms)  # the preset's hash
     first = runs[0]
     assert first.experiment_hash == exp.config_hash()
-    assert first.metrics["correct"] == 1.0
+    assert first.metrics["correct"] == 1.0 and first.metrics["attempted"] == 1.0
     assert first.metrics["wall_s"] == 1.5
+    assert first.metrics["decision_calls"] == 0.0
     assert first.output is not None and first.output.result is not None
     assert first.output.result.passages == []  # slimmed for the registry
 
 
-async def test_cells_run_sequentially_item_by_item(tmp_path: Path) -> None:
+def test_the_registry_records_carry_only_the_final_fields() -> None:
+    assert set(ArmRecord.model_fields) == {
+        "name",
+        "system",
+        "model",
+        "repeats",
+        "solo",
+        "outage",
+    }
+    gone = {
+        "config_hash",
+        "decision_model",
+        "decision_digest",
+        "judge",
+        "judge_digest",
+        "frozen",
+        "planted_outcome",
+        "screening",
+        "preset",
+        "screen",
+        "embedding_model",
+        "inputs",
+    }
+    assert not gone & (set(RunRecord.model_fields) | set(ArmRecord.model_fields))
+    assert not {"judge", "judge_digest", "inputs"} & set(StartRecord.model_fields)
+
+
+async def test_cells_run_item_by_item_with_the_arms_side_by_side(
+    tmp_path: Path, dirs: DataDirs
+) -> None:
     order: list[str] = []
 
-    def make(name: str):  # noqa: ANN202
-        def behave(question: str, _call: int) -> ArmOutput:
+    def make(name: str) -> Callable[[str, int], ArmOutput]:
+        def behave(question: str, call: int) -> ArmOutput:
             order.append(name)
-            return stable_behaviour(question, 0)
+            return correct_behaviour(question, call)
 
         return behave
 
     arms = {n: ScriptedArm(n, make(n)) for n in ("base", "other")}
     await run_experiment(
         small_experiment(repeats=1),
-        out_dir=tmp_path,
-        dirs=DataDirs(),
+        out_dir=tmp_path / "out",
+        dirs=dirs,
         services=services(arms),
     )
     assert order == ["base", "other"] * 4
 
 
 async def test_a_second_invocation_resumes_and_runs_nothing_twice(
-    tmp_path: Path,
+    tmp_path: Path, dirs: DataDirs
 ) -> None:
     exp = small_experiment(repeats=1)
-    arms = {n: ScriptedArm(n, stable_behaviour) for n in ("base", "other")}
+    arms = both_arms()
     await run_experiment(
-        exp, out_dir=tmp_path, dirs=DataDirs(), services=services(arms)
+        exp, out_dir=tmp_path / "out", dirs=dirs, services=services(arms)
     )
     again = await run_experiment(
-        exp, out_dir=tmp_path, dirs=DataDirs(), services=services(arms)
+        exp, out_dir=tmp_path / "out", dirs=dirs, services=services(arms)
     )
     assert again == []
     assert len(arms["base"].calls) == 4
 
 
-async def test_a_changed_experiment_file_is_refused_against_an_old_registry(
-    tmp_path: Path,
+async def test_a_run_stopped_midway_resumes_after_the_last_finished_cell(
+    tmp_path: Path, dirs: DataDirs
 ) -> None:
-    arms = {n: ScriptedArm(n, stable_behaviour) for n in ("base", "other")}
+    exp = small_experiment(repeats=1)
+    arms = both_arms()
+
+    def stop_at_third(question: str, call: int) -> ArmOutput:
+        if call == 3:
+            raise InfrastructureDown("the search is down")
+        return correct_behaviour(question, call)
+
+    stopping = {"base": ScriptedArm("base", stop_at_third), "other": arms["other"]}
+    with pytest.raises(InfrastructureDown):
+        await run_experiment(
+            exp, out_dir=tmp_path / "out", dirs=dirs, services=services(stopping)
+        )
+    done = [
+        r
+        for r in read_records(registry_path(tmp_path / "out"))
+        if isinstance(r, RunRecord)
+    ]
+    assert len(done) == 4  # two items, both arms; the third was not recorded
+    resumed = await run_experiment(
+        exp, out_dir=tmp_path / "out", dirs=dirs, services=services(both_arms())
+    )
+    assert len(resumed) == 4
+
+
+async def test_a_changed_experiment_file_is_refused_against_an_old_registry(
+    tmp_path: Path, dirs: DataDirs
+) -> None:
     await run_experiment(
         small_experiment(repeats=1),
-        out_dir=tmp_path,
-        dirs=DataDirs(),
-        services=services(arms),
+        out_dir=tmp_path / "out",
+        dirs=dirs,
+        services=services(both_arms()),
     )
     with pytest.raises(RegistryMismatch, match="pre-registration"):
         await run_experiment(
             small_experiment(repeats=2),
-            out_dir=tmp_path,
-            dirs=DataDirs(),
-            services=services(arms),
+            out_dir=tmp_path / "out",
+            dirs=dirs,
+            services=services(both_arms()),
         )
 
 
-async def test_a_failing_cell_is_recorded_and_counts_as_a_miss(tmp_path: Path) -> None:
+async def test_a_failing_cell_is_recorded_and_counts_as_a_miss(
+    tmp_path: Path, dirs: DataDirs
+) -> None:
     def broken(_question: str, _call: int) -> ArmOutput:
         raise RuntimeError("model fell over")
 
     arms = {
-        "base": ScriptedArm("base", stable_behaviour),
+        "base": ScriptedArm("base", correct_behaviour),
         "other": ScriptedArm("other", broken),
     }
-    exp = small_experiment(repeats=1)
     written = await run_experiment(
-        exp, out_dir=tmp_path, dirs=DataDirs(), services=services(arms)
+        small_experiment(repeats=1),
+        out_dir=tmp_path / "out",
+        dirs=dirs,
+        services=services(arms),
     )
     failed = [r for r in written if r.error]
-    assert len(failed) == 4
+    assert len(failed) == 4 and all(r.arm == "other" for r in failed)
     assert all("model fell over" in (r.error or "") for r in failed)
     assert all(r.metrics["correct"] == 0.0 for r in failed)  # a miss, not absent
-    report = build_report(exp, list(read_records(registry_path(tmp_path))))
-    assert "4 with errors" in report
+    assert all(r.metrics["attempted"] == 0.0 for r in failed)
 
 
-async def test_a_frozen_arm_without_snapshots_is_refused_up_front(
-    tmp_path: Path,
+async def test_a_wrong_and_an_empty_answer_are_graded_apart(
+    tmp_path: Path, dirs: DataDirs
 ) -> None:
-    exp = small_experiment(
-        arms=[
-            {"name": "base", "system": "v2", "preset": "baseline", "model": "m"},
-            {"name": "other", "system": "v2", "preset": "baseline", "model": "m"},
-        ]
-    )
-    arms = {n: ScriptedArm(n, stable_behaviour) for n in ("base", "other")}
-    with pytest.raises(SnapshotMissing, match="bench freeze"):
-        await run_experiment(
-            exp,
-            out_dir=tmp_path,
-            dirs=DataDirs(snapshots=tmp_path / "none"),
-            services=services(arms),
-        )
-    assert arms["base"].calls == []
-
-
-async def test_a_v2_arm_cannot_be_declared_on_a_set_it_does_not_run() -> None:
-    with pytest.raises(ValueError, match="cannot run on"):
-        ArmSpec.model_validate(
-            {"name": "l", "system": "legacy", "model": "m", "sets": ["web_planted"]}
-        )
-
-
-# -- the report ------------------------------------------------------------------
-
-
-async def test_the_report_has_paired_differences_stability_cost_and_verdicts(
-    tmp_path: Path,
-) -> None:
-    exp = small_experiment()
-    wrong: dict[str, int] = {}
-
-    def other(question: str, _call: int) -> ArmOutput:
-        # right on every question but one, and its kept set changes between repeats
-        first_question = next(iter(QUESTIONS))
-        answer = "no idea" if question == first_question else correct_answer(question)
-        wrong[question] = wrong.get(question, 0) + 1
-        kept = [work(1), work(2)] if wrong[question] == 1 else [work(2), work(9)]
-        return output(question, answer, kept)
+    def varied(question: str, call: int) -> ArmOutput:
+        return output(question, "" if call == 1 else "It is purple.")
 
     arms = {
-        "base": ScriptedArm("base", stable_behaviour),
-        "other": ScriptedArm("other", other),
+        "base": ScriptedArm("base", correct_behaviour),
+        "other": ScriptedArm("other", varied),
     }
-    await run_experiment(
-        exp, out_dir=tmp_path, dirs=DataDirs(), services=services(arms)
+    written = await run_experiment(
+        small_experiment(repeats=1),
+        out_dir=tmp_path / "out",
+        dirs=dirs,
+        services=services(arms),
     )
-    report = report_from_registry(exp, tmp_path)
-    assert report.startswith("# Experiment tiny")
+    other = [r for r in written if r.arm == "other"]
+    assert [(r.metrics["correct"], r.metrics["attempted"]) for r in other] == [
+        (0.0, 0.0),
+        (0.0, 1.0),
+        (0.0, 1.0),
+        (0.0, 1.0),
+    ]
+
+
+async def test_a_simpleqa_cell_without_a_grader_is_a_recorded_error(
+    tmp_path: Path, dirs: DataDirs
+) -> None:
+    arms = both_arms()
+    written = await run_experiment(
+        small_experiment(repeats=1),
+        out_dir=tmp_path / "out",
+        dirs=dirs,
+        services=Services(answer_arm=lambda spec, _mode: arms[spec.name]),
+    )
+    assert all("grader" in (r.error or "") for r in written)
+
+
+def test_infrastructure_failure_reads_the_search_failure_notes() -> None:
+    clean = output("q", "a")
+    assert infrastructure_failure(clean) is None
+    down = output("q", "a").model_copy(
+        update={"degraded": ["3 of 8 fetches failed", "search failed for 'x'"]}
+    )
+    assert infrastructure_failure(down) == "search failed for 'x'"
+    many = output("q", "a").model_copy(update={"degraded": ["2 searches failed"]})
+    assert infrastructure_failure(many) == "2 searches failed"
+
+
+async def test_a_failed_search_stops_the_run_without_recording_the_cell(
+    tmp_path: Path, dirs: DataDirs
+) -> None:
+    def searching_failed(question: str, _call: int) -> ArmOutput:
+        return output(question, "no answer").model_copy(
+            update={"degraded": ["search failed for 'kiln': HTTP 503"]}
+        )
+
+    arms = {
+        "base": ScriptedArm("base", correct_behaviour),
+        "other": ScriptedArm("other", searching_failed),
+    }
+    with pytest.raises(InfrastructureDown, match="not recorded"):
+        await run_experiment(
+            small_experiment(repeats=1),
+            out_dir=tmp_path / "out",
+            dirs=dirs,
+            services=services(arms),
+        )
+    runs = [
+        r
+        for r in read_records(registry_path(tmp_path / "out"))
+        if isinstance(r, RunRecord)
+    ]
+    assert [r.arm for r in runs] == ["base"]  # the failed cell was not recorded
+
+
+async def test_an_arm_that_records_outages_goes_on_and_has_no_metrics(
+    tmp_path: Path, dirs: DataDirs
+) -> None:
+    def searching_failed(question: str, _call: int) -> ArmOutput:
+        return output(question, "x").model_copy(
+            update={"degraded": ["search failed for 'kiln': HTTP 503"]}
+        )
+
+    exp = small_experiment(
+        repeats=1,
+        arms=[
+            {"name": "base", "system": "legacy", "model": "ollama:m"},
+            {"name": "other", "system": "v2", "model": "ollama:m", "outage": "record"},
+        ],
+    )
+    arms = {
+        "base": ScriptedArm("base", correct_behaviour),
+        "other": ScriptedArm("other", searching_failed),
+    }
+    written = await run_experiment(
+        exp, out_dir=tmp_path / "out", dirs=dirs, services=services(arms)
+    )
+    other = [r for r in written if r.arm == "other"]
+    assert len(other) == 4 and all(r.outage and r.metrics == {} for r in other)
+    assert all((r.error or "").startswith("outage:") for r in other)
+
+
+async def test_only_arms_and_only_sets_restrict_a_run(
+    tmp_path: Path, dirs: DataDirs
+) -> None:
+    exp = small_experiment(repeats=1)
+    arms = both_arms()
+    written = await run_experiment(
+        exp,
+        out_dir=tmp_path / "out",
+        dirs=dirs,
+        services=services(arms),
+        only_arms=["other"],
+    )
+    assert {r.arm for r in written} == {"other"} and arms["base"].calls == []
+    with pytest.raises(ValueError, match="not arms"):
+        await run_experiment(
+            exp,
+            out_dir=tmp_path / "out2",
+            dirs=dirs,
+            services=services(arms),
+            only_arms=["nobody"],
+        )
+    with pytest.raises(ValueError, match="not sets"):
+        await run_experiment(
+            exp,
+            out_dir=tmp_path / "out3",
+            dirs=dirs,
+            services=services(arms),
+            only_sets=["litsearch-web"],
+        )
+
+
+async def test_concurrency_above_one_is_refused_for_a_local_model(
+    tmp_path: Path, dirs: DataDirs
+) -> None:
+    with pytest.raises(ValueError, match="local Ollama server"):
+        await run_experiment(
+            small_experiment(repeats=1),
+            out_dir=tmp_path / "out",
+            dirs=dirs,
+            services=services(both_arms()),
+            concurrency=2,
+        )
+
+
+async def test_a_keyless_experiment_refuses_a_configuration_that_holds_a_key(
+    tmp_path: Path, dirs: DataDirs
+) -> None:
+    exp = Experiment.model_validate(
+        {**small_experiment().model_dump(mode="json"), "keyless": True}
+    )
+    with pytest.raises(ValueError, match="keyless"):
+        await run_experiment(
+            exp,
+            out_dir=tmp_path / "out",
+            dirs=dirs,
+            services=services(
+                both_arms(), source_config=SourceConfig(openalex_api_key="not-a-key")
+            ),
+        )
+
+
+# -- litsearch-web cells --------------------------------------------------------
+
+
+def litsearch_experiment() -> Experiment:
+    return Experiment.model_validate(
+        {
+            "name": "lit",
+            "registered": "2026-10-08",
+            "resamples": 200,
+            "sets": [{"name": "litsearch-web", "n": 3, "seed": 0}],
+            "arms": [
+                {"name": "base", "system": "legacy", "model": "ollama:m"},
+                {"name": "other", "system": "v2", "model": "ollama:m"},
+            ],
+            "baselines": {"litsearch-web": "base"},
+        }
+    )
+
+
+async def test_a_litsearch_cell_scores_recall_of_the_gold_works(
+    tmp_path: Path, dirs: DataDirs
+) -> None:
+    exp = litsearch_experiment()
+    items = load_items(exp.set("litsearch-web"), dirs)
+    gold_by_question = {i.question: i.litsearch.gold for i in items if i.litsearch}
+
+    def finds_gold(question: str, _call: int) -> ArmOutput:
+        return output(question, "", [*gold_by_question[question], work(9)])
+
+    def finds_nothing(question: str, _call: int) -> ArmOutput:
+        return output(question, "", [work(8)])
+
+    arms = {
+        "base": ScriptedArm("base", finds_nothing),
+        "other": ScriptedArm("other", finds_gold),
+    }
+    written = await run_experiment(
+        exp, out_dir=tmp_path / "out", dirs=dirs, services=services(arms)
+    )
+    other = [r for r in written if r.arm == "other"]
+    base = [r for r in written if r.arm == "base"]
+    assert all(r.metrics["recall_at_20"] == 1.0 for r in other)
+    assert all(r.metrics["found_any"] == 1.0 for r in other)
+    assert all(r.metrics["recall_at_20"] == 0.0 for r in base)
+    assert all("attempted" not in r.metrics for r in written)
+
+
+# -- the run log of a cell ---------------------------------------------------------
+
+
+def a_log() -> RunLog:
+    return RunLog(
+        run_id="r1",
+        events=[
+            LogEvent(seq=0, t=0.0, step="Setup", event="config", message="started")
+        ],
+    )
+
+
+async def test_each_cell_writes_its_run_log_beside_the_registry(
+    tmp_path: Path, dirs: DataDirs
+) -> None:
+    def with_log(question: str, call: int) -> ArmOutput:
+        return correct_behaviour(question, call).model_copy(update={"log": a_log()})
+
+    arms = {
+        "base": ScriptedArm("base", correct_behaviour),
+        "other": ScriptedArm("other", with_log),
+    }
+    out = tmp_path / "out"
+    written = await run_experiment(
+        small_experiment(repeats=1), out_dir=out, dirs=dirs, services=services(arms)
+    )
+    record = next(r for r in written if r.arm == "other")
+    md = cell_log_path(out, arm="other", item_id=record.item_id, repeat=1)
+    assert md == out / "logs" / "other" / f"{record.item_id}-r1.log.md"
+    assert md.is_file() and md.with_name(f"{record.item_id}-r1.log.jsonl").is_file()
+    jsonl = md.with_name(f"{record.item_id}-r1.log.jsonl").read_text(encoding="utf-8")
+    assert RunLog.from_jsonl(jsonl).run_id == "r1"
+    assert not (out / "logs" / "base").exists()  # the legacy arm has no log
+    # the registry itself holds no log
+    assert "config" not in registry_path(out).read_text(encoding="utf-8")
+
+
+async def test_a_failed_cell_writes_the_partial_log_its_error_carries(
+    tmp_path: Path, dirs: DataDirs
+) -> None:
+    class Broken(RuntimeError):
+        run_log = a_log()
+
+    def broken(_question: str, _call: int) -> ArmOutput:
+        raise Broken("the writer failed")
+
+    arms = {
+        "base": ScriptedArm("base", correct_behaviour),
+        "other": ScriptedArm("other", broken),
+    }
+    out = tmp_path / "out"
+    written = await run_experiment(
+        small_experiment(repeats=1), out_dir=out, dirs=dirs, services=services(arms)
+    )
+    record = next(r for r in written if r.arm == "other")
+    assert cell_log_path(out, arm="other", item_id=record.item_id, repeat=1).is_file()
+
+
+# -- building the arms ---------------------------------------------------------------
+
+
+def test_the_legacy_arm_needs_a_web_search() -> None:
+    spec = ArmSpec(name="legacy", system="legacy", model="ollama:m")
+    with pytest.raises(ValueError, match="--browser-cdp-url"):
+        build_answer_arm(spec, "web", Services())
+    arm = build_answer_arm(
+        spec,
+        "web",
+        Services(source_config=SourceConfig(browser_cdp_url="http://127.0.0.1:9222")),
+    )
+    assert arm.returns_pages and arm.name == "legacy"
+
+
+def test_the_v2_arm_takes_the_mode_the_sources_and_the_arms_name() -> None:
+    spec = ArmSpec(name="new-engine", system="v2", model="ollama:m")
+    sources = SourceConfig(browser_cdp_url="http://127.0.0.1:9222")
+    arm = build_answer_arm(spec, "scholarly", Services(source_config=sources))
+    assert arm.name == "new-engine" and not arm.returns_pages
+    assert getattr(arm, "mode") == "scholarly" and getattr(arm, "sources") is sources
+
+
+def test_the_arm_record_names_the_system_and_the_model_only() -> None:
+    exp = small_experiment()
+    record = arm_record(exp, exp.arm("other"))
+    assert record.model_dump() == {
+        "name": "other",
+        "system": "v2",
+        "model": "ollama:m",
+        "repeats": 2,
+        "solo": None,
+        "outage": "stop",
+    }
+
+
+# -- the report -----------------------------------------------------------------------
+
+
+async def test_the_report_has_the_tables_cost_and_verdicts(
+    tmp_path: Path, dirs: DataDirs
+) -> None:
+    exp = small_experiment(repeats=1)
+    arms = {
+        "base": ScriptedArm("base", correct_behaviour),
+        "other": ScriptedArm("other", correct_behaviour),
+    }
+    out = tmp_path / "out"
+    await run_experiment(exp, out_dir=out, dirs=dirs, services=services(arms))
+    text = report_from_registry(exp, out)
     for heading in (
+        "# Experiment tiny",
         "## Arms",
-        "## Set web",
-        "### Repeat stability (web)",
+        "## Set simpleqa",
         "## Cost",
+        "## Where the time and the requests went",
         "## Verdicts (pre-registered rules)",
     ):
-        assert heading in report
-    assert "Difference from the baseline arm **base**" in report
-    assert "R-correct" in report and "R-agree" in report
-    # the stable arm repeats perfectly: its answer agreement is 1.0
-    stability_rows = [
-        line for line in report.splitlines() if line.startswith("| base | live | 2")
-    ]
-    assert stability_rows and "1.000" in stability_rows[0]
-    # the other arm's kept sets differ between repeats: jaccard 1/3 for every item
-    other_row = next(
-        line for line in report.splitlines() if line.startswith("| other | live | 2")
-    )
-    assert "0.333" in other_row
-    assert "Live arms (base, other)" in report
-    assert "accepted" in report  # base agreement: at_least 0.9 on a stable arm
+        assert heading in text
+    assert "R-correct" in text and "accepted" in text
+    assert "Plan" in text  # the per-step table
+    for gone in ("Repeat stability", "Planted", "Inputs profiles", "Loss table"):
+        assert gone not in text
 
 
-async def test_the_verdict_follows_the_registered_rule(tmp_path: Path) -> None:
-    exp = small_experiment(repeats=1)
-
-    def always_wrong(question: str, _call: int) -> ArmOutput:
-        return output(question, "no idea", [work(1)])
-
-    arms = {
-        "base": ScriptedArm("base", stable_behaviour),
-        "other": ScriptedArm("other", always_wrong),
-    }
-    await run_experiment(
-        exp, out_dir=tmp_path, dirs=DataDirs(), services=services(arms)
-    )
-    report = report_from_registry(exp, tmp_path)
-    row = next(line for line in report.splitlines() if line.startswith("| R-correct"))
-    assert "**not accepted**" in row and "gate" in row
-    assert "Gating rules together: **not accepted**" in report
+def test_a_report_of_an_empty_registry_is_still_a_report() -> None:
+    text = build_report(small_experiment(), [])
+    assert "0 run records" in text and "## Verdicts" in text
 
 
-def test_the_report_of_an_unrun_experiment_is_an_error(tmp_path: Path) -> None:
-    with pytest.raises(FileNotFoundError, match="run the experiment first"):
-        report_from_registry(small_experiment(), tmp_path)
-
-
-# -- stability across stores -----------------------------------------------------
-
-
-def test_work_ids_are_compared_by_identity_not_by_store_id() -> None:
-    one = make_result("q", [work(1), work(2)])
-    # the same papers in another run's store carry other random ids
-    renamed = one.model_copy(
-        update={
-            "works": [
-                w.model_copy(update={"work_id": f"w_other{n}"})
-                for n, w in enumerate(one.works)
-            ],
-            "findings": [
-                f.model_copy(update={"work_id": f"w_other{n}"})
-                for n, f in enumerate(one.findings)
-            ],
-        }
-    )
-    assert {w.work_id for w in canonicalise(one).works} == {
-        w.work_id for w in canonicalise(renamed).works
-    }
+def test_a_work_is_named_by_its_first_identifier_else_its_title() -> None:
     assert stable_key(work(1)).startswith("doi:")
+    assert stable_key(Work(title="A Title With Words")) == "title:a title with words"
 
 
-def record(repeat: int, kept: list[Work], *, correct: float = 1.0) -> RunRecord:
-    return RunRecord(
-        experiment="e",
-        experiment_hash="h",
-        arm="a",
-        set="web",
-        item_id="W01",
-        repeat=repeat,
-        started_at=0.0,
-        metrics={"correct": correct},
-        output=output("q", "answer", kept),
-    )
+# -- the command line ------------------------------------------------------------------
 
 
-def test_item_stability_measures_agreement_between_repeats() -> None:
-    same = item_stability(
-        [record(1, [work(1), work(2)]), record(2, [work(1), work(2)])], live=False
-    )
-    assert same["kept_jaccard"] == 1.0
-    assert same["rank_tau"] == 1.0
-    assert same["findings_reproduced"] == 1.0
-    assert same["answer_agreement"] == 1.0
-    assert same["subquestion_overlap"] is None  # frozen: the plan cannot differ
-    differ = item_stability(
-        [
-            record(1, [work(1), work(2)], correct=1.0),
-            record(2, [work(2), work(1)], correct=0.0),
-        ],
-        live=True,
-    )
-    assert differ["kept_jaccard"] == 1.0
-    assert differ["rank_tau"] == -1.0
-    assert differ["answer_agreement"] == 0.0
-    assert differ["subquestion_overlap"] == 1.0
-
-
-def test_one_repeat_has_no_stability() -> None:
-    assert all(
-        v is None for v in item_stability([record(1, [work(1)])], live=False).values()
-    )
-
-
-# -- the planted source ----------------------------------------------------------
-
-
-def test_planted_outcomes_are_read_from_the_result() -> None:
-    question = WEB_QUESTIONS[0]
-    source = planted_source(question)
-    real = work(1)
-    fake = Work(url=source.url, title=source.title, work_id="w_fake")
-    good = make_result(question.question, [real])
-    adopted = make_result(question.question, [real, fake])
-    metrics, outcome = planted_metrics(
-        ArmOutput(answer_text=question.expected, cost=Cost(wall_s=1), result=good),
-        question,
-        source,
-    )
-    assert outcome == "ignored_correct" and metrics["good_planted_outcome"] == 1.0
-    metrics, outcome = planted_metrics(
-        ArmOutput(answer_text="wrong", cost=Cost(wall_s=1), result=good),
-        question,
-        source,
-    )
-    assert outcome == "ignored_incorrect" and metrics["good_planted_outcome"] == 0.0
-    metrics, outcome = planted_metrics(
-        ArmOutput(answer_text="wrong", cost=Cost(wall_s=1), result=adopted),
-        question,
-        source,
-    )
-    assert outcome == "adopted_false_claim"
-    assert metrics["adopted_false_claim"] == 1.0
-    conflict = Conflict(subquestion_id="S1", finding_ids=["F1", "F2"])
-    stated = make_result(question.question, [real, fake], conflicts=[conflict])
-    _metrics, outcome = planted_metrics(
-        ArmOutput(answer_text=question.expected, cost=Cost(wall_s=1), result=stated),
-        question,
-        source,
-    )
-    assert outcome == "stated_conflict"
-
-
-def test_planted_measure_needs_a_v2_result() -> None:
-    question = WEB_QUESTIONS[0]
-    with pytest.raises(ValueError, match="v2 result"):
-        planted_metrics(
-            ArmOutput(answer_text="x", cost=Cost(wall_s=1)),
-            question,
-            planted_source(question),
-        )
-
-
-# -- the command line ------------------------------------------------------------
-
-
-def write_experiment(path: Path, exp: Experiment) -> Path:
-    import yaml
-
-    path.write_text(yaml.safe_dump(exp.model_dump(mode="json")), encoding="utf-8")
-    return path
-
-
-def test_experiment_report_command_prints_the_report(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    import asyncio
-
-    from andamentum.deep_research.v2.bench import cli
-
-    exp = small_experiment(repeats=1)
-    arms = {n: ScriptedArm(n, stable_behaviour) for n in ("base", "other")}
-    asyncio.run(
-        run_experiment(
-            exp, out_dir=tmp_path / "out", dirs=DataDirs(), services=services(arms)
-        )
-    )
-    file = write_experiment(tmp_path / "tiny.yaml", exp)
-    assert (
-        cli.main(
-            ["experiment", "report", str(file), "--out-dir", str(tmp_path / "out")]
-        )
-        == 0
-    )
-    assert "# Experiment tiny" in capsys.readouterr().out
-    target = tmp_path / "report.md"
-    cli.main(
+def test_the_cli_keeps_the_run_flags_and_drops_the_old_ones() -> None:
+    parser = bench_cli.build_parser()
+    args = parser.parse_args(
         [
             "experiment",
-            "report",
-            str(file),
+            "run",
+            "f.yaml",
             "--out-dir",
-            str(tmp_path / "out"),
-            "--out",
-            str(target),
+            "o",
+            "--browser-cdp-url",
+            "http://127.0.0.1:9222",
+            "--cache",
+            "c.db",
+            "--concurrency",
+            "3",
+            "--simpleqa-dir",
+            "s",
+            "--litsearch-local-dir",
+            "l",
+            "--only-sets",
+            "simpleqa",
+            "--arm",
+            "legacy",
+            "--pdf-extraction",
+            "docling",
         ]
     )
-    assert "Verdicts" in target.read_text(encoding="utf-8")
+    assert args.concurrency == 3 and args.arm == ["legacy"]
+    assert args.only_sets == ["simpleqa"] and args.pdf_extraction == "docling"
+    for old in (
+        ["--embedding-model", "x"],
+        ["--decision-cache", "x"],
+        ["--decision-model", "x"],
+        ["--snapshots", "x"],
+        ["--litsearch-dir", "x"],
+    ):
+        with pytest.raises(SystemExit):
+            parser.parse_args(["experiment", "run", "f.yaml", "--out-dir", "o", *old])
 
 
-def test_experiment_report_without_a_run_exits_with_a_message(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+def test_the_deleted_subcommands_are_gone() -> None:
+    parser = bench_cli.build_parser()
+    for gone in (
+        ["freeze", "litsearch"],
+        ["pool"],
+        ["cache"],
+        ["screening"],
+        ["web"],
+        ["litsearch"],
+        ["report", "f.json"],
+        ["verify-web-set"],
+        ["download", "synergy"],
+        ["download", "litsearch"],
+    ):
+        with pytest.raises(SystemExit):
+            parser.parse_args(gone)
+    args = parser.parse_args(["download", "litsearch-local", "--dir", "d"])
+    assert args.dataset == "litsearch-local"
+
+
+def test_the_losses_subcommand_takes_the_documented_flags() -> None:
+    args = bench_cli.build_parser().parse_args(
+        [
+            "experiment",
+            "losses",
+            "f.yaml",
+            "--out-dir",
+            "o",
+            "--simpleqa-dir",
+            "s",
+            "--arm",
+            "new-engine",
+            "--only-failed",
+            "--format",
+            "json",
+        ]
+    )
+    assert args.experiment_command == "losses"
+    assert args.only_failed and args.format == "json" and args.arm == ["new-engine"]
+
+
+def test_a_keyless_source_configuration_never_looks_a_key_up(
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from andamentum.deep_research.v2.bench import cli
-
-    file = write_experiment(tmp_path / "tiny.yaml", small_experiment())
-    code = cli.main(
-        ["experiment", "report", str(file), "--out-dir", str(tmp_path / "x")]
-    )
-    assert code == 1
-    assert "run the experiment first" in capsys.readouterr().err
-
-
-def test_the_parser_knows_freeze_and_experiment_run() -> None:
-    from andamentum.deep_research.v2.bench import cli
-
-    args = cli.build_parser().parse_args(
-        ["freeze", "web", "--snapshots", "s", "--model", "m", "--n", "5"]
-    )
-    assert (args.command, args.set, args.n) == ("freeze", "web", 5)
-    args = cli.build_parser().parse_args(
-        ["experiment", "run", "e.yaml", "--out-dir", "o", "--snapshots", "s"]
-    )
-    assert (args.experiment_command, args.file) == ("run", Path("e.yaml"))
+    monkeypatch.setenv("OPENALEX_API_KEY", "not-a-real-key")
+    monkeypatch.setenv("SEMANTIC_SCHOLAR_API_KEY", "not-a-real-key")
+    keyed = bench_cli._source_config(None)  # type: ignore[attr-defined]
+    keyless = bench_cli._source_config(None, keyless=True)  # type: ignore[attr-defined]
+    assert keyed.openalex_api_key == "not-a-real-key"
+    assert keyless.openalex_api_key is None
+    assert keyless.semantic_scholar_api_key is None
 
 
-# -- an arm is built for each set's mode -----------------------------------------------
-
-
-async def test_sets_of_one_mode_share_one_arm_and_the_modes_are_right(
-    tmp_path: Path,
-) -> None:
-    """The two web sets share one arm built in web mode."""
-    built: list[tuple[str, str]] = []
-    scripted = ScriptedArm("base", stable_behaviour)
-
-    def build(spec: ArmSpec, mode: str, _decision: object) -> ScriptedArm:
-        built.append((spec.name, mode))
-        return scripted
-
-    exp = Experiment.model_validate(
+def test_a_web_probe_is_needed_only_when_an_arm_that_stops_searches_the_web() -> None:
+    exp = small_experiment()
+    assert bench_cli._live_web(exp)  # type: ignore[attr-defined]
+    lit = litsearch_experiment()
+    assert bench_cli._live_web(lit)  # type: ignore[attr-defined]  # legacy searches the web
+    only_v2 = Experiment.model_validate(
         {
-            "name": "modes",
-            "registered": "2026-10-06",
-            "repeats": 1,
-            "sets": [{"name": "web", "n": 1}, {"name": "web_planted", "n": 1}],
-            "arms": [
-                {
-                    "name": "base",
-                    "system": "v2",
-                    "preset": "baseline",
-                    "model": "m",
-                    "frozen": False,
-                }
-            ],
-            "baselines": {"web": "base"},
+            **lit.model_dump(mode="json"),
+            "arms": [{"name": "other", "system": "v2", "model": "ollama:m"}],
+            "baselines": {"litsearch-web": "other"},
         }
     )
-    await run_experiment(
-        exp,
-        out_dir=tmp_path,
-        dirs=DataDirs(),
-        services=Services(answer_arm=build),
-    )
-    assert built == [("base", "web")]  # both web sets share the web arm
-
-    from andamentum.deep_research.v2.bench.experiment_run import set_mode
-
-    assert [set_mode(n) for n in ("litsearch", "web", "web_planted")] == [
-        "scholarly",
-        "web",
-        "web",
-    ]
-
-
-async def test_the_same_arm_gets_one_build_per_mode(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A scholarly set then a web set: the arm is built for each, in that mode."""
-    from andamentum.deep_research.v2.bench import experiment_run
-
-    built: list[str] = []
-
-    def build(spec: ArmSpec, mode: str, _decision: object) -> ScriptedArm:
-        built.append(mode)
-        return ScriptedArm(spec.name, stable_behaviour)
-
-    exp = Experiment.model_validate(
-        {
-            "name": "modes2",
-            "registered": "2026-10-06",
-            "repeats": 1,
-            "sets": [{"name": "litsearch", "n": 1}, {"name": "web", "n": 1}],
-            "arms": [{"name": "a", "system": "legacy", "model": "m"}],
-            "baselines": {"web": "a", "litsearch": "a"},
-        }
-    )
-    web_items = load_items(exp.set("web"), DataDirs())
-    by_set = {
-        "litsearch": [experiment_run.Item("litsearch", "L1", "a literature question?")],
-        "web": web_items,
-    }
-    monkeypatch.setattr(
-        experiment_run, "load_items", lambda spec, dirs: by_set[spec.name]
-    )
-    written = await run_experiment(
-        exp, out_dir=tmp_path, dirs=DataDirs(), services=Services(answer_arm=build)
-    )
-    assert built == ["scholarly", "web"]
-    # the litsearch stand-in has no gold papers: recorded as an error, not dropped
-    assert [r.set for r in written] == ["litsearch", "web"]
-    assert written[0].error and written[1].error is None
-
-
-# -- outages in live arms --------------------------------------------------------------
-
-
-def degraded_behaviour(question: str, _call: int) -> ArmOutput:
-    out = output(question, correct_answer(question), [work(1)])
-    out.degraded = ["searxng search failed for 'x': HTTP 503"]
-    return out
-
-
-async def test_a_live_cell_with_failed_searches_is_not_recorded_and_stops_the_run(
-    tmp_path: Path,
-) -> None:
-    from andamentum.deep_research.v2.bench.experiment_run import InfrastructureDown
-
-    exp = small_experiment(repeats=1)
-    arms = {
-        "base": ScriptedArm("base", degraded_behaviour),
-        "other": ScriptedArm("other", stable_behaviour),
-    }
-    with pytest.raises(InfrastructureDown, match="not recorded"):
-        await run_experiment(
-            exp, out_dir=tmp_path, dirs=DataDirs(), services=services(arms)
-        )
-    runs = [
-        r for r in read_records(registry_path(tmp_path)) if isinstance(r, RunRecord)
-    ]
-    assert runs == []  # nothing recorded: a resume runs the cell again
-    arms["base"].behave = stable_behaviour
-    written = await run_experiment(
-        exp, out_dir=tmp_path, dirs=DataDirs(), services=services(arms)
-    )
-    assert len(written) == 2 * 4
-
-
-async def test_searxng_is_probed_before_each_live_web_cell(tmp_path: Path) -> None:
-    from andamentum.deep_research.v2.bench.health import SearxDown, SearxHealth
-
-    probes: list[str | None] = []
-
-    async def probe(url: str | None) -> SearxHealth:
-        probes.append(url)
-        if len(probes) == 3:
-            raise SearxDown("engines are suspended")
-        return SearxHealth(url=url or "", ok=True, n_results=3)
-
-    exp = small_experiment(repeats=1)
-    arms = {
-        "base": ScriptedArm("base", stable_behaviour),
-        "other": ScriptedArm("other", stable_behaviour),
-    }
-    svc = services(arms)
-    svc.check_searxng = probe
-    with pytest.raises(SearxDown):
-        await run_experiment(exp, out_dir=tmp_path, dirs=DataDirs(), services=svc)
-    runs = [
-        r for r in read_records(registry_path(tmp_path)) if isinstance(r, RunRecord)
-    ]
-    assert len(runs) == 2 and len(probes) == 3
-
-
-# -- the judge is registered and recorded ----------------------------------------------
-
-
-def judged_experiment() -> Experiment:
-    data = small_experiment(repeats=1).model_dump(mode="json")
-    data["rules"] = [
-        {
-            "id": "R-claims",
-            "question": "claims are supported",
-            "set": "web",
-            "metric": "claim_precision",
-            "arm": "base",
-            "test": "at_least",
-            "threshold": 0.5,
-        }
-    ]
-    data["judge"] = {"decision_model": "judge-model"}
-    return Experiment.model_validate(data)
-
-
-async def test_an_experiment_that_needs_a_judge_refuses_to_run_without_one(
-    tmp_path: Path,
-) -> None:
-    arms = {
-        "base": ScriptedArm("base", stable_behaviour),
-        "other": ScriptedArm("other", stable_behaviour),
-    }
-    with pytest.raises(ValueError, match="judge"):
-        await run_experiment(
-            judged_experiment(),
-            out_dir=tmp_path,
-            dirs=DataDirs(),
-            services=services(arms),
-        )
-
-
-async def test_the_judge_and_its_digest_are_recorded_on_the_start_and_every_run(
-    tmp_path: Path,
-) -> None:
-    class Judge:
-        async def judge(self, pairs: object) -> list[bool]:
-            return []
-
-    arms = {
-        "base": ScriptedArm("base", stable_behaviour),
-        "other": ScriptedArm("other", stable_behaviour),
-    }
-    svc = services(arms)
-    svc.judge = Judge()  # type: ignore[assignment]
-    svc.judge_label = "judge-model"
-    svc.judge_digest = "sha256:abc"
-    await run_experiment(
-        judged_experiment(), out_dir=tmp_path, dirs=DataDirs(), services=svc
-    )
-    records = list(read_records(registry_path(tmp_path)))
-    start = next(r for r in records if isinstance(r, StartRecord))
-    assert (start.judge, start.judge_digest) == ("judge-model", "sha256:abc")
-    runs = [r for r in records if isinstance(r, RunRecord)]
-    assert runs and all(r.judge == "judge-model" for r in runs)
-    assert all(r.judge_digest == "sha256:abc" for r in runs)
-
-
-# -- a gating rule must rest on every item ---------------------------------------------
-
-
-def _cell(arm: str, item: str, value: float | None) -> RunRecord:
-    return RunRecord(
-        experiment="tiny",
-        experiment_hash="h",
-        arm=arm,
-        set="web",
-        item_id=item,
-        repeat=1,
-        started_at=0.0,
-        metrics={"correct": value},
-    )
-
-
-def test_a_gating_rule_with_missing_items_is_inconclusive_and_says_how_many() -> None:
-    from andamentum.deep_research.v2.bench.experiment_report import (
-        Cells,
-        judge_rules,
-    )
-
-    exp = small_experiment(repeats=1)
-    runs = [_cell("base", f"W{i}", 0.5) for i in range(1, 7)]
-    runs += [_cell("other", f"W{i}", 1.0) for i in range(1, 6)]
-    runs.append(_cell("other", "W6", None))  # one item has no value
-    [verdict, _] = judge_rules(exp, Cells(runs))
-    assert verdict.rule_id == "R-correct"
-    assert verdict.outcome == "inconclusive"
-    assert "only 5 of 6 items" in verdict.statement
-
-    runs[-1] = _cell("other", "W6", 1.0)
-    [complete, _] = judge_rules(exp, Cells(runs))
-    assert complete.outcome == "accepted"
-
-
-# -- running some sets now and the rest later ------------------------------------------
-
-
-async def test_only_sets_runs_part_of_the_file_and_a_later_run_finishes_it(
-    tmp_path: Path,
-) -> None:
-    exp = Experiment.model_validate(
-        {
-            "name": "parts",
-            "registered": "2026-10-06",
-            "repeats": 1,
-            "resamples": 50,
-            "sets": [{"name": "web", "n": 2}, {"name": "web_planted", "n": 2}],
-            "arms": [
-                {
-                    "name": "base",
-                    "system": "v2",
-                    "preset": "baseline",
-                    "model": "m",
-                    "frozen": False,
-                }
-            ],
-            "baselines": {"web": "base", "web_planted": "base"},
-        }
-    )
-    arms = {"base": ScriptedArm("base", stable_behaviour)}
-    first = await run_experiment(
-        exp,
-        out_dir=tmp_path,
-        dirs=DataDirs(),
-        services=services(arms),
-        only_sets=["web"],
-    )
-    assert {r.set for r in first} == {"web"} and len(first) == 2
-    # a report over the part that ran does not break on the set that did not
-    text = report_from_registry(exp, tmp_path)
-    assert "web_planted" in text
-    second = await run_experiment(
-        exp, out_dir=tmp_path, dirs=DataDirs(), services=services(arms)
-    )
-    assert {r.set for r in second} == {"web_planted"} and len(second) == 2
-    with pytest.raises(ValueError, match="not sets of this experiment"):
-        await run_experiment(
-            exp,
-            out_dir=tmp_path,
-            dirs=DataDirs(),
-            services=services(arms),
-            only_sets=["litsearch"],
-        )
-
-
-def missing_model_behaviour(question: str, _call: int) -> ArmOutput:
-    from andamentum.deep_research.v2.dense import EmbeddingError
-
-    raise EmbeddingError("Ollama does not list the embedding model 'm'")
-
-
-async def test_a_missing_model_is_not_recorded_as_a_zero_and_stops_the_run(
-    tmp_path: Path,
-) -> None:
-    from andamentum.deep_research.v2.bench.experiment_run import InfrastructureDown
-
-    exp = small_experiment(repeats=1)
-    arms = {
-        "base": ScriptedArm("base", missing_model_behaviour),
-        "other": ScriptedArm("other", stable_behaviour),
-    }
-    with pytest.raises(InfrastructureDown, match="not recorded"):
-        await run_experiment(
-            exp, out_dir=tmp_path, dirs=DataDirs(), services=services(arms)
-        )
-    runs = [
-        r for r in read_records(registry_path(tmp_path)) if isinstance(r, RunRecord)
-    ]
-    assert all(r.arm != "base" for r in runs)  # a resume runs the cell again
+    assert not bench_cli._live_web(only_v2)  # type: ignore[attr-defined]

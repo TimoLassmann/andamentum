@@ -1,8 +1,5 @@
-"""The SimpleQA set, the live LitSearch set and the item-by-item cell order.
-
-No model, no network: the CSV is invented, the grader is a stand-in that reads
-the answer for the gold text, and the arms answer from a script.
-"""
+"""The two registered experiment files of the final comparison: the dev set the
+new engine is iterated on, and the test set it is run on once."""
 
 from __future__ import annotations
 
@@ -10,225 +7,179 @@ from pathlib import Path
 
 import pytest
 
-from andamentum.deep_research.v2.bench.arms import ArmOutput
-from andamentum.deep_research.v2.bench.experiment import Experiment
-from andamentum.deep_research.v2.bench.experiment_run import (
-    DataDirs,
-    Services,
-    load_items,
-    run_experiment,
-    set_mode,
-)
-from andamentum.deep_research.v2.bench.metrics import Cost
-from andamentum.deep_research.v2.bench.registry import (
-    RunRecord,
-    read_records,
-    registry_path,
-)
-from andamentum.deep_research.v2.bench.simpleqa import (
-    MAX_ANSWER_CHARS,
-    AnswerGrader,
-    Grade,
-    grade_message,
-    load_simpleqa,
-    read_simpleqa,
-)
+from andamentum.deep_research.v2.bench import experiment_run
+from andamentum.deep_research.v2.bench.experiment import Experiment, load_experiment
+from andamentum.deep_research.v2.bench.subsets import select_subset
 
-ROWS = [
-    ("In which year did the invented Apollo Ferry first sail?", "1911"),
-    ("Who founded the invented SaltLog Society?", "Jane Doe"),
-    ("How many towers does the invented Castle Vellum have?", "7"),
-    ("What colour is the invented Moonfish?", "teal"),
-]
+EXPERIMENTS = Path(__file__).resolve().parents[1] / "bench" / "experiments"
+DEV = EXPERIMENTS / "final-dev.yaml"
+TEST = EXPERIMENTS / "final-test.yaml"
+SIMPLEQA_ROWS = 4326  # rows of the SimpleQA test set
+LITSEARCH_QUERIES = 597
+RUN_COMMAND = "uv run python -m andamentum.deep_research.v2.bench"
 
 
-def write_csv(folder: Path) -> Path:
-    lines = ["metadata,problem,answer"]
-    for question, answer in ROWS:
-        lines.append(f"\"{{'topic': 'Invented'}}\",\"{question}\",{answer}")
-    path = folder / "simple_qa_test_set.csv"
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    return path
+@pytest.fixture(scope="module")
+def dev() -> Experiment:
+    return load_experiment(DEV)
 
 
-class StubGrader(AnswerGrader):
-    """Correct when the gold text is in the answer; not attempted when empty."""
-
-    def __init__(self) -> None:
-        super().__init__(model="stub")
-
-    async def grade(self, *, question: str, gold: str, answer: str) -> Grade:
-        if not answer:
-            return "not_attempted"
-        return "correct" if gold in answer else "incorrect"
+@pytest.fixture(scope="module")
+def test() -> Experiment:
+    return load_experiment(TEST)
 
 
-def experiment(arms: list[dict], *, grader: str | None = "judge-model") -> Experiment:
-    return Experiment.model_validate(
-        {
-            "name": "h2h",
-            "registered": "2026-10-07",
-            "grader": grader,
-            "sets": [{"name": "simpleqa", "n": 3, "seed": 1}],
-            "arms": arms,
-            "baselines": {"simpleqa": arms[0]["name"]},
-        }
-    )
+def positions(experiment: Experiment, set_name: str, universe: list[str]) -> list[str]:
+    spec = experiment.set(set_name)
+    assert spec.n is not None
+    return select_subset(universe, spec.skip + spec.n, seed=spec.seed)[spec.skip :]
 
 
-TWO_ARMS = [
-    {"name": "old", "system": "legacy", "model": "m"},
-    {"name": "new", "system": "v2", "preset": "hybrid", "model": "m", "frozen": False},
-]
+SIMPLEQA_IDS = [f"SQ{i:04d}" for i in range(1, SIMPLEQA_ROWS + 1)]
+LITSEARCH_IDS = [f"LS{i:04d}" for i in range(LITSEARCH_QUERIES)]
 
 
-class ScriptedArm:
-    returns_pages = False
-
-    def __init__(self, name: str, answers: dict[str, str], order: list[str]) -> None:
-        self.name = name
-        self.answers = answers
-        self.order = order
-
-    async def run(
-        self, question: str, *, frozen: object = None, store: object = None
-    ) -> ArmOutput:
-        self.order.append(f"{self.name}:{question[:20]}")
-        return ArmOutput(
-            answer_text=self.answers.get(question, ""), cost=Cost(wall_s=1.0)
-        )
-
-
-def test_rows_are_numbered_from_one_and_read_from_the_folder(tmp_path: Path) -> None:
-    write_csv(tmp_path)
-    items = read_simpleqa(tmp_path)
-    assert [i.item_id for i in items] == ["SQ0001", "SQ0002", "SQ0003", "SQ0004"]
-    assert items[1].answer == "Jane Doe"
-
-
-def test_a_skipped_subset_holds_the_items_the_smaller_one_did_not(
-    tmp_path: Path,
+def test_both_files_are_valid_and_registered_today(
+    dev: Experiment, test: Experiment
 ) -> None:
-    write_csv(tmp_path)
-    first = load_simpleqa(tmp_path, n=2, seed=1)
-    rest = load_simpleqa(tmp_path, n=2, seed=1, skip=2)
-    assert {i.item_id for i in first} | {i.item_id for i in rest} == {
-        "SQ0001",
-        "SQ0002",
-        "SQ0003",
-        "SQ0004",
-    }
-    assert [i.item_id for i in load_simpleqa(tmp_path, n=4, seed=1)][:2] == [
-        i.item_id for i in first
+    assert (dev.name, test.name) == ("final-dev", "final-test")
+    assert dev.registered == test.registered == "2026-10-08"
+    assert dev.repeats == test.repeats == 1
+
+
+def test_the_dev_set_is_twenty_simpleqa_questions_at_positions_64_to_83(
+    dev: Experiment,
+) -> None:
+    [spec] = dev.sets
+    assert (spec.name, spec.n, spec.skip, spec.seed) == ("simpleqa", 20, 63, 1)
+    assert len(positions(dev, "simpleqa", SIMPLEQA_IDS)) == 20
+    assert dev.baselines == {"simpleqa": "legacy"}
+    assert [(a.name, a.system) for a in dev.arms] == [
+        ("legacy", "legacy"),
+        ("new-engine", "v2"),
     ]
 
 
-def test_a_missing_file_names_where_to_get_it(tmp_path: Path) -> None:
-    with pytest.raises(FileNotFoundError, match="simple-evals"):
-        read_simpleqa(tmp_path)
-
-
-def test_a_long_answer_is_cut_for_the_grader() -> None:
-    message = grade_message(
-        question="q", gold="g", answer="x" * (MAX_ANSWER_CHARS + 50)
-    )
-    assert message.endswith("[... cut]")
-    assert "(no answer)" in grade_message(question="q", gold="g", answer="  ")
-
-
-def test_the_simpleqa_set_needs_a_grader_that_is_no_arm_model() -> None:
-    with pytest.raises(ValueError, match="needs a grader"):
-        experiment(TWO_ARMS, grader=None)
-    with pytest.raises(ValueError, match="must not grade itself"):
-        experiment(TWO_ARMS, grader="m")
-
-
-def test_simpleqa_and_live_litsearch_modes() -> None:
-    assert set_mode("simpleqa") == "web"
-    assert set_mode("litsearch-web") == "scholarly"
-
-
-async def test_cells_run_item_by_item_and_are_graded(tmp_path: Path) -> None:
-    write_csv(tmp_path)
-    exp = experiment(TWO_ARMS)
-    items = load_items(exp.set("simpleqa"), DataDirs(simpleqa=tmp_path))
-    gold = {q: a for q, a in ROWS}
-    order: list[str] = []
-    arms = {
-        # old answers every question right, new leaves the first one empty
-        "old": ScriptedArm("old", {i.question: gold[i.question] for i in items}, order),
-        "new": ScriptedArm(
-            "new",
-            {i.question: f"It is {gold[i.question]}." for i in items[1:]},
-            order,
-        ),
-    }
-    written = await run_experiment(
-        exp,
-        out_dir=tmp_path / "out",
-        dirs=DataDirs(simpleqa=tmp_path),
-        services=Services(
-            answer_arm=lambda spec, _mode, _decision: arms[spec.name],
-            grader=StubGrader(),
-        ),
-    )
-    assert [o.split(":")[0] for o in order] == ["old", "new"] * 3
-    assert order[0].split(":")[1] == order[1].split(":")[1]
-    runs = [
-        r
-        for r in read_records(registry_path(tmp_path / "out"))
-        if isinstance(r, RunRecord)
+def test_the_test_sets_are_the_registered_positions(test: Experiment) -> None:
+    sqa, lit = test.set("simpleqa"), test.set("litsearch-web")
+    assert (sqa.n, sqa.skip, sqa.seed) == (60, 3, 1)  # positions 4-63
+    assert (lit.n, lit.skip, lit.seed) == (17, 150, 0)  # positions 151-167
+    assert test.baselines == {"simpleqa": "legacy", "litsearch-web": "legacy"}
+    assert [(a.name, a.system) for a in test.arms] == [
+        ("legacy", "legacy"),
+        ("new-engine", "v2"),
     ]
-    assert len(runs) == len(written) == 6
-    new = {r.item_id: r.metrics for r in runs if r.arm == "new"}
-    assert new[items[0].item_id]["correct"] == 0.0
-    assert new[items[0].item_id]["attempted"] == 0.0
-    assert all(new[i.item_id]["correct"] == 1.0 for i in items[1:])
-    assert all(r.metrics["correct"] == 1.0 for r in runs if r.arm == "old")
 
 
-def test_live_litsearch_reads_the_local_download_items(tmp_path: Path) -> None:
-    exp = Experiment.model_validate(
-        {
-            "name": "h",
-            "registered": "2026-10-07",
-            "sets": [{"name": "litsearch-web", "n": 2}],
-            "arms": [TWO_ARMS[0]],
-            "baselines": {"litsearch-web": "old"},
-        }
-    )
-    with pytest.raises(ValueError, match="--litsearch-local-dir"):
-        load_items(exp.set("litsearch-web"), DataDirs())
-
-
-async def test_the_legacy_backend_reads_a_body_with_the_given_extractor(
-    monkeypatch: pytest.MonkeyPatch,
+def test_the_dev_positions_share_no_question_with_the_test_positions(
+    dev: Experiment, test: Experiment
 ) -> None:
-    import httpx
+    dev_ids = set(positions(dev, "simpleqa", SIMPLEQA_IDS))
+    test_ids = set(positions(test, "simpleqa", SIMPLEQA_IDS))
+    assert len(dev_ids) == 20 and len(test_ids) == 60
+    assert not dev_ids & test_ids
+    # the smoke runs (positions 1-3) belong to neither set
+    smoke = set(select_subset(SIMPLEQA_IDS, 3, seed=1))
+    assert not smoke & (dev_ids | test_ids)
+    assert len(positions(test, "litsearch-web", LITSEARCH_IDS)) == 17
 
-    from andamentum.deep_research import backends, text_utils
-    from andamentum.deep_research.backends import HttpxSearchBackend
 
-    async def allowed(url: str, **_kw: object) -> None:
-        return None
+def test_the_grader_is_not_a_model_of_either_arm(
+    dev: Experiment, test: Experiment
+) -> None:
+    for experiment in (dev, test):
+        assert experiment.grader == "ollama:gpt-oss:120b-cloud"
+        assert {a.model for a in experiment.arms} == {"ollama:gemma4:31b-cloud"}
+        assert experiment.grader not in {a.model for a in experiment.arms}
 
-    monkeypatch.setattr(text_utils, "is_safe_url", lambda url: (True, "ok"))
-    monkeypatch.setattr(backends, "check_fetch_allowed", allowed)
-    seen: list[str] = []
 
-    async def extract(data: bytes, content_type: str, url: str) -> str:
-        seen.append(content_type)
-        return "The invented Moonfish is teal. " * 5
+def test_the_dev_file_decides_nothing(dev: Experiment) -> None:
+    assert dev.rules and not any(r.gate for r in dev.rules)
+    assert [r.metric for r in dev.rules] == ["correct"]
+    assert not dev.decisions
 
-    client = httpx.AsyncClient(
-        transport=httpx.MockTransport(
-            lambda _r: httpx.Response(
-                200, content=b"%PDF-1.4", headers={"content-type": "application/pdf"}
-            )
-        )
+
+def test_the_test_file_registers_q1_q2_s1_s2_b1_b2_and_decision_d1(
+    test: Experiment,
+) -> None:
+    rules = {r.id.split("-")[0]: r for r in test.rules}
+    assert list(rules) == ["Q1", "Q2", "S1", "S2", "B1", "B2"]
+    q1, q2, s1, s2 = rules["Q1"], rules["Q2"], rules["S1"], rules["S2"]
+    assert (q1.set, q1.metric, q1.test, q1.margin, q1.group) == (
+        "simpleqa",
+        "correct",
+        "noninferior",
+        0.05,
+        "Q",
     )
-    backend = HttpxSearchBackend(http_client=client, extract=extract)
-    page = await backend.fetch_page("https://8.8.8.8/fish.pdf")
-    await client.aclose()
-    assert seen == ["application/pdf"]
-    assert "Moonfish" in page.content
+    assert (q2.set, q2.metric, q2.test, q2.margin, q2.group) == (
+        "litsearch-web",
+        "recall_at_20",
+        "noninferior",
+        0.05,
+        "Q",
+    )
+    assert (s1.set, s1.metric, s1.test, s1.margin, s1.group) == (
+        "simpleqa",
+        "wall_s",
+        "noninferior",
+        15,
+        "S",
+    )
+    assert s1.higher_is_better is False and s1.gate
+    # the LitSearch wall is reported, not a gate, and in no group
+    assert (s2.set, s2.metric, s2.gate, s2.group) == (
+        "litsearch-web",
+        "wall_s",
+        False,
+        None,
+    )
+    for better in (rules["B1"], rules["B2"]):
+        assert better.test == "superior" and not better.gate
+    for rule in test.rules:
+        assert (rule.arm, rule.reference) == ("new-engine", "legacy")
+    [d1] = test.decisions
+    assert d1.id == "D1-replace" and d1.requires == ["Q", "S"]
+    assert set(test.rule_groups()) == {"Q", "S"}
+
+
+def test_the_notes_state_what_the_comparison_compares(test: Experiment) -> None:
+    notes = " ".join(test.notes)
+    assert "0.176" in notes  # the earlier hybrid recall@20 it is reported against
+    assert "no scholarly" in notes or "web only" in notes
+    assert "08:00" in notes and "429" in notes
+    assert "concurrency 1" in notes
+
+
+@pytest.mark.parametrize("path", [DEV, TEST], ids=["dev", "test"])
+def test_the_header_gives_the_run_command_with_placeholders(path: Path) -> None:
+    text = path.read_text(encoding="utf-8")
+    header = text.split("\nname:")[0]
+    assert RUN_COMMAND in header
+    assert "experiment run" in header and "experiment report" in header
+    assert "experiment losses" in header
+    assert "--browser-cdp-url http://127.0.0.1:9222" in header
+    assert "$OUT" in header and "$SQA" in header
+    assert "/Users/" not in text and "/home/" not in text
+
+
+def test_the_test_header_names_the_data_folder_and_one_cell_at_a_time() -> None:
+    header = TEST.read_text(encoding="utf-8").split("\nname:")[0]
+    assert "$DATA" in header and "--litsearch-local-dir" in header
+    assert "--concurrency 1" in header
+    assert "--concurrency" not in DEV.read_text(encoding="utf-8").split("\nname:")[0]
+
+
+def test_the_dev_header_says_to_iterate_here_only() -> None:
+    header = DEV.read_text(encoding="utf-8").split("\nname:")[0]
+    assert "Iterate here only" in header or "iterate here only" in header.lower()
+
+
+def test_both_files_are_runnable_by_the_experiment_machinery(
+    dev: Experiment, test: Experiment
+) -> None:
+    for experiment in (dev, test):
+        for spec in experiment.sets:
+            assert experiment_run.set_mode(spec.name) in ("web", "scholarly")
+        assert experiment.config_hash() != ""
+    assert dev.config_hash() != test.config_hash()

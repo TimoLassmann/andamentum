@@ -36,6 +36,8 @@ from typing import Any
 import httpx
 from pydantic import BaseModel, Field
 
+from andamentum.references import Work
+
 from ..sources.local_corpus import (
     CORPUS_FILE,
     INDEX_FILE,
@@ -52,12 +54,39 @@ from .download import (
     save_file,
     write_atomic,
 )
-from .litsearch import (
-    DEFAULT_SEED,
-    LitSearchItem,
-    LitSearchQuery,
-    LitSearchSet,
-)
+
+DEFAULT_SEED = 0
+DEFAULT_SUBSET = 30
+
+
+class LitSearchQuery(BaseModel):
+    query_id: str
+    query: str = Field(min_length=1)
+    query_set: str
+    specificity: int
+    quality: int
+    corpus_ids: list[int] = Field(min_length=1)
+
+
+class LitSearchItem(BaseModel):
+    """A query and its gold papers (those that could be resolved)."""
+
+    query: LitSearchQuery
+    gold: list[Work] = Field(min_length=1)
+
+
+class LitSearchSet(BaseModel):
+    items: list[LitSearchItem]
+    n_queries_total: int
+    n_subset: int = Field(description="Queries chosen before any was dropped.")
+    n_unresolved_gold: int = Field(
+        description="Gold papers that could not be resolved."
+    )
+    n_dropped_queries: int = Field(
+        description="Chosen queries left with no gold paper."
+    )
+    seed: int
+
 
 HF_DATASET = "princeton-nlp/LitSearch"
 HF_REVISION = "9573fb284a1026c998df47024b888a163f0f0e25"
@@ -716,7 +745,12 @@ def excluded_positions(*, upto: int, seed: int = DEFAULT_SEED) -> list[str]:
 
 __all__ = [
     "CORPUS_PARQUETS",
+    "DEFAULT_SEED",
+    "DEFAULT_SUBSET",
     "HF_REVISION",
+    "LitSearchItem",
+    "LitSearchQuery",
+    "LitSearchSet",
     "LITSEARCH_LOCAL_CARD",
     "LitSearchLocalDownload",
     "QUERY_PARQUET",

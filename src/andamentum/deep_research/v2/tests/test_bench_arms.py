@@ -6,7 +6,6 @@ return invented results; nothing here reaches a model or the network.
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
 import pytest
@@ -26,22 +25,16 @@ from andamentum.deep_research.v2.bench.arms import (
     map_v2,
     report_claims,
 )
-from andamentum.deep_research.v2.config import PRESETS
-from andamentum.deep_research.v2.frozen import FrozenInputs
 from andamentum.deep_research.v2.sources.base import SourceConfig
 from andamentum.deep_research.v2.types import (
     Budget,
     Finding,
     Passage,
     ResearchResult,
+    RunLog,
     RunStats,
-    SubQuestion,
 )
-from andamentum.core import fetch_gate, url_safety
-from andamentum.deep_research.v2.store import ResearchStore
 from andamentum.references import Work
-
-from .engine_world import QUESTION, World, world_decisions, world_llm
 
 PAGE_A = (
     "Filler about kilns. " * 200
@@ -173,7 +166,6 @@ def v2_result(report: str) -> ResearchResult:
             llm_calls=7,
             input_tokens=100,
             output_tokens=50,
-            decision_calls=40,
             wall_s=12.5,
         ),
         stop_reason="covered",
@@ -216,7 +208,7 @@ def test_report_sentences_are_paired_with_the_quotes_they_cite() -> None:
 def test_v2_result_maps_to_works_cost_and_links() -> None:
     out = map_v2(v2_result(REPORT))
     assert [w.work_id for w in out.works] == ["w1", "w2", "w3"]
-    assert out.cost.llm_calls == 7 and out.cost.decision_calls == 40
+    assert out.cost.llm_calls == 7 and out.cost.decision_calls == 0
     assert out.cost.input_tokens == 100 and out.cost.wall_s == 12.5
     assert out.degraded == ["openalex: 429"] and out.stop_reason == "covered"
     assert "https://kilns.example.org/two" in out.urls
@@ -224,7 +216,7 @@ def test_v2_result_maps_to_works_cost_and_links() -> None:
     assert len(out.urls) == len(set(out.urls))
 
 
-async def test_the_v2_arm_calls_research_with_the_spec_arguments(
+async def test_the_v2_arm_calls_research_with_the_new_signature(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     seen: dict[str, Any] = {}
@@ -238,7 +230,6 @@ async def test_the_v2_arm_calls_research_with_the_spec_arguments(
     arm = V2Arm(
         mode="both",
         model="ollama:stub",
-        decision_model="nimble:9b",
         sources=sources,
         budget=Budget(max_rounds=1),
     )
@@ -248,24 +239,21 @@ async def test_the_v2_arm_calls_research_with_the_spec_arguments(
         "question": "Does SaltLog work?",
         "mode": "both",
         "model": "ollama:stub",
-        "decision_model": "nimble:9b",
-        "embedding_model": None,  # only a dense-ranking preset is given one
         "store": None,  # nothing persists
         "budget": Budget(max_rounds=1),
         "sources": sources,
-        "config": PRESETS["baseline"],  # the arm names its preset, never implied
-        "frozen": None,
-        "source_client": None,
         "http_cache": None,
-        "shared_decisions": None,  # no store to share decision answers through
     }
-    assert out.cost.llm_calls == 7
+    assert out.cost.llm_calls == 7 and out.cost.decision_calls == 0
     assert out.result is not None and out.result.passages == []  # slimmed
+    assert out.log is not None  # the run log travels to the cell log files
 
 
-async def test_the_v2_arm_passes_its_preset_and_a_runs_frozen_inputs_and_store(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+async def test_the_v2_arm_takes_a_name_and_a_shared_http_cache(
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from andamentum.deep_research.v2.store import ResearchStore
+
     seen: dict[str, Any] = {}
 
     async def research(question: str, **kwargs: Any) -> ResearchResult:
@@ -273,61 +261,25 @@ async def test_the_v2_arm_passes_its_preset_and_a_runs_frozen_inputs_and_store(
         return v2_result(REPORT)
 
     monkeypatch.setattr(arms, "research", research)
+    cache = ResearchStore.in_memory()
     arm = V2Arm(
         mode="web",
         model="ollama:stub",
         sources=SourceConfig(),
-        config=PRESETS["criteria"],
-        name="v2-criteria",
+        http_cache=cache,
+        name="new-engine",
     )
-    frozen = FrozenInputs(
-        question="Does SaltLog work?",
-        mode="web",
-        captured_at=1.0,
-        subquestions=[SubQuestion(id="S1", text="Does SaltLog work?")],
-    )
-    await arm.run("Does SaltLog work?", frozen=frozen, store=tmp_path / "s.db")
-    assert arm.name == "v2-criteria"
-    assert seen["config"] is PRESETS["criteria"]
-    assert seen["frozen"] is frozen
-    assert seen["store"] == tmp_path / "s.db"  # the run's own working store
+    await arm.run("Does SaltLog work?")
+    assert arm.name == "new-engine"
+    assert seen["http_cache"] is cache and seen["store"] is None
 
 
-async def test_the_legacy_arm_cannot_take_frozen_inputs() -> None:
-    arm = LegacyArm(model="ollama:stub", searxng_url="http://127.0.0.1:4070")
-    frozen = FrozenInputs(
-        question="q",
-        mode="web",
-        captured_at=1.0,
-        subquestions=[SubQuestion(id="S1", text="q")],
-    )
-    with pytest.raises(ValueError, match="run it live"):
-        await arm.run("q", frozen=frozen)
-
-
-async def test_the_v2_arm_runs_the_real_engine_offline(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(url_safety, "is_safe_url", lambda url, **_kw: (True, ""))
-    monkeypatch.setattr(
-        "andamentum.references.http.is_safe_url", lambda url, **_kw: (True, "")
-    )
-    fetch_gate._robots_cache_clear()
-    store = ResearchStore.in_memory()
-    arm = V2Arm(
-        mode="scholarly",
-        model=world_llm().model,
-        decision_model=world_decisions()[0],
-        sources=SourceConfig(scholarly=("openalex",)),
-        store=store,
-        source_client=World().client(store),
-    )
-    out = await arm.run(QUESTION)
-    assert out.stop_reason == "covered" and out.degraded == []
-    assert out.claims and all(c.evidence for c in out.claims)
-    assert out.works and out.works[0].doi
-    assert any(u.startswith("https://doi.org/") for u in out.urls)
-    assert out.cost.llm_calls and out.cost.decision_calls
+def test_the_run_log_is_kept_out_of_the_registry_dump() -> None:
+    result = v2_result(REPORT).model_copy(update={"log": RunLog(run_id="r1")})
+    out = map_v2(result)
+    assert out.log is not None
+    assert "log" not in out.model_dump()
+    assert out.result is not None and out.result.log.events == []
 
 
 async def test_the_legacy_arm_calls_run_research_and_times_it(
@@ -345,5 +297,5 @@ async def test_the_legacy_arm_calls_run_research_and_times_it(
     )
     assert seen["model"] == "ollama:stub"
     assert seen["searxng_url"] == "http://127.0.0.1:4070"
-    assert seen["decision_model"] is None
+    assert "decision_model" not in seen
     assert out.cost.wall_s >= 0 and out.cost.llm_calls is None
