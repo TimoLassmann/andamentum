@@ -92,6 +92,7 @@ Changelog     = "https://github.com/TimoLassmann/andamentum/blob/main/CHANGELOG.
 Issues        = "https://github.com/TimoLassmann/andamentum/issues"
 
 [project.scripts]
+andamentum              = "andamentum.cli:main"
 andamentum-epistemic    = "andamentum.epistemic.cli:main"
 andamentum-research     = "andamentum.deep_research.cli:main"
 andamentum-whetstone    = "andamentum.whetstone.cli:main"
@@ -106,6 +107,8 @@ andamentum-agentic-dialect      = "andamentum.agentic_dialect.cli:main"
 andamentum-forge        = "andamentum.forge.cli:main"
 andamentum-llm-judge    = "andamentum.llm_judge.cli:main"
 andamentum-docstore     = "andamentum.document_store.cli:main"
+andamentum-references   = "andamentum.references.cli:main"
+andamentum-word         = "andamentum.word.cli:main"
 
 [project.optional-dependencies]
 # trafilatura (Apache-2.0, MIT-compatible) is kept out of the default
