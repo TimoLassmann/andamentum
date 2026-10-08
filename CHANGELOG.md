@@ -49,6 +49,55 @@ the same shape (`docs/interface.md`).
     `text`, `figures.figure(output=)` and `forge.run_forge(dest=)` → `out=`,
     `compose_bundle` → `continue_document`.
 
+### Fewer flags, presets instead (round 2)
+
+Breaking: command lines lost flags that only tuned numbers or repeated
+another flag. The rule is now in `docs/interface.md` ("Presets, not knobs"):
+the command line has presets, the Python functions keep every setting.
+Removed flags exit 2; there are no aliases.
+
+- **research:** `andamentum-research ask` replaces twelve flags
+  (`--max-rounds`, `--queries-per-round`, `--reads-per-round`,
+  `--window-chars`, `--expand-per-round`, `--results-per-query`,
+  `--max-llm-calls`, `--max-wall-s`, `--max-fetch-bytes`, `--concurrency`,
+  `--openalex-search`, `--sources`) with `--depth {quick,standard,deep}`.
+  `standard`, the default, is the old default budget exactly; `quick` and
+  `deep` are starting points, not measured. Python: `Budget.for_depth(depth)`
+  and the `Depth` type. The scholarly sources are always OpenAlex, Europe PMC
+  and arXiv; `--local-corpus PATH` adds your own documents. Semantic Scholar
+  is reachable only from Python (`SourceConfig`).
+- **whetstone:** the goal loop is the command `revise`:
+  `andamentum-whetstone revise DRAFT (--until "TEXT" | --until-clean
+  {structure,citations,figures}) --model M -o OUT` (`--max-rounds N`, default
+  4; `--figure LABEL=FILE` and `--figure-model` with `--until-clean figures`;
+  exit 1 when the condition was not met, output still written). `review`
+  loses `--goal`, `--goal-check`, `--goal-figure`, `--figure-model`,
+  `--max-rounds`, `--editor-criteria`, `--rounds`, `--novelty-search-depth`
+  (fixed at 2) and `--novelty-store`. `--criteria` and `--guidelines` are one
+  `--brief TEXT|@FILE`. `--lookup/--no-lookup` is `--offline` (refused with
+  `--check-novelty`). Python: `run_goal_loop` / `GoalSpec` / `GoalRunResult`
+  → `revise_document(doc, *, spec=RevisionSpec(...), model=)` /
+  `RevisionSpec` / `RevisionResult` (`condition_met`); `whetstone/goal/` →
+  `whetstone/revise/`. The watermark and author flags stay.
+- **references:** `--no-lookup` → `--offline`, the same word as whetstone and
+  word.
+- **compose and word:** `andamentum-compose write`, `continue`, `check`,
+  `eval` and `andamentum-word draft` take one required `--model`; the role
+  flags `--drafter`, `--critic`, `--judge`, `--reader` are gone (Python keeps
+  `Roles`). `--max-rounds` is gone (presets: 4 rounds for compose, 2 for word
+  draft). Research is one flag with a required value,
+  `--research {auto,web,scholarly,both}` (`auto`: the genre chooses);
+  `--research-mode` is gone. `compose continue FOLDER --model M` repeats the
+  run with the settings `write` recorded in the folder (research mode,
+  formats, provenance, `--confirm-own-sources`), so it no longer takes
+  `--format`, `--no-provenance` or `--research-mode`; a folder without the
+  record exits 3. `continue` and `check` no longer fall back to the models
+  recorded in the folder.
+- **figures:** `plot` loses `--mode` (`--journal showcase` draws the same
+  figure) and `--dpi` (300).
+- **epistemic:** `ask` and `verify` lose `--quick` and `--trace` (the full
+  run and the timeline trace, the old defaults).
+
 ### document_store
 
   - **One store, rebuilt.** The v1 store (`DocumentStore`, `search`,

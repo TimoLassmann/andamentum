@@ -40,6 +40,11 @@ In Python, `andamentum.TOOLS` holds the same list: for each tool its name, summa
 8. **Subcommands** only when a tool really does several different jobs. A tool with one job has no subcommand.
 9. **Plain words.** Flags and help text use words a user already knows (file, folder, output, model, references). No internal names.
 10. **Credentials** (API keys) come from the environment, as each provider documents. They are never flags and never configuration.
+11. **Presets, not knobs.** The command line offers a few named presets and as few flags as possible; the Python functions keep every setting.
+    - Tuning numbers (rounds, limits, sizes, concurrency) are not flags. Choose a good default, or give one named preset such as `--depth quick|standard|deep`.
+    - A mode is one flag with named values (`--research auto|web|scholarly|both`), never a switch plus a second flag for the kind.
+    - One idea has one flag name in every tool: `--offline` means "make no network call besides the model".
+    - A flag earns its place when a user needs it for a real job. Something only a benchmark or an experiment changes stays a Python argument.
 
 ## Python
 

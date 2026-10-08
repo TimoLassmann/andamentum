@@ -187,15 +187,9 @@ def test_every_tool_is_documented(doc):
 #: tool needs a model. Anything not listed must have ``required=True``, so a new
 #: optional --model fails the test.
 OPTIONAL_MODEL_OK = {
-    # compose: --model fills all four roles at once; the per-role flags
-    # (--drafter/--critic/--judge/--reader) are the alternative.
-    ("compose", "write"),
-    ("compose", "eval"),
-    # compose continue/render/check take the models recorded in the folder, or
-    # the per-role flags; check needs a model only for the optional numbers pass.
-    ("compose", "continue"),
+    # compose render calls no model; --model names the model in the provenance
+    # and defaults to the one recorded in the folder.
     ("compose", "render"),
-    ("compose", "check"),
     # research mcp serves the store; the model is for the optional research tool.
     ("research", "mcp"),
 }
@@ -311,7 +305,7 @@ def test_no_model_free_tool_writes_into_the_current_folder(tmp_path, monkeypatch
         (typeset, [str(doc)], {0}),
         (typeset, [str(doc), "-o", str(work / "t.html")], {0}),
         (dialect, ["laws"], {0}),
-        (references, [str(doc), "--no-lookup", "-o", str(work / "r.md")], {0, 1}),
+        (references, [str(doc), "--offline", "-o", str(work / "r.md")], {0, 1}),
         (docstore, ["ingest", str(db), str(doc)], {0}),
         (docstore, ["list", str(db)], {0}),
         (compose, ["new", "-o", str(work / "newdoc"), "--title", "Pilot"], {0}),
