@@ -41,7 +41,11 @@ class Document:
 
 @dataclass(frozen=True)
 class DocRef:
-    """A document as ``list`` returns it: its newest revision, without the text."""
+    """A document as ``list`` returns it: its newest revision, without the text.
+
+    ``cursor`` is opaque: pass the last one of a page to ``list(cursor=...)``
+    for the next page.
+    """
 
     doc_id: str
     key: str | None
@@ -49,6 +53,7 @@ class DocRef:
     updated_at: str
     media_type: str
     metadata: dict[str, Any]
+    cursor: str
 
 
 @dataclass(frozen=True)

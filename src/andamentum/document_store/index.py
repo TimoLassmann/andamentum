@@ -434,30 +434,34 @@ class HybridIndex:
         self, db: sqlite3.Connection, embedding: Sequence[float], *, k: int,
         allowed: tuple[str, list[object]] | None = None,
     ) -> list[int]:
-        """Chunk ids nearest to ``embedding``; with a filter, over-fetch then filter."""
+        """Chunk ids nearest to ``embedding`` (L2 distance, as vec0 uses).
+
+        With a filter, the distance is computed over exactly the chunks of the
+        allowed documents, so a small allowed set is never crowded out by
+        nearer chunks of other documents.
+        """
         if not self._has_vec(db):
             return []
-        fetch = min(k * 10, 1000) if allowed is not None else k
-        near = [
+        blob = struct.pack(f"{len(embedding)}f", *embedding)
+        if allowed is None:
+            return [
+                r[0]
+                for r in db.execute(
+                    f"SELECT rowid FROM {self._t('vec')} WHERE embedding MATCH ? AND k = ? "
+                    "ORDER BY distance",
+                    (blob, k),
+                )
+            ]
+        extra, params = self._allowed(allowed)
+        return [
             r[0]
             for r in db.execute(
-                f"SELECT rowid FROM {self._t('vec')} WHERE embedding MATCH ? AND k = ? "
-                "ORDER BY distance",
-                (struct.pack(f"{len(embedding)}f", *embedding), fetch),
+                f"SELECT v.rowid FROM {self._t('vec')} v JOIN {self._t('chunks')} c "
+                f"ON c.id = v.rowid WHERE 1{extra} "
+                "ORDER BY vec_distance_l2(v.embedding, ?), v.rowid LIMIT ?",
+                [*params, blob, k],
             )
         ]
-        if allowed is None or not near:
-            return near[:k]
-        extra, params = self._allowed(allowed)
-        marks = ",".join("?" * len(near))
-        keep = {
-            r[0]
-            for r in db.execute(
-                f"SELECT c.id FROM {self._t('chunks')} c WHERE c.id IN ({marks}){extra}",
-                [*near, *params],
-            )
-        }
-        return [cid for cid in near if cid in keep][:k]
 
     def chunks(self, db: sqlite3.Connection, chunk_ids: Sequence[int]) -> list[IndexedChunk]:
         """These chunks, in the given order (ids that no longer exist are left out)."""

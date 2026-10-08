@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 
 from .types import Where
 
@@ -12,20 +13,41 @@ def json_path(field: str) -> str:
     parts = field.split(".")
     if not field or any(not p for p in parts):
         raise ValueError(f"invalid metadata field name {field!r}")
-    return "$" + "".join("." + json.dumps(p) for p in parts)
+    # ensure_ascii=False: SQLite's JSON paths do not decode \uXXXX escapes.
+    return "$" + "".join("." + json.dumps(p, ensure_ascii=False) for p in parts)
 
 
-def _check_scalar(field: str, value: object) -> None:
-    if not isinstance(value, str | int | float | bool):
-        raise TypeError(
-            f"where[{field!r}]: {type(value).__name__} is not a str, int, float or bool"
+def _scalar_sql(column: str, path: str, value: object, field: str) -> tuple[str, list[object]]:
+    """Equality that keeps JSON booleans and numbers apart.
+
+    SQLite stores JSON true/false as 1/0, so ``= 1`` alone would match both
+    ``true`` and ``1``; the ``json_type`` check tells them apart.
+    """
+    if isinstance(value, bool):
+        return (
+            f"json_type({column}, ?) = ?",
+            [path, "true" if value else "false"],
         )
+    if isinstance(value, int | float):
+        return (
+            f"(json_extract({column}, ?) = ? AND json_type({column}, ?) IN ('integer', 'real'))",
+            [path, value, path],
+        )
+    if isinstance(value, str):
+        return (
+            f"(json_extract({column}, ?) = ? AND json_type({column}, ?) = 'text')",
+            [path, value, path],
+        )
+    raise TypeError(
+        f"where[{field!r}]: {type(value).__name__} is not a str, int, float or bool"
+    )
 
 
 def where_sql(where: Where | None, *, column: str) -> tuple[str, list[object]]:
     """SQL condition and parameters for ``where`` over the JSON in ``column``.
 
-    Returns ``("1", [])`` for an empty filter.
+    Returns ``("1", [])`` for an empty filter. A list (or tuple, or set) value
+    matches any of its members; an empty one matches nothing.
     """
     if not where:
         return "1", []
@@ -34,19 +56,28 @@ def where_sql(where: Where | None, *, column: str) -> tuple[str, list[object]]:
     for field, value in where.items():
         path = json_path(field)
         if value is None:
-            clauses.append(f"json_type({column}, ?) IS NULL OR json_type({column}, ?) = 'null'")
-            clauses[-1] = f"({clauses[-1]})"
+            clauses.append(f"(json_type({column}, ?) IS NULL OR json_type({column}, ?) = 'null')")
             params += [path, path]
-        elif isinstance(value, list):
-            if not value:
-                raise ValueError(f"where[{field!r}]: an empty list matches nothing")
-            for v in value:
-                _check_scalar(field, v)
-            marks = ",".join("?" * len(value))
-            clauses.append(f"json_extract({column}, ?) IN ({marks})")
-            params += [path, *value]
+        elif isinstance(value, list | tuple | set | frozenset):
+            members = list(value) if not isinstance(value, set | frozenset) else sorted(value, key=repr)
+            if not members:
+                clauses.append("0")
+                continue
+            parts = [_scalar_sql(column, path, v, field) for v in _members(members)]
+            clauses.append("(" + " OR ".join(sql for sql, _ in parts) + ")")
+            for _, p in parts:
+                params += p
         else:
-            _check_scalar(field, value)
-            clauses.append(f"json_extract({column}, ?) = ?")
-            params += [path, value]
+            sql, p = _scalar_sql(column, path, value, field)
+            clauses.append(sql)
+            params += p
     return " AND ".join(clauses), params
+
+
+def _members(values: Iterable[object]) -> list[object]:
+    out = []
+    for v in values:
+        if v is None:
+            raise TypeError("a where list cannot hold None; use {field: None} instead")
+        out.append(v)
+    return out

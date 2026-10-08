@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any, Literal, Optional, TypeVar, TYPE_CHECKING, overload
 import logging
 
-from andamentum.document_store import Store
+from andamentum.document_store import KeyExists, Store
 
 from .databases import open_store
 
@@ -357,22 +357,40 @@ class EpistemicRepository:
             limit=1,
         )
 
-        if existing:
-            # Update existing
-            await self.store.update(
-                existing[0].doc_id,
-                text=content,
-                metadata=metadata,
-            )
-            return existing[0].doc_id
-        else:
-            # Create new
-            return await self.store.put(
-                content,
-                key=f"{entity.entity_type}:{entity.entity_id}",
-                media_type="application/json",
-                metadata=metadata,
-            )
+        return await self._upsert(
+            existing[0].doc_id if existing else None,
+            key=f"{entity.entity_type}:{entity.entity_id}",
+            content=content,
+            media_type="application/json",
+            metadata=metadata,
+        )
+
+    async def _upsert(
+        self,
+        doc_id: str | None,
+        *,
+        key: str,
+        content: str,
+        media_type: str,
+        metadata: dict,
+    ) -> str:
+        """Update ``doc_id`` if found, else create the document under ``key``.
+
+        Two writers that both found nothing (decomposed children share one
+        database) race to create it; the loser updates the winner's document
+        instead of failing on the taken key.
+        """
+        if doc_id is None:
+            try:
+                return await self.store.put(
+                    content, key=key, media_type=media_type, metadata=metadata
+                )
+            except KeyExists:
+                doc_id = await self.store.resolve(key)
+                if doc_id is None:  # deleted between the two calls
+                    raise
+        await self.store.update(doc_id, text=content, metadata=metadata)
+        return doc_id
 
     async def delete(self, entity_type: str, entity_id: str) -> bool:
         """Delete an entity.
@@ -562,17 +580,10 @@ class EpistemicRepository:
             limit=1,
         )
 
-        if existing:
-            await self.store.update(
-                existing[0].doc_id,
-                text=content,
-                metadata=metadata,
-            )
-            return existing[0].doc_id
-
-        return await self.store.put(
-            content,
+        return await self._upsert(
+            existing[0].doc_id if existing else None,
             key=f"adversarial_evidence:{adv.claim_id}",
+            content=content,
             media_type="text/plain",
             metadata=metadata,
         )

@@ -95,11 +95,19 @@ def _atomic_blocks(lines: list[str], offsets: list[int]) -> list[tuple[int, int]
     n = len(lines)
     line_blocks: list[tuple[int, int]] = []
     i = 0
+    # YAML front matter: "---" on the first line, closed by "---" or "..."
+    # before any blank line ("#" lines inside are YAML comments). A document
+    # that merely opens with a horizontal rule has a blank line before its
+    # next rule, so it is not mistaken for one atomic block.
     if lines and lines[0].rstrip() == "---":
         for j in range(1, n):
-            if lines[j].rstrip() == "---":
-                line_blocks.append((0, j))
-                i = j + 1
+            line = lines[j].rstrip()
+            if line in ("---", "..."):
+                if j > 1:
+                    line_blocks.append((0, j))
+                    i = j + 1
+                break
+            if not line:
                 break
     fences = [(a + i, b + i) for a, b in fence_line_ranges(lines[i:])]
     fi = 0

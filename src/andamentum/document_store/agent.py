@@ -530,9 +530,20 @@ class AgentSearcher:
                     raise ValueError("offset and limit must be >= 1")
                 doc_id = await docs.doc_id(doc)
                 lines = (await docs.text(doc_id)).split("\n")[offset - 1 : offset - 1 + limit]
-                text = "\n".join(f"{offset + i}: {line}" for i, line in enumerate(lines))
-                seen_now = await overlapping(PassageRef(doc=doc, line_from=offset, line_to=offset + limit - 1))
-                return text[:_READ_MAX_CHARS], [as_hit(c) for c in seen_now]
+                # Whole lines up to the size cap; only those count as shown.
+                shown_lines: list[str] = []
+                size = 0
+                for i, line in enumerate(lines):
+                    numbered = f"{offset + i}: {line}"
+                    if shown_lines and size + len(numbered) + 1 > _READ_MAX_CHARS:
+                        break
+                    shown_lines.append(numbered[:_READ_MAX_CHARS])
+                    size += len(numbered) + 1
+                if not shown_lines:
+                    return "(no lines)", []
+                last = offset + len(shown_lines) - 1
+                seen_now = await overlapping(PassageRef(doc=doc, line_from=offset, line_to=last))
+                return "\n".join(shown_lines), [as_hit(c) for c in seen_now]
 
             return await call("read", {"doc": doc, "offset": offset, "limit": limit}, go)
 

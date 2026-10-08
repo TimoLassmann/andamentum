@@ -15,7 +15,7 @@ One SQLite file of documents, searchable. The design rule is **fixed data, flexi
 
 | Script | What it does | LLM? |
 |---|---|---|
-| `andamentum-docstore` | `ingest DB SOURCE...` (harvest → markdown, original bytes kept), `sync DB --embedding-model M`, `search DB QUERY --embedding-model M --reranker-model R`, `get`, `list`, `delete` | `ingest`, `get`, `list`, `delete` need none; `sync` embeds; `search` embeds and reranks |
+| `andamentum-docstore` | `ingest DB SOURCE...` (harvest → markdown, original bytes kept), `sync DB --embedding-model M`, `search DB QUERY --embedding-model M --reranker-model R`, `get`, `list`, `delete`, `enrich DB NAME` | `ingest`, `get`, `list`, `delete` and the identifiers/facts enrichers need none; `sync` embeds; `search` embeds and reranks; `enrich extract` needs `--model`, `enrich classify` a decision model and `--labels` |
 
 ## Rules the code relies on
 
@@ -23,8 +23,8 @@ One SQLite file of documents, searchable. The design rule is **fixed data, flexi
 - **A key names at most one live document.** The unique index is partial (`WHERE deleted_at IS NULL`): a deleted document gives its key up, and `restore` raises `KeyExists` if a live document took it meanwhile.
 - **`update` writes a new revision; metadata replaces the whole object.** Old revisions stay until `purge`. Callers that change one field do get → change → update.
 - **`list` has no default limit.** `limit=None` means all. The old store's silent `limit=100` truncated epistemic queries without a warning; that is why the parameter has no default.
-- **`where` is three forms only:** equality, `None` (missing or null), list (one of). AND of entries, dotted names for nested fields. Field names are bound as JSON paths, never interpolated. Range and "contains" filters stay in the caller.
-- **`list` orders by the newest revision's rowid, descending,** so `limit=1` is the most recently written document.
+- **`where` is three forms only:** equality, `None` (missing or null), list/tuple/set (one of; empty matches nothing). AND of entries, dotted names for nested fields. Equality checks the JSON type too, so `True`, `1` and `"1"` are three different values (SQLite alone stores `true` as 1). Field names are bound as JSON paths (non-ASCII kept unescaped, because SQLite paths do not decode `\uXXXX`), never interpolated. Range and "contains" filters stay in the caller.
+- **`list` orders by the newest revision's rowid, descending,** so `limit=1` is the most recently written document. `DocRef.cursor` is that rowid; paging walks the order as it stood, so a document updated between pages moves to the front and is not returned again.
 - **Nothing in `store.py` calls a model.** `sync` and `search` do so only through the index and searcher the caller passed. A store opened with neither (epistemic) never embeds.
 - **WAL and a 30 s busy timeout;** every write is one `BEGIN IMMEDIATE` transaction, so several processes can write one file.
 - **No default location, no environment variables.** The caller names the path.
@@ -41,7 +41,7 @@ One SQLite file of documents, searchable. The design rule is **fixed data, flexi
 
 ## Searchers
 
-**Default: `HybridRerankSearcher(*, index, reranker_model, depth=50)`.** BM25 (OR-joined terms) and vector nearest neighbours over chunks, fused by RRF (k=60) to the top 50, then reranked by the cross-encoder. This is the configuration measured as `v2_rerank` (MuSiQue dev full_support@10 0.490, HotpotQA dev 0.955; v1 with the rerank was 0.505 and 0.945). The trigram leg is not in the fusion: it was off in that measurement. `reranker_model` has no default; `SUGGESTED_RERANKER_MODEL` (`BAAI/bge-reranker-v2-m3`) is the measured one.
+**Default: `HybridRerankSearcher(*, index, reranker_model, depth=50)`.** BM25 (OR-joined terms) and vector nearest neighbours over chunks (with a `where`, both legs rank only the allowed documents' chunks), fused by RRF (k=60) to the top 50, then reranked by the cross-encoder. This is the configuration measured as `v2_rerank` (MuSiQue dev full_support@10 0.490, HotpotQA dev 0.955; v1 with the rerank was 0.505 and 0.945). The trigram leg is not in the fusion: it was off in that measurement. `reranker_model` has no default; `SUGGESTED_RERANKER_MODEL` (`BAAI/bge-reranker-v2-m3`) is the measured one.
 
 **Opt-in: `AgentSearcher(*, model, inner, budget=AgentBudget(), model_settings=None)`.** Round 0 is the inner searcher's candidates reranked against the request; one structured call decides whether they are enough; otherwise a pydantic-ai tool loop (`list`, `glob`, `grep`, `search`, `outline`, `read`, `note`) runs until the model returns a `Selection` of passages it was shown. The `search` tool is the inner searcher, reranked against the tool's own query. The result order is selected, then seen, then the rest of round 0; every score is the reranker score against the original request. Measured as `v2_agent`: MuSiQue dev 0.625. Use `search_with_run` when several searches run concurrently; `last_run` is per instance.
 

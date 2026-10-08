@@ -844,7 +844,7 @@ cap = 0.5 + (loveliness_gap / FRAMING_TIE_SATURATION_GAP) × 0.5
 <tr><td><code>convergence_detector.py</code></td><td>Reichenbach common-cause cluster analysis.</td></tr>
 <tr><td><code>confidence.py</code></td><td>Posterior aggregation; abductive-primary with a diagnostic counting posterior (see section 10).</td></tr>
 <tr><td><code>demand.py</code></td><td>The <code>Demand</code> Pydantic model used everywhere lazy-escalation happens.</td></tr>
-<tr><td><code>repository.py</code></td><td><code>EpistemicRepository</code> wraps a <code>DocumentStore</code> (from <code>andamentum.document_store</code>).</td></tr>
+<tr><td><code>repository.py</code></td><td><code>EpistemicRepository</code> wraps a <code>Store</code> (from <code>andamentum.document_store</code>).</td></tr>
 <tr><td><code>runner.py</code></td><td><code>DefaultAgentRunner</code> wrapping <code>core.AgentRunner</code> with the epistemic agent registry.</td></tr>
 <tr><td><code>cli.py</code></td><td><code>andamentum-epistemic</code> entry point. Primary modes: <code>ask</code> and <code>verify</code>; further subcommands <code>run</code>, <code>agents</code>, <code>preflight</code>, <code>stage</code>, <code>inspect</code>, <code>confidence</code>.</td></tr>
 <tr><td><code>tests/</code></td><td>Tests live next to the code they test. <code>test_topology.py</code> asserts reachability properties on the 23-node graph.</td></tr>

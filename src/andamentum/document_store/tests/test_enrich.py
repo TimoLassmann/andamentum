@@ -97,6 +97,7 @@ async def test_facts(store: Store):
         "lines": len(TEXT.splitlines()),
         "headings": 2,
         "media_type": "text/markdown",
+        "source": "andamentum.document_store.enrich.facts",
     }
 
 

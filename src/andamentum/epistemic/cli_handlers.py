@@ -1750,8 +1750,12 @@ async def handle_cleanup(
     # Group by database name (db + raw dir)
     db_groups = {}
     for item, mtime, size in candidates:
-        # Extract base name (remove .db or _raw suffix)
-        base_name = item.name.replace(".db", "").replace("_raw", "")
+        # Base name: strip the .db / .db-wal / .db-shm suffix or the _raw dir suffix
+        base_name = item.name
+        for suffix in (".db-wal", ".db-shm", ".db", "_raw"):
+            if base_name.endswith(suffix):
+                base_name = base_name[: -len(suffix)]
+                break
         if base_name not in db_groups:
             db_groups[base_name] = {"items": [], "total_size": 0, "mtime": mtime}
         db_groups[base_name]["items"].append(item)

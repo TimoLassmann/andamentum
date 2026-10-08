@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import sqlite3
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
@@ -37,6 +38,9 @@ if TYPE_CHECKING:
 
 #: Documents an index processes per batch during ``sync``.
 SYNC_BATCH = 64
+
+#: Index names become table-name parts, so they are checked here as well.
+_INDEX_NAME = re.compile(r"[a-z][a-z0-9_]*")
 
 # The newest revision of every document, joined to its document row.
 _HEAD = (
@@ -66,6 +70,9 @@ class Store:
     ) -> None:
         self.path = path
         self._db = db
+        for ix in indexes:
+            if not _INDEX_NAME.fullmatch(ix.name):
+                raise ValueError(f"index name {ix.name!r} must match {_INDEX_NAME.pattern}")
         self.indexes = {ix.name: ix for ix in indexes}
         if len(self.indexes) != len(indexes):
             raise ValueError("two indexes share a name")
@@ -96,9 +103,11 @@ class Store:
         return cls(path, connect(path), indexes=indexes, searcher=searcher)
 
     async def close(self) -> None:
-        for ix in self.indexes.values():
-            await ix.close()
-        self._db.close()
+        try:
+            for ix in self.indexes.values():
+                await ix.close()
+        finally:
+            self._db.close()
 
     async def __aenter__(self) -> Store:
         return self
@@ -349,8 +358,10 @@ class Store:
     ) -> list[DocRef]:
         """Live documents whose newest revision matches ``where``, newest first.
 
-        ``limit`` has no default: pass ``None`` for all of them. ``cursor`` is
-        the ``doc_id`` of the last document of the previous page.
+        ``limit`` has no default: pass ``None`` for all of them. For the next
+        page, pass the ``cursor`` of the last ``DocRef`` of this one. Paging
+        walks the order as it stood: a document updated between pages moves
+        to the front and is not returned again on a later page.
         """
         if limit is not None and limit < 1:
             raise ValueError("limit must be >= 1 or None")
@@ -360,11 +371,12 @@ class Store:
             f"{_HEAD} WHERE d.deleted_at IS NULL AND {cond}"
         )
         if cursor is not None:
-            sql += (
-                " AND r.rowid < (SELECT r2.rowid FROM revisions r2 WHERE r2.doc_id = ? "
-                "ORDER BY r2.rev DESC LIMIT 1)"
-            )
-            params.append(cursor)
+            try:
+                position = int(cursor)
+            except ValueError:
+                raise ValueError(f"not a list cursor: {cursor!r}") from None
+            sql += " AND r.rowid < ?"
+            params.append(position)
         sql += " ORDER BY r.rowid DESC"
         if limit is not None:
             sql += " LIMIT ?"
@@ -377,6 +389,7 @@ class Store:
                 updated_at=r[3],
                 media_type=r[4],
                 metadata=json.loads(r[5]),
+                cursor=str(r[6]),
             )
             for r in self._db.execute(sql, params)
         ]

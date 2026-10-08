@@ -256,3 +256,32 @@ class TestConvenienceMethods:
         await repo.save(a)
         loaded_a = await repo.get_artefact("a-1")
         assert isinstance(loaded_a, Artefact)
+
+
+async def test_concurrent_saves_of_a_new_entity_do_not_fail(tmp_path):
+    """Two writers that both find nothing race to create; the loser updates."""
+    import asyncio
+
+    from andamentum.document_store import Store
+    from andamentum.epistemic.repository import EpistemicRepository
+
+    path = tmp_path / "shared.db"
+    a, b = await Store.open(path), await Store.open(path)
+    try:
+        repo_a, repo_b = EpistemicRepository(a), EpistemicRepository(b)
+        real_list = b.list
+
+        async def sees_nothing(**kwargs):
+            await asyncio.sleep(0)
+            return []
+
+        b.list = sees_nothing  # type: ignore[method-assign]
+        doc_a = await repo_a._upsert(None, key="claim:x", content="{}", media_type="application/json", metadata={"v": 1})
+        doc_b = await repo_b._upsert(None, key="claim:x", content="{}", media_type="application/json", metadata={"v": 2})
+        b.list = real_list  # type: ignore[method-assign]
+        assert doc_a == doc_b
+        doc = await a.get(doc_a)
+        assert doc is not None and doc.metadata == {"v": 2} and doc.rev == 2
+    finally:
+        await a.close()
+        await b.close()

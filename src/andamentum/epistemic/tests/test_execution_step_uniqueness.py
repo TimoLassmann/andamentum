@@ -1,4 +1,4 @@
-"""Regression: execution_step file_path uniqueness across concurrent graph runs.
+"""Regression: execution_step key uniqueness across concurrent graph runs.
 
 Bug context: ``_run_op`` in ``graph/nodes.py`` stored an execution-trace
 document per operation with ``file_path=f"execution_step_{step_number}"``.

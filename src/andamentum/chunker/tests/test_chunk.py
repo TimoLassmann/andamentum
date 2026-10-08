@@ -195,3 +195,17 @@ def test_invariants_on_random_markdown(seed):
         if not ch.isspace():
             assert covered[i], f"character {i} ({ch!r}) is in no chunk"
     assert chunks == chunk(src, max_chars=max_chars)
+
+
+def test_a_leading_horizontal_rule_is_not_front_matter():
+    body = "\n\n".join(f"Paragraph {i} " + "word " * 40 for i in range(20))
+    text = "---\n\n# T\n\n" + body + "\n\n---\n\n# Next\n\ntext"
+    chunks = chunk(text, max_chars=300)
+    assert max(len(c.text) for c in chunks) <= 300
+    assert any(c.heading_path == ("Next",) for c in chunks)
+
+
+def test_front_matter_stays_one_block():
+    text = "---\ntitle: x\ntags: [a, b]\n---\n\n# Body\n\nText."
+    first = chunk(text, max_chars=1000)[0]
+    assert first.text.startswith("---\ntitle: x")

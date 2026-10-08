@@ -151,18 +151,22 @@ async def build_store(
         for leftover in (path, path.with_suffix(".db-wal"), path.with_suffix(".db-shm")):
             leftover.unlink(missing_ok=True)  # a half-built store from an interrupted run
     store = await Store.open(path, indexes=indexes)
-    if not reused:
-        for p in corpus.passages:
-            await store.put(document_content(p), key=p.pid, metadata={"title": p.title})
-        report = await store.sync()
-        if not report.ok:
-            raise RuntimeError(f"indexing failed: {report.failures}")
-        meta = _write_meta(meta_path, expected)  # last: marks the store complete
-    doc_to_pid = {r.doc_id: r.key for r in await store.list(limit=None) if r.key}
-    if len(doc_to_pid) != len(corpus.passages):
-        raise ValueError(
-            f"store holds {len(doc_to_pid)} keyed documents for {len(corpus.passages)} passages"
-        )
+    try:
+        if not reused:
+            for p in corpus.passages:
+                await store.put(document_content(p), key=p.pid, metadata={"title": p.title})
+            report = await store.sync()
+            if not report.ok:
+                raise RuntimeError(f"indexing failed: {report.failures}")
+            meta = _write_meta(meta_path, expected)  # last: marks the store complete
+        doc_to_pid = {r.doc_id: r.key for r in await store.list(limit=None) if r.key}
+        if len(doc_to_pid) != len(corpus.passages):
+            raise ValueError(
+                f"store holds {len(doc_to_pid)} keyed documents for {len(corpus.passages)} passages"
+            )
+    except BaseException:
+        await store.close()
+        raise
     return BuiltStore(
         store, hybrid, lexical, doc_to_pid, StoreInfo(str(path), STORE_LAYOUT, reused, meta)
     )

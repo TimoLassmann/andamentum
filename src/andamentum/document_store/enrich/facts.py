@@ -23,5 +23,6 @@ async def enrich_facts(store: Store, doc_id: str) -> EnrichResult:
         "lines": len(text.splitlines()),
         "headings": len(find_headings(text)),
         "media_type": doc.media_type,
+        "source": "andamentum.document_store.enrich.facts",
     }
     return await write_key(store, doc, key=KEY, value=value)

@@ -154,7 +154,7 @@ async def test_list_pages_with_a_cursor(store):
         if not page:
             break
         seen += [r.doc_id for r in page]
-        cursor = page[-1].doc_id
+        cursor = page[-1].cursor
     assert seen == list(reversed(ids))
 
 
@@ -183,9 +183,38 @@ async def test_where_rejects_bad_values(store):
     with pytest.raises(TypeError):
         await store.count(where={"x": {"nested": 1}})  # type: ignore[dict-item]
     with pytest.raises(ValueError):
-        await store.count(where={"x": []})
-    with pytest.raises(ValueError):
         await store.count(where={"a..b": 1})
+    with pytest.raises(TypeError):
+        await store.count(where={"x": [1, None]})  # type: ignore[list-item]
+
+
+async def test_where_empty_list_matches_nothing_and_tuples_work(store):
+    await store.put("a", metadata={"t": "claim"})
+    assert await store.count(where={"t": []}) == 0
+    assert await store.count(where={"t": ("claim", "x")}) == 1  # type: ignore[dict-item]
+
+
+async def test_where_keeps_booleans_and_numbers_apart(store):
+    await store.put("a", metadata={"v": True})
+    await store.put("b", metadata={"v": 1})
+    await store.put("c", metadata={"v": "1"})
+    assert await store.count(where={"v": True}) == 1
+    assert await store.count(where={"v": 1}) == 1
+    assert await store.count(where={"v": "1"}) == 1
+    assert await store.count(where={"v": [True, "1"]}) == 2
+
+
+async def test_where_reaches_non_ascii_field_names(store):
+    await store.put("a", metadata={"é": 1})
+    assert await store.count(where={"é": 1}) == 1
+
+
+async def test_paging_survives_an_update_of_the_cursor_document(store):
+    ids = [await store.put(f"doc {i}") for i in range(6)]
+    first = await store.list(limit=2)
+    await store.update(first[-1].doc_id, text="changed")
+    rest = await store.list(limit=None, cursor=first[-1].cursor)
+    assert [r.doc_id for r in rest] == list(reversed(ids))[2:]
 
 
 async def test_where_field_names_cannot_inject_sql(store):

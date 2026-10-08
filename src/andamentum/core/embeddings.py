@@ -2,16 +2,15 @@
 
 Single home for the HTTP plumbing every sub-module needs:
 - ``make_ollama_embedder`` — long-lived client + semaphore, for code paths
-  that issue many small embed calls (chunker's semantic split).
+  that issue many small embed calls.
 - ``embed_texts`` — one-shot fresh-client batch embed with a char-cap safety
   net, for code paths that embed a small batch then move on.
 - ``embed_documents`` — embed long documents by chunking, returning
   per-document chunk embeddings (max-sim pairwise comparison).
 - ``cosine_similarity`` — with the 1e-8 epsilon every callsite uses.
-- ``chunk_text`` — overlapping-window splitter aligned with document_store's
-  500-token convention (≈2000 chars).
+- ``chunk_text`` — overlapping-window splitter (≈2000 chars per window).
 
-Sub-modules (chunker, epistemic, ...) re-export the names they need from
+Sub-modules re-export the names they need from
 here so callers don't have to know which module owns the embedder.
 
 Architecture: shared infrastructure, lazy httpx import, no andamentum deps.
@@ -28,14 +27,14 @@ import numpy as np
 
 # Public type alias: any caller can supply their own embedder by matching this.
 # Embedders built by ``make_ollama_embedder`` additionally carry an
-# ``input_budget_chars`` attribute that downstream callers (e.g. the chunker)
+# ``input_budget_chars`` attribute that downstream callers
 # read via ``infer_input_budget_chars`` to pre-size their inputs.
 EmbeddingFn = Callable[[list[str]], Awaitable[list[list[float]]]]
 
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
 DEFAULT_EMBEDDING_MODEL = "embeddinggemma-2:latest"
 
-# Aligned with document_store's 500-token / 4-chars-per-token chunking.
+# About 500 tokens at 4 characters per token.
 DEFAULT_MAX_EMBED_CHARS = 2000
 DEFAULT_OVERLAP_CHARS = 200
 
@@ -182,8 +181,7 @@ def make_ollama_embedder(
         # Runtime safety net: if the model reports an over-context input
         # despite our pre-budget, halve and average. Mean-pooling halves is
         # the same approximation ``embed_documents`` uses for long-doc
-        # embeddings; for the chunker's cosine-drop signal between adjacent
-        # paragraphs it is more than adequate. Bail at a tiny ``text`` so a
+        # embeddings. Bail at a tiny ``text`` so a
         # truly broken Ollama response can't recurse forever.
         body_lc = (body or "").lower()
         if "context length" in body_lc and len(text) > 64:
@@ -222,7 +220,7 @@ class OllamaEmbedder:
     list of texts in one round trip and then tear the client down (ingestion,
     reembedding, a single query embedding). ``make_ollama_embedder`` remains
     the reference client for callers that issue many small embed calls over
-    a long-lived session (the chunker's per-paragraph semantic split).
+    a long-lived session.
     """
 
     def __init__(

@@ -40,7 +40,7 @@ async with await Store.open("notes.db") as store:
 | `search(query, *, limit, where)` | The best passages, best first (needs a searcher). |
 | `sync()` | Brings every index up to date. |
 
-`where` has three forms: `{"field": value}` (equal), `{"field": None}` (missing or null), `{"field": [a, b]}` (one of). All entries must hold; dotted names reach nested fields (`{"bib.year": 2024}`).
+`where` has three forms: `{"field": value}` (equal, including the JSON type: `True` is not `1`), `{"field": None}` (missing or null), `{"field": [a, b]}` (one of; an empty list matches nothing). For the next page of `list`, pass the last result's `cursor`. All entries must hold; dotted names reach nested fields (`{"bib.year": 2024}`).
 
 ## Search
 
@@ -110,6 +110,8 @@ andamentum-docstore search notes.db "what limits the method?" \
 andamentum-docstore list notes.db --where '{"kind": "paper"}' --limit 20
 andamentum-docstore get notes.db notes/apollo
 andamentum-docstore delete notes.db notes/apollo
+andamentum-docstore enrich notes.db identifiers
+andamentum-docstore enrich notes.db extract --model ollama:gemma4:31b-cloud
 ```
 
 ## Reranking cost

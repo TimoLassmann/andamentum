@@ -11,6 +11,9 @@ the named Ollama model); ``search`` syncs first, then searches.
         --reranker-model BAAI/bge-reranker-v2-m3
     andamentum-docstore list notes.db --where '{"kind": "paper"}' --limit 20
     andamentum-docstore get notes.db DOC_ID_OR_KEY
+    andamentum-docstore enrich notes.db identifiers
+    andamentum-docstore enrich notes.db classify --decision-model tev1:4b \
+        --labels '{"trial": "a clinical trial report", "review": "a review"}' --max-chars 8000
 
 ``sync`` can be stopped with Ctrl-C at any time; running it again continues,
 and documents already embedded are not embedded again. The index settings
@@ -78,6 +81,19 @@ def _parser() -> argparse.ArgumentParser:
     de = sub.add_parser("delete", help="soft-delete a document")
     de.add_argument("db", type=Path)
     de.add_argument("doc", help="document id or key")
+
+    en = sub.add_parser("enrich", help="add one metadata key to every matching document")
+    en.add_argument("db", type=Path)
+    en.add_argument(
+        "enricher", choices=("identifiers", "facts", "bibliographic", "extract", "classify")
+    )
+    en.add_argument("--where", help="JSON metadata filter (default: every document)")
+    en.add_argument("--model", help="LLM for 'extract'")
+    en.add_argument("--mailto", help="contact address for Crossref's polite pool ('bibliographic')")
+    en.add_argument("--decision-model", help="Ollama decision model for 'classify'")
+    en.add_argument("--labels", help="JSON object label -> description for 'classify'")
+    en.add_argument("--multi", action="store_true", help="'classify': any number of labels")
+    en.add_argument("--max-chars", type=int, help="'classify': characters of text sent")
     return p
 
 
@@ -175,9 +191,67 @@ async def _run(args: argparse.Namespace) -> int:
                 print(f"{r.doc_id}\t{r.key or ''}\trev {r.rev}\t{r.updated_at}\t{title}")
         elif args.command == "delete":
             await store.delete(await _doc_id(store, args.doc))
+        elif args.command == "enrich":
+            await _enrich(store, args)
     finally:
         await store.close()
     return 0
+
+
+async def _enrich(store: Store, args: argparse.Namespace) -> None:
+    from . import enrich
+
+    where = _json_arg(args.where, name="--where")
+    name = args.enricher
+    if name == "identifiers":
+        results = await enrich.enrich_all(store, enrich.enrich_identifiers, where=where)
+    elif name == "facts":
+        results = await enrich.enrich_all(store, enrich.enrich_facts, where=where)
+    elif name == "extract":
+        if not args.model:
+            raise SystemExit("'extract' needs --model")
+        results = await enrich.enrich_all(
+            store, enrich.enrich_extract, where=where, model=args.model
+        )
+    elif name == "bibliographic":
+        import os
+
+        from ..references import ReferenceHttp
+
+        http = ReferenceHttp(mailto=args.mailto)
+        try:
+            results = await enrich.enrich_all(
+                store,
+                enrich.enrich_bibliographic,
+                where=where,
+                http=http,
+                # A credential, read from the environment as the PubMed
+                # providers do; never a command-line flag.
+                api_key=os.environ.get("NCBI_API_KEY"),
+            )
+        finally:
+            await http.aclose()
+    else:  # classify
+        if not (args.decision_model and args.labels and args.max_chars):
+            raise SystemExit("'classify' needs --decision-model, --labels and --max-chars")
+        from ..core.decisions import DecisionModel
+
+        labels = _json_arg(args.labels, name="--labels")
+        async with await DecisionModel.open(args.decision_model) as dm:
+            results = await enrich.enrich_all(
+                store,
+                enrich.enrich_classify,
+                where=where,
+                decision_model=dm,
+                labels=labels,
+                multi=args.multi,
+                max_chars=args.max_chars,
+            )
+    done = sum(r.skipped is None for r in results)
+    for r in results:
+        if r.skipped:
+            print(f"{r.doc_id}\t{r.skipped}")
+    print(f"{name}: {done} documents enriched, {len(results) - done} skipped")
 
 
 def main(argv: list[str] | None = None) -> int:
