@@ -39,11 +39,12 @@ from .result_models import (
 )
 from .primitives import ClaimStage, Claim, Evidence, Uncertainty
 from .trace import ReasoningTrace
-from andamentum.document_store import DocumentStore
-from andamentum.document_store.lifecycle import (
+from andamentum.document_store import Store
+from .databases import (
     delete_database,
     get_db_path,
     get_databases_dir,
+    open_store,
 )
 
 logger = logging.getLogger(__name__)
@@ -54,10 +55,10 @@ TraceMode = Literal["timeline", "flow", "claims", "debate", "all", "none"]
 console = Console()
 
 
-async def _get_objective_id_from_db(store: DocumentStore) -> Optional[str]:
+async def _get_objective_id_from_db(store: Store) -> Optional[str]:
     """Get the first objective ID from the database using metadata query."""
-    results = await store.find_by_metadata(
-        {
+    results = await store.list(
+        where={
             "epistemic_type": "objective",
         },
         limit=1,
@@ -68,7 +69,7 @@ async def _get_objective_id_from_db(store: DocumentStore) -> Optional[str]:
 
 
 async def _gather_primitives_from_db(
-    store: DocumentStore,
+    store: Store,
     objective_id: str,
 ) -> tuple[List[Claim], List[Evidence], List[Uncertainty]]:
     """Gather claims, evidence, and uncertainties from the database.
@@ -77,18 +78,19 @@ async def _gather_primitives_from_db(
     Uses the from_metadata class methods on primitives for proper reconstruction.
 
     Args:
-        store: DocumentStore instance
+        store: Store instance
         objective_id: Objective ID to query
 
     Returns:
         Tuple of (claims, evidence, uncertainties)
     """
     # Gather claims - statement is stored in metadata
-    claim_docs = await store.find_by_metadata(
-        {
+    claim_docs = await store.list(
+        where={
             "epistemic_type": "claim",
             "objective_id": objective_id,
-        }
+        },
+        limit=None,
     )
     claims: List[Claim] = []
     for doc_meta in claim_docs:
@@ -109,11 +111,12 @@ async def _gather_primitives_from_db(
     claims.sort(key=lambda c: stage_priority.get(c.stage, 5))
 
     # Gather evidence - need to read full documents for content
-    evidence_meta_docs = await store.find_by_metadata(
-        {
+    evidence_meta_docs = await store.list(
+        where={
             "epistemic_type": "evidence",
             "objective_id": objective_id,
-        }
+        },
+        limit=None,
     )
     evidence: List[Evidence] = []
     for doc_meta in evidence_meta_docs:
@@ -121,25 +124,26 @@ async def _gather_primitives_from_db(
         if not meta:
             continue
         # Read full document — content is the full entity JSON
-        full_doc = await store.read(doc_meta.doc_id)
+        full_doc = await store.get(doc_meta.doc_id)
         content = ""
-        if full_doc and full_doc.content:
+        if full_doc and full_doc.text:
             import json
 
             try:
-                entity_data = json.loads(full_doc.content)
+                entity_data = json.loads(full_doc.text)
                 content = entity_data.get("extracted_content", "")
             except (json.JSONDecodeError, TypeError):
-                content = full_doc.content
+                content = full_doc.text
         # Use from_metadata for proper reconstruction
         evidence.append(Evidence.from_metadata(meta, content=content))
 
     # Gather uncertainties - need to read full documents for description
-    uncertainty_meta_docs = await store.find_by_metadata(
-        {
+    uncertainty_meta_docs = await store.list(
+        where={
             "epistemic_type": "uncertainty",
             "objective_id": objective_id,
-        }
+        },
+        limit=None,
     )
     uncertainties: List[Uncertainty] = []
     for doc_meta in uncertainty_meta_docs:
@@ -147,17 +151,17 @@ async def _gather_primitives_from_db(
         if not meta:
             continue
         # Read full document — content is the full entity JSON
-        full_doc = await store.read(doc_meta.doc_id)
+        full_doc = await store.get(doc_meta.doc_id)
         description = ""
-        if full_doc and full_doc.content:
+        if full_doc and full_doc.text:
             # Content is JSON — extract the description field
             import json
 
             try:
-                entity_data = json.loads(full_doc.content)
+                entity_data = json.loads(full_doc.text)
                 description = entity_data.get("description", "")
             except (json.JSONDecodeError, TypeError):
-                description = full_doc.content
+                description = full_doc.text
         # Use from_metadata for proper reconstruction
         uncertainties.append(Uncertainty.from_metadata(meta, description=description))
 
@@ -165,7 +169,7 @@ async def _gather_primitives_from_db(
 
 
 async def _get_synthesis_from_artefact(
-    store: DocumentStore,
+    store: Store,
     objective_id: str,
 ) -> Dict[str, Any]:
     """Get synthesis content from the artefact.
@@ -174,17 +178,18 @@ async def _get_synthesis_from_artefact(
     It contains the full research report as markdown.
 
     Args:
-        store: DocumentStore instance
+        store: Store instance
         objective_id: Objective ID to query
 
     Returns:
         Synthesis dict with the full artefact content.
     """
-    artefact_docs = await store.find_by_metadata(
-        {
+    artefact_docs = await store.list(
+        where={
             "epistemic_type": "artefact",
             "objective_id": objective_id,
-        }
+        },
+        limit=None,
     )
 
     if not artefact_docs:
@@ -192,17 +197,17 @@ async def _get_synthesis_from_artefact(
 
     # Get the first artefact - need full document for content
     doc_meta = artefact_docs[0]
-    full_doc = await store.read(doc_meta.doc_id)
+    full_doc = await store.get(doc_meta.doc_id)
     content = ""
-    if full_doc and full_doc.content:
+    if full_doc and full_doc.text:
         # Content is JSON — extract the markdown content field
         import json
 
         try:
-            entity_data = json.loads(full_doc.content)
+            entity_data = json.loads(full_doc.text)
             content = entity_data.get("content", "")
         except (json.JSONDecodeError, TypeError):
-            content = full_doc.content
+            content = full_doc.text
 
     # The "> **Confidence:** HIGH | ..." header this used to scrape has
     # not been emitted by either synthesis operation for some time, so
@@ -245,61 +250,64 @@ async def handle_init(
     )
 
     # Initialize database
-    store = DocumentStore.for_database(name)
-    await store.initialize()
+    store = await open_store(name)
+    try:
+        # Create objective
+        objective_id = f"obj_{uuid.uuid4().hex[:12]}"
 
-    # Create objective
-    objective_id = f"obj_{uuid.uuid4().hex[:12]}"
+        # Store the objective
+        metadata = {
+            "epistemic_type": "objective",
+            "objective_id": objective_id,
+            "status": "active",
+            "created_at": datetime.now().isoformat(),
+        }
+        await store.put(
+            objective,
+            key=f"objective:{objective_id}",
+            media_type="text/plain",
+            metadata=metadata,
+        )
 
-    # Store the objective
-    metadata = {
-        "epistemic_type": "objective",
-        "objective_id": objective_id,
-        "status": "active",
-        "created_at": datetime.now().isoformat(),
-    }
-    await store.add(
-        file_path=f"objective_{objective_id[:8]}.json",
-        content=objective,
-        title=f"Objective: {objective[:50]}...",
-        metadata=metadata,
-    )
+        # Create initial workitem (start with CLARIFY_QUESTION)
+        workitem_id = f"wi_{uuid.uuid4().hex[:12]}"
+        wi_metadata = {
+            "epistemic_type": "workitem",
+            "workitem_id": workitem_id,
+            "objective_id": objective_id,
+            "operation_type": WorkItemType.CLARIFY_QUESTION.value,
+            "workitem_status": WorkItemStatus.QUEUED.value,
+            "inputs": {"query": objective},
+            "dependencies": [],
+            "priority": 5,
+            "retry_count": 0,
+            "created_at": datetime.now().isoformat(),
+        }
+        import json
 
-    # Create initial workitem (start with CLARIFY_QUESTION)
-    workitem_id = f"wi_{uuid.uuid4().hex[:12]}"
-    wi_metadata = {
-        "epistemic_type": "workitem",
-        "workitem_id": workitem_id,
-        "objective_id": objective_id,
-        "operation_type": WorkItemType.CLARIFY_QUESTION.value,
-        "workitem_status": WorkItemStatus.QUEUED.value,
-        "inputs": {"query": objective},
-        "dependencies": [],
-        "priority": 5,
-        "retry_count": 0,
-        "created_at": datetime.now().isoformat(),
-    }
-    import json
+        await store.put(
+            json.dumps({"query": objective}, indent=2),
+            key=f"workitem:{workitem_id}",
+            media_type="application/json",
+            metadata=wi_metadata,
+        )
 
-    await store.add(
-        file_path=f"workitem_{workitem_id[:8]}.json",
-        content=json.dumps({"query": objective}, indent=2),
-        title=f"WorkItem: {WorkItemType.CLARIFY_QUESTION.value}",
-        metadata=wi_metadata,
-    )
+        if verbose:
+            console.print(f"[green]✓ Created epistemic project: {name}[/green]")
+            console.print(f"[dim]Objective ID: {objective_id}[/dim]")
+            console.print(f"[dim]Description: {objective}[/dim]")
+            console.print(
+                f"[dim]Initial workitem: {workitem_id} (CLARIFY_QUESTION)[/dim]"
+            )
 
-    if verbose:
-        console.print(f"[green]✓ Created epistemic project: {name}[/green]")
-        console.print(f"[dim]Objective ID: {objective_id}[/dim]")
-        console.print(f"[dim]Description: {objective}[/dim]")
-        console.print(f"[dim]Initial workitem: {workitem_id} (CLARIFY_QUESTION)[/dim]")
-
-    return InitResult(
-        success=True,
-        objective_id=objective_id,
-        database_name=name,
-        description=objective,
-    )
+        return InitResult(
+            success=True,
+            objective_id=objective_id,
+            database_name=name,
+            description=objective,
+        )
+    finally:
+        await store.close()
 
 
 async def handle_run(
@@ -334,78 +342,80 @@ async def handle_run(
             console.print(f"[dim]Objective: {objective_id}[/dim]")
 
     # Get objective description from database
-    store = DocumentStore.for_database(name)
-    await store.initialize()
-
-    if not objective_id:
-        objective_id = await _get_objective_id_from_db(store)
+    store = await open_store(name)
+    try:
         if not objective_id:
-            return RunResult(
-                success=False, error="No objectives found. Run 'epistemic init' first."
-            )
+            objective_id = await _get_objective_id_from_db(store)
+            if not objective_id:
+                return RunResult(
+                    success=False,
+                    error="No objectives found. Run 'epistemic init' first.",
+                )
 
-    # Get the objective's question
-    objective_docs = await store.find_by_metadata(
-        {
-            "epistemic_type": "objective",
-            "objective_id": objective_id,
-        },
-        limit=1,
-    )
-    question = (
-        objective_docs[0].metadata.get("description", "") if objective_docs else ""
-    )
+        # Get the objective's question
+        objective_docs = await store.list(
+            where={
+                "epistemic_type": "objective",
+                "objective_id": objective_id,
+            },
+            limit=1,
+        )
+        question = (
+            objective_docs[0].metadata.get("description", "") if objective_docs else ""
+        )
 
-    # Run the pattern scheduler
-    from .providers.openalex import OpenAlexQualityScorer
+        # Run the pattern scheduler
+        from .providers.openalex import OpenAlexQualityScorer
 
-    run_result = await run_research_question(
-        question=question or "Research objective",
-        database_name=name,
-        verbose=verbose,
-        quality_scorer=OpenAlexQualityScorer(),
-    )
+        run_result = await run_research_question(
+            question=question or "Research objective",
+            database_name=name,
+            verbose=verbose,
+            quality_scorer=OpenAlexQualityScorer(),
+        )
 
-    if verbose:
-        console.print(f"  Iterations: {run_result.iterations}")
-        console.print(f"  Successful: {run_result.successful}")
-        console.print(f"  Failed: {run_result.failed}")
-        if run_result.errors:
-            console.print("[yellow]Errors:[/yellow]")
-            for err in run_result.errors[:5]:
-                console.print(f"  - {err}")
+        if verbose:
+            console.print(f"  Iterations: {run_result.iterations}")
+            console.print(f"  Successful: {run_result.successful}")
+            console.print(f"  Failed: {run_result.failed}")
+            if run_result.errors:
+                console.print("[yellow]Errors:[/yellow]")
+                for err in run_result.errors[:5]:
+                    console.print(f"  - {err}")
 
-    # Gather stats from database
-    claims, evidence, uncertainties = await _gather_primitives_from_db(
-        store, objective_id
-    )
+        # Gather stats from database
+        claims, evidence, uncertainties = await _gather_primitives_from_db(
+            store, objective_id
+        )
 
-    # Build claims_by_stage
-    claims_by_stage: Dict[str, int] = {}
-    for claim in claims:
-        stage_str = claim.stage.value
-        claims_by_stage[stage_str] = claims_by_stage.get(stage_str, 0) + 1
+        # Build claims_by_stage
+        claims_by_stage: Dict[str, int] = {}
+        for claim in claims:
+            stage_str = claim.stage.value
+            claims_by_stage[stage_str] = claims_by_stage.get(stage_str, 0) + 1
 
-    # Convert to typed RunStats model
-    stats = RunStats(
-        workitems_executed_this_run=run_result.iterations,
-        total_workitems=run_result.iterations,
-        workitems_by_status={
-            "completed": run_result.successful,
-            "failed": run_result.failed,
-        },
-        claims_by_stage=claims_by_stage,
-        evidence_count=len(evidence),
-        uncertainty_count=len(uncertainties),
-        synthesis=await _get_synthesis_from_artefact(store, objective_id),
-        reasoning_trace=None,
-    )
+        # Convert to typed RunStats model
+        stats = RunStats(
+            workitems_executed_this_run=run_result.iterations,
+            total_workitems=run_result.iterations,
+            workitems_by_status={
+                "completed": run_result.successful,
+                "failed": run_result.failed,
+            },
+            claims_by_stage=claims_by_stage,
+            evidence_count=len(evidence),
+            uncertainty_count=len(uncertainties),
+            synthesis=await _get_synthesis_from_artefact(store, objective_id),
+            reasoning_trace=None,
+        )
 
-    return RunResult(
-        success=run_result.success,
-        objective_id=objective_id,
-        stats=stats,
-    )
+        return RunResult(
+            success=run_result.success,
+            objective_id=objective_id,
+            stats=stats,
+        )
+    finally:
+        await store.close()
 
 
 async def handle_status(
@@ -427,43 +437,44 @@ async def handle_status(
     Returns:
         StatusResult with status information
     """
-    store = DocumentStore.for_database(name)
-    await store.initialize()
+    store = await open_store(name)
+    try:
+        from .stats import get_objective_stats as _get_stats
 
-    from .stats import get_objective_stats as _get_stats
-
-    # Get objective
-    if not objective_id:
-        objective_id = await _get_objective_id_from_db(store)
+        # Get objective
         if not objective_id:
-            return StatusResult(success=False, error="No objectives found")
+            objective_id = await _get_objective_id_from_db(store)
+            if not objective_id:
+                return StatusResult(success=False, error="No objectives found")
 
-    stats_dict = await _get_stats(store, objective_id)
+        stats_dict = await _get_stats(store, objective_id)
 
-    # Always print for CLI (verbose controls detail level)
-    _print_status(stats_dict, show_claims, show_workitems, verbose)
+        # Always print for CLI (verbose controls detail level)
+        _print_status(stats_dict, show_claims, show_workitems, verbose)
 
-    # Convert dict to typed ObjectiveStats model
-    stats = ObjectiveStats(
-        objective_id=stats_dict.get("objective_id", objective_id),
-        evidence_count=stats_dict.get("evidence_count", 0),
-        claims_by_stage=stats_dict.get("claims_by_stage", {}),
-        uncertainties_unresolved=stats_dict.get("uncertainties_unresolved", 0),
-        uncertainties_resolved=stats_dict.get("uncertainties_resolved", 0),
-        decisions_active=stats_dict.get("decisions_active", 0),
-        decisions_reversed=stats_dict.get("decisions_reversed", 0),
-        workitems_queued=stats_dict.get("workitems_queued", 0),
-        workitems_done=stats_dict.get("workitems_done", 0),
-        workitems_failed=stats_dict.get("workitems_failed", 0),
-        snapshots=stats_dict.get("snapshots", 0),
-        artefacts=stats_dict.get("artefacts", 0),
-    )
+        # Convert dict to typed ObjectiveStats model
+        stats = ObjectiveStats(
+            objective_id=stats_dict.get("objective_id", objective_id),
+            evidence_count=stats_dict.get("evidence_count", 0),
+            claims_by_stage=stats_dict.get("claims_by_stage", {}),
+            uncertainties_unresolved=stats_dict.get("uncertainties_unresolved", 0),
+            uncertainties_resolved=stats_dict.get("uncertainties_resolved", 0),
+            decisions_active=stats_dict.get("decisions_active", 0),
+            decisions_reversed=stats_dict.get("decisions_reversed", 0),
+            workitems_queued=stats_dict.get("workitems_queued", 0),
+            workitems_done=stats_dict.get("workitems_done", 0),
+            workitems_failed=stats_dict.get("workitems_failed", 0),
+            snapshots=stats_dict.get("snapshots", 0),
+            artefacts=stats_dict.get("artefacts", 0),
+        )
 
-    return StatusResult(
-        success=True,
-        objective_id=objective_id,
-        stats=stats,
-    )
+        return StatusResult(
+            success=True,
+            objective_id=objective_id,
+            stats=stats,
+        )
+    finally:
+        await store.close()
 
 
 async def handle_debate(
@@ -504,43 +515,44 @@ async def handle_claims(
     Returns:
         ClaimsResult with claims list
     """
-    store = DocumentStore.for_database(name)
-    await store.initialize()
+    store = await open_store(name)
+    try:
+        from .repository import EpistemicRepository
 
-    from .repository import EpistemicRepository
+        repo = EpistemicRepository(store)
 
-    repo = EpistemicRepository(store)
-
-    # Get objective
-    if not objective_id:
-        objective_id = await _get_objective_id_from_db(store)
+        # Get objective
         if not objective_id:
-            return ClaimsResult(success=False, error="No objectives found")
+            objective_id = await _get_objective_id_from_db(store)
+            if not objective_id:
+                return ClaimsResult(success=False, error="No objectives found")
 
-    # Parse stage filter
-    stage_filter = None
-    if stage:
-        try:
-            stage_filter = ClaimStage(stage)
-        except ValueError:
-            return ClaimsResult(success=False, error=f"Invalid stage: {stage}")
+        # Parse stage filter
+        stage_filter = None
+        if stage:
+            try:
+                stage_filter = ClaimStage(stage)
+            except ValueError:
+                return ClaimsResult(success=False, error=f"Invalid stage: {stage}")
 
-    if stage_filter:
-        claims = await repo.get_claims_for_objective(
-            objective_id, stage=stage_filter.value
+        if stage_filter:
+            claims = await repo.get_claims_for_objective(
+                objective_id, stage=stage_filter.value
+            )
+        else:
+            claims = await repo.get_claims_for_objective(objective_id)
+
+        # Always print for CLI (verbose controls detail level)
+        _print_claims(claims, stage, verbose)
+
+        return ClaimsResult(
+            success=True,
+            objective_id=objective_id,
+            claims=claims,
+            count=len(claims),
         )
-    else:
-        claims = await repo.get_claims_for_objective(objective_id)
-
-    # Always print for CLI (verbose controls detail level)
-    _print_claims(claims, stage, verbose)
-
-    return ClaimsResult(
-        success=True,
-        objective_id=objective_id,
-        claims=claims,
-        count=len(claims),
-    )
+    finally:
+        await store.close()
 
 
 async def handle_evidence(
@@ -562,69 +574,72 @@ async def handle_evidence(
     Returns:
         EvidenceResult with evidence list
     """
-    store = DocumentStore.for_database(name)
-    await store.initialize()
+    store = await open_store(name)
+    try:
+        from .repository import EpistemicRepository
+        from .stats import get_all_verification_evidence
 
-    from .repository import EpistemicRepository
-    from .stats import get_all_verification_evidence
+        repo = EpistemicRepository(store)
 
-    repo = EpistemicRepository(store)
-
-    # Get objective
-    if not objective_id:
-        objective_id = await _get_objective_id_from_db(store)
+        # Get objective
         if not objective_id:
-            return EvidenceResult(success=False, error="No objectives found")
+            objective_id = await _get_objective_id_from_db(store)
+            if not objective_id:
+                return EvidenceResult(success=False, error="No objectives found")
 
-    evidence = await repo.get_evidence_for_objective(objective_id)
+        evidence = await repo.get_evidence_for_objective(objective_id)
 
-    # Filter by claim if specified
-    if claim_id:
-        claim = await repo.get_claim(claim_id)
-        if claim:
-            evidence = [e for e in evidence if e.evidence_id in claim.evidence_ids]
-
-    # Get verification evidence if requested
-    verification_evidence_dict: Optional[Dict[str, List[Any]]] = None
-    if include_verification:
-        verification_evidence_dict = await get_all_verification_evidence(
-            store, objective_id
-        )
-        # Filter verification evidence by claim if specified
+        # Filter by claim if specified
         if claim_id:
-            for key in verification_evidence_dict:
-                verification_evidence_dict[key] = [
-                    e
-                    for e in verification_evidence_dict[key]
-                    if hasattr(e, "claim_id") and e.claim_id == claim_id
-                ]
+            claim = await repo.get_claim(claim_id)
+            if claim:
+                evidence = [e for e in evidence if e.evidence_id in claim.evidence_ids]
 
-    # Always print for CLI (verbose controls detail level)
-    _print_evidence(evidence, verbose)
-    if verification_evidence_dict:
-        _print_verification_evidence(verification_evidence_dict, verbose)
+        # Get verification evidence if requested
+        verification_evidence_dict: Optional[Dict[str, List[Any]]] = None
+        if include_verification:
+            verification_evidence_dict = await get_all_verification_evidence(
+                store, objective_id
+            )
+            # Filter verification evidence by claim if specified
+            if claim_id:
+                for key in verification_evidence_dict:
+                    verification_evidence_dict[key] = [
+                        e
+                        for e in verification_evidence_dict[key]
+                        if hasattr(e, "claim_id") and e.claim_id == claim_id
+                    ]
 
-    # Build VerificationEvidence model if we have verification data
-    verification_model: Optional[VerificationEvidence] = None
-    verification_count = 0
-    if include_verification and verification_evidence_dict:
-        verification_model = VerificationEvidence(
-            adversarial=verification_evidence_dict.get("adversarial", []),
-            computational=verification_evidence_dict.get("computational", []),
-            convergent=verification_evidence_dict.get("convergent", []),
-            temporal=verification_evidence_dict.get("temporal", []),
-            deductive=verification_evidence_dict.get("deductive", []),
+        # Always print for CLI (verbose controls detail level)
+        _print_evidence(evidence, verbose)
+        if verification_evidence_dict:
+            _print_verification_evidence(verification_evidence_dict, verbose)
+
+        # Build VerificationEvidence model if we have verification data
+        verification_model: Optional[VerificationEvidence] = None
+        verification_count = 0
+        if include_verification and verification_evidence_dict:
+            verification_model = VerificationEvidence(
+                adversarial=verification_evidence_dict.get("adversarial", []),
+                computational=verification_evidence_dict.get("computational", []),
+                convergent=verification_evidence_dict.get("convergent", []),
+                temporal=verification_evidence_dict.get("temporal", []),
+                deductive=verification_evidence_dict.get("deductive", []),
+            )
+            verification_count = sum(
+                len(v) for v in verification_evidence_dict.values()
+            )
+
+        return EvidenceResult(
+            success=True,
+            objective_id=objective_id,
+            evidence=evidence,
+            count=len(evidence),
+            verification_evidence=verification_model,
+            verification_count=verification_count,
         )
-        verification_count = sum(len(v) for v in verification_evidence_dict.values())
-
-    return EvidenceResult(
-        success=True,
-        objective_id=objective_id,
-        evidence=evidence,
-        count=len(evidence),
-        verification_evidence=verification_model,
-        verification_count=verification_count,
-    )
+    finally:
+        await store.close()
 
 
 async def handle_uncertainties(
@@ -644,33 +659,34 @@ async def handle_uncertainties(
     Returns:
         UncertaintiesResult with uncertainties list
     """
-    store = DocumentStore.for_database(name)
-    await store.initialize()
+    store = await open_store(name)
+    try:
+        from .repository import EpistemicRepository
 
-    from .repository import EpistemicRepository
+        repo = EpistemicRepository(store)
 
-    repo = EpistemicRepository(store)
-
-    # Get objective
-    if not objective_id:
-        objective_id = await _get_objective_id_from_db(store)
+        # Get objective
         if not objective_id:
-            return UncertaintiesResult(success=False, error="No objectives found")
+            objective_id = await _get_objective_id_from_db(store)
+            if not objective_id:
+                return UncertaintiesResult(success=False, error="No objectives found")
 
-    if blocking_only:
-        uncertainties = await repo.get_blocking_uncertainties(objective_id)
-    else:
-        uncertainties = await repo.get_uncertainties_for_objective(objective_id)
+        if blocking_only:
+            uncertainties = await repo.get_blocking_uncertainties(objective_id)
+        else:
+            uncertainties = await repo.get_uncertainties_for_objective(objective_id)
 
-    # Always print for CLI (verbose controls detail level)
-    _print_uncertainties(uncertainties, blocking_only, verbose)
+        # Always print for CLI (verbose controls detail level)
+        _print_uncertainties(uncertainties, blocking_only, verbose)
 
-    return UncertaintiesResult(
-        success=True,
-        objective_id=objective_id,
-        uncertainties=uncertainties,
-        count=len(uncertainties),
-    )
+        return UncertaintiesResult(
+            success=True,
+            objective_id=objective_id,
+            uncertainties=uncertainties,
+            count=len(uncertainties),
+        )
+    finally:
+        await store.close()
 
 
 async def handle_decisions(
@@ -690,30 +706,33 @@ async def handle_decisions(
     Returns:
         DecisionsResult with decisions list
     """
-    store = DocumentStore.for_database(name)
-    await store.initialize()
+    store = await open_store(name)
+    try:
+        from .repository import EpistemicRepository
 
-    from .repository import EpistemicRepository
+        repo = EpistemicRepository(store)
 
-    repo = EpistemicRepository(store)
-
-    # Get objective
-    if not objective_id:
-        objective_id = await _get_objective_id_from_db(store)
+        # Get objective
         if not objective_id:
-            return DecisionsResult(success=False, error="No objectives found")
+            objective_id = await _get_objective_id_from_db(store)
+            if not objective_id:
+                return DecisionsResult(success=False, error="No objectives found")
 
-    decisions = await repo.get_decisions_for_objective(objective_id, include_reversed)
+        decisions = await repo.get_decisions_for_objective(
+            objective_id, include_reversed
+        )
 
-    # Always print for CLI (verbose controls detail level)
-    _print_decisions(decisions, include_reversed, verbose)
+        # Always print for CLI (verbose controls detail level)
+        _print_decisions(decisions, include_reversed, verbose)
 
-    return DecisionsResult(
-        success=True,
-        objective_id=objective_id,
-        decisions=decisions,
-        count=len(decisions),
-    )
+        return DecisionsResult(
+            success=True,
+            objective_id=objective_id,
+            decisions=decisions,
+            count=len(decisions),
+        )
+    finally:
+        await store.close()
 
 
 async def handle_log(
@@ -736,16 +755,14 @@ async def handle_log(
     )
 
 
-async def _print_operation_profile(store: "DocumentStore") -> None:
+async def _print_operation_profile(store: "Store") -> None:
     """Print a timing profile of operations from execution_step documents.
 
     Reads the execution_step metadata already stored by the operations runner
     and aggregates by operation type. No new recording needed.
     """
     try:
-        steps = await store.find_by_metadata(
-            {"epistemic_type": "execution_step"}, limit=500
-        )
+        steps = await store.list(where={"epistemic_type": "execution_step"}, limit=500)
     except Exception:
         return  # Silently skip if store doesn't support this query
 
@@ -763,9 +780,6 @@ async def _print_operation_profile(store: "DocumentStore") -> None:
             if isinstance(step.metadata, dict)
             else getattr(step, "metadata", {})
         )
-        # DocumentStore returns DocumentMetadata objects with a .metadata dict
-        if hasattr(meta, "metadata"):
-            meta = getattr(meta, "metadata")
         op = meta.get("operation", "unknown")
         duration = meta.get("duration_ms", 0)
         success = meta.get("success", True)
@@ -981,6 +995,7 @@ async def handle_ask(
     console.print()
     console.print("[bold blue]Research Pipeline[/bold blue]")
 
+    store: Store | None = None
     try:
         # Suppress INFO logs - keep WARNING level so important issues still surface
         root_logger.setLevel(logging.WARNING)
@@ -1026,8 +1041,7 @@ async def handle_ask(
             )
 
         # Gather results from the database
-        store = DocumentStore.for_database(name, db_dir=db_dir)
-        await store.initialize()
+        store = await open_store(name, db_dir)
 
         # Show operation timing profile
         await _print_operation_profile(store)
@@ -1117,6 +1131,9 @@ async def handle_ask(
                     "\n[yellow]Warning: Failed to generate HTML report[/yellow]"
                 )
 
+        # Release the database file before it may be deleted below
+        await store.close()
+
         # Clean up if not keeping
         if not keep:
             if delete_database(name):
@@ -1159,6 +1176,8 @@ async def handle_ask(
         console.print(f"\n[red]Error: {rich_escape(str(e))}[/red]")
 
         # Clean up on error if not keeping
+        if store is not None:
+            await store.close()
         if not keep:
             try:
                 delete_database(name)
@@ -1847,54 +1866,59 @@ async def handle_report(
         return ReportResult(success=False, error=f"Database not found: {name}")
 
     # Initialize store
-    store = DocumentStore.for_database(name)
-    await store.initialize()
-
-    # Get objective ID if not specified
-    if not objective_id:
-        objective_id = await _get_objective_id_from_db(store)
+    store = await open_store(name)
+    try:
+        # Get objective ID if not specified
         if not objective_id:
-            return ReportResult(success=False, error="No objectives found in database")
+            objective_id = await _get_objective_id_from_db(store)
+            if not objective_id:
+                return ReportResult(
+                    success=False, error="No objectives found in database"
+                )
 
-    if verbose:
-        console.print(f"[cyan]Generating HTML report from: {name}[/cyan]")
-        console.print(f"[dim]Objective: {objective_id}[/dim]")
+        if verbose:
+            console.print(f"[cyan]Generating HTML report from: {name}[/cyan]")
+            console.print(f"[dim]Objective: {objective_id}[/dim]")
 
-    # Generate report
-    output_file = Path(output_path)
-    generator = ReportGenerator(store, name)
+        # Generate report
+        output_file = Path(output_path)
+        generator = ReportGenerator(store, name)
 
-    # Extract data to get counts
-    report_data = await generator.extract_report_data(
-        objective_id=objective_id,
-        model_name=model,
-    )
-
-    if not report_data:
-        console.print("[red]No data found for report generation[/red]")
-        return ReportResult(success=False, error="No data found for report generation")
-
-    # Save HTML
-    if await generator.save_html(
-        output_path=output_file,
-        objective_id=objective_id,
-        model_name=model,
-    ):
-        console.print(
-            f"\n[green]✓[/green] HTML report saved to: [bold]{output_file}[/bold]"
-        )
-        console.print(
-            f"[dim]Claims: {len(report_data.claims)}, Evidence: {len(report_data.evidence)}, Uncertainties: {len(report_data.uncertainties)}[/dim]"
+        # Extract data to get counts
+        report_data = await generator.extract_report_data(
+            objective_id=objective_id,
+            model_name=model,
         )
 
-        return ReportResult(
-            success=True,
-            database_name=name,
-            output_path=str(output_file),
-            claims_count=len(report_data.claims),
-            evidence_count=len(report_data.evidence),
-            uncertainties_count=len(report_data.uncertainties),
-        )
-    else:
-        console.print("[red]Failed to generate HTML report[/red]")
-        return ReportResult(success=False, error="Failed to save HTML report")
+        if not report_data:
+            console.print("[red]No data found for report generation[/red]")
+            return ReportResult(
+                success=False, error="No data found for report generation"
+            )
+
+        # Save HTML
+        if await generator.save_html(
+            output_path=output_file,
+            objective_id=objective_id,
+            model_name=model,
+        ):
+            console.print(
+                f"\n[green]✓[/green] HTML report saved to: [bold]{output_file}[/bold]"
+            )
+            console.print(
+                f"[dim]Claims: {len(report_data.claims)}, Evidence: {len(report_data.evidence)}, Uncertainties: {len(report_data.uncertainties)}[/dim]"
+            )
+
+            return ReportResult(
+                success=True,
+                database_name=name,
+                output_path=str(output_file),
+                claims_count=len(report_data.claims),
+                evidence_count=len(report_data.evidence),
+                uncertainties_count=len(report_data.uncertainties),
+            )
+        else:
+            console.print("[red]Failed to generate HTML report[/red]")
+            return ReportResult(success=False, error="Failed to save HTML report")
+    finally:
+        await store.close()

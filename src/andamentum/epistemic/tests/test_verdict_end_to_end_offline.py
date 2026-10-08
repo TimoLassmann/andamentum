@@ -32,7 +32,7 @@ from pathlib import Path
 
 import pytest
 
-from andamentum.document_store import DocumentStore
+from andamentum.document_store import Store
 from andamentum.epistemic.entities import Claim, ClaimStage, Evidence, Objective
 from andamentum.epistemic.graph import run_epistemic_graph
 from andamentum.epistemic.repository import EpistemicRepository
@@ -80,8 +80,7 @@ async def _run_insufficient(tmp_path: Path, monkeypatch, db_name: str):
         providers={},
     )
 
-    store = DocumentStore.for_database(db_name, db_dir=tmp_path)
-    await store.initialize()
+    store = await Store.open(tmp_path / f"{db_name}.db")
     return result, EpistemicRepository(store)
 
 
@@ -96,8 +95,7 @@ async def _run_directional(tmp_path: Path, monkeypatch, db_name: str):
     _stub_agents(monkeypatch)
     from andamentum.epistemic.graph.nodes import CombineClaimVerdicts
 
-    store = DocumentStore.for_database(db_name, db_dir=tmp_path)
-    await store.initialize()
+    store = await Store.open(tmp_path / f"{db_name}.db")
     repo = EpistemicRepository(store)
 
     question = "Aspirin reduces colorectal cancer risk in adults."

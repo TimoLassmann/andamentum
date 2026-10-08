@@ -27,7 +27,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from andamentum.document_store import DocumentStore
+from andamentum.document_store import Store
 from andamentum.epistemic.entities import Claim, Evidence, Objective
 from andamentum.epistemic.entities.claim import ClaimStage
 from andamentum.epistemic.entities.uncertainty import BLOCKING_TYPES, UncertaintyType
@@ -95,8 +95,7 @@ class _FakeRunContext:
 
 
 async def _setup(tmp_path: Path) -> tuple[Claim, EpistemicRepository]:
-    store = DocumentStore.for_database("self_feeding_loop", db_dir=tmp_path)
-    await store.initialize()
+    store = await Store.open(tmp_path / "self_feeding_loop.db")
     repo = EpistemicRepository(store)
 
     obj = Objective(description="parent", question_type="verificatory")
@@ -214,8 +213,7 @@ async def _setup_min_supporting_sources_refusal(
     but not a support, so ``count_supporting_sources`` returns 0 against the
     SUPPORTED gate's ``min_supporting_sources=1`` — the exact shape D4
     checks for via ``refused_only_for_min_supporting_sources``."""
-    store = DocumentStore.for_database("self_feeding_loop_d4", db_dir=tmp_path)
-    await store.initialize()
+    store = await Store.open(tmp_path / "self_feeding_loop_d4.db")
     repo = EpistemicRepository(store)
 
     obj = Objective(description="parent", question_type="verificatory")

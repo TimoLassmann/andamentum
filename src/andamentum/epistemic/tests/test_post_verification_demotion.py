@@ -43,7 +43,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from andamentum.document_store import DocumentStore
+from andamentum.document_store import Store
 from andamentum.epistemic.entities import Claim, Evidence, Objective
 from andamentum.epistemic.entities.claim import ClaimStage
 from andamentum.epistemic.graph.deps import EpistemicDeps
@@ -78,8 +78,7 @@ async def test_tms_sweep_cascades_but_does_not_contract(
     claim's stage, ``claims_needing_rescrutiny``, and
     ``verification_done`` untouched — only the evidence cascade fires.
     """
-    store = DocumentStore.for_database("post_verify_demote", db_dir=tmp_path)
-    await store.initialize()
+    store = await Store.open(tmp_path / "post_verify_demote.db")
     repo = EpistemicRepository(store)
 
     obj = Objective(description="parent", question_type="verificatory")
@@ -171,8 +170,7 @@ async def test_resolve_uncertainties_routes_to_scrutiny_on_rescrutiny_flag(
     produces on new evidence), it must route to Scrutinize so the
     flagged claim's inquiry cycle continues.
     """
-    store = DocumentStore.for_database("resolve_to_scrutiny", db_dir=tmp_path)
-    await store.initialize()
+    store = await Store.open(tmp_path / "resolve_to_scrutiny.db")
     repo = EpistemicRepository(store)
 
     obj = Objective(description="parent", question_type="verificatory")
@@ -231,8 +229,7 @@ async def test_run_verification_no_longer_contracts_after_adversarial(
     — that used to be the (buggy, pre-IBE) reachability fix; it is now
     PromoteSupported's job, run once, after IBE.
     """
-    store = DocumentStore.for_database("run_verification_flags_tms", db_dir=tmp_path)
-    await store.initialize()
+    store = await Store.open(tmp_path / "run_verification_flags_tms.db")
     repo = EpistemicRepository(store)
 
     obj = Objective(description="parent", question_type="verificatory")

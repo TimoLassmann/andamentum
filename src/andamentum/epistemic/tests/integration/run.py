@@ -26,15 +26,21 @@ from questions import PATHWAY_TESTS, PathwayTest  # type: ignore[import-not-foun
 
 # ── Database inspection ────────────────────────────────────────────────
 
+# The newest revision of every document (the document store's source tables).
+_HEAD = (
+    "FROM documents d JOIN revisions r ON r.doc_id = d.id "
+    "AND r.rev = (SELECT MAX(rev) FROM revisions WHERE doc_id = d.id)"
+)
+
 
 def _get_execution_steps(db_path: str) -> list[dict]:
     """Load all execution steps from the database."""
     db = sqlite3.connect(db_path)
     rows = db.execute(
-        "SELECT metadata FROM documents "
-        "WHERE deleted_at IS NULL "
-        "AND json_extract(metadata, '$.epistemic_type') = 'execution_step' "
-        "ORDER BY CAST(json_extract(metadata, '$.step_number') AS INTEGER)"
+        f"SELECT r.metadata {_HEAD} "
+        "WHERE d.deleted_at IS NULL "
+        "AND json_extract(r.metadata, '$.epistemic_type') = 'execution_step' "
+        "ORDER BY CAST(json_extract(r.metadata, '$.step_number') AS INTEGER)"
     ).fetchall()
     db.close()
     return [json.loads(r[0]) for r in rows]
@@ -44,9 +50,9 @@ def _get_entities(db_path: str, entity_type: str) -> list[dict]:
     """Load all entities of a given type from the database."""
     db = sqlite3.connect(db_path)
     rows = db.execute(
-        "SELECT metadata FROM documents "
-        "WHERE deleted_at IS NULL "
-        "AND json_extract(metadata, '$.epistemic_type') = ?",
+        f"SELECT r.metadata {_HEAD} "
+        "WHERE d.deleted_at IS NULL "
+        "AND json_extract(r.metadata, '$.epistemic_type') = ?",
         (entity_type,),
     ).fetchall()
     db.close()
@@ -260,18 +266,21 @@ async def print_diagnostics(db_path: str, tradition: str) -> None:
             db_name = Path(db_path).stem
             repo = await EpistemicRepository.for_database(db_name, db_dir=Path(db_dir))
 
-            posterior = await compute_posterior(repo, obj_id)
-            if posterior is not None:
-                print(f"\n  {'─' * 56}")
-                print("  Posterior confidence")
-                print(f"  {'─' * 56}")
-                print(f"  Confidence: {posterior.posterior:.2%}")
-                print(
-                    f"  Supporting: {posterior.supporting_count}  Contradicting: {posterior.contradicting_count}"
-                )
-                print(f"  {posterior.explanation}")
-            else:
-                print("\n  Posterior: not computed (question type not eligible)")
+            try:
+                posterior = await compute_posterior(repo, obj_id)
+                if posterior is not None:
+                    print(f"\n  {'─' * 56}")
+                    print("  Posterior confidence")
+                    print(f"  {'─' * 56}")
+                    print(f"  Confidence: {posterior.posterior:.2%}")
+                    print(
+                        f"  Supporting: {posterior.supporting_count}  Contradicting: {posterior.contradicting_count}"
+                    )
+                    print(f"  {posterior.explanation}")
+                else:
+                    print("\n  Posterior: not computed (question type not eligible)")
+            finally:
+                await repo.close()
         except Exception as e:
             print(f"\n  Confidence calculation failed: {e}")
 
@@ -452,15 +461,17 @@ async def run_single_test(
 
     # Generate HTML report
     try:
-        from andamentum.document_store import DocumentStore
+        from andamentum.document_store import Store
         from andamentum.epistemic.report_generator import ReportGenerator
 
-        store = DocumentStore.for_database(project_name, db_dir=Path(actual_db_dir))
-        await store.initialize()
-        gen = ReportGenerator(store, project_name)
-        report_path = Path(actual_db_dir) / f"{project_name}_report.html"
-        if await gen.save_html(output_path=report_path, model_name=model):
-            print(f"\n  Report: {report_path}")
+        store = await Store.open(Path(actual_db_dir) / f"{project_name}.db")
+        try:
+            gen = ReportGenerator(store, project_name)
+            report_path = Path(actual_db_dir) / f"{project_name}_report.html"
+            if await gen.save_html(output_path=report_path, model_name=model):
+                print(f"\n  Report: {report_path}")
+        finally:
+            await store.close()
     except Exception as e:
         print(f"\n  [warning] Report generation failed: {e}")
 

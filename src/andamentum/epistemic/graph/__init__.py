@@ -228,8 +228,7 @@ async def run_epistemic_graph(
     Returns:
         PipelineResult (backward compatible)
     """
-    from andamentum.document_store import DocumentStore
-
+    from ..databases import open_store
     from ..entities import Objective
     from ..evidence_gathering import get_default_gatherer
     from ..repository import EpistemicRepository
@@ -239,237 +238,244 @@ async def run_epistemic_graph(
     from .state import EpistemicGraphState
 
     # Initialize database and repository
-    store = DocumentStore.for_database(database_name, db_dir=db_dir)
-    await store.initialize()
+    store = await open_store(database_name, db_dir)
     repo = EpistemicRepository(store)
-
-    if objective_id is not None:
-        # Targeted run: load the specified objective directly. Used by the
-        # decomposed runner to dispatch each spawned sub-objective through
-        # the graph without colliding on the resume-first-objective rule.
-        target = await repo.get("objective", objective_id)
-        if target is None:
-            raise ValueError(f"Objective {objective_id} not found in {database_name}")
-        if verbose:
-            phase = getattr(target, "phase", "unknown")
-            logger.info(f"Targeted objective: {objective_id} (phase={phase})")
-    else:
-        # Resume if an objective already exists, otherwise create one
-        existing_objectives = await repo.query("objective")
-        if existing_objectives:
-            objective_id = existing_objectives[0].objective_id
-            if verbose:
-                phase = getattr(existing_objectives[0], "phase", "unknown")
-                logger.info(f"Resuming objective: {objective_id} (phase={phase})")
-        else:
-            # Fresh objective from the question — this is the only path
-            # where the question text is used. K5 guard fires here so
-            # resume / targeted runs (which ignore the question) aren't
-            # blocked by the validator. Stage-runner callers passing
-            # "(resumed)" never reach this branch when the DB has an
-            # existing objective; they only reach it on a fresh DB,
-            # where the placeholder string would correctly fail.
-            _validate_research_question(question)
-            objective_id = f"obj_{uuid.uuid4().hex[:12]}"
-            starting_phase = "analyzed" if skip_preplanning else "new"
-            objective = Objective(
-                entity_id=objective_id,
-                objective_id=objective_id,
-                description=question,
-                phase=starting_phase,
-                # mode="verify" seeds claim_to_verify so the Decompose node
-                # (graph/nodes.py) skips and CreateClaims routes to
-                # SeedClaim. mode="research" leaves it None; Decompose
-                # runs and CreateClaims routes to MultiSeedClaim, with
-                # the empty-decomposition fallback to ProposeClaims.
-                claim_to_verify=question if mode == "verify" else None,
-            )
-            await repo.save(objective)
-            if verbose:
-                logger.info(
-                    f"Created objective: {objective_id} (mode={mode}, "
-                    f"phase={starting_phase})"
+    try:
+        if objective_id is not None:
+            # Targeted run: load the specified objective directly. Used by the
+            # decomposed runner to dispatch each spawned sub-objective through
+            # the graph without colliding on the resume-first-objective rule.
+            target = await repo.get("objective", objective_id)
+            if target is None:
+                raise ValueError(
+                    f"Objective {objective_id} not found in {database_name}"
                 )
-
-    # Create agent runner and evidence gatherer
-    if not model:
-        raise ValueError(
-            "model is required for run_epistemic_graph. "
-            "Pass --model or set ANDAMENTUM_MAIN_LLM_MODEL."
-        )
-    if not embedding_model:
-        from andamentum.core.models import resolve_embedding_model_from_args
-
-        embedding_model = resolve_embedding_model_from_args()
-    agent_runner = DefaultAgentRunner(model=model)
-
-    # Auto-load providers. "all" includes web_search (general-domain) alongside
-    # the specialist biomedical providers; "web_search" loads only the web
-    # provider (previously a dead flag — there was no web_search provider to
-    # load). An explicit ``providers`` dict overrides both.
-    if providers is None:
-        from ..providers import get_all_providers, get_provider
-
-        if provider == "all":
-            providers = get_all_providers()
-        elif provider == "web_search":
-            providers = {"web_search": get_provider("web_search")}
-
-    evidence_gatherer = (
-        get_default_gatherer(
-            model=model,
-            providers=providers,
-            embedding_model=embedding_model,
-            use_web_search=use_web_search,
-        )
-        if model
-        else None
-    )
-
-    # Build graph state and deps
-    from ..thresholds import IBE_AGREEMENT_K_DEFAULT
-
-    resolved_k = (
-        ibe_agreement_k if ibe_agreement_k is not None else IBE_AGREEMENT_K_DEFAULT
-    )
-    if resolved_k < 1:
-        raise ValueError(
-            f"ibe_agreement_k must be >= 1 (got {resolved_k}). "
-            f"K=1 is single-run; K>=2 enables Reichenbach-style agreement check."
-        )
-    state = EpistemicGraphState(
-        objective_id=objective_id,
-        question=question,
-        skip_preplanning=skip_preplanning,
-        ibe_agreement_k=resolved_k,
-    )
-    deps = EpistemicDeps(
-        repo=repo,
-        agent_runner=agent_runner,
-        evidence_gatherer=evidence_gatherer,
-        quality_scorer=quality_scorer,
-        embedding_model=embedding_model,
-        # The run's LLM is also the second-opinion judge. One model per run,
-        # no separate flag, no ambient default — the judge is not a different
-        # capability tier, it is the same model asked a bounded question.
-        judge_model=model,
-        provider=provider,
-        verbose=verbose,
-        progress_callback=progress_callback,
-        providers=providers,
-    )
-
-    # Run the graph
-    if verbose:
-        logger.info(f"Starting epistemic graph for objective {objective_id}")
-
-    entry_node = (start_at or PrepareObjective)()
-    if stop_after is None and output_dir is None:
-        # Fast path: no stop, no instrumentation — let pydantic-graph
-        # drive the run in one shot. v2's ``run()`` returns the graph
-        # output directly (no result wrapper) and takes the entry node
-        # as ``inputs``; the graph's start node routes it to the
-        # matching node step.
-        result = await epistemic_graph.run(
-            state=state,
-            deps=deps,
-            inputs=entry_node,
-        )
-    else:
-        # Stage-runner mode: drive the graph node-by-node so we can
-        # break after a named node and/or record visit timings. The
-        # DB is the checkpoint; callers resume by passing start_at
-        # on a later invocation. See
-        # docs/superpowers/plans/2026-05-03-stage-runners.md.
-        #
-        # v2 iteration protocol: ``run.next_task`` holds what is about
-        # to execute, ``anext(run)`` executes it and returns what comes
-        # after, and the run is finished once ``next_task`` is an
-        # ``EndMarker`` (whose value ``run.output`` exposes).
-        from pydantic_graph import EndMarker
-
-        visits: list[dict[str, Any]] = []
-        async with epistemic_graph.iter(
-            state=state, deps=deps, inputs=entry_node
-        ) as run:
-            while True:
-                pending = run.next_task
-                if isinstance(pending, EndMarker):
-                    break
-                node_class = _pending_node_class(pending)
-                t0 = time.monotonic()
-                # No StopAsyncIteration guard: the EndMarker check above is the
-                # loop's only exit, and an ErrorMarker is re-raised by __anext__ —
-                # a swallow here would turn a real premature-exhaustion bug into a
-                # confusing AssertionError downstream.
-                await anext(run)
-                elapsed_ms = (time.monotonic() - t0) * 1000
-                if node_class is None:
-                    # Engine plumbing (the start node, the entry
-                    # decision) — not a pipeline node visit.
-                    continue
-                if output_dir is not None:
-                    visits.append(
-                        {
-                            "ts": time.time(),
-                            "node": node_class.__name__,
-                            "ms": elapsed_ms,
-                        }
+            if verbose:
+                phase = getattr(target, "phase", "unknown")
+                logger.info(f"Targeted objective: {objective_id} (phase={phase})")
+        else:
+            # Resume if an objective already exists, otherwise create one
+            existing_objectives = await repo.query("objective")
+            if existing_objectives:
+                objective_id = existing_objectives[0].objective_id
+                if verbose:
+                    phase = getattr(existing_objectives[0], "phase", "unknown")
+                    logger.info(f"Resuming objective: {objective_id} (phase={phase})")
+            else:
+                # Fresh objective from the question — this is the only path
+                # where the question text is used. K5 guard fires here so
+                # resume / targeted runs (which ignore the question) aren't
+                # blocked by the validator. Stage-runner callers passing
+                # "(resumed)" never reach this branch when the DB has an
+                # existing objective; they only reach it on a fresh DB,
+                # where the placeholder string would correctly fail.
+                _validate_research_question(question)
+                objective_id = f"obj_{uuid.uuid4().hex[:12]}"
+                starting_phase = "analyzed" if skip_preplanning else "new"
+                objective = Objective(
+                    entity_id=objective_id,
+                    objective_id=objective_id,
+                    description=question,
+                    phase=starting_phase,
+                    # mode="verify" seeds claim_to_verify so the Decompose node
+                    # (graph/nodes.py) skips and CreateClaims routes to
+                    # SeedClaim. mode="research" leaves it None; Decompose
+                    # runs and CreateClaims routes to MultiSeedClaim, with
+                    # the empty-decomposition fallback to ProposeClaims.
+                    claim_to_verify=question if mode == "verify" else None,
+                )
+                await repo.save(objective)
+                if verbose:
+                    logger.info(
+                        f"Created objective: {objective_id} (mode={mode}, "
+                        f"phase={starting_phase})"
                     )
-                if stop_after is not None and node_class is stop_after:
-                    break
-            result = run.output
-        if output_dir is not None:
-            await _emit_artifacts(output_dir, visits, repo, objective_id, state.verdict)
-        if stop_after is not None:
-            await _check_stage_invariant(stop_after, state, repo)
 
-    if verbose:
-        if result is not None:
-            logger.info(
-                f"Graph complete: {result.successful} successful, {result.failed} failed"
+        # Create agent runner and evidence gatherer
+        if not model:
+            raise ValueError(
+                "model is required for run_epistemic_graph. "
+                "Pass --model or set ANDAMENTUM_MAIN_LLM_MODEL."
+            )
+        if not embedding_model:
+            from andamentum.core.models import resolve_embedding_model_from_args
+
+            embedding_model = resolve_embedding_model_from_args()
+        agent_runner = DefaultAgentRunner(model=model)
+
+        # Auto-load providers. "all" includes web_search (general-domain) alongside
+        # the specialist biomedical providers; "web_search" loads only the web
+        # provider (previously a dead flag — there was no web_search provider to
+        # load). An explicit ``providers`` dict overrides both.
+        if providers is None:
+            from ..providers import get_all_providers, get_provider
+
+            if provider == "all":
+                providers = get_all_providers()
+            elif provider == "web_search":
+                providers = {"web_search": get_provider("web_search")}
+
+        evidence_gatherer = (
+            get_default_gatherer(
+                model=model,
+                providers=providers,
+                embedding_model=embedding_model,
+                use_web_search=use_web_search,
+            )
+            if model
+            else None
+        )
+
+        # Build graph state and deps
+        from ..thresholds import IBE_AGREEMENT_K_DEFAULT
+
+        resolved_k = (
+            ibe_agreement_k if ibe_agreement_k is not None else IBE_AGREEMENT_K_DEFAULT
+        )
+        if resolved_k < 1:
+            raise ValueError(
+                f"ibe_agreement_k must be >= 1 (got {resolved_k}). "
+                f"K=1 is single-run; K>=2 enables Reichenbach-style agreement check."
+            )
+        state = EpistemicGraphState(
+            objective_id=objective_id,
+            question=question,
+            skip_preplanning=skip_preplanning,
+            ibe_agreement_k=resolved_k,
+        )
+        deps = EpistemicDeps(
+            repo=repo,
+            agent_runner=agent_runner,
+            evidence_gatherer=evidence_gatherer,
+            quality_scorer=quality_scorer,
+            embedding_model=embedding_model,
+            # The run's LLM is also the second-opinion judge. One model per run,
+            # no separate flag, no ambient default — the judge is not a different
+            # capability tier, it is the same model asked a bounded question.
+            judge_model=model,
+            provider=provider,
+            verbose=verbose,
+            progress_callback=progress_callback,
+            providers=providers,
+        )
+
+        # Run the graph
+        if verbose:
+            logger.info(f"Starting epistemic graph for objective {objective_id}")
+
+        entry_node = (start_at or PrepareObjective)()
+        if stop_after is None and output_dir is None:
+            # Fast path: no stop, no instrumentation — let pydantic-graph
+            # drive the run in one shot. v2's ``run()`` returns the graph
+            # output directly (no result wrapper) and takes the entry node
+            # as ``inputs``; the graph's start node routes it to the
+            # matching node step.
+            result = await epistemic_graph.run(
+                state=state,
+                deps=deps,
+                inputs=entry_node,
             )
         else:
+            # Stage-runner mode: drive the graph node-by-node so we can
+            # break after a named node and/or record visit timings. The
+            # DB is the checkpoint; callers resume by passing start_at
+            # on a later invocation. See
+            # docs/superpowers/plans/2026-05-03-stage-runners.md.
+            #
+            # v2 iteration protocol: ``run.next_task`` holds what is about
+            # to execute, ``anext(run)`` executes it and returns what comes
+            # after, and the run is finished once ``next_task`` is an
+            # ``EndMarker`` (whose value ``run.output`` exposes).
+            from pydantic_graph import EndMarker
+
+            visits: list[dict[str, Any]] = []
+            async with epistemic_graph.iter(
+                state=state, deps=deps, inputs=entry_node
+            ) as run:
+                while True:
+                    pending = run.next_task
+                    if isinstance(pending, EndMarker):
+                        break
+                    node_class = _pending_node_class(pending)
+                    t0 = time.monotonic()
+                    # No StopAsyncIteration guard: the EndMarker check above is the
+                    # loop's only exit, and an ErrorMarker is re-raised by __anext__ —
+                    # a swallow here would turn a real premature-exhaustion bug into a
+                    # confusing AssertionError downstream.
+                    await anext(run)
+                    elapsed_ms = (time.monotonic() - t0) * 1000
+                    if node_class is None:
+                        # Engine plumbing (the start node, the entry
+                        # decision) — not a pipeline node visit.
+                        continue
+                    if output_dir is not None:
+                        visits.append(
+                            {
+                                "ts": time.time(),
+                                "node": node_class.__name__,
+                                "ms": elapsed_ms,
+                            }
+                        )
+                    if stop_after is not None and node_class is stop_after:
+                        break
+                result = run.output
+            if output_dir is not None:
+                await _emit_artifacts(
+                    output_dir, visits, repo, objective_id, state.verdict
+                )
+            if stop_after is not None:
+                await _check_stage_invariant(stop_after, state, repo)
+
+        if verbose:
+            if result is not None:
+                logger.info(
+                    f"Graph complete: {result.successful} successful, {result.failed} failed"
+                )
+            else:
+                assert stop_after is not None
+                logger.info(f"Graph stopped after {stop_after.__name__}")
+
+        # The posterior is computed INSIDE the graph now, by
+        # CombineClaimVerdicts, and persisted on the frozen Snapshot. The
+        # previous post-End ``compute_posterior`` call was a second,
+        # independent computation whose retrieval_failed input and claim
+        # state could differ from the one the writer had rendered — one of
+        # the three-answers-that-disagree paths. PipelineResult exposes the
+        # embedded report so the CLI, the artefact, the HTML report and the
+        # benchmark harness all read literally the same object.
+        from ..operations_runner import PipelineResult
+
+        if result is None:
             assert stop_after is not None
-            logger.info(f"Graph stopped after {stop_after.__name__}")
-
-    # The posterior is computed INSIDE the graph now, by
-    # CombineClaimVerdicts, and persisted on the frozen Snapshot. The
-    # previous post-End ``compute_posterior`` call was a second,
-    # independent computation whose retrieval_failed input and claim
-    # state could differ from the one the writer had rendered — one of
-    # the three-answers-that-disagree paths. PipelineResult exposes the
-    # embedded report so the CLI, the artefact, the HTML report and the
-    # benchmark harness all read literally the same object.
-    from ..operations_runner import PipelineResult
-
-    if result is None:
-        assert stop_after is not None
+            return PipelineResult(
+                objective_id=objective_id,
+                iterations=len(state.operations_log),
+                successful=0,
+                failed=0,
+                status=f"stopped_after:{stop_after.__name__}",
+                errors=[],
+                posterior=(
+                    state.verdict.posterior_report
+                    if state.verdict is not None
+                    else None
+                ),
+                verdict=state.verdict,
+                quarantined=[],
+                retrieval_failed=False,
+            )
         return PipelineResult(
             objective_id=objective_id,
             iterations=len(state.operations_log),
-            successful=0,
-            failed=0,
-            status=f"stopped_after:{stop_after.__name__}",
-            errors=[],
+            successful=result.successful,
+            failed=result.failed,
+            status=result.status,
+            errors=result.errors,
             posterior=(
                 state.verdict.posterior_report if state.verdict is not None else None
             ),
             verdict=state.verdict,
-            quarantined=[],
-            retrieval_failed=False,
+            quarantined=result.quarantined,
+            retrieval_failed=result.retrieval_failed,
         )
-    return PipelineResult(
-        objective_id=objective_id,
-        iterations=len(state.operations_log),
-        successful=result.successful,
-        failed=result.failed,
-        status=result.status,
-        errors=result.errors,
-        posterior=(
-            state.verdict.posterior_report if state.verdict is not None else None
-        ),
-        verdict=state.verdict,
-        quarantined=result.quarantined,
-        retrieval_failed=result.retrieval_failed,
-    )
+    finally:
+        await repo.close()

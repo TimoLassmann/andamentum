@@ -6,7 +6,7 @@ and that parameterized gates respect question_type.
 
 import pytest
 
-from andamentum.document_store import DocumentStore
+from andamentum.document_store import Store
 from ..repository import EpistemicRepository
 from ..entities.objective import Objective
 from ..entities.claim import Claim
@@ -28,8 +28,7 @@ def _make_objective(obj_id: str, **kwargs) -> Objective:
 class TestSetRoutingDefaultsOperation:
     @pytest.fixture
     async def store(self, tmp_path):
-        s = DocumentStore.for_database("test", db_dir=tmp_path)
-        await s.initialize()
+        s = await Store.open(tmp_path / "test.db")
         return s
 
     @pytest.fixture
@@ -192,8 +191,7 @@ from ..gates import validate_promotion  # noqa: E402
 class TestParameterizedGates:
     @pytest.fixture
     async def store(self, tmp_path):
-        s = DocumentStore.for_database("test", db_dir=tmp_path)
-        await s.initialize()
+        s = await Store.open(tmp_path / "test.db")
         return s
 
     @pytest.fixture

@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from andamentum.document_store import DocumentStore
+from andamentum.document_store import Store
 from andamentum.epistemic.entities import Claim, Objective
 from andamentum.epistemic.entities.claim import ClaimStage
 from andamentum.epistemic.graph.deps import EpistemicDeps
@@ -39,8 +39,7 @@ class _Ctx:
 
 
 async def _repo(tmp_path: Path, name: str) -> EpistemicRepository:
-    store = DocumentStore.for_database(name, db_dir=tmp_path)
-    await store.initialize()
+    store = await Store.open(tmp_path / f"{name}.db")
     return EpistemicRepository(store)
 
 

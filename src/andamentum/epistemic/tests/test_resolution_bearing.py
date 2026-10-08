@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from andamentum.document_store import DocumentStore
+from andamentum.document_store import Store
 from andamentum.epistemic.agents.output_models import ResolveUncertaintyOutput
 from andamentum.epistemic.entities import Claim, Objective, Uncertainty
 from andamentum.epistemic.entities.uncertainty import UncertaintyType
@@ -76,8 +76,7 @@ def test_resolve_with_bearing_stores_it() -> None:
 
 
 async def _repo(tmp_path: Path, db_name: str) -> EpistemicRepository:
-    store = DocumentStore.for_database(db_name, db_dir=tmp_path)
-    await store.initialize()
+    store = await Store.open(tmp_path / f"{db_name}.db")
     return EpistemicRepository(store)
 
 

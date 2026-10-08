@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from andamentum.document_store import DocumentStore
+from andamentum.document_store import Store
 from andamentum.epistemic.confidence import (
     _claim_directional_masses,
     build_verdict,
@@ -34,8 +34,7 @@ from andamentum.epistemic.repository import EpistemicRepository
 
 
 async def _repo(tmp_path: Path, name: str) -> EpistemicRepository:
-    store = DocumentStore.for_database(name, db_dir=tmp_path)
-    await store.initialize()
+    store = await Store.open(tmp_path / f"{name}.db")
     return EpistemicRepository(store)
 
 

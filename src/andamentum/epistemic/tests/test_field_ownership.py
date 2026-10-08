@@ -33,7 +33,7 @@ from unittest.mock import patch
 
 import pytest
 
-from andamentum.document_store import DocumentStore
+from andamentum.document_store import Store
 from andamentum.epistemic.dedup import EvidenceCluster
 from andamentum.epistemic.entities import Evidence
 from andamentum.epistemic.operations.claims import (
@@ -159,8 +159,7 @@ class TestIndependenceGroup:
 
 @pytest.fixture
 async def repo(tmp_path: Path) -> EpistemicRepository:
-    store = DocumentStore.for_database("test_field_ownership", db_dir=tmp_path)
-    await store.initialize()
+    store = await Store.open(tmp_path / "test_field_ownership.db")
     return EpistemicRepository(store)
 
 

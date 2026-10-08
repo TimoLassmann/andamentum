@@ -24,7 +24,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from andamentum.document_store import DocumentStore
+from andamentum.document_store import Store
 from andamentum.epistemic.entities import Claim, Evidence, Objective
 from andamentum.epistemic.entities.claim import ClaimStage
 from andamentum.epistemic.entities.decomposition import (
@@ -92,8 +92,7 @@ async def test_no_decomposition_gates_to_satisfied(
     """When the objective has no decomposition (open-research mode),
     the synthesis demand check doesn't apply. Should return satisfied
     via deterministic gate (no LLM call) and continue to Synthesize."""
-    store = DocumentStore.for_database("no_decomp", db_dir=tmp_path)
-    await store.initialize()
+    store = await Store.open(tmp_path / "no_decomp.db")
     repo = EpistemicRepository(store)
 
     obj = Objective(description="open research")
@@ -136,8 +135,7 @@ async def test_no_combined_verdict_gates_to_needs_more(
     (every claim abandoned/cycle-capped/no-verdict), the headline
     is the no-data fallback. Should log needs_more=True via
     deterministic gate."""
-    store = DocumentStore.for_database("no_cv", db_dir=tmp_path)
-    await store.initialize()
+    store = await Store.open(tmp_path / "no_cv.db")
     repo = EpistemicRepository(store)
 
     obj = Objective(description="x", decomposition=_decomposition("A"))
@@ -187,8 +185,7 @@ async def test_stranded_claims_gates_to_needs_more(
     stranded claim. Both are cycle-capped, so no loop-back is possible
     and the routing assertion below stays the same as before.
     """
-    store = DocumentStore.for_database("stranded", db_dir=tmp_path)
-    await store.initialize()
+    store = await Store.open(tmp_path / "stranded.db")
     repo = EpistemicRepository(store)
 
     obj = Objective(description="x", decomposition=_decomposition("A", "B"))
@@ -248,8 +245,7 @@ async def _decisive_setup(
     assessment: str,
     confidence: float,
 ) -> tuple[Objective, EpistemicRepository]:
-    store = DocumentStore.for_database(db_name, db_dir=tmp_path)
-    await store.initialize()
+    store = await Store.open(tmp_path / f"{db_name}.db")
     repo = EpistemicRepository(store)
 
     obj = Objective(description="x", decomposition=_decomposition("A"))
@@ -323,8 +319,7 @@ async def test_decisive_contradicts_posterior_gates_to_satisfied(
 async def _repro_setup(
     tmp_path: Path, db_name: str
 ) -> tuple[Objective, EpistemicRepository]:
-    store = DocumentStore.for_database(db_name, db_dir=tmp_path)
-    await store.initialize()
+    store = await Store.open(tmp_path / f"{db_name}.db")
     repo = EpistemicRepository(store)
 
     obj = Objective(description="x", decomposition=_decomposition("A"))

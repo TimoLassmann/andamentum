@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from andamentum.document_store import DocumentStore
+from andamentum.document_store import Store
 from andamentum.epistemic.entities import Claim, Objective, Snapshot
 from andamentum.epistemic.entities.claim import ClaimStage
 from andamentum.epistemic.entities.decomposition import Decomposition
@@ -262,8 +262,7 @@ class TestSnapshotVerdict:
     rather than by dict key."""
 
     async def test_field_round_trips(self, tmp_path: Path) -> None:
-        store = DocumentStore.for_database("snap_round", db_dir=tmp_path)
-        await store.initialize()
+        store = await Store.open(tmp_path / "snap_round.db")
         repo = EpistemicRepository(store)
         obj = Objective(description="parent")
         obj.objective_id = obj.entity_id
@@ -302,8 +301,7 @@ class TestSnapshotVerdict:
 
     async def test_default_is_none(self, tmp_path: Path) -> None:
         """Snapshots created outside the graph leave the field as None."""
-        store = DocumentStore.for_database("snap_default", db_dir=tmp_path)
-        await store.initialize()
+        store = await Store.open(tmp_path / "snap_default.db")
         repo = EpistemicRepository(store)
         obj = Objective(description="parent")
         obj.objective_id = obj.entity_id
@@ -338,8 +336,7 @@ class TestCombineClaimVerdictsNode:
         the drift class ``test_structural_wiring`` exists to catch for
         ``judge_model``, one field over.
         """
-        store = DocumentStore.for_database("combine_escalated", db_dir=tmp_path)
-        await store.initialize()
+        store = await Store.open(tmp_path / "combine_escalated.db")
         repo = EpistemicRepository(store)
         obj = Objective(description="parent", question_type="verificatory")
         obj.objective_id = obj.entity_id
@@ -379,8 +376,7 @@ class TestCombineClaimVerdictsNode:
         and the writer agent's prose was the only verdict that existed.
         It now builds the object for every run shape.
         """
-        store = DocumentStore.for_database("combine_noop", db_dir=tmp_path)
-        await store.initialize()
+        store = await Store.open(tmp_path / "combine_noop.db")
         repo = EpistemicRepository(store)
         obj = Objective(
             description="Interferon-gamma protects against myocarditis.",
@@ -411,8 +407,7 @@ class TestCombineClaimVerdictsNode:
     async def test_combines_and_stashes_on_objective(self, tmp_path: Path) -> None:
         """With decomposition + matching claims, the node writes the
         rule-aware aggregate onto ``state.verdict``."""
-        store = DocumentStore.for_database("combine_stash", db_dir=tmp_path)
-        await store.initialize()
+        store = await Store.open(tmp_path / "combine_stash.db")
         repo = EpistemicRepository(store)
         obj = Objective(
             description="parent",
@@ -453,8 +448,7 @@ class TestCombineClaimVerdictsNode:
         """The node aligns claims with the decomposition order, not
         repo-query order. This ensures weighted_and's weight alignment
         is deterministic regardless of save order."""
-        store = DocumentStore.for_database("combine_order", db_dir=tmp_path)
-        await store.initialize()
+        store = await Store.open(tmp_path / "combine_order.db")
         repo = EpistemicRepository(store)
         obj = Objective(
             description="parent",

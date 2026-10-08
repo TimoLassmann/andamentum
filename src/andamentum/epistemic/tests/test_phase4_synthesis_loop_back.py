@@ -31,7 +31,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from andamentum.document_store import DocumentStore
+from andamentum.document_store import Store
 from andamentum.epistemic.entities import Claim, Objective
 from andamentum.epistemic.entities.claim import ClaimStage
 from andamentum.epistemic.entities.decomposition import (
@@ -86,8 +86,7 @@ async def _setup_unsatisfying_run(
     at_cap = at_cap or []
     abandoned = abandoned or []
 
-    store = DocumentStore.for_database("phase4_loopback", db_dir=tmp_path)
-    await store.initialize()
+    store = await Store.open(tmp_path / "phase4_loopback.db")
     repo = EpistemicRepository(store)
 
     obj = Objective(
@@ -237,8 +236,7 @@ async def test_needs_more_with_all_claims_abandoned_routes_insufficient(
     # We can't use _setup_unsatisfying_run directly: it builds active
     # claims that carry integration verdicts. Build a minimal
     # abandoned-only state inline.
-    store = DocumentStore.for_database("phase4_abandoned", db_dir=tmp_path)
-    await store.initialize()
+    store = await Store.open(tmp_path / "phase4_abandoned.db")
     repo = EpistemicRepository(store)
 
     obj = Objective(
@@ -322,8 +320,7 @@ async def test_stranded_claims_gate_loops_back_when_eligible(
     """The deterministic ``n_no_verdict > 0`` gate produces
     ``needs_more=True`` without an LLM call. Phase 4's loop-back
     should fire here too, not just on LLM-emitted demands."""
-    store = DocumentStore.for_database("phase4_stranded", db_dir=tmp_path)
-    await store.initialize()
+    store = await Store.open(tmp_path / "phase4_stranded.db")
     repo = EpistemicRepository(store)
 
     obj = Objective(

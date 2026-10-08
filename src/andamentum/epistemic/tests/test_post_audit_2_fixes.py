@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from andamentum.document_store import DocumentStore
+from andamentum.document_store import Store
 from andamentum.epistemic.entities import Claim, Evidence, Objective
 from andamentum.epistemic.entities.claim import ClaimStage
 from andamentum.epistemic.graph.combination import resolve_combination_rule
@@ -98,8 +98,7 @@ class TestInvestigationPropagatesSubInvestigationId:
         must inherit the same sub_investigation_id."""
         self._patch_helper(monkeypatch)
 
-        store = DocumentStore.for_database("inv_sub_id", db_dir=tmp_path)
-        await store.initialize()
+        store = await Store.open(tmp_path / "inv_sub_id.db")
         repo = EpistemicRepository(store)
         obj = Objective(
             description="parent",
@@ -148,8 +147,7 @@ class TestInvestigationPropagatesSubInvestigationId:
         (open-research mode), investigation evidence's sub_id stays None."""
         self._patch_helper(monkeypatch)
 
-        store = DocumentStore.for_database("inv_no_sub", db_dir=tmp_path)
-        await store.initialize()
+        store = await Store.open(tmp_path / "inv_no_sub.db")
         repo = EpistemicRepository(store)
         obj = Objective(description="open research", question_type="verificatory")
         obj.objective_id = obj.entity_id
@@ -221,8 +219,7 @@ class TestDegenerateDecompositionFallback:
         from andamentum.epistemic.graph.nodes import CreateClaims
         from andamentum.epistemic.graph.state import EpistemicGraphState
 
-        store = DocumentStore.for_database("degenerate_decomp", db_dir=tmp_path)
-        await store.initialize()
+        store = await Store.open(tmp_path / "degenerate_decomp.db")
         repo = EpistemicRepository(store)
         # Pre-extracted evidence so ProposeClaims has something to chew on.
         obj = Objective(
@@ -287,8 +284,7 @@ class TestDegenerateDecompositionFallback:
         from andamentum.epistemic.graph.nodes import CreateClaims
         from andamentum.epistemic.graph.state import EpistemicGraphState
 
-        store = DocumentStore.for_database("nondegen_decomp", db_dir=tmp_path)
-        await store.initialize()
+        store = await Store.open(tmp_path / "nondegen_decomp.db")
         repo = EpistemicRepository(store)
         obj = Objective(
             description="parent",

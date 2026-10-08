@@ -22,7 +22,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-from andamentum.document_store import DocumentStore
+from andamentum.document_store import Store
 from andamentum.epistemic.entities import Claim, Objective
 from andamentum.epistemic.entities.claim import ClaimStage
 from andamentum.epistemic.entities.intent_record import IntentRecord
@@ -143,8 +143,7 @@ class TestInvestigationIntentMemory:
     async def _make_claim(
         self, tmp_path: Path, name: str
     ) -> tuple[Claim, EpistemicRepository]:
-        store = DocumentStore.for_database(name, db_dir=tmp_path)
-        await store.initialize()
+        store = await Store.open(tmp_path / f"{name}.db")
         repo = EpistemicRepository(store)
         obj = Objective(description="parent", question_type="verificatory")
         obj.objective_id = obj.entity_id
@@ -327,8 +326,7 @@ class TestClaimGroundedDispatch:
     ) -> None:
         from andamentum.epistemic.operations import investigation as inv_mod
 
-        store = DocumentStore.for_database("claim_grounded", db_dir=tmp_path)
-        await store.initialize()
+        store = await Store.open(tmp_path / "claim_grounded.db")
         repo = EpistemicRepository(store)
         obj = Objective(description="parent", question_type="verificatory")
         obj.objective_id = obj.entity_id
@@ -393,8 +391,7 @@ class TestZeroIntentGracefulExit:
     async def test_zero_intent_return_persists_no_evidence(
         self, tmp_path: Path
     ) -> None:
-        store = DocumentStore.for_database("inv_zero_intent", db_dir=tmp_path)
-        await store.initialize()
+        store = await Store.open(tmp_path / "inv_zero_intent.db")
         repo = EpistemicRepository(store)
         obj = Objective(description="parent", question_type="verificatory")
         obj.objective_id = obj.entity_id

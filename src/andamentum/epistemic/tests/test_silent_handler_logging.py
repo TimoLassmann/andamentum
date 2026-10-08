@@ -10,7 +10,7 @@ import pathlib
 
 import pytest
 
-from andamentum.document_store import DocumentStore
+from andamentum.document_store import Store
 from ..entities import Claim, ClaimStage, Evidence, Objective
 from ..operations import (
     AdversarialSearchOperation,
@@ -32,10 +32,9 @@ from conftest import (  # noqa: E402  # type: ignore[import-not-found]
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 
-async def _make_store(tmp_path) -> DocumentStore:
-    """Create a fresh DocumentStore for test use."""
-    s = DocumentStore.for_database("test", db_dir=tmp_path)
-    await s.initialize()
+async def _make_store(tmp_path) -> Store:
+    """Create a fresh Store for test use."""
+    s = await Store.open(tmp_path / "test.db")
     return s
 
 

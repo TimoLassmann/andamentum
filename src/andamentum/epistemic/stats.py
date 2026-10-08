@@ -1,6 +1,6 @@
 """Standalone statistics and verification evidence queries.
 
-These functions operate directly on DocumentStore, replacing the
+These functions operate directly on the document store's Store, replacing the
 statistics methods that previously lived on WorkItemManager.
 
 Architecture: Layer 4 (Application)
@@ -9,19 +9,17 @@ Architecture: Layer 4 (Application)
 import logging
 from typing import Any
 
-from andamentum.document_store import DocumentStore
+from andamentum.document_store import Store
 from .primitives import ClaimStage
 
 logger = logging.getLogger(__name__)
 
 
-async def get_objective_stats(
-    store: DocumentStore, objective_id: str
-) -> dict[str, Any]:
+async def get_objective_stats(store: Store, objective_id: str) -> dict[str, Any]:
     """Get statistics for an objective using metadata queries.
 
     Args:
-        store: DocumentStore for the epistemic database
+        store: Store for the epistemic database
         objective_id: Objective to get stats for
 
     Returns:
@@ -43,48 +41,40 @@ async def get_objective_stats(
     }
 
     # Count evidence
-    evidence_results = await store.find_by_metadata(
-        {"objective_id": objective_id, "epistemic_type": "evidence"},
-        limit=1000,
+    stats["evidence_count"] = await store.count(
+        where={"objective_id": objective_id, "epistemic_type": "evidence"}
     )
-    stats["evidence_count"] = len(evidence_results)
 
     # Count claims by stage
     for stage in ClaimStage:
-        claim_results = await store.find_by_metadata(
-            {
+        stats["claims_by_stage"][stage.value] = await store.count(
+            where={
                 "objective_id": objective_id,
                 "epistemic_type": "claim",
                 "claim_stage": stage.value,
-            },
-            limit=1000,
+            }
         )
-        stats["claims_by_stage"][stage.value] = len(claim_results)
 
     # Count uncertainties
-    unresolved = await store.find_by_metadata(
-        {
+    stats["uncertainties_unresolved"] = await store.count(
+        where={
             "objective_id": objective_id,
             "epistemic_type": "uncertainty",
             "is_resolved": False,
-        },
-        limit=1000,
+        }
     )
-    resolved = await store.find_by_metadata(
-        {
+    stats["uncertainties_resolved"] = await store.count(
+        where={
             "objective_id": objective_id,
             "epistemic_type": "uncertainty",
             "is_resolved": True,
-        },
-        limit=1000,
+        }
     )
-    stats["uncertainties_unresolved"] = len(unresolved)
-    stats["uncertainties_resolved"] = len(resolved)
 
     # Count decisions
-    all_decisions = await store.find_by_metadata(
-        {"objective_id": objective_id, "epistemic_type": "decision"},
-        limit=1000,
+    all_decisions = await store.list(
+        where={"objective_id": objective_id, "epistemic_type": "decision"},
+        limit=None,
     )
     for d in all_decisions:
         if d.metadata.get("is_reversed"):
@@ -94,34 +84,27 @@ async def get_objective_stats(
 
     # Count workitems
     for status in ["queued", "done", "failed"]:
-        wi_results = await store.find_by_metadata(
-            {
+        stats[f"workitems_{status}"] = await store.count(
+            where={
                 "objective_id": objective_id,
                 "epistemic_type": "workitem",
                 "workitem_status": status,
-            },
-            limit=1000,
+            }
         )
-        stats[f"workitems_{status}"] = len(wi_results)
 
     # Count snapshots and artefacts
-    snap_results = await store.find_by_metadata(
-        {"objective_id": objective_id, "epistemic_type": "snapshot"},
-        limit=1000,
+    stats["snapshots"] = await store.count(
+        where={"objective_id": objective_id, "epistemic_type": "snapshot"}
     )
-    stats["snapshots"] = len(snap_results)
-
-    art_results = await store.find_by_metadata(
-        {"objective_id": objective_id, "epistemic_type": "artefact"},
-        limit=1000,
+    stats["artefacts"] = await store.count(
+        where={"objective_id": objective_id, "epistemic_type": "artefact"}
     )
-    stats["artefacts"] = len(art_results)
 
     return stats
 
 
 async def get_all_verification_evidence(
-    store: DocumentStore, objective_id: str
+    store: Store, objective_id: str
 ) -> dict[str, list[Any]]:
     """Get all verification evidence for an objective, grouped by type.
 
@@ -129,7 +112,7 @@ async def get_all_verification_evidence(
     stored per-claim during verification operations.
 
     Args:
-        store: DocumentStore for the epistemic database
+        store: Store for the epistemic database
         objective_id: Objective to get verification evidence for
 
     Returns:

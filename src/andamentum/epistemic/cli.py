@@ -326,31 +326,33 @@ async def _confidence(args: argparse.Namespace) -> None:
 
     db_dir = Path(args.db_dir) if args.db_dir else None
     repo = await EpistemicRepository.for_database(args.db, db_dir=db_dir)
+    try:
+        objective_id = args.objective
+        if objective_id is None:
+            objectives = await repo.query("objective")
+            if not objectives:
+                print("Error: no objectives found in database.", file=sys.stderr)
+                sys.exit(1)
+            objective_id = objectives[0].entity_id
 
-    objective_id = args.objective
-    if objective_id is None:
-        objectives = await repo.query("objective")
-        if not objectives:
-            print("Error: no objectives found in database.", file=sys.stderr)
-            sys.exit(1)
-        objective_id = objectives[0].entity_id
+        # Posterior confidence (evidential direction)
+        posterior = await compute_posterior(repo, objective_id)
+        if posterior is not None:
+            print(f"Posterior confidence: {posterior.posterior:.2%}")
+            print(
+                f"  {posterior.supporting_count} supporting, {posterior.contradicting_count} contradicting"
+            )
+            print(f"  {posterior.explanation}")
+        else:
+            objective = await repo.get("objective", objective_id)
+            qt = getattr(objective, "question_type", None) or "unclassified"
+            print(f"Posterior not computed (question type: {qt})")
 
-    # Posterior confidence (evidential direction)
-    posterior = await compute_posterior(repo, objective_id)
-    if posterior is not None:
-        print(f"Posterior confidence: {posterior.posterior:.2%}")
-        print(
-            f"  {posterior.supporting_count} supporting, {posterior.contradicting_count} contradicting"
-        )
-        print(f"  {posterior.explanation}")
-    else:
-        objective = await repo.get("objective", objective_id)
-        qt = getattr(objective, "question_type", None) or "unclassified"
-        print(f"Posterior not computed (question type: {qt})")
-
-    if args.verbose:
-        print()
-        print(f"Objective: {objective_id}")
+        if args.verbose:
+            print()
+            print(f"Objective: {objective_id}")
+    finally:
+        await repo.close()
 
 
 async def _ask(args: argparse.Namespace) -> None:
@@ -463,101 +465,104 @@ async def _stage(args: argparse.Namespace) -> None:
 async def _inspect(args: argparse.Namespace) -> None:
     """Print a structured snapshot of a saved DB. No LLM, no graph
     work — just read the entities and summarise."""
-    from andamentum.document_store import DocumentStore
-
+    from .databases import open_store
     from .repository import EpistemicRepository
 
     db_dir = args.db_dir
-    store = DocumentStore.for_database(args.db, db_dir=db_dir)
-    await store.initialize()
-    repo = EpistemicRepository(store)
+    store = await open_store(args.db, db_dir)
+    try:
+        repo = EpistemicRepository(store)
 
-    objs = await repo.query("objective")
-    claims = await repo.query("claim")
-    evidence = await repo.query("evidence")
+        objs = await repo.query("objective")
+        claims = await repo.query("claim")
+        evidence = await repo.query("evidence")
 
-    if not objs:
-        print(f"DB {args.db!r}: no objectives. Empty database.")
-        return
+        if not objs:
+            print(f"DB {args.db!r}: no objectives. Empty database.")
+            return
 
-    for obj in objs:
-        print(f"Objective {obj.entity_id}")
-        print(f"  question_type: {obj.question_type}")
-        print(f"  description:   {(obj.description or '')[:120]}")
-        decomp = obj.decomposition
-        if decomp is not None:
-            print(
-                f"  decomposition: {len(decomp.sub_investigations)} sub-investigations "
-                f"(rule={decomp.combination_rule})"
-            )
-        else:
-            print("  decomposition: <none>")
-
-        # The run's verdict lives on the frozen snapshot, not on the
-        # decomposition — so verify-mode runs (which have no
-        # decomposition at all) print one too.
-        snapshot = (
-            await repo.get("snapshot", obj.snapshot_id) if obj.snapshot_id else None
-        )
-        verdict = getattr(snapshot, "verdict", None) if snapshot else None
-        if verdict is not None:
-            post = (
-                f"{verdict.posterior:.3f}" if verdict.posterior is not None else "n/a"
-            )
-            print(
-                f"  verdict:       {verdict.direction} posterior={post} "
-                f"n_no_verdict={verdict.provenance.n_no_verdict}"
-            )
-            # Judgment reliability, printed only when a measurement
-            # actually raised something — so a run that measured nothing
-            # prints exactly what it printed before this line existed.
-            # ``n_doubt_unmeasured_claims`` travels with its companion so
-            # a ``0`` in the first can never read as "all sure".
-            prov = verdict.provenance
-            if (
-                prov.n_high_doubt_claims
-                or prov.n_doubt_unmeasured_claims
-                or prov.judgment_doubt_escalated
-            ):
+        for obj in objs:
+            print(f"Objective {obj.entity_id}")
+            print(f"  question_type: {obj.question_type}")
+            print(f"  description:   {(obj.description or '')[:120]}")
+            decomp = obj.decomposition
+            if decomp is not None:
                 print(
-                    f"  reliability:   n_high_doubt_claims="
-                    f"{prov.n_high_doubt_claims} "
-                    f"n_doubt_unmeasured_claims="
-                    f"{prov.n_doubt_unmeasured_claims} "
-                    f"judgment_doubt_escalated="
-                    f"{prov.judgment_doubt_escalated}"
+                    f"  decomposition: {len(decomp.sub_investigations)} sub-investigations "
+                    f"(rule={decomp.combination_rule})"
                 )
-        else:
-            print("  verdict:       <none>")
+            else:
+                print("  decomposition: <none>")
 
-    print(f"\n{len(claims)} claims:")
-    for c in sorted(claims, key=lambda x: x.sub_investigation_id or ""):
-        stage = c.stage.value if hasattr(c.stage, "value") else c.stage
-        ia = c.integrated_assessment
-        ic = (
-            f"{c.integrated_confidence:.3f}"
-            if c.integrated_confidence is not None
-            else "—"
-        )
-        print(
-            f"  [{c.sub_investigation_id or '-'}] stage={stage} "
-            f"verdict={ia} conf={ic} "
-            f"cycle_capped={c.cycle_capped} abandoned={c.abandoned} "
-            f"ev={c.evidence_count}"
-        )
-        print(f"    {(c.statement or '')[:140]}")
+            # The run's verdict lives on the frozen snapshot, not on the
+            # decomposition — so verify-mode runs (which have no
+            # decomposition at all) print one too.
+            snapshot = (
+                await repo.get("snapshot", obj.snapshot_id) if obj.snapshot_id else None
+            )
+            verdict = getattr(snapshot, "verdict", None) if snapshot else None
+            if verdict is not None:
+                post = (
+                    f"{verdict.posterior:.3f}"
+                    if verdict.posterior is not None
+                    else "n/a"
+                )
+                print(
+                    f"  verdict:       {verdict.direction} posterior={post} "
+                    f"n_no_verdict={verdict.provenance.n_no_verdict}"
+                )
+                # Judgment reliability, printed only when a measurement
+                # actually raised something — so a run that measured nothing
+                # prints exactly what it printed before this line existed.
+                # ``n_doubt_unmeasured_claims`` travels with its companion so
+                # a ``0`` in the first can never read as "all sure".
+                prov = verdict.provenance
+                if (
+                    prov.n_high_doubt_claims
+                    or prov.n_doubt_unmeasured_claims
+                    or prov.judgment_doubt_escalated
+                ):
+                    print(
+                        f"  reliability:   n_high_doubt_claims="
+                        f"{prov.n_high_doubt_claims} "
+                        f"n_doubt_unmeasured_claims="
+                        f"{prov.n_doubt_unmeasured_claims} "
+                        f"judgment_doubt_escalated="
+                        f"{prov.judgment_doubt_escalated}"
+                    )
+            else:
+                print("  verdict:       <none>")
 
-    real = sum(
-        1
-        for e in evidence
-        if (e.extracted_content or "") and len(e.extracted_content) > 200
-    )
-    by_provider: dict[str, int] = {}
-    for e in evidence:
-        by_provider[e.source_type] = by_provider.get(e.source_type, 0) + 1
-    print(f"\n{len(evidence)} evidence items ({real} with content >200 chars)")
-    for prov, n in sorted(by_provider.items()):
-        print(f"  {prov}: {n}")
+        print(f"\n{len(claims)} claims:")
+        for c in sorted(claims, key=lambda x: x.sub_investigation_id or ""):
+            stage = c.stage.value if hasattr(c.stage, "value") else c.stage
+            ia = c.integrated_assessment
+            ic = (
+                f"{c.integrated_confidence:.3f}"
+                if c.integrated_confidence is not None
+                else "—"
+            )
+            print(
+                f"  [{c.sub_investigation_id or '-'}] stage={stage} "
+                f"verdict={ia} conf={ic} "
+                f"cycle_capped={c.cycle_capped} abandoned={c.abandoned} "
+                f"ev={c.evidence_count}"
+            )
+            print(f"    {(c.statement or '')[:140]}")
+
+        real = sum(
+            1
+            for e in evidence
+            if (e.extracted_content or "") and len(e.extracted_content) > 200
+        )
+        by_provider: dict[str, int] = {}
+        for e in evidence:
+            by_provider[e.source_type] = by_provider.get(e.source_type, 0) + 1
+        print(f"\n{len(evidence)} evidence items ({real} with content >200 chars)")
+        for prov, n in sorted(by_provider.items()):
+            print(f"  {prov}: {n}")
+    finally:
+        await store.close()
 
 
 _EXPERIMENTAL_BANNER = (

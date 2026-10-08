@@ -1,7 +1,7 @@
 """Quickstart example for andamentum.epistemic.
 
 Demonstrates core mechanics without requiring an LLM:
-  - Create a repository backed by DocumentStore
+  - Create a repository backed by a document store
   - Define an objective, evidence, and claims
   - Validate promotion through stage gates
 
@@ -11,8 +11,9 @@ Run:
 
 import asyncio
 import tempfile
+from pathlib import Path
 
-from andamentum.document_store import DocumentStore
+from andamentum.document_store import Store
 from andamentum.epistemic import (
     EpistemicRepository,
     Objective,
@@ -33,8 +34,7 @@ from andamentum.epistemic import (
 
 async def main() -> None:
     with tempfile.TemporaryDirectory() as tmpdir:
-        store = DocumentStore.for_database("quickstart", db_dir=tmpdir)
-        await store.initialize()
+        store = await Store.open(Path(tmpdir) / "quickstart.db")
         repo = EpistemicRepository(store)
 
         # ── 2. Objective ─────────────────────────────────────────────────────
@@ -126,6 +126,7 @@ async def main() -> None:
         for code, msg in warnings:
             print(f"  [{code}] {msg}")
 
+        await store.close()
         print("\nQuickstart complete.")
 
 

@@ -98,7 +98,7 @@ async def test_propose_claims_propagates_screening_failure(tmp_path):
     """When epistemic_screen_relevance raises, ProposeClaimsOperation must
     propagate — the previous behavior (include-by-default) silently poisoned
     downstream evidence selection with unscreened items."""
-    from andamentum.document_store import DocumentStore
+    from andamentum.document_store import Store
     from andamentum.epistemic.entities import Evidence, Objective
     from andamentum.epistemic.operations.claims import ProposeClaimsOperation
     from andamentum.epistemic.repository import EpistemicRepository
@@ -112,8 +112,7 @@ async def test_propose_claims_propagates_screening_failure(tmp_path):
                 f"Unexpected agent call {agent_name} before screening failed"
             )
 
-    store = DocumentStore.for_database("test", db_dir=tmp_path)
-    await store.initialize()
+    store = await Store.open(tmp_path / "test.db")
     repo = EpistemicRepository(store)
 
     obj = Objective(description="test question", clarified_question="q?")
@@ -149,7 +148,7 @@ async def test_propose_claims_propagates_screening_failure(tmp_path):
 async def test_adversarial_check_propagates_counterquery_failure(tmp_path):
     """One failing framing must propagate. Previous: silently dropped to 2/3.
     New: the claim gets quarantined by _run_op."""
-    from andamentum.document_store import DocumentStore
+    from andamentum.document_store import Store
     from andamentum.epistemic.entities import Claim, Objective
     from andamentum.epistemic.entities.claim import ClaimStage
     from andamentum.epistemic.operations.verification import AdversarialSearchOperation
@@ -169,8 +168,7 @@ async def test_adversarial_check_propagates_counterquery_failure(tmp_path):
                 return SimpleNamespace(query=f"q-{self.calls}", framing="test")
             raise AssertionError(f"Unexpected agent {agent_name}")
 
-    store = DocumentStore.for_database("test", db_dir=tmp_path)
-    await store.initialize()
+    store = await Store.open(tmp_path / "test.db")
     repo = EpistemicRepository(store)
 
     obj = Objective(description="q", clarified_question="q")
@@ -207,7 +205,7 @@ async def test_adversarial_check_propagates_counterarg_eval_failure(tmp_path):
     operation must raise — do not build a default-scored Counterargument."""
     from types import SimpleNamespace
 
-    from andamentum.document_store import DocumentStore
+    from andamentum.document_store import Store
     from andamentum.epistemic.entities import Claim, Objective
     from andamentum.epistemic.entities.claim import ClaimStage
     from andamentum.epistemic.operations.base import GatheredEvidence
@@ -239,8 +237,7 @@ async def test_adversarial_check_propagates_counterarg_eval_failure(tmp_path):
                 )
             ]
 
-    store = DocumentStore.for_database("test", db_dir=tmp_path)
-    await store.initialize()
+    store = await Store.open(tmp_path / "test.db")
     repo = EpistemicRepository(store)
 
     obj = Objective(description="test question", clarified_question="q?")
@@ -279,13 +276,12 @@ async def test_extract_evidence_raises_without_runner_or_gatherer(tmp_path):
     content to extract from and produced hallucinated content
     paraphrasing the claim. Without a gatherer the operation must
     raise rather than silently fabricate."""
-    from andamentum.document_store import DocumentStore
+    from andamentum.document_store import Store
     from andamentum.epistemic.entities import Evidence
     from andamentum.epistemic.operations.evidence import ExtractEvidenceOperation
     from andamentum.epistemic.repository import EpistemicRepository
 
-    store = DocumentStore.for_database("test", db_dir=tmp_path)
-    await store.initialize()
+    store = await Store.open(tmp_path / "test.db")
     repo = EpistemicRepository(store)
 
     ev = Evidence(
@@ -316,7 +312,7 @@ async def test_extract_evidence_raises_without_runner_or_gatherer(tmp_path):
 async def test_domain_classifier_failure_propagates(tmp_path):
     """When epistemic_classify_evidence_domain raises, AssessConvergenceOperation
     must propagate — never silently fall back to default_classify."""
-    from andamentum.document_store import DocumentStore
+    from andamentum.document_store import Store
     from andamentum.epistemic.entities import Claim, Evidence, Objective
     from andamentum.epistemic.entities.claim import ClaimStage
     from andamentum.epistemic.operations.verification import AssessConvergenceOperation
@@ -330,8 +326,7 @@ async def test_domain_classifier_failure_propagates(tmp_path):
                 raise RuntimeError("classifier failed")
             raise AssertionError(f"Unexpected agent call: {agent_name}")
 
-    store = DocumentStore.for_database("test", db_dir=tmp_path)
-    await store.initialize()
+    store = await Store.open(tmp_path / "test.db")
     repo = EpistemicRepository(store)
 
     obj = Objective(description="test question", clarified_question="q?")
@@ -385,7 +380,7 @@ async def test_promote_claim_propagates_objective_load_failure(tmp_path):
     """When the objective can't be loaded, promotion must raise — silently
     falling back to default thresholds could promote claims under the wrong
     routing profile."""
-    from andamentum.document_store import DocumentStore
+    from andamentum.document_store import Store
     from andamentum.epistemic import EntityNotFoundError
     from andamentum.epistemic.entities import Claim
     from andamentum.epistemic.entities.claim import ClaimStage
@@ -393,8 +388,7 @@ async def test_promote_claim_propagates_objective_load_failure(tmp_path):
     from andamentum.epistemic.operations.stage_management import PromoteClaimOperation
     from andamentum.epistemic.repository import EpistemicRepository
 
-    store = DocumentStore.for_database("test", db_dir=tmp_path)
-    await store.initialize()
+    store = await Store.open(tmp_path / "test.db")
     repo = EpistemicRepository(store)
 
     # Save a claim whose objective_id points to nothing in the repo.
@@ -440,15 +434,14 @@ async def test_combine_claim_verdicts_propagates_posterior_failure(
     ``run_epistemic_graph`` is gone, so the no-swallow contract is
     pinned at the new site.
     """
-    from andamentum.document_store import DocumentStore
+    from andamentum.document_store import Store
     from andamentum.epistemic.entities import Objective
     from andamentum.epistemic.graph.deps import EpistemicDeps
     from andamentum.epistemic.graph.nodes import CombineClaimVerdicts
     from andamentum.epistemic.graph.state import EpistemicGraphState
     from andamentum.epistemic.repository import EpistemicRepository
 
-    store = DocumentStore.for_database("posterior_failure", db_dir=tmp_path)
-    await store.initialize()
+    store = await Store.open(tmp_path / "posterior_failure.db")
     repo = EpistemicRepository(store)
     obj = Objective(description="Does X cause Y?", question_type="verificatory")
     obj.objective_id = obj.entity_id
@@ -478,7 +471,7 @@ async def test_convergence_evidence_load_failure_propagates(tmp_path):
     """When repo.get("evidence", eid) raises during the convergence loop,
     AssessConvergenceOperation must propagate — never silently skip the item
     and compute convergence on a partial evidence set."""
-    from andamentum.document_store import DocumentStore
+    from andamentum.document_store import Store
     from andamentum.epistemic.entities import Claim, Objective
     from andamentum.epistemic.entities.claim import ClaimStage
     from andamentum.epistemic.operations.base import OperationInput
@@ -508,8 +501,7 @@ async def test_convergence_evidence_load_failure_propagates(tmp_path):
         def __getattr__(self, name: str):
             return getattr(self._real, name)
 
-    store = DocumentStore.for_database("test", db_dir=tmp_path)
-    await store.initialize()
+    store = await Store.open(tmp_path / "test.db")
     real_repo = EpistemicRepository(store)
 
     obj = Objective(description="test question", clarified_question="q?")
@@ -550,7 +542,7 @@ async def test_score_evidence_raises_when_no_scorer_available(tmp_path):
     """_score_evidence previously fabricated quality_score=0.1 ("default_minimum")
     when no scorer succeeded. That silently polluted posteriors with a fake
     quality signal. Now it raises so the failure is visible."""
-    from andamentum.document_store import DocumentStore
+    from andamentum.document_store import Store
     from andamentum.epistemic.entities import Evidence
     from andamentum.epistemic.operations.base import GatheredEvidence
     from andamentum.epistemic.operations.evidence import ExtractEvidenceOperation
@@ -570,8 +562,7 @@ async def test_score_evidence_raises_when_no_scorer_available(tmp_path):
                 )
             ]
 
-    store = DocumentStore.for_database("test", db_dir=tmp_path)
-    await store.initialize()
+    store = await Store.open(tmp_path / "test.db")
     repo = EpistemicRepository(store)
 
     ev = Evidence(
@@ -611,14 +602,13 @@ async def test_select_top_k_evidence_promotes_every_cluster(monkeypatch, tmp_pat
     count, not to discard work. deferred_count is always 0; LLM cost
     bounding lives in the consumers (LLM_PANEL_CAP).
     """
-    from andamentum.document_store import DocumentStore
+    from andamentum.document_store import Store
     from andamentum.epistemic.dedup import EvidenceCluster
     from andamentum.epistemic.entities import Evidence
     from andamentum.epistemic.operations.claims import select_top_k_evidence
     from andamentum.epistemic.repository import EpistemicRepository
 
-    store = DocumentStore.for_database("test_no_defer", db_dir=tmp_path)
-    await store.initialize()
+    store = await Store.open(tmp_path / "test_no_defer.db")
     repo = EpistemicRepository(store)
 
     evidences: list[Evidence] = []
@@ -672,7 +662,7 @@ async def test_propose_claims_surfaces_cluster_count(monkeypatch, tmp_path):
     top-K cap. The cap is retired (every cluster now contributes
     representatives) so the message reports total clusters processed.
     """
-    from andamentum.document_store import DocumentStore
+    from andamentum.document_store import Store
     from andamentum.epistemic.dedup import EvidenceCluster
     from andamentum.epistemic.entities import Evidence, Objective
     from andamentum.epistemic.operations.base import OperationInput
@@ -730,8 +720,7 @@ async def test_propose_claims_surfaces_cluster_count(monkeypatch, tmp_path):
                 verdict="supports", reasoning="ok", distribution=[0.8, 0.15, 0.05]
             )
 
-    store = DocumentStore.for_database("test_deferred_claims", db_dir=tmp_path)
-    await store.initialize()
+    store = await Store.open(tmp_path / "test_deferred_claims.db")
     repo = EpistemicRepository(store)
 
     obj = Objective(description="Does X cause Y?", clarified_question="Does X cause Y?")

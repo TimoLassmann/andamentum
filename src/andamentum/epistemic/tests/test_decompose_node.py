@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from andamentum.document_store import DocumentStore
+from andamentum.document_store import Store
 from andamentum.epistemic.entities import Objective
 from andamentum.epistemic.graph.deps import EpistemicDeps
 from andamentum.epistemic.graph.nodes import Decompose, PlanEvidence
@@ -41,8 +41,7 @@ async def _setup_objective(
     phase: str = "analyzed",
     claim_to_verify: str | None = None,
 ) -> tuple[Objective, EpistemicRepository]:
-    store = DocumentStore.for_database(db_name, db_dir=tmp_path)
-    await store.initialize()
+    store = await Store.open(tmp_path / f"{db_name}.db")
     repo = EpistemicRepository(store)
     obj = Objective(
         description="Are podocytes motile in injury?",

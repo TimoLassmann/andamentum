@@ -45,7 +45,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from andamentum.document_store import DocumentStore
+from andamentum.document_store import Store
 from andamentum.epistemic.entities import Claim, Evidence, Objective, Uncertainty
 from andamentum.epistemic.entities.claim import ClaimStage
 from andamentum.epistemic.entities.uncertainty import UncertaintyType
@@ -71,8 +71,7 @@ class _FakeRunContext:
 
 
 async def _make_repo(tmp_path: Path, name: str) -> EpistemicRepository:
-    store = DocumentStore.for_database(name, db_dir=tmp_path)
-    await store.initialize()
+    store = await Store.open(tmp_path / f"{name}.db")
     return EpistemicRepository(store)
 
 

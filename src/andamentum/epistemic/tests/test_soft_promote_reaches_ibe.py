@@ -35,7 +35,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from andamentum.document_store import DocumentStore
+from andamentum.document_store import Store
 from andamentum.epistemic.entities import Claim, Evidence, Objective
 from andamentum.epistemic.entities.claim import ClaimStage
 from andamentum.epistemic.graph.deps import EpistemicDeps
@@ -56,8 +56,7 @@ async def test_soft_promote_routes_to_promote_to_supported(
     """The end-to-end routing assertion: a HYPOTHESIS claim with
     directional evidence that exhausts investigation must, on
     soft-promotion, route to PromoteToSupported (which feeds IBE)."""
-    store = DocumentStore.for_database("soft_promote_ibe", db_dir=tmp_path)
-    await store.initialize()
+    store = await Store.open(tmp_path / "soft_promote_ibe.db")
     repo = EpistemicRepository(store)
 
     obj = Objective(description="parent", question_type="verificatory")
@@ -171,8 +170,7 @@ async def test_mixed_pass_and_abandon_routes_to_promote_to_supported(
     terminality and short-circuited the residual-work dispatcher
     (PromoteToSupported).
     """
-    store = DocumentStore.for_database("mixed_pass_abandon", db_dir=tmp_path)
-    await store.initialize()
+    store = await Store.open(tmp_path / "mixed_pass_abandon.db")
     repo = EpistemicRepository(store)
 
     obj = Objective(description="parent", question_type="verificatory")
@@ -243,8 +241,7 @@ async def test_refute_promote_still_skips_verification(
     """Sibling assertion: the refute-promote path's verification_done
     flag is correct (the claim has a verdict already, IBE shouldn't
     overwrite it). The fix to soft-promote must not break this."""
-    store = DocumentStore.for_database("refute_skip_verify", db_dir=tmp_path)
-    await store.initialize()
+    store = await Store.open(tmp_path / "refute_skip_verify.db")
     repo = EpistemicRepository(store)
 
     obj = Objective(description="parent", question_type="verificatory")

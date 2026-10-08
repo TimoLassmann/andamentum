@@ -386,17 +386,17 @@ _FAKE_DEFAULTS: dict[str, dict[str, Any]] = {
 
 @pytest.fixture
 async def store(tmp_path):
-    """Fresh DocumentStore backed by a temp directory."""
-    from andamentum.document_store import DocumentStore
+    """Fresh Store backed by a temp directory."""
+    from andamentum.document_store import Store
 
-    s = DocumentStore.for_database("test", db_dir=tmp_path)
-    await s.initialize()
-    return s
+    s = await Store.open(tmp_path / "test.db")
+    yield s
+    await s.close()
 
 
 @pytest.fixture
 async def repo(store):
-    """EpistemicRepository backed by a real DocumentStore."""
+    """EpistemicRepository backed by a real Store."""
     return EpistemicRepository(store)
 
 
@@ -414,7 +414,7 @@ def fake_runner():
 
 @pytest.fixture
 async def failing_repo(store):
-    """FailingRepo backed by a real DocumentStore."""
+    """FailingRepo backed by a real Store."""
     return FailingRepo(store)
 
 

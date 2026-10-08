@@ -85,7 +85,7 @@ class TestCrossClaimConsistencyAgent:
         assert result.tension_point == "X contradicts Y"
 
 
-from andamentum.document_store import DocumentStore  # noqa: E402
+from andamentum.document_store import Store  # noqa: E402
 from ..repository import EpistemicRepository  # noqa: E402
 from ..entities.objective import Objective  # noqa: E402
 from ..operations import (  # noqa: E402
@@ -99,8 +99,7 @@ from ..operations.base import OperationInput  # noqa: E402
 class TestContrastiveEvaluationOperation:
     @pytest.fixture
     async def store(self, tmp_path):
-        s = DocumentStore.for_database("test", db_dir=tmp_path)
-        await s.initialize()
+        s = await Store.open(tmp_path / "test.db")
         return s
 
     @pytest.fixture
@@ -237,8 +236,7 @@ class TestContrastiveEvaluationOperation:
 class TestCrossClaimConsistencyOperation:
     @pytest.fixture
     async def store(self, tmp_path):
-        s = DocumentStore.for_database("test", db_dir=tmp_path)
-        await s.initialize()
+        s = await Store.open(tmp_path / "test.db")
         return s
 
     @pytest.fixture

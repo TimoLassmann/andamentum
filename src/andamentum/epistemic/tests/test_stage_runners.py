@@ -26,7 +26,7 @@ import pytest
 from andamentum.epistemic.graph import run_epistemic_graph
 from andamentum.epistemic.graph.nodes import PrepareObjective
 from andamentum.epistemic.repository import EpistemicRepository
-from andamentum.document_store import DocumentStore
+from andamentum.document_store import Store
 
 
 pytestmark = pytest.mark.asyncio
@@ -63,8 +63,7 @@ async def test_stop_after_prepare_objective_writes_question_type(
     assert result.posterior is None
     assert result.objective_id is not None
 
-    store = DocumentStore.for_database("stage_stop_after", db_dir=tmp_path)
-    await store.initialize()
+    store = await Store.open(tmp_path / "stage_stop_after.db")
     repo = EpistemicRepository(store)
     obj = await repo.get("objective", result.objective_id)
     assert obj is not None
@@ -126,8 +125,7 @@ async def test_start_at_skips_to_named_node(tmp_path: Path, monkeypatch) -> None
         "was created, the DB-as-checkpoint contract is broken."
     )
 
-    store = DocumentStore.for_database("stage_resume", db_dir=tmp_path)
-    await store.initialize()
+    store = await Store.open(tmp_path / "stage_resume.db")
     repo = EpistemicRepository(store)
     obj = await repo.get("objective", r1.objective_id)
     assert obj is not None

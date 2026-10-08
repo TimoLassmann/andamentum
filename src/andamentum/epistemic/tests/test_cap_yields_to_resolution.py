@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from andamentum.document_store import DocumentStore
+from andamentum.document_store import Store
 from andamentum.epistemic.entities import Claim, Evidence, Objective, Uncertainty
 from andamentum.epistemic.entities.claim import ClaimStage
 from andamentum.epistemic.entities.uncertainty import UncertaintyType
@@ -51,8 +51,7 @@ async def _setup(
     same shape as ``test_cap_terminal_verdict._setup``, so the mass
     reading's own direction is unambiguous and this suite exercises only
     the D3 veto layered on top of it."""
-    store = DocumentStore.for_database(db_name, db_dir=tmp_path)
-    await store.initialize()
+    store = await Store.open(tmp_path / f"{db_name}.db")
     repo = EpistemicRepository(store)
 
     obj = Objective(

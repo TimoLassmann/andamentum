@@ -3,7 +3,7 @@
 All entities inherit from EpistemicEntity which provides:
 - Unique ID generation
 - Timestamps
-- Serialization to/from DocumentStore format
+- Serialization to/from document store format
 - Entity type discrimination
 
 Architecture: Layer 1 (framework-agnostic)
@@ -47,7 +47,7 @@ class EpistemicEntity(BaseModel, ABC):
         pass
 
     def to_document(self) -> tuple[str, dict[str, Any]]:
-        """Convert entity to (content, metadata) for DocumentStore.
+        """Convert entity to (content, metadata) for document store.
 
         By default:
         - content: JSON serialization of the entity

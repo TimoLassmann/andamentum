@@ -40,7 +40,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from andamentum.document_store import DocumentStore
+from andamentum.document_store import Store
 from andamentum.epistemic.confidence import compute_posterior
 from andamentum.epistemic.entities import Claim, Objective, Uncertainty
 from andamentum.epistemic.entities.claim import ClaimStage
@@ -68,8 +68,7 @@ class _FakeRunContext:
 async def _setup_objective_and_claim(
     tmp_path: Path, db_name: str
 ) -> tuple[Claim, EpistemicRepository]:
-    store = DocumentStore.for_database(db_name, db_dir=tmp_path)
-    await store.initialize()
+    store = await Store.open(tmp_path / f"{db_name}.db")
     repo = EpistemicRepository(store)
     obj = Objective(description="parent", question_type="verificatory")
     obj.objective_id = obj.entity_id
@@ -185,8 +184,7 @@ class TestScrutinizeRespectsCap:
         """A claim that has no verdict yet (initial scrutiny, not
         rescrutiny) must not count toward the cap. Only rescrutiny passes
         do."""
-        store = DocumentStore.for_database("scrutinize_initial", db_dir=tmp_path)
-        await store.initialize()
+        store = await Store.open(tmp_path / "scrutinize_initial.db")
         repo = EpistemicRepository(store)
         obj = Objective(description="parent", question_type="verificatory")
         obj.objective_id = obj.entity_id

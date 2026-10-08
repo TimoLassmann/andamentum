@@ -17,7 +17,7 @@ from typing import NamedTuple
 
 import pytest
 
-from andamentum.document_store import DocumentStore
+from andamentum.document_store import Store
 from andamentum.epistemic.confidence import build_verdict
 from andamentum.epistemic.entities import Claim, Evidence, Objective, Snapshot
 from andamentum.epistemic.entities.claim import ClaimStage
@@ -63,8 +63,7 @@ class _Seeded(NamedTuple):
 
 async def _seed(tmp_path: Path, name: str = "seam2") -> _Seeded:
     """One objective, two claims: one fully instrumented, one untouched."""
-    store = DocumentStore.for_database(name, db_dir=tmp_path)
-    await store.initialize()
+    store = await Store.open(tmp_path / f"{name}.db")
     repo = EpistemicRepository(store)
 
     obj = Objective(description="q")

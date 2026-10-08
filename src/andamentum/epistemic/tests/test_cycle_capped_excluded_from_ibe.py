@@ -30,7 +30,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from andamentum.document_store import DocumentStore
+from andamentum.document_store import Store
 from andamentum.epistemic.entities import Claim, Objective
 from andamentum.epistemic.entities.claim import ClaimStage
 from andamentum.epistemic.graph.deps import EpistemicDeps
@@ -66,8 +66,7 @@ async def test_cycle_capped_supported_skipped_by_promote_to_supported(
     semantics this test pins are unchanged."""
     from andamentum.epistemic.graph.nodes import CombineClaimVerdicts
 
-    store = DocumentStore.for_database("cycle_capped_skip", db_dir=tmp_path)
-    await store.initialize()
+    store = await Store.open(tmp_path / "cycle_capped_skip.db")
     repo = EpistemicRepository(store)
 
     obj = Objective(description="parent", question_type="verificatory")
@@ -115,8 +114,7 @@ async def test_ibe_filters_skip_cycle_capped(tmp_path: Path, fake_runner) -> Non
     differently) doesn't silently re-introduce the wasted-LLM-cost
     bug.
     """
-    store = DocumentStore.for_database("ibe_skip_capped", db_dir=tmp_path)
-    await store.initialize()
+    store = await Store.open(tmp_path / "ibe_skip_capped.db")
     repo = EpistemicRepository(store)
 
     obj = Objective(description="parent", question_type="verificatory")
@@ -164,8 +162,7 @@ async def test_non_cycle_capped_supported_still_enters_ibe(
     still flow through ClusterEvidence → ... → IBE."""
     from andamentum.epistemic.graph.nodes import ClusterEvidence
 
-    store = DocumentStore.for_database("ibe_normal", db_dir=tmp_path)
-    await store.initialize()
+    store = await Store.open(tmp_path / "ibe_normal.db")
     repo = EpistemicRepository(store)
 
     obj = Objective(description="parent", question_type="verificatory")

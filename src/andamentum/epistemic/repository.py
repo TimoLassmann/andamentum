@@ -15,7 +15,9 @@ from pathlib import Path
 from typing import Any, Literal, Optional, TypeVar, TYPE_CHECKING, overload
 import logging
 
-from andamentum.document_store import DocumentStore
+from andamentum.document_store import Store
+
+from .databases import open_store
 
 if TYPE_CHECKING:
     from .primitives import AdversarialEvidence, ConvergentEvidence
@@ -73,11 +75,11 @@ class EpistemicRepository:
         - Comparison: field__gte=value, field__lte=value, etc. (in-memory)
     """
 
-    def __init__(self, store: DocumentStore):
-        """Initialize repository with a DocumentStore.
+    def __init__(self, store: Store):
+        """Initialize repository with a Store.
 
         Args:
-            store: A DocumentStore instance (initialized).
+            store: An open ``andamentum.document_store.Store``.
         """
         self.store = store
         self._entity_classes = ENTITY_CLASSES
@@ -92,14 +94,18 @@ class EpistemicRepository:
             name: Database name (e.g., "benchmark_q1_brca1").
                   Creates file at db_dir/{name}.db
             db_dir: Custom directory for the database file.
-                    Defaults to ~/.config/andamentum/databases/
+                    Defaults to the directory chosen by
+                    ``epistemic.databases.get_databases_dir``.
 
         Returns:
             Repository ready for use.
         """
-        store = DocumentStore.for_database(name, db_dir=db_dir)
-        await store.initialize()
+        store = await open_store(name, db_dir)
         return cls(store)
+
+    async def close(self) -> None:
+        """Close the underlying store."""
+        await self.store.close()
 
     @overload
     async def get(
@@ -159,8 +165,8 @@ class EpistemicRepository:
             raise KeyError(f"Unknown entity type: {entity_type}")
 
         id_field = f"{entity_type}_id"
-        docs = await self.store.find_by_metadata(
-            {
+        docs = await self.store.list(
+            where={
                 "epistemic_type": entity_type,
                 id_field: entity_id,
             },
@@ -170,14 +176,12 @@ class EpistemicRepository:
         if not docs:
             raise EntityNotFoundError(entity_type, entity_id)
 
-        doc = await self.store.read(docs[0].doc_id)
+        doc = await self.store.get(docs[0].doc_id)
         if not doc:
             raise EntityNotFoundError(entity_type, entity_id)
 
         cls = self._entity_classes[entity_type]
-        return cls.from_document(
-            doc.content, doc.metadata.metadata if doc.metadata else {}
-        )
+        return cls.from_document(doc.text, doc.metadata)
 
     @overload
     async def query(
@@ -261,20 +265,18 @@ class EpistemicRepository:
                 db_filters[key] = value
 
         # Query database
-        docs = await self.store.find_by_metadata(db_filters)
+        docs = await self.store.list(where=db_filters, limit=None)
 
         # Load and filter entities
         cls = self._entity_classes[entity_type]
         entities: list[EpistemicEntity] = []
 
         for doc_meta in docs:
-            doc = await self.store.read(doc_meta.doc_id)
+            doc = await self.store.get(doc_meta.doc_id)
             if not doc:
                 continue
 
-            entity = cls.from_document(
-                doc.content, doc.metadata.metadata if doc.metadata else {}
-            )
+            entity = cls.from_document(doc.text, doc.metadata)
 
             # Apply in-memory filters
             if self._passes_in_memory_filters(entity, in_memory_filters):
@@ -347,8 +349,8 @@ class EpistemicRepository:
         id_field = f"{entity.entity_type}_id"
 
         # Check if exists
-        existing = await self.store.find_by_metadata(
-            {
+        existing = await self.store.list(
+            where={
                 "epistemic_type": entity.entity_type,
                 id_field: entity.entity_id,
             },
@@ -359,16 +361,16 @@ class EpistemicRepository:
             # Update existing
             await self.store.update(
                 existing[0].doc_id,
-                new_content=content,
+                text=content,
                 metadata=metadata,
             )
             return existing[0].doc_id
         else:
             # Create new
-            return await self.store.add(
-                file_path=f"{entity.entity_type}_{entity.entity_id[:8]}.json",
-                content=content,
-                title=f"{entity.entity_type.title()}: {entity.entity_id[:8]}",
+            return await self.store.put(
+                content,
+                key=f"{entity.entity_type}:{entity.entity_id}",
+                media_type="application/json",
                 metadata=metadata,
             )
 
@@ -383,8 +385,8 @@ class EpistemicRepository:
             True if deleted, False if not found
         """
         id_field = f"{entity_type}_id"
-        docs = await self.store.find_by_metadata(
-            {
+        docs = await self.store.list(
+            where={
                 "epistemic_type": entity_type,
                 id_field: entity_id,
             },
@@ -394,8 +396,7 @@ class EpistemicRepository:
         if not docs:
             return False
 
-        await self.store.delete(docs[0].doc_id)
-        return True
+        return await self.store.delete(docs[0].doc_id)
 
     async def exists(self, entity_type: str, entity_id: str) -> bool:
         """Check if entity exists without loading.
@@ -408,8 +409,8 @@ class EpistemicRepository:
             True if exists
         """
         id_field = f"{entity_type}_id"
-        docs = await self.store.find_by_metadata(
-            {
+        docs = await self.store.list(
+            where={
                 "epistemic_type": entity_type,
                 id_field: entity_id,
             },
@@ -553,8 +554,8 @@ class EpistemicRepository:
         content = adv.explanation or "Adversarial evidence assessment"
 
         # Upsert: replace if one already exists for this claim
-        existing = await self.store.find_by_metadata(
-            {
+        existing = await self.store.list(
+            where={
                 "epistemic_type": "adversarial_evidence",
                 "claim_id": adv.claim_id,
             },
@@ -564,15 +565,15 @@ class EpistemicRepository:
         if existing:
             await self.store.update(
                 existing[0].doc_id,
-                new_content=content,
+                text=content,
                 metadata=metadata,
             )
             return existing[0].doc_id
 
-        return await self.store.add(
-            file_path=f"adversarial_{adv.evidence_id[:8]}.json",
-            content=content,
-            title=f"Adversarial: {adv.claim_id[:8]}",
+        return await self.store.put(
+            content,
+            key=f"adversarial_evidence:{adv.claim_id}",
+            media_type="text/plain",
             metadata=metadata,
         )
 
@@ -585,8 +586,8 @@ class EpistemicRepository:
         Returns the full AdversarialEvidence reconstructed from stored metadata,
         or None if no adversarial search was performed for this claim.
         """
-        refs = await self.store.find_by_metadata(
-            {
+        refs = await self.store.list(
+            where={
                 "epistemic_type": "adversarial_evidence",
                 "claim_id": claim_id,
             },
@@ -596,13 +597,11 @@ class EpistemicRepository:
         if not refs:
             return None
 
-        doc = await self.store.read(refs[0].doc_id)
+        doc = await self.store.get(refs[0].doc_id)
         if not doc or not doc.metadata:
             return None
 
-        meta = (
-            doc.metadata.metadata if hasattr(doc.metadata, "metadata") else doc.metadata
-        )
+        meta = doc.metadata
         from .primitives import AdversarialEvidence
 
         return AdversarialEvidence.from_metadata(meta)  # type: ignore[arg-type]
@@ -616,8 +615,8 @@ class EpistemicRepository:
         Returns the full ConvergentEvidence reconstructed from stored metadata,
         or None if no convergence assessment was performed for this claim.
         """
-        refs = await self.store.find_by_metadata(
-            {
+        refs = await self.store.list(
+            where={
                 "epistemic_type": "convergent_evidence",
                 "claim_id": claim_id,
             },
@@ -627,13 +626,11 @@ class EpistemicRepository:
         if not refs:
             return None
 
-        doc = await self.store.read(refs[0].doc_id)
+        doc = await self.store.get(refs[0].doc_id)
         if not doc or not doc.metadata:
             return None
 
-        meta = (
-            doc.metadata.metadata if hasattr(doc.metadata, "metadata") else doc.metadata
-        )
+        meta = doc.metadata
         from .primitives import ConvergentEvidence
 
         return ConvergentEvidence.from_metadata(meta)  # type: ignore[arg-type]

@@ -21,7 +21,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-from andamentum.document_store import DocumentStore
+from andamentum.document_store import Store
 from andamentum.epistemic.entities import (
     Claim,
     Objective,
@@ -97,8 +97,7 @@ class TestInvestigationFiltersResolvedUncertainties:
     async def test_resolved_uncertainty_excluded_from_agent_input(
         self, tmp_path: Path
     ) -> None:
-        store = DocumentStore.for_database("inv_resolved_filter", db_dir=tmp_path)
-        await store.initialize()
+        store = await Store.open(tmp_path / "inv_resolved_filter.db")
         repo = EpistemicRepository(store)
 
         obj = Objective(description="parent", question_type="verificatory")
@@ -169,8 +168,7 @@ class TestInvestigationFiltersResolvedUncertainties:
         """When every uncertainty is resolved, scrutiny_issues should be
         the empty-list placeholder, not a string accidentally built from
         the resolved descriptions."""
-        store = DocumentStore.for_database("inv_all_resolved", db_dir=tmp_path)
-        await store.initialize()
+        store = await Store.open(tmp_path / "inv_all_resolved.db")
         repo = EpistemicRepository(store)
 
         obj = Objective(description="parent", question_type="verificatory")

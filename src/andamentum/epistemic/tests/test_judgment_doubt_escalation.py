@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from andamentum.document_store import DocumentStore
+from andamentum.document_store import Store
 from andamentum.epistemic.entities import Claim, Objective
 from andamentum.epistemic.entities.claim import ClaimStage
 from andamentum.epistemic.entities.judge_opinion import JudgeOpinion
@@ -89,8 +89,7 @@ async def _setup(
     counts: list[int] = dissent_counts or [0] * len(doubts)
     reads: list[JudgeOpinion | None] = opinions or [None] * len(doubts)
 
-    store = DocumentStore.for_database(name, db_dir=tmp_path)
-    await store.initialize()
+    store = await Store.open(tmp_path / f"{name}.db")
     repo = EpistemicRepository(store)
 
     decomposition = None

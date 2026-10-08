@@ -31,7 +31,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from andamentum.document_store import DocumentStore
+from andamentum.document_store import Store
 from andamentum.epistemic import gates
 from andamentum.epistemic.confidence import compute_posterior
 from andamentum.epistemic.entities import (
@@ -115,8 +115,7 @@ async def _setup(
     exactly 1.0 of directional mass, so the resulting weight labels are
     easy to reason about against the SCRUTINY_* thresholds.
     """
-    store = DocumentStore.for_database(db_name, db_dir=tmp_path)
-    await store.initialize()
+    store = await Store.open(tmp_path / f"{db_name}.db")
     repo = EpistemicRepository(store)
 
     obj = Objective(
@@ -736,8 +735,7 @@ async def _setup_all_capped_demand_state(
     )
     from andamentum.epistemic.tests.conftest import FakeAgentRunner
 
-    store = DocumentStore.for_database(db_name, db_dir=tmp_path)
-    await store.initialize()
+    store = await Store.open(tmp_path / f"{db_name}.db")
     repo = EpistemicRepository(store)
 
     obj = Objective(
@@ -898,8 +896,7 @@ async def test_cap_evaluation_round_trips_through_the_repository(
     presence on the model, not the metadata projection. The metadata
     projection is pinned separately by the test below.
     """
-    store = DocumentStore.for_database("cap_roundtrip", db_dir=tmp_path)
-    await store.initialize()
+    store = await Store.open(tmp_path / "cap_roundtrip.db")
     repo = EpistemicRepository(store)
 
     claim = _cap_claim_for_persistence()

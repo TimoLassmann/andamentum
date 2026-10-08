@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from andamentum.document_store import DocumentStore
+from andamentum.document_store import Store
 from andamentum.epistemic.entities import Objective, Uncertainty, UncertaintyType
 from andamentum.epistemic.repository import EpistemicRepository
 from andamentum.epistemic.uncertainty_raising import raise_uncertainty
@@ -23,8 +23,7 @@ from andamentum.epistemic.uncertainty_raising import raise_uncertainty
 
 @pytest.fixture
 async def repo(tmp_path: Path) -> EpistemicRepository:
-    store = DocumentStore.for_database("uncertainty_raising", db_dir=tmp_path)
-    await store.initialize()
+    store = await Store.open(tmp_path / "uncertainty_raising.db")
     repo = EpistemicRepository(store)
     obj = Objective(description="parent", question_type="verificatory")
     obj.objective_id = obj.entity_id

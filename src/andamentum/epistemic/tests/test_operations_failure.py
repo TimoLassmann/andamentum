@@ -35,7 +35,7 @@ from ..operations import (
     GatheredEvidence,
     QualityScore,
 )
-from andamentum.document_store import DocumentStore
+from andamentum.document_store import Store
 from ..operations.base import OperationInput
 from ..repository import EpistemicRepository
 from .conftest import make_verdict
@@ -106,15 +106,14 @@ class MockGatherer:
         return self._results
 
 
-async def _make_store(tmp_path) -> DocumentStore:
-    """Create a fresh DocumentStore for test use."""
-    s = DocumentStore.for_database("test", db_dir=tmp_path)
-    await s.initialize()
+async def _make_store(tmp_path) -> Store:
+    """Create a fresh Store for test use."""
+    s = await Store.open(tmp_path / "test.db")
     return s
 
 
 async def _make_repo(tmp_path) -> EpistemicRepository:
-    """Create a fresh repo backed by DocumentStore."""
+    """Create a fresh repo backed by Store."""
     store = await _make_store(tmp_path)
     return EpistemicRepository(store)
 

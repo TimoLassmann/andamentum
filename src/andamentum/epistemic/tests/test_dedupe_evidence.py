@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from andamentum.document_store import DocumentStore
+from andamentum.document_store import Store
 from andamentum.epistemic.dedupe_evidence import (
     dedupe_evidence_by_source_ref,
     normalize_source_ref,
@@ -64,8 +64,7 @@ class TestNormalizeSourceRef:
 
 @pytest.fixture
 async def repo(tmp_path: Path) -> EpistemicRepository:
-    store = DocumentStore.for_database("test_dedupe", db_dir=tmp_path)
-    await store.initialize()
+    store = await Store.open(tmp_path / "test_dedupe.db")
     return EpistemicRepository(store)
 
 

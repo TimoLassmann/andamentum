@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from andamentum.document_store import DocumentStore
+from andamentum.document_store import Store
 from andamentum.epistemic.entities import Claim, Objective
 from andamentum.epistemic.entities.claim import ClaimStage
 from andamentum.epistemic.repository import EpistemicRepository
@@ -29,8 +29,7 @@ async def _setup_objective_with_supported_claims(
     convergence_verdict in the list. Caller controls each claim's
     verdict so we can probe the A2 gate's behavior under different
     multi-claim states."""
-    store = DocumentStore.for_database(db_name, db_dir=tmp_path)
-    await store.initialize()
+    store = await Store.open(tmp_path / f"{db_name}.db")
     repo = EpistemicRepository(store)
     obj = Objective(
         description="parent",

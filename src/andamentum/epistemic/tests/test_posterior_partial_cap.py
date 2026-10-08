@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from andamentum.document_store import DocumentStore
+from andamentum.document_store import Store
 from andamentum.epistemic.confidence import compute_posterior
 from andamentum.epistemic.entities import Claim, Evidence, Objective
 from andamentum.epistemic.entities.claim import ClaimStage
@@ -39,8 +39,7 @@ async def _setup_with_mixed_capped_claims(
 ) -> tuple[Objective, EpistemicRepository]:
     """Build an Objective with `capped_count` cycle_capped claims and
     `healthy_count` claims with a real integration verdict."""
-    store = DocumentStore.for_database(db_name, db_dir=tmp_path)
-    await store.initialize()
+    store = await Store.open(tmp_path / f"{db_name}.db")
     repo = EpistemicRepository(store)
     obj = Objective(
         description="parent",
@@ -173,8 +172,7 @@ class TestCase54Reproduction:
     integration verdict (counting fallback territory)."""
 
     async def test_case_54_mini(self, tmp_path: Path) -> None:
-        store = DocumentStore.for_database("case54_mini", db_dir=tmp_path)
-        await store.initialize()
+        store = await Store.open(tmp_path / "case54_mini.db")
         repo = EpistemicRepository(store)
         obj = Objective(
             description="AMPK activation increases fibrosis",
@@ -255,8 +253,7 @@ class TestSciFactCase54Shape:
     async def test_capped_with_contradicts_verdict_returns_low_posterior(
         self, tmp_path: Path
     ) -> None:
-        store = DocumentStore.for_database("scifact_54", db_dir=tmp_path)
-        await store.initialize()
+        store = await Store.open(tmp_path / "scifact_54.db")
         repo = EpistemicRepository(store)
         obj = Objective(
             description="AMPK activation increases inflammation-related fibrosis.",
@@ -303,8 +300,7 @@ class TestSciFactCase957Shape:
     async def test_capped_no_verdict_one_sided_evidence_suspends(
         self, tmp_path: Path
     ) -> None:
-        store = DocumentStore.for_database("scifact_957", db_dir=tmp_path)
-        await store.initialize()
+        store = await Store.open(tmp_path / "scifact_957.db")
         repo = EpistemicRepository(store)
         obj = Objective(
             description="Podocytes are motile and migrate in the presence of injury.",
@@ -392,8 +388,7 @@ class TestSciFactCase439V15Shape:
     longer drives the posterior."""
 
     async def test_capped_small_pool_suspends(self, tmp_path: Path) -> None:
-        store = DocumentStore.for_database("scifact_439_v15", db_dir=tmp_path)
-        await store.initialize()
+        store = await Store.open(tmp_path / "scifact_439_v15.db")
         repo = EpistemicRepository(store)
         obj = Objective(
             description="Fz/PCP-dependent Pk localizes to the anterior membrane.",
@@ -465,8 +460,7 @@ class TestGenuineOscillation:
     async def test_capped_no_verdict_no_evidence_emits_uncertified(
         self, tmp_path: Path
     ) -> None:
-        store = DocumentStore.for_database("genuine_osc", db_dir=tmp_path)
-        await store.initialize()
+        store = await Store.open(tmp_path / "genuine_osc.db")
         repo = EpistemicRepository(store)
         obj = Objective(
             description="parent",
@@ -507,8 +501,7 @@ class TestCapPenaltyEffect:
 
     async def test_capped_pulls_toward_neutral(self, tmp_path: Path) -> None:
         async def _run(cycle_capped: bool, db_name: str) -> float:
-            store = DocumentStore.for_database(db_name, db_dir=tmp_path)
-            await store.initialize()
+            store = await Store.open(tmp_path / f"{db_name}.db")
             repo = EpistemicRepository(store)
             obj = Objective(
                 description="d",

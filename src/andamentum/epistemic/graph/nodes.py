@@ -399,22 +399,22 @@ async def _commit_op(
         state.quarantine(entity_id, entity_type, operation, outcome.exception)
     state.log_operation(operation, entity_id, result.success, result.message)
     # Persist execution trace to the database.
-    # Uses DocumentStore.add() (not register_document, which deduplicates
-    # by content hash and would collapse same-message steps).
+    # Uses Store.put() with a per-step key; put never deduplicates by
+    # content, so same-message steps stay distinct documents.
     backend = getattr(deps.repo, "store", None)
     if backend is not None:
         step_number = len(state.operations_log)
-        # Disambiguate file_path across concurrent graph runs sharing a
-        # DocumentStore: the decomposed orchestrator runs N children
-        # against one DB, and re-runs of the same objective also share
-        # the DB. ``state.run_id`` is unique per graph run; without it,
-        # two children both write "execution_step_1" and crash on the
-        # documents.file_path UNIQUE index. step_number stays in
-        # metadata so execution-step queries remain orderable.
-        await backend.add(
-            file_path=(f"execution_step_{state.run_id}_{step_number:04d}"),
-            content=result.message or "",
-            title=f"{operation} on {entity_id[:12]}",
+        # Disambiguate the key across concurrent graph runs sharing one
+        # database: the decomposed orchestrator runs N children against one
+        # DB, and re-runs of the same objective also share the DB.
+        # ``state.run_id`` is unique per graph run; without it, two children
+        # both write step 1 and the second put raises KeyExists.
+        # step_number stays in metadata so execution-step queries remain
+        # orderable.
+        await backend.put(
+            result.message or "",
+            key=f"execution_step:{state.run_id}:{step_number:04d}",
+            media_type="text/plain",
             metadata={
                 "epistemic_type": "execution_step",
                 "step_number": step_number,

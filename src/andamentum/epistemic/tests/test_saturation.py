@@ -9,7 +9,7 @@ investigation.
 
 import pytest
 
-from andamentum.document_store import DocumentStore
+from andamentum.document_store import Store
 from ..entities.claim import Claim
 from ..entities.objective import Objective
 from ..primitives import ClaimStage
@@ -22,8 +22,7 @@ from ..repository import EpistemicRepository
 class TestInvestigationCap:
     @pytest.fixture
     async def store(self, tmp_path):
-        s = DocumentStore.for_database("test", db_dir=tmp_path)
-        await s.initialize()
+        s = await Store.open(tmp_path / "test.db")
         return s
 
     @pytest.fixture

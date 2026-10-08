@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
-from andamentum.document_store import DocumentStore
+from andamentum.document_store import Store
 from andamentum.epistemic.confidence import PosteriorReport, compute_posterior
 from andamentum.epistemic.entities import Evidence, Objective
 from andamentum.epistemic.entities.verdict import EpistemicVerdict
@@ -56,8 +56,7 @@ class TestPosteriorReportTerminalState:
 
 
 async def _make_repo(tmp_path: Path) -> EpistemicRepository:
-    store = DocumentStore.for_database("test", db_dir=tmp_path)
-    await store.initialize()
+    store = await Store.open(tmp_path / "test.db")
     return EpistemicRepository(store)
 
 

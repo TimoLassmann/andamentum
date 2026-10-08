@@ -116,7 +116,7 @@ class TestClassifyQuestionAdapter:
             ClassifyQuestionOutput(question_type="  explanatory  ", reasoning="test")  # type: ignore[arg-type]
 
 
-from andamentum.document_store import DocumentStore  # noqa: E402
+from andamentum.document_store import Store  # noqa: E402
 from ..repository import EpistemicRepository  # noqa: E402
 from ..operations import ClassifyQuestionOperation, OPERATION_CLASSES  # noqa: E402
 from ..operations.base import OperationInput  # noqa: E402
@@ -125,8 +125,7 @@ from ..operations.base import OperationInput  # noqa: E402
 class TestClassifyQuestionOperation:
     @pytest.fixture
     async def store(self, tmp_path):
-        s = DocumentStore.for_database("test", db_dir=tmp_path)
-        await s.initialize()
+        s = await Store.open(tmp_path / "test.db")
         return s
 
     @pytest.fixture

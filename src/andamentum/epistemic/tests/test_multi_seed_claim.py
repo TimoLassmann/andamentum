@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from andamentum.document_store import DocumentStore
+from andamentum.document_store import Store
 from andamentum.epistemic.entities import Claim, Evidence, Objective
 from andamentum.epistemic.entities.claim import ClaimStage
 from andamentum.epistemic.graph.deps import EpistemicDeps
@@ -47,8 +47,7 @@ async def _setup_objective_with_decomposition(
 ) -> tuple[Objective, EpistemicRepository]:
     """Build a parent Objective post-DecomposeQuestion: decomposition is
     set with n_subs sub-investigations, phase=analyzed, no claims yet."""
-    store = DocumentStore.for_database(db_name, db_dir=tmp_path)
-    await store.initialize()
+    store = await Store.open(tmp_path / f"{db_name}.db")
     repo = EpistemicRepository(store)
     sub_investigations = []
     for i in range(n_subs):
@@ -82,8 +81,7 @@ async def _setup_objective_with_decomposition(
 
 class TestEvidenceSubInvestigationId:
     async def test_field_round_trips(self, tmp_path: Path) -> None:
-        store = DocumentStore.for_database("ev_round", db_dir=tmp_path)
-        await store.initialize()
+        store = await Store.open(tmp_path / "ev_round.db")
         repo = EpistemicRepository(store)
         obj = Objective(description="parent")
         obj.objective_id = obj.entity_id
@@ -103,8 +101,7 @@ class TestEvidenceSubInvestigationId:
 
 class TestClaimSubInvestigationId:
     async def test_field_round_trips(self, tmp_path: Path) -> None:
-        store = DocumentStore.for_database("cl_round", db_dir=tmp_path)
-        await store.initialize()
+        store = await Store.open(tmp_path / "cl_round.db")
         repo = EpistemicRepository(store)
         obj = Objective(description="parent")
         obj.objective_id = obj.entity_id
@@ -279,8 +276,7 @@ class TestMultiSeedClaimMintsOnePerSub:
     async def test_no_decomposition_fails_cleanly(
         self, tmp_path: Path, fake_runner
     ) -> None:
-        store = DocumentStore.for_database("multi_nodecomp", db_dir=tmp_path)
-        await store.initialize()
+        store = await Store.open(tmp_path / "multi_nodecomp.db")
         repo = EpistemicRepository(store)
         obj = Objective(description="parent", phase="analyzed")
         obj.objective_id = obj.entity_id

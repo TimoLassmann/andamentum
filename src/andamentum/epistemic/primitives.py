@@ -158,7 +158,7 @@ class ClarifiedQuestion(BaseModel):
     created_at: datetime = Field(default_factory=datetime.now)
 
     def to_metadata(self) -> Dict[str, Any]:
-        """Convert to DocumentStore metadata format."""
+        """Convert to document store metadata format."""
         return {
             "epistemic_type": "clarified_question",
             "clarification_id": self.clarification_id,
@@ -202,7 +202,7 @@ class ConceptualAnalysis(BaseModel):
     created_at: datetime = Field(default_factory=datetime.now)
 
     def to_metadata(self) -> Dict[str, Any]:
-        """Convert to DocumentStore metadata format."""
+        """Convert to document store metadata format."""
         return {
             "epistemic_type": "conceptual_analysis",
             "analysis_id": self.analysis_id,
@@ -250,7 +250,7 @@ class ArgumentAnalysis(BaseModel):
     created_at: datetime = Field(default_factory=datetime.now)
 
     def to_metadata(self) -> Dict[str, Any]:
-        """Convert to DocumentStore metadata format."""
+        """Convert to document store metadata format."""
         return {
             "epistemic_type": "argument_analysis",
             "analysis_id": self.analysis_id,
@@ -320,7 +320,7 @@ class ComputationalEvidence(BaseModel):
     created_at: datetime = Field(default_factory=datetime.now)
 
     def to_metadata(self) -> Dict[str, Any]:
-        """Convert to DocumentStore metadata format."""
+        """Convert to document store metadata format."""
         return {
             "epistemic_type": "computational_evidence",
             "evidence_id": self.evidence_id,
@@ -451,7 +451,7 @@ class Counterargument(BaseModel):
         return category_weight * quality_factor * match_factor
 
     def to_metadata(self) -> Dict[str, Any]:
-        """Convert to DocumentStore metadata format."""
+        """Convert to document store metadata format."""
         return {
             "epistemic_type": "counterargument",
             "counterargument_id": self.counterargument_id,
@@ -548,7 +548,7 @@ class AdversarialEvidence(BaseModel):
         return self.supporting_weight / total
 
     def to_metadata(self) -> Dict[str, Any]:
-        """Convert to DocumentStore metadata format."""
+        """Convert to document store metadata format."""
         return {
             "epistemic_type": "adversarial_evidence",
             "evidence_id": self.evidence_id,
@@ -574,7 +574,7 @@ class AdversarialEvidence(BaseModel):
 
     @classmethod
     def from_metadata(cls, meta: Dict[str, Any]) -> "AdversarialEvidence":
-        """Reconstruct from DocumentStore metadata."""
+        """Reconstruct from document store metadata."""
         from datetime import datetime
 
         # Reconstruct counterarguments
@@ -883,7 +883,7 @@ class ConvergentEvidence(BaseModel):
     created_at: datetime = Field(default_factory=datetime.now)
 
     def to_metadata(self) -> Dict[str, Any]:
-        """Convert to DocumentStore metadata format."""
+        """Convert to document store metadata format."""
         return {
             "epistemic_type": "convergent_evidence",
             "evidence_id": self.evidence_id,
@@ -913,7 +913,7 @@ class ConvergentEvidence(BaseModel):
 
     @classmethod
     def from_metadata(cls, meta: Dict[str, Any]) -> "ConvergentEvidence":
-        """Reconstruct from DocumentStore metadata."""
+        """Reconstruct from document store metadata."""
         from datetime import datetime
 
         # Reconstruct evidence classifications
@@ -1018,7 +1018,7 @@ class DeductiveEvidence(BaseModel):
         )
 
     def to_metadata(self) -> Dict[str, Any]:
-        """Convert to DocumentStore metadata format."""
+        """Convert to document store metadata format."""
         return {
             "epistemic_type": "deductive_evidence",
             "evidence_id": self.evidence_id,
@@ -1038,7 +1038,7 @@ class DeductiveEvidence(BaseModel):
 
     @classmethod
     def from_metadata(cls, meta: Dict[str, Any]) -> "DeductiveEvidence":
-        """Reconstruct from DocumentStore metadata."""
+        """Reconstruct from document store metadata."""
         from datetime import datetime
 
         return cls(
@@ -1163,7 +1163,7 @@ class Prediction(BaseModel):
         return max(0, delta.days)
 
     def to_metadata(self) -> Dict[str, Any]:
-        """Convert to DocumentStore metadata format."""
+        """Convert to document store metadata format."""
         return {
             "epistemic_type": "prediction",
             "prediction_id": self.prediction_id,
@@ -1342,7 +1342,7 @@ class TemporalEvidence(BaseModel):
         )
 
     def to_metadata(self) -> Dict[str, Any]:
-        """Convert to DocumentStore metadata format."""
+        """Convert to document store metadata format."""
         return {
             "epistemic_type": "temporal_evidence",
             "evidence_id": self.evidence_id,
@@ -1414,7 +1414,7 @@ class PlanArguments(BaseModel):
     created_at: datetime = Field(default_factory=datetime.now)
 
     def to_metadata(self) -> Dict[str, Any]:
-        """Convert to DocumentStore metadata format."""
+        """Convert to document store metadata format."""
         return {
             "epistemic_type": "plan_arguments",
             "plan_id": self.plan_id,
@@ -1484,7 +1484,7 @@ class WorkItem(BaseModel):
     )
 
     def to_metadata(self) -> Dict[str, Any]:
-        """Convert to DocumentStore metadata format."""
+        """Convert to document store metadata format."""
         return {
             "epistemic_type": "workitem",
             "workitem_id": self.workitem_id,
@@ -1525,7 +1525,7 @@ class EpistemicEvent(BaseModel):
     )
 
     def to_metadata(self) -> Dict[str, Any]:
-        """Convert to DocumentStore metadata format."""
+        """Convert to document store metadata format."""
         return {
             "epistemic_type": "event",
             "event_id": self.event_id,

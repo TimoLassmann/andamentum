@@ -13,7 +13,9 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-from andamentum.document_store import DocumentStore
+from andamentum.document_store import Store
+
+from .databases import open_store
 from .entities import ClaimStage
 from .entities.verdict import EpistemicVerdict, EvidenceRef
 from .gates import STAGE_GATES
@@ -484,11 +486,11 @@ class ReportGenerator:
     with full traceability. NO truncation of any data.
     """
 
-    def __init__(self, store: DocumentStore, database_name: str):
-        """Initialize with a DocumentStore instance.
+    def __init__(self, store: Store, database_name: str):
+        """Initialize with a Store instance.
 
         Args:
-            store: DocumentStore for the epistemic database
+            store: Store for the epistemic database
             database_name: Name of the database for report metadata
         """
         self.store = store
@@ -521,8 +523,8 @@ class ReportGenerator:
                 return None
         else:
             # Find most recent objective
-            results = await self.store.find_by_metadata(
-                {"epistemic_type": "objective"},
+            results = await self.store.list(
+                where={"epistemic_type": "objective"},
                 limit=1,
             )
             if not results:
@@ -1346,12 +1348,13 @@ async def generate_report_from_database(
     Returns:
         True if saved successfully, False otherwise
     """
-    store = DocumentStore.for_database(database_name)
-    await store.initialize()
-
-    generator = ReportGenerator(store, database_name)
-    return await generator.save_html(
-        output_path=output_path,
-        objective_id=objective_id,
-        model_name=model_name,
-    )
+    store = await open_store(database_name)
+    try:
+        generator = ReportGenerator(store, database_name)
+        return await generator.save_html(
+            output_path=output_path,
+            objective_id=objective_id,
+            model_name=model_name,
+        )
+    finally:
+        await store.close()

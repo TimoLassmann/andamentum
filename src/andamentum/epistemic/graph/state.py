@@ -24,7 +24,7 @@ def _new_run_id() -> str:
     """Fresh per-graph-run identifier.
 
     Used to disambiguate execution-trace ``file_path`` entries when
-    multiple graph runs share one DocumentStore — e.g. the decomposed
+    multiple graph runs share one document store — e.g. the decomposed
     orchestrator running N children, or a re-run of the same objective.
     Without this disambiguator, ``execution_step_<step>`` collides on
     the documents.file_path UNIQUE index.
@@ -60,7 +60,7 @@ class EpistemicGraphState:
     # ── Run identity ─────────────────────────────────────────────
     # Per-graph-run disambiguator. Each fresh state gets a new id;
     # used to keep execution-trace file_paths unique when multiple
-    # graph runs share a DocumentStore (decomposed runs, re-runs).
+    # graph runs share a document store (decomposed runs, re-runs).
     run_id: str = field(default_factory=_new_run_id)
 
     # ── Claim creation ──────────────────────────────────────────

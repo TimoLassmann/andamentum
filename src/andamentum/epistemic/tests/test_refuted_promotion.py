@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from andamentum.document_store import DocumentStore
+from andamentum.document_store import Store
 from andamentum.epistemic.confidence import compute_posterior
 from andamentum.epistemic.entities import Claim, Evidence, Objective
 from andamentum.epistemic.entities.claim import ClaimStage
@@ -29,8 +29,7 @@ async def _setup_claim_with_evidence(
     n_unjudged: int = 0,
 ) -> tuple[Claim, EpistemicRepository]:
     """Create an objective + claim linked to N supporting + M contradicting evidence."""
-    store = DocumentStore.for_database("test", db_dir=tmp_path)
-    await store.initialize()
+    store = await Store.open(tmp_path / "test.db")
     repo = EpistemicRepository(store)
     obj = Objective(description="test objective", question_type="predictive")
     # Objectives are self-referential: objective_id == entity_id. Production

@@ -3,7 +3,7 @@
 Bug context: ``_run_op`` in ``graph/nodes.py`` stored an execution-trace
 document per operation with ``file_path=f"execution_step_{step_number}"``.
 ``step_number`` was ``len(state.operations_log)`` — local to each graph
-run. The decomposed orchestrator (Phase 3+) shares one DocumentStore
+run. The decomposed orchestrator (Phase 3+) shares one Store
 across N child graph runs, so all children write
 ``execution_step_1, execution_step_2, ...`` and the second child crashes
 on ``UNIQUE constraint failed: documents.file_path`` after burning ~7-8
@@ -11,7 +11,7 @@ minutes per case. Pre-decomposition, every run had a fresh DB and the
 collision was masked.
 
 These tests pin the fix:
-1. Two graph states sharing one DocumentStore can both write
+1. Two graph states sharing one Store can both write
    execution_step entries without collision.
 2. The same objective re-run on the same DB doesn't collide either
    (per-run ``run_id`` disambiguator).
@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import pytest
 
-from andamentum.document_store import DocumentStore
+from andamentum.document_store import Store
 from andamentum.epistemic.entities import Objective
 from andamentum.epistemic.graph.deps import EpistemicDeps
 from andamentum.epistemic.graph.nodes import _run_op
@@ -45,8 +45,7 @@ class _AlwaysSucceedsOp(BaseOperation):
 
 @pytest.fixture
 async def shared_repo(tmp_path):
-    store = DocumentStore.for_database("test_step_unique", db_dir=tmp_path)
-    await store.initialize()
+    store = await Store.open(tmp_path / "test_step_unique.db")
     return EpistemicRepository(store)
 
 
@@ -57,7 +56,7 @@ async def _seed_objective(repo: EpistemicRepository, oid: str) -> Objective:
 
 
 async def test_two_graph_runs_on_shared_db_do_not_collide(shared_repo):
-    """Two children of a decomposed run share the DocumentStore. Both
+    """Two children of a decomposed run share the Store. Both
     must be able to write execution_step entries from step 1 onward."""
     await _seed_objective(shared_repo, "objA_alpha")
     await _seed_objective(shared_repo, "objB_beta")
@@ -71,8 +70,8 @@ async def test_two_graph_runs_on_shared_db_do_not_collide(shared_repo):
         await _run_op(
             _AlwaysSucceedsOp, deps, state_a, "objA_alpha", "objective", "noop"
         )
-    # Child B writes 3 ops on the SAME DocumentStore. Pre-fix, this
-    # raised "UNIQUE constraint failed: documents.file_path" on the
+    # Child B writes 3 ops on the SAME Store. Pre-fix, this
+    # raised "KeyExists" on the
     # very first call (both starting from step 1).
     for _ in range(3):
         await _run_op(
@@ -87,15 +86,13 @@ async def test_two_graph_runs_on_shared_db_do_not_collide(shared_repo):
 
     # The execution_step rows for both objectives are present in the DB.
     backend = shared_repo.store
-    rows = await backend.find_by_metadata(
-        {"epistemic_type": "execution_step"}, limit=100
-    )
+    rows = await backend.list(where={"epistemic_type": "execution_step"}, limit=None)
     assert len(rows) == 6
     objective_ids_seen = {row.metadata["entity_id"] for row in rows}
     assert objective_ids_seen == {"objA_alpha", "objB_beta"}
-    # File paths are unique (the bug we're pinning).
-    file_paths = {row.file_path for row in rows}
-    assert len(file_paths) == 6
+    # Keys are unique (the bug we're pinning).
+    keys = {row.key for row in rows}
+    assert len(keys) == 6
 
 
 async def test_same_objective_rerun_does_not_collide(shared_repo):
@@ -122,12 +119,10 @@ async def test_same_objective_rerun_does_not_collide(shared_repo):
         )
 
     backend = shared_repo.store
-    rows = await backend.find_by_metadata(
-        {"epistemic_type": "execution_step"}, limit=100
-    )
+    rows = await backend.list(where={"epistemic_type": "execution_step"}, limit=None)
     assert len(rows) == 4
-    file_paths = {row.file_path for row in rows}
-    assert len(file_paths) == 4
+    keys = {row.key for row in rows}
+    assert len(keys) == 4
 
 
 async def test_step_number_metadata_preserved(shared_repo):
@@ -141,8 +136,6 @@ async def test_step_number_metadata_preserved(shared_repo):
         await _run_op(_AlwaysSucceedsOp, deps, state, "obj_seq", "objective", "noop")
 
     backend = shared_repo.store
-    rows = await backend.find_by_metadata(
-        {"epistemic_type": "execution_step"}, limit=100
-    )
+    rows = await backend.list(where={"epistemic_type": "execution_step"}, limit=None)
     step_numbers = sorted(row.metadata["step_number"] for row in rows)
     assert step_numbers == [1, 2, 3, 4]

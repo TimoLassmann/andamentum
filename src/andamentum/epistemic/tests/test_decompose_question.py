@@ -80,11 +80,10 @@ class TestQuestionDecompositionSchema:
 
 @pytest.fixture
 async def repo(tmp_path):
-    from andamentum.document_store import DocumentStore
+    from andamentum.document_store import Store
     from andamentum.epistemic.repository import EpistemicRepository
 
-    store = DocumentStore.for_database("test_decompose", db_dir=tmp_path)
-    await store.initialize()
+    store = await Store.open(tmp_path / "test_decompose.db")
     return EpistemicRepository(store)
 
 

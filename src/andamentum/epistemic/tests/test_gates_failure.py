@@ -21,17 +21,16 @@ from ..gates import (
     GateResult,
     STAGE_GATES,
 )
-from andamentum.document_store import DocumentStore
+from andamentum.document_store import Store
 from ..repository import EpistemicRepository
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 
-async def _make_store(tmp_path) -> DocumentStore:
-    """Create a fresh DocumentStore for test use."""
-    s = DocumentStore.for_database("test", db_dir=tmp_path)
-    await s.initialize()
+async def _make_store(tmp_path) -> Store:
+    """Create a fresh Store for test use."""
+    s = await Store.open(tmp_path / "test.db")
     return s
 
 
