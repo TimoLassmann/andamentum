@@ -79,14 +79,17 @@ ErrorKind = Literal[
 
 # Smallest gap between two network requests to one source, in seconds.
 # OpenAlex and Crossref allow bursts; arXiv's API terms ask for one request in
-# three seconds on a single connection; Semantic Scholar's key allows one a
-# second. Cached answers cost no network request and are never spaced.
+# three seconds on a single connection; Semantic Scholar's key allows one
+# request a second across all its endpoints, so its requests start 1.1 s apart
+# (the margin absorbs network jitter) and only one is in flight at a time
+# (it is not in DEFAULT_INFLIGHT). Cached answers cost no network request and
+# are never spaced.
 DEFAULT_INTERVAL_S: dict[str, float] = {
     "openalex": 0.1,
     "crossref": 0.1,
     "europepmc": 0.2,
     "arxiv": 3.0,
-    "semantic_scholar": 1.0,
+    "semantic_scholar": 1.1,
     "web": SEARXNG_MIN_INTERVAL_S,  # SearxNG: its upstream engines suspend a fast caller
 }
 # arxiv.org's robots.txt asks for a 15 second crawl delay on its pages and
@@ -356,7 +359,7 @@ def process_pacing() -> SharedPacing:
 
     A source's rate limit belongs to the server, not to an item: however many
     items run at once in a process, requests to arXiv start 3 s apart, to
-    Semantic Scholar 1 s apart, and so on (``DEFAULT_INTERVAL_S``), and a
+    Semantic Scholar 1.1 s apart, and so on (``DEFAULT_INTERVAL_S``), and a
     source that said its budget is spent is not asked again by any of them.
     The locks and semaphores belong to an event loop, hence one pacing per
     loop. Raises ``RuntimeError`` outside a running loop.
