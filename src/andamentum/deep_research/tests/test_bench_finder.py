@@ -14,6 +14,7 @@ from andamentum.references import Work
 
 from ..bench import arms as bench_arms
 from ..bench.arms import ArmOutput, FinderArm, SemanticScholarArm
+from ..bench.attribution import FINDER_STAGES, trace_finder
 from ..bench.experiment import ArmSpec, Experiment, Rule
 from ..bench.experiment_report import report_from_registry
 from ..bench.experiment_run import (
@@ -26,7 +27,7 @@ from ..bench.experiment_run import (
 )
 from ..bench.metrics import Cost
 from ..bench.verdicts import judge_rule
-from ..finder import FINDER_SOURCES
+from ..finder import FINDER_SOURCES, FinderResult
 from ..sources.base import SourceClient, SourceConfig
 from ..store import ResearchStore
 from .test_bench_experiment_run import ScriptedArm, write_litsearch
@@ -257,3 +258,55 @@ async def test_litsearch_cells_carry_the_query_set_and_the_report_splits_by_it(
     assert "| inline_acl | F1 | 3 |" in text
     assert "finder (follow_citations: true)" in text
     assert "F1-over-B2" in text and "accepted" in text
+
+
+# -- loss attribution of a finder cell ---------------------------------------------------
+
+
+def kiln_work(number: int) -> Work:
+    return Work(title=f"Invented kiln paper number {number}", work_id=f"w_{number}")
+
+
+def finder_output(
+    *, searched: list[int], followed: list[int], shown: list[int], chosen: list[int]
+) -> ArmOutput:
+    """A finder cell's output: works 0..29 in rank order, the step lists by number."""
+    ids = [f"w_{n}" for n in (shown or range(30))]
+    return ArmOutput(
+        answer_text="",
+        works=[kiln_work(n) for n in range(30)],
+        cost=Cost(wall_s=1.0, llm_calls=3),
+        finder=FinderResult(
+            sentence="Which kiln?",
+            follow_citations=True,
+            searched=[f"w_{n}" for n in searched],
+            followed=[f"w_{n}" for n in followed],
+            shown=ids if shown else [],
+            chosen=[f"w_{n}" for n in chosen],
+        ),
+    )
+
+
+def test_a_finder_cell_is_traced_through_its_step_lists() -> None:
+    out = finder_output(
+        searched=[0, 1, 25], followed=[1, 2, 26], shown=[0, 1, 2, 25], chosen=[1]
+    )
+    gold = [Work(title=f"Invented kiln paper number {n}") for n in (1, 25, 26, 99)]
+    traces = trace_finder(out, gold)
+    assert [t.lost_at for t in traces] == [
+        "found",  # searched and followed, chosen, top 20
+        "ranked_top_20",  # shown to the ranking call, ranked 26th
+        "shown",  # followed only, never shown
+        "retrieved",  # neither searched nor followed
+    ]
+    assert traces[0].stages == {
+        "searched": True,
+        "followed": True,
+        "retrieved": True,
+        "shown": True,
+        "chosen": True,
+        "ranked_top_20": True,
+    }
+    assert list(traces[1].stages) == list(FINDER_STAGES)
+    with pytest.raises(ValueError, match="finder"):
+        trace_finder(out.model_copy(update={"finder": None}), gold)
