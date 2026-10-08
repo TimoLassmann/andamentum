@@ -705,3 +705,84 @@ async def test_no_logger_is_fine() -> None:
 
 def test_a_store_in_memory_is_not_shared_between_tests() -> None:
     assert ResearchStore.in_memory() is not ResearchStore.in_memory()
+
+
+def test_a_window_leaves_out_what_an_earlier_window_covered() -> None:
+    text = _paragraphs(
+        12, marked={3: "Quasar lattice width measured.", 8: "Quasar lattice depth."}
+    )
+    first = build_window(text, work_id="W1", query="quasar lattice", max_chars=1000)
+    second = build_window(
+        text, work_id="W1", query="quasar lattice", max_chars=1000, skip=first
+    )
+    assert first and second
+    assert all(a.end <= b.start or b.end <= a.start for a in first for b in second)
+    assert "Quasar lattice" in " ".join(p.text for p in second)  # the next best
+
+
+def _hidden_answer_text() -> str:
+    return _paragraphs(
+        20, marked={9: "Quasar lattice width measured.", 15: "The hidden answer is 77."}
+    )
+
+
+def _find_hidden(_instructions: str, prompt: str) -> dict[str, object]:
+    if "The hidden answer is 77." not in prompt:
+        return {"findings": []}
+    return {
+        "findings": [
+            _finding(1, "The hidden answer is 77.", "The hidden answer is 77.")
+        ]
+    }
+
+
+async def test_a_long_page_with_no_finding_in_its_first_window_is_read_once_more() -> (
+    None
+):
+    llm = ScriptedLLM(_find_hidden)
+    deps = _deps(FakeProvider(_hidden_answer_text()), llm=llm, window_chars=1000)
+    reading = await read_page(
+        _candidate(deps),
+        subquestion=SUBQ,
+        queries=["quasar lattice width hidden"],
+        deps=deps,
+    )
+    assert len(llm.calls) == 2
+    [finding] = reading.findings
+    assert finding.quote_verified and "77" in finding.claim
+    stored = {
+        p.passage_id for p in deps.asker.store.passages_for_work(reading.work.work_id)
+    }
+    assert finding.passage_id in stored
+    assert {p.passage_id for p in reading.passages} == stored
+    inputs = _events(deps, "notes_input")
+    assert len(inputs) == 2
+    assert inputs[0].data["window_spans"] != inputs[1].data["window_spans"]
+
+
+async def test_a_second_window_is_not_read_when_the_first_gave_findings() -> None:
+    llm = ScriptedLLM(
+        lambda _i, _p: {
+            "findings": [_finding(1, "Width.", "Quasar lattice width measured.")]
+        }
+    )
+    deps = _deps(FakeProvider(_hidden_answer_text()), llm=llm, window_chars=1000)
+    reading = await read_page(
+        _candidate(deps), subquestion=SUBQ, queries=["quasar lattice"], deps=deps
+    )
+    assert len(llm.calls) == 1 and len(reading.findings) == 1
+
+
+async def test_a_page_that_fits_the_window_is_not_read_twice() -> None:
+    llm = ScriptedLLM(lambda _i, _p: {"findings": []})
+    deps = _deps(llm=llm)
+    reading = await read_page(_candidate(deps), subquestion=SUBQ, queries=[], deps=deps)
+    assert reading.findings == [] and len(llm.calls) == 1
+
+
+async def test_a_failed_notes_call_is_not_followed_by_a_second_window() -> None:
+    llm = ScriptedLLM(lambda _i, _p: {"unexpected": 1})
+    deps = _deps(FakeProvider(_hidden_answer_text()), llm=llm, window_chars=1000)
+    reading = await read_page(_candidate(deps), subquestion=SUBQ, queries=[], deps=deps)
+    assert deps.asker.stats.step_llm_calls == {"Notes": 1}
+    assert len(reading.degraded) == 1

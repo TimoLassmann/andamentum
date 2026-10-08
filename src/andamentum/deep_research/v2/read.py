@@ -166,11 +166,18 @@ def _fit(text: str, start: int, end: int) -> list[tuple[int, int]]:
 
 
 def build_window(
-    text: str, *, work_id: str, query: str, max_chars: int, retrieved_at: float = 0.0
+    text: str,
+    *,
+    work_id: str,
+    query: str,
+    max_chars: int,
+    retrieved_at: float = 0.0,
+    skip: Sequence[Passage] = (),
 ) -> list[Passage]:
     """The most relevant parts of *text*, at most about *max_chars* characters, as
     passages in document order: best BM25 passages first until the limit, adjacent
-    ones merged into one span, a text within the limit whole. Exact slices."""
+    ones merged into one span, a text within the limit whole. Exact slices. Parts
+    that overlap a passage in *skip* (an earlier window) are left out."""
     body = text.strip()
     if not body:
         return []
@@ -181,7 +188,11 @@ def build_window(
                 work_id=work_id, start=start, text=body, retrieved_at=retrieved_at
             )
         ]
-    passages = split_passages(text, work_id=work_id, retrieved_at=retrieved_at)
+    passages = [
+        p
+        for p in split_passages(text, work_id=work_id, retrieved_at=retrieved_at)
+        if not any(p.start < s.end and s.start < p.end for s in skip)
+    ]
     scores = bm25_scores(query, [p.text for p in passages])
     best_first = sorted(range(len(passages)), key=lambda i: (-scores[i], i))
     chosen: list[int] = []
@@ -482,8 +493,8 @@ async def _load(
     subquestion: SubQuestion,
     queries: Sequence[str],
     deps: ReadDeps,
-) -> tuple[PageReading, int]:
-    """``load_page`` and the length of the text the window was cut from."""
+) -> tuple[PageReading, str]:
+    """``load_page`` and the text the window was cut from."""
     asker = deps.asker
     store = asker.store
     log = asker.log
@@ -512,7 +523,7 @@ async def _load(
                 work_id=work.work_id,
                 reason=reading.excluded,
             )
-        return reading, 0
+        return reading, ""
 
     found = await _load_text(candidate.model_copy(update={"work": work}), deps)
     reading.notes.extend(found.notes)
@@ -563,7 +574,7 @@ async def _load(
                 title=work.title,
                 reasons=list(dict.fromkeys(reasons)),
             )
-    return reading, len(found.text)
+    return reading, found.text
 
 
 async def load_page(
@@ -577,7 +588,7 @@ async def load_page(
     """Steps without the notes model: retraction check, text, window, passages
     stored, events ``fetched`` / ``unreadable`` / ``excluded`` logged. ``findings``
     is empty. Raises ``BudgetExhausted`` when ``max_fetch_bytes`` is spent."""
-    reading, _chars = await _load(
+    reading, _text = await _load(
         candidate, subquestion=subquestion, queries=queries, deps=deps
     )
     return reading
@@ -617,13 +628,15 @@ NOTES_INSTRUCTIONS = (
 )
 
 
-def _notes_message(reading: PageReading, *, subquestion: SubQuestion) -> str:
+def _notes_message(
+    passages: Sequence[Passage], *, title: str, subquestion: SubQuestion
+) -> str:
     numbered = "\n\n".join(
-        f"[{n}]\n{fence(p.text)}" for n, p in enumerate(reading.passages, start=1)
+        f"[{n}]\n{fence(p.text)}" for n, p in enumerate(passages, start=1)
     )
     return (
         f"QUESTION: {subquestion.text}\n"
-        f"DOCUMENT TITLE:\n{fence(reading.work.title or '(untitled)')}\n\n"
+        f"DOCUMENT TITLE:\n{fence(title or '(untitled)')}\n\n"
         f"PASSAGES:\n\n{numbered}"
     )
 
@@ -641,23 +654,60 @@ async def read_page(
     round_number: int = 1,
 ) -> PageReading:
     """``load_page`` and then the notes: one model call, findings with the soft quote
-    check, events ``notes_input`` / ``finding_noted`` / ``notes`` logged. A model
-    failure (``ask.MODEL_ERRORS``) on the notes call is recorded in ``degraded`` and
-    the page has no findings. Raises ``BudgetExhausted`` when a bound is spent."""
-    asker = deps.asker
-    log = asker.log
-    reading, source_chars = await _load(
+    check, events ``notes_input`` / ``finding_noted`` / ``notes`` logged. A page too
+    long for one window whose first window gave no finding is read once more over
+    the best parts left (the window is chosen without knowing where the answer is).
+    A model failure (``ask.MODEL_ERRORS``) on the notes call is recorded in
+    ``degraded`` and the page has no findings. Raises ``BudgetExhausted`` when a
+    bound is spent."""
+    reading, text = await _load(
         candidate, subquestion=subquestion, queries=queries, deps=deps
     )
     if not reading.readable:
         return reading
+    first = list(reading.passages)
+    failed = await _note_passages(
+        reading, first, subquestion=subquestion, deps=deps, source_chars=len(text)
+    )
+    if reading.findings or failed or sum(len(p.text) for p in first) >= len(text):
+        return reading
+    more = build_window(
+        text,
+        work_id=reading.work.work_id,
+        query=" ".join([subquestion.text, *queries]),
+        max_chars=deps.window_chars,
+        retrieved_at=time.time(),
+        skip=first,
+    )
+    if not more:
+        return reading
+    deps.asker.store.add_passages(more)
+    reading.passages.extend(more)
+    await _note_passages(
+        reading, more, subquestion=subquestion, deps=deps, source_chars=len(text)
+    )
+    return reading
+
+
+async def _note_passages(
+    reading: PageReading,
+    passages: Sequence[Passage],
+    *,
+    subquestion: SubQuestion,
+    deps: ReadDeps,
+    source_chars: int,
+) -> bool:
+    """One notes call over *passages* of the page; its findings are added to
+    *reading*. ``True`` when the model failed."""
+    asker = deps.asker
+    log = asker.log
     work = reading.work
     title = work.title or work.work_id
-    message = _notes_message(reading, subquestion=subquestion)
+    message = _notes_message(passages, title=work.title, subquestion=subquestion)
     if log is not None:
         log.event(
             "notes_input",
-            f"notes input for {title}: {sum(len(p.text) for p in reading.passages)} "
+            f"notes input for {title}: {sum(len(p.text) for p in passages)} "
             f"of {source_chars} characters",
             step="Notes",
             work_id=work.work_id,
@@ -665,8 +715,8 @@ async def read_page(
             title=work.title,
             subquestion=subquestion.id,
             source_chars=source_chars,
-            window_chars=sum(len(p.text) for p in reading.passages),
-            window_spans=[_span(p) for p in reading.passages],
+            window_chars=sum(len(p.text) for p in passages),
+            window_spans=[_span(p) for p in passages],
             text=message,
         )
     error = ""
@@ -681,7 +731,8 @@ async def read_page(
         error = f"{type(exc).__name__}: {exc}"
         reading.degraded.append(f"notes for {title} failed: {error}")
         out = _Notes(findings=[])
-    seen: set[tuple[str, str]] = set()
+    seen = {(f.passage_id, f.quote) for f in reading.findings}
+    before = len(reading.findings)
     empty = 0
     surplus = 0
     for note in out.findings:
@@ -689,15 +740,15 @@ async def read_page(
         if not claim or not shown:
             empty += 1
             continue
-        located = check_quote(note.quote, reading.passages, named=note.passage)
+        located = check_quote(note.quote, passages, named=note.passage)
         if located is not None:
             passage, quote = located
             verified = True
         else:
             named = (
-                reading.passages[note.passage - 1]
-                if 1 <= note.passage <= len(reading.passages)
-                else reading.passages[0]
+                passages[note.passage - 1]
+                if 1 <= note.passage <= len(passages)
+                else passages[0]
             )
             passage, quote, verified = named, shown, False
         if (passage.passage_id, quote) in seen:
@@ -716,15 +767,16 @@ async def read_page(
                 work_id=work.work_id,
             )
         )
+    added = reading.findings[before:]
     if empty:
         reading.notes.append(f"{empty} finding(s) with an empty claim or quote ignored")
     if surplus:
         reading.notes.append(
             f"{surplus} finding(s) beyond the {MAX_FINDINGS_PER_PAGE} kept per page"
         )
-    unverified = sum(1 for f in reading.findings if not f.quote_verified)
+    unverified = sum(1 for f in added if not f.quote_verified)
     if log is not None:
-        for f in reading.findings:
+        for f in added:
             log.event(
                 "finding_noted",
                 f"finding from {title}: {f.claim}",
@@ -738,13 +790,13 @@ async def read_page(
             )
         log.event(
             "notes",
-            f"{len(reading.findings)} finding(s) from {title}, {unverified} unverified",
+            f"{len(added)} finding(s) from {title}, {unverified} unverified",
             step="Notes",
             work_id=work.work_id,
             url=work.url or "",
             subquestion=subquestion.id,
-            findings=len(reading.findings),
+            findings=len(added),
             unverified=unverified,
             error=error,
         )
-    return reading
+    return bool(error)

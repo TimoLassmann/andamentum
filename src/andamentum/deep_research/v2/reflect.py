@@ -47,10 +47,15 @@ class ReflectDraft(BaseModel):
 def reflect_instructions(*, count: int) -> str:
     return f"""\
 You judge the progress of research on ONE question. You see the findings so far: \
-each a claim, the quote behind it, and its source (title, site, year).
+each a claim, the quote behind it, and its source (title, site, year). A \
+finding marked "snippet only" comes from the few lines a search engine showed; \
+the page itself was not read.
 1. answered: true only when a reliable source states the specific answer, or \
 several independent sources agree. One weak source (a forum, an aggregator, a \
-content farm, a page that repeats the question) is not enough. Findings that \
+content farm, a page that repeats the question) is not enough, and neither is \
+a snippet that may be cut short. A number you obtain by counting items (how \
+many, how many in total) is settled only when a source gives the number or \
+lists every item in the period asked; a partial list is a gap. Findings that \
 differ: weigh them by source quality (primary, official, encyclopedic first) \
 and by the date or period the question asks about; if the weight settles it, \
 answered is true.
@@ -113,6 +118,10 @@ def findings_block(findings: Sequence[RawFinding], works: Mapping[str, Work]) ->
         else:
             source = "unknown source"
         mark = "" if finding.quote_verified else " [quote not found in the page]"
+        if work is not None and work.access == "metadata":
+            mark += " [snippet only]"
+        elif work is not None and work.access == "abstract":
+            mark += " [abstract only]"
         lines += [
             f"[{number}] claim: {' '.join(finding.claim.split())}",
             f"    quote: {' '.join(finding.quote.split())}{mark}",
@@ -164,7 +173,9 @@ async def reflect(
             ]
         )
     return ReflectOutcome(
-        answered=draft.answered,
+        # An answer the evidence leaves at low confidence is not final: the
+        # loop reads on while rounds remain (the writer still states it).
+        answered=draft.answered and draft.confidence != "low",
         answer=" ".join(draft.answer.split()),
         confidence=draft.confidence,
         gaps=[g.strip() for g in draft.gaps if g.strip()],

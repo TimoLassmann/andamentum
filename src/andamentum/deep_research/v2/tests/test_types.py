@@ -96,7 +96,7 @@ def test_the_budget_defaults_are_the_loop_defaults() -> None:
     assert (budget.max_rounds, budget.reads_per_round, budget.window_chars) == (
         3,
         5,
-        12_000,
+        20_000,
     )
     assert budget.concurrency == 4
     with pytest.raises(ValidationError):
@@ -171,3 +171,25 @@ def test_the_log_round_trips_and_renders_tables() -> None:
     assert RunLog.from_jsonl(log.to_jsonl()) == log
     markdown = log.to_markdown()
     assert "## Choose" in markdown and "| Q1 | A | a.org | True |" in markdown
+
+
+def test_a_log_with_line_separator_characters_in_its_text_reads_back() -> None:
+    """JSON leaves U+2028, U+2029 and U+0085 unescaped inside a string, and
+    ``str.splitlines`` cuts a line at each of them."""
+    text = "before middle after\u0085end\x0bvt\x0cff"
+    log = RunLog(
+        run_id="r1",
+        events=[
+            LogEvent(
+                seq=0,
+                t=0.0,
+                step="Read",
+                event="fetched",
+                message="m",
+                data={"text": text},
+            )
+        ],
+    )
+    jsonl = log.to_jsonl()
+    assert " " in jsonl
+    assert RunLog.from_jsonl(jsonl) == log

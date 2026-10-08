@@ -475,3 +475,60 @@ async def test_at_most_three_tabs_are_open_at_once(
     results = await asyncio.gather(*tasks)
     assert all(r is not None for r in results)
     assert browser.peak == 3 and len(browser.urls) == 6
+
+
+async def test_a_plain_fetch_that_hangs_is_cut_and_the_browser_is_tried(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from andamentum.deep_research.v2.sources import web
+
+    kit = SourceKit(page_handler(200))
+    browser = FakeBrowser()
+    source = chrome_web(kit, browser, monkeypatch)
+
+    async def hang(*_args: object, **_kwargs: object) -> object:
+        await asyncio.sleep(60)
+
+    monkeypatch.setattr(kit.client, "fetch_document", hang)
+    monkeypatch.setattr(web, "PLAIN_FETCH_TIMEOUT_S", 0.01)
+    fetched = await source.fetch_text(apollo_page())
+    assert fetched is not None and fetched.text == PAGE_TEXT
+    assert browser.urls == [PAGE]
+
+
+async def test_a_hanging_plain_fetch_without_a_browser_is_a_transport_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from andamentum.deep_research.v2.sources import web
+
+    kit = SourceKit(page_handler(200))
+    source = chrome_web(kit, FakeBrowser(), monkeypatch, cdp=None)
+
+    async def hang(*_args: object, **_kwargs: object) -> object:
+        await asyncio.sleep(60)
+
+    monkeypatch.setattr(kit.client, "fetch_document", hang)
+    monkeypatch.setattr(web, "PLAIN_FETCH_TIMEOUT_S", 0.01)
+    with pytest.raises(SourceError) as caught:
+        await source.fetch_text(apollo_page())
+    assert (
+        caught.value.kind == "transport" and "no answer within" in caught.value.reason
+    )
+
+
+async def test_a_host_that_showed_a_bot_check_is_not_asked_again_in_the_browser(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    kit = SourceKit(page_handler(403))
+    browser = FakeBrowser(
+        error=SourceError("web", "bot check", kind="http", status=403)
+    )
+    source = chrome_web(kit, browser, monkeypatch)
+    for path in ("one", "two"):
+        with pytest.raises(SourceError) as caught:
+            await source.fetch_text(apollo_page(f"https://www.docs.example.net/{path}"))
+        assert caught.value.status == 403
+    assert len(browser.urls) == 1  # the second page of the host was not tried
+    with pytest.raises(SourceError):
+        await source.fetch_text(apollo_page("https://elsewhere.example.org/a"))
+    assert len(browser.urls) == 2  # another host is still tried

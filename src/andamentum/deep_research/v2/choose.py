@@ -39,8 +39,10 @@ def choose_instructions(*, k: int) -> str:
 You choose which search results to read in full to answer a question. You see \
 numbered results: the title, the site, the year when known, and the snippet the \
 search engine showed.
-Return `picks`: the results most likely to contain the specific answer, best \
-first, at most {k}.
+Return `picks`: the {k} results most likely to contain the specific answer, \
+best first. Give fewer only when fewer than {k} results could plausibly hold \
+it: pages are read side by side, so an extra page costs little and a page \
+that is not read cannot help.
 Return `reserves`: up to {k} more, best first, read only if a picked page \
 cannot be opened.
 Prefer primary, official and encyclopedic sources (the organisation, person, \

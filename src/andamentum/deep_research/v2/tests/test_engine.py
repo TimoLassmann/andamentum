@@ -467,6 +467,21 @@ async def test_an_unreadable_pick_is_replaced_by_the_next_reserve(
     assert str(unreadable.data["url"]).endswith("apollo-docs.example/latency")
 
 
+async def test_a_pick_read_only_from_its_snippet_is_also_replaced_by_a_reserve(
+    reader: engine_world.StandInReader,
+) -> None:
+    reader.snippet_only = ("apollo-docs",)
+    result, store, _, _ = await run("web", llm=_narrowed, budget=Budget(max_rounds=1))
+
+    titles = [store.get_work(w).title for w in reader.read if store.get_work(w)]  # type: ignore[union-attr]
+    apollo = [t for t in titles if "Apollo" in t]
+    assert apollo == ["Apollo cache latency guide", "Ops notes: Apollo in production"]
+    assert result.stats.pages_unreadable == 0
+    assert any(
+        e.data.get("via") == "snippet" for e in events(result, "fetched")
+    )  # what the snippet gave is kept
+
+
 async def test_each_reserve_is_used_at_most_once() -> None:
     def three_reserves(instructions: str, prompt: str) -> dict[str, object]:
         if instructions.startswith(CHOOSE):

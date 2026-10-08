@@ -327,7 +327,7 @@ def _sentences(text: str) -> list[str]:
 
 def _choose(instructions: str, prompt: str) -> dict[str, object]:
     topic = _topic(_line(prompt, "SUB-QUESTION"))
-    limit = int(re.search(r"at most (\d+)", instructions).group(1))  # type: ignore[union-attr]
+    limit = int(re.search(r"the (\d+) results most likely", instructions).group(1))  # type: ignore[union-attr]
     entries = re.findall(
         r"^\[(\d+)\] (.+?)(?=^\[\d+\] |\Z)", _fenced(prompt), re.MULTILINE | re.DOTALL
     )
@@ -532,11 +532,13 @@ STAND_IN_WRITE = (
 class StandInReader:
     """A ``read_page`` over the world: pages from ``PAGES``, abstracts for
     papers. ``unreadable`` lists substrings of a url or title that cannot be
-    opened; ``texts`` overrides a url's text; ``skip_notes`` lists substrings
+    opened; ``snippet_only`` lists those whose page cannot be opened but whose
+    search snippet is read; ``texts`` overrides a url's text; ``skip_notes`` lists substrings
     of a url or title whose page is read but gets no notes call; ``read`` lists
     what was read, in order, and ``peak`` the most pages read at once."""
 
     unreadable: tuple[str, ...] = ()
+    snippet_only: tuple[str, ...] = ()
     skip_notes: tuple[str, ...] = ()
     texts: dict[str, str] = field(default_factory=dict)
     read: list[str] = field(default_factory=list)
@@ -590,9 +592,18 @@ class StandInReader:
             )
         label = work.url or work.title
         url = work.url or ""
-        text = self.texts.get(url) or (PAGES[url][1] if url in PAGES else "")
-        via = "fetched" if text else "abstract"
-        text = text or work.abstract or candidate.snippet
+        snippet = any(mark in label for mark in self.snippet_only)
+        text = (
+            ""
+            if snippet
+            else self.texts.get(url) or (PAGES[url][1] if url in PAGES else "")
+        )
+        via = "fetched" if text else "snippet" if snippet else "abstract"
+        text = text or (
+            candidate.snippet or work.abstract
+            if snippet
+            else work.abstract or candidate.snippet
+        )
         if any(mark in label for mark in self.unreadable) or not text:
             if log is not None:
                 log.event(
@@ -645,7 +656,13 @@ class StandInReader:
             )
         reading = PageReading(
             work=work.model_copy(
-                update={"access": "full_text" if via == "fetched" else "abstract"}
+                update={
+                    "access": "full_text"
+                    if via == "fetched"
+                    else "metadata"
+                    if via == "snippet"
+                    else "abstract"
+                }
             ),
             subquestion_id=subquestion.id,
             via=via,  # type: ignore[arg-type]

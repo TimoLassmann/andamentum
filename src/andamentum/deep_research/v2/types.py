@@ -56,7 +56,7 @@ STEPS = (
 DEFAULT_MAX_ROUNDS = 3
 DEFAULT_QUERIES_PER_ROUND = 3
 DEFAULT_READS_PER_ROUND = 5
-DEFAULT_WINDOW_CHARS = 12_000
+DEFAULT_WINDOW_CHARS = 20_000
 DEFAULT_EXPAND_PER_ROUND = 20
 DEFAULT_CONCURRENCY = 4
 DEFAULT_MAX_LLM_CALLS = 200
@@ -448,7 +448,9 @@ class RunLog(BaseModel):
 
     @classmethod
     def from_jsonl(cls, text: str) -> RunLog:
-        lines = [line for line in text.splitlines() if line.strip()]
+        # Split on "\n" only: str.splitlines() also cuts at U+2028, U+2029 and
+        # U+0085, which JSON leaves unescaped inside a string.
+        lines = [line for line in text.split("\n") if line.strip()]
         if not lines:
             return cls()
         header = json.loads(lines[0])

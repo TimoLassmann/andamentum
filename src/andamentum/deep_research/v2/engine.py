@@ -368,7 +368,8 @@ async def _read_pages(
     round_number: int,
 ) -> None:
     """Read the picks in parallel; a pick that gave nothing (unreadable, or a
-    retracted work) is replaced by the next reserve, each reserve used once."""
+    retracted work) or whose page could not be opened, so that only its search
+    snippet was read, is replaced by the next reserve, each reserve used once."""
     batch = list(picks)
     spare = list(reserves)
     while batch:
@@ -384,7 +385,7 @@ async def _read_pages(
                 raise result
             else:
                 _absorb(run, sub, candidate, result)
-                if not result.readable:
+                if not result.readable or result.via == "snippet":
                     failed += 1
         if run.bound() or not failed or not spare:
             return

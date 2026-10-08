@@ -695,7 +695,7 @@ def read_queries(root: Path) -> list[LitSearchQuery]:
         )
     return [
         LitSearchQuery.model_validate_json(line)
-        for line in path.read_text(encoding="utf-8").splitlines()
+        for line in path.read_text(encoding="utf-8").split("\n")
         if line.strip()
     ]
 

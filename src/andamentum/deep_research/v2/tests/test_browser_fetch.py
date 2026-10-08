@@ -4,6 +4,7 @@ network."""
 
 from __future__ import annotations
 
+import asyncio
 import json
 
 import httpx
@@ -33,7 +34,9 @@ class FakeChrome:
         lengths: list[int] | None = None,
         reading: object = None,
         socket_error: Exception | None = None,
+        never_loads: bool = False,
     ) -> None:
+        self.never_loads = never_loads
         self.page = {"href": href, "title": title, "text": text}
         self.reading = json.dumps(self.page) if reading is None else reading
         self.lengths = list(lengths or [len(text), len(text)])
@@ -110,10 +113,12 @@ class FakeSocket:
                 value = self.chrome.reading
         result = {"result": {"value": value}} if method == "Runtime.evaluate" else {}
         self.inbox.append(json.dumps({"id": message["id"], "result": result}))
-        if method == "Page.navigate":
+        if method == "Page.navigate" and not self.chrome.never_loads:
             self.inbox.append(json.dumps({"method": "Page.loadEventFired"}))
 
     async def recv(self) -> str:
+        while not self.inbox:
+            await asyncio.sleep(0.001)  # a page still loading sends nothing
         return self.inbox.pop(0)
 
 
@@ -224,3 +229,27 @@ async def test_a_reading_that_is_not_the_scripts_json_is_a_parse_error(
     with pytest.raises(SourceError) as caught:
         await browser_page_text(CDP, URL)
     assert caught.value.kind == "parse" and fake.closed == ["tab1"]
+
+
+async def test_a_page_that_never_finishes_loading_is_read_as_it_stands(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake = install(monkeypatch, FakeChrome(never_loads=True))
+    monkeypatch.setattr(browser_fetch, "LOAD_WAIT_S", 0.02)
+    page = await browser_page_text(CDP, URL)
+    assert page.text == BODY and fake.closed == ["tab1"]
+
+
+async def test_a_bot_check_that_never_finishes_loading_is_told_apart_quickly(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake = install(
+        monkeypatch,
+        FakeChrome(
+            text="Checking your browser.", title="Just a moment...", never_loads=True
+        ),
+    )
+    monkeypatch.setattr(browser_fetch, "LOAD_WAIT_S", 0.02)
+    with pytest.raises(SourceError) as caught:
+        await browser_page_text(CDP, URL)
+    assert caught.value.reason == "bot check" and fake.closed == ["tab1"]

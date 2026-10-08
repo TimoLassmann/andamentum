@@ -35,7 +35,12 @@ SOURCE = "web"
 # The content type of a text read through the Chrome: how the reader tells it
 # from a plainly fetched one (a cache hit on replay reports the default).
 CONTENT_TYPE = "text/markdown; via=chrome-cdp"
-PAGE_LOAD_TIMEOUT_S = 30.0
+# The whole read of one page, tab open to text. A page that has not fired its
+# load event after LOAD_WAIT_S (a bot-check page that keeps loading, a script that
+# never ends) is read as it stands: it may already show its text, or be the
+# interstitial that is told apart below.
+PAGE_LOAD_TIMEOUT_S = 15.0
+LOAD_WAIT_S = 5.0
 # The text is read again every POLL_INTERVAL_S until its length stops growing,
 # at most SETTLE_MAX_S after the load event.
 POLL_INTERVAL_S = 0.25
@@ -144,10 +149,14 @@ async def _read_in_new_tab(cdp_url: str, url: str) -> BrowserPage:
             async with asyncio.timeout(PAGE_LOAD_TIMEOUT_S):
                 await call("Page.enable")
                 await call("Page.navigate", url=url)
-                while not loaded.is_set():
-                    message = json.loads(await socket.recv())
-                    if message.get("method") == "Page.loadEventFired":
-                        loaded.set()
+                try:
+                    async with asyncio.timeout(LOAD_WAIT_S):
+                        while not loaded.is_set():
+                            message = json.loads(await socket.recv())
+                            if message.get("method") == "Page.loadEventFired":
+                                loaded.set()
+                except TimeoutError:
+                    pass  # read what the tab shows
                 await _settle(evaluate)
                 raw = await evaluate(_READ_SCRIPT)
     except (OSError, TimeoutError, RuntimeError, websockets.WebSocketException) as exc:

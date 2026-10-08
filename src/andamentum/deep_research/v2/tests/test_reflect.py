@@ -18,9 +18,25 @@ from .llm_stub import ScriptedLLM, make_asker
 SUB = SubQuestion(id="Q1", text="How much does the Apollo cache cut median latency?")
 WORKS = {
     "w1": Work(
-        work_id="w1", title="Apollo guide", url="https://docs.example/a", year=2024
+        work_id="w1",
+        title="Apollo guide",
+        url="https://docs.example/a",
+        year=2024,
+        access="full_text",
     ),
-    "w2": Work(work_id="w2", title="Forum thread", url="https://forum.example/t"),
+    "w2": Work(
+        work_id="w2",
+        title="Forum thread",
+        url="https://forum.example/t",
+        access="full_text",
+    ),
+    "w3": Work(work_id="w3", title="Search hit", url="https://hits.example/s"),
+    "w4": Work(
+        work_id="w4",
+        title="Paper record",
+        url="https://papers.example/p",
+        access="abstract",
+    ),
 }
 
 
@@ -72,6 +88,14 @@ def test_findings_are_numbered_from_one_with_claim_quote_and_source() -> None:
     assert "F1" not in block
 
 
+def test_a_finding_from_a_snippet_or_an_abstract_is_marked_as_such() -> None:
+    block = findings_block([raw(1, work="w3"), raw(2, work="w4")], WORKS)
+    assert "source: Search hit (hits.example) " not in block
+    assert "quote: Quote 1. [snippet only]" in block
+    assert "quote: Quote 2. [abstract only]" in block
+    assert "[snippet only]" not in findings_block([raw(1)], WORKS)
+
+
 def test_a_finding_of_an_unknown_work_still_shows() -> None:
     assert "source: unknown source" in findings_block([raw(1, work="gone")], WORKS)
 
@@ -98,6 +122,8 @@ async def test_the_findings_and_the_queries_run_are_in_the_prompt_fenced() -> No
         "weigh them by source quality",
         "commits to one answer",
         "Judge only from the findings",
+        "snippet only",
+        "a partial list is a gap",
         "up to 3 queries of 3 to 8 plain keywords",
     ):
         assert rule in instructions
@@ -115,6 +141,15 @@ async def test_an_answered_question_gives_its_answer_and_confidence() -> None:
     assert outcome.answered and outcome.answer == "Likely 45 ms (Apollo guide)."
     assert outcome.confidence == "high" and outcome.degraded == []
     assert asker.stats.step_llm_calls == {"Reflect": 1}
+
+
+async def test_an_answer_left_at_low_confidence_is_not_final() -> None:
+    model = ScriptedLLM(
+        verdict(answered=True, answer="Perhaps 45 ms.", confidence="low")
+    )
+    outcome = await run_reflect(model, [raw(1)])
+    assert not outcome.answered
+    assert outcome.answer == "Perhaps 45 ms." and outcome.confidence == "low"
 
 
 async def test_the_next_queries_exclude_what_was_run_and_are_trimmed() -> None:

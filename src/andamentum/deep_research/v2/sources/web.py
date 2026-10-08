@@ -53,6 +53,8 @@ BROWSER_TABS = 3
 # A plain fetch that failed this way may be tried again through the Chrome.
 BROWSER_FALLBACK_KINDS = frozenset({"http", "parse", "transport"})
 CHROME_EXTRACTION = "chrome-cdp"
+# The plain fetch of one page; a slower server is treated as a failed fetch.
+PLAIN_FETCH_TIMEOUT_S = 15.0
 
 
 class WebSource:
@@ -83,6 +85,9 @@ class WebSource:
         self._tdm = tdm_allowed_hosts
         self._warnings: list[str] = []
         self._tabs = asyncio.Semaphore(BROWSER_TABS)
+        # Hosts whose bot check the Chrome has met in this run: asking again
+        # costs seconds and gets the same wall.
+        self._bot_checked: set[str] = set()
 
     def take_warnings(self) -> list[str]:
         """The partial-search warnings since the last call (and forget them)."""
@@ -149,16 +154,32 @@ class WebSource:
         """
         if not work.url:
             return None
+        host = (urlparse(work.url).hostname or "").removeprefix("www.")
         try:
-            return await self._client.fetch_document(
-                NAME, work.url, tdm_allowed_hosts=self._tdm
-            )
+            try:
+                async with asyncio.timeout(PLAIN_FETCH_TIMEOUT_S):
+                    return await self._client.fetch_document(
+                        NAME, work.url, tdm_allowed_hosts=self._tdm
+                    )
+            except TimeoutError as slow:
+                raise SourceError(
+                    NAME,
+                    f"no answer within {PLAIN_FETCH_TIMEOUT_S:.0f} s",
+                    kind="transport",
+                    url=work.url,
+                ) from slow
         except SourceError as plain:
-            if not self._browser or not _browser_may_retry(plain, work.url):
+            if (
+                not self._browser
+                or not _browser_may_retry(plain, work.url)
+                or host in self._bot_checked
+            ):
                 raise
             try:
                 return await self._fetch_in_browser(self._browser, work.url)
             except SourceError as browser:
+                if browser.reason == "bot check":
+                    self._bot_checked.add(host)
                 if browser.kind == "refused" or browser.status == 403:
                     raise browser from plain
                 raise plain from browser
