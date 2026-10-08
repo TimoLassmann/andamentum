@@ -45,10 +45,6 @@ def _refused(argv: list[str], capsys: pytest.CaptureFixture[str], *, code: int =
 # ── the stop condition ────────────────────────────────────────────────────
 
 
-def test_max_rounds_defaults_to_four() -> None:
-    assert _args(UNTIL).max_rounds == 4
-
-
 def test_a_condition_in_words_is_accepted() -> None:
     args = _args(UNTIL)
     cli_mod._validate_args(args)
@@ -87,9 +83,29 @@ def test_an_empty_condition_is_refused(capsys: pytest.CaptureFixture[str]) -> No
     assert "--until needs a condition" in _refused([*BASE, "--until", "  "], capsys)
 
 
-def test_max_rounds_below_one_is_refused(capsys: pytest.CaptureFixture[str]) -> None:
-    err = _refused([*UNTIL, "--max-rounds", "0"], capsys)
-    assert "--max-rounds must be at least 1" in err
+def test_the_round_cap_is_not_a_flag(capsys: pytest.CaptureFixture[str]) -> None:
+    err = _refused([*UNTIL, "--max-rounds", "2"], capsys)
+    assert "unrecognized arguments: --max-rounds 2" in err
+
+
+def test_until_clean_citations_refuses_no_references(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    err = _refused([*BASE, "--until-clean", "citations", "--no-references"], capsys)
+    assert err.strip() == (
+        "error: --until-clean citations runs the reference check every round; "
+        "drop --no-references"
+    )
+
+
+@pytest.mark.parametrize("check", ["structure", "figures"])
+def test_no_references_with_another_check_is_accepted(check: str, tmp_path) -> None:
+    extra = []
+    if check == "figures":
+        figure = tmp_path / "fig1.png"
+        figure.write_bytes(b"x")
+        extra = ["--figure", f"Figure 1={figure}", "--figure-model", "m"]
+    _validate([*BASE, "--until-clean", check, "--no-references", *extra])
 
 
 def test_a_reviewer_list_is_refused(capsys: pytest.CaptureFixture[str]) -> None:
@@ -106,7 +122,6 @@ def test_one_named_reviewer_is_accepted() -> None:
     [
         ["--until", "x"],
         ["--until-clean", "structure"],
-        ["--max-rounds", "2"],
         ["--figure", "Figure 1=f.png"],
         ["--figure-model", "m"],
     ],
@@ -414,3 +429,28 @@ async def test_until_text_is_judged_by_a_separate_call(
     )
     assert code == 0
     assert judged == ["the methods are reproducible"] * 2
+
+
+@pytest.mark.parametrize("check", ["structure", "citations"])
+async def test_until_clean_names_the_check_the_loop_runs(
+    tmp_path, monkeypatch: pytest.MonkeyPatch, check: str
+) -> None:
+    """--until-clean KIND reaches revise_document as that check, with its
+    fixed wording; the loop itself is stubbed out."""
+    seen: dict[str, Any] = {}
+
+    async def fake_revise(_document: Any, *, spec: Any, **_kwargs: Any) -> Any:
+        seen["spec"] = spec
+        raise RuntimeError("stop here")
+
+    monkeypatch.setattr("andamentum.whetstone.revise.revise_document", fake_revise)
+    source = tmp_path / "draft.docx"
+    _draft(source)
+    argv = ["revise", str(source), "--model", "stub:none", "--out", str(tmp_path / "r.md")]
+    with pytest.raises(SystemExit) as exc:
+        await cli_mod._run(
+            _args([*argv, "--until-clean", check, "--offline"]), Console(stderr=True)
+        )
+    assert exc.value.code == 4
+    assert seen["spec"].check == check
+    assert seen["spec"].text == FIXED_CONDITION_TEXT[check]

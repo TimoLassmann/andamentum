@@ -340,7 +340,7 @@ async def test_a_failed_research_run_cannot_be_resumed_without_its_settings(
     )
     with pytest.raises(RuntimeError, match="boom"):
         await _write(tmp_path, research=WEB)
-    with pytest.raises(ResearchSetupError, match="--research"):
+    with pytest.raises(ResearchSetupError, match="give the research settings again"):
         await continue_document(
             tmp_path / "demo.compose", roles=Roles.all("test:model"), formats=["txt"]
         )

@@ -455,7 +455,7 @@ andamentum-whetstone draft.docx --model openai:gpt-5.4-mini \
     <tbody>
       <tr><td><code>--no-editor</code></td><td>The rewrites. You get comments only.</td></tr>
       <tr><td><code>--no-references</code></td><td>The reference check.</td></tr>
-      <tr><td><code>--offline</code></td><td>Every network call besides the model: the Crossref lookup. The citations are still checked against the list, on the text alone. Refused with <code>--check-novelty</code>.</td></tr>
+      <tr><td><code>--offline</code></td><td>Every network call besides the model: the Crossref lookup. The citations are still checked against the list, on the text alone. Refused with <code>--check-novelty</code>, and with a web address as the input (save the page as a file first).</td></tr>
     </tbody>
   </table>
   </div>
@@ -716,10 +716,9 @@ andamentum-whetstone revise draft.docx --model openai:gpt-5.4-nano \
   <table>
     <thead><tr><th>Flag</th><th>What it does</th></tr></thead>
     <tbody>
-      <tr><td><code>--max-rounds N</code></td><td>Hard cap on review-edit-review rounds. Default 4. Each round is a full review.</td></tr>
       <tr><td><code>--figure LABEL=FILE</code></td><td>One figure to check, e.g. <code>"Figure 1=fig1.png"</code>. Repeat for more than one. Required with <code>--until-clean figures</code>, refused otherwise.</td></tr>
       <tr><td><code>--figure-model MODEL</code></td><td>A multimodal model id, e.g. <code>ollama:qwen3.8</code>. No default. Required with <code>--until-clean figures</code>, refused otherwise.</td></tr>
-      <tr><td><code>--no-references</code>, <code>--offline</code></td><td>As for <code>review</code>. Unless <code>--no-references</code>, the reference check runs once on the revised draft, after the last round.</td></tr>
+      <tr><td><code>--no-references</code>, <code>--offline</code></td><td>As for <code>review</code>. Unless <code>--no-references</code>, the reference check runs once on the revised draft, after the last round. <code>--until-clean citations</code> runs it every round, so it refuses <code>--no-references</code>.</td></tr>
     </tbody>
   </table>
   </div>
@@ -736,7 +735,7 @@ andamentum-whetstone revise draft.docx --model openai:gpt-5.4-nano \
     <tbody>
       <tr><td><code>condition_met</code></td><td>The check passed twice running. That round's own edits are discarded — a pass that already meets the condition gets no further unrequested rewrite.</td></tr>
       <tr><td><code>no_progress</code></td><td>A round with nothing to edit while the condition is still unmet, an edit with no net effect on the text, or the draft alternating between two earlier states.</td></tr>
-      <tr><td><code>cap_reached</code></td><td><code>--max-rounds</code> was reached with the condition still unmet.</td></tr>
+      <tr><td><code>cap_reached</code></td><td>Four rounds were done with the condition still unmet. Each round is a full review; the cap is a preset on the command line (<code>RevisionSpec(max_rounds=...)</code> in Python).</td></tr>
       <tr><td><code>unresolvable</code></td><td>Checked once, before spending a round: for <code>citations</code>, no reference list and no citation notes, or no way to tell how the document cites; for <code>figures</code>, a named figure never mentioned in the text. Zero rounds run.</td></tr>
     </tbody>
   </table>
@@ -756,13 +755,13 @@ andamentum-whetstone revise draft.docx --model openai:gpt-5.4-nano \
   <pre><code><span class="tok-com"># check the references; the lookup is on by default</span>
 andamentum-references draft.docx
 
-<span class="tok-com"># offline: citations against the list only, nothing sent anywhere</span>
+<span class="tok-com"># offline: citations against the list only, no network call besides the model</span>
 andamentum-references draft.md --offline --json -o refs.json
 
 <span class="tok-com"># a model for what the text leaves open — a local one keeps it local</span>
 andamentum-references draft.pdf --model ollama:gemma4:26b</code></pre>
 
-  <p><strong>Every review runs it</strong> (section 01), before the review, so the editor answers its problems beside the review's own; each of its comments is signed by the reference checker. <code>andamentum-references</code> runs it alone, and needs no model. It exits 1 when it finds problems. It is also a goal for the loop in section 06 (<code>--goal-check citations</code>). In the loop it runs every round, without the Crossref lookup, because an edit cannot change what Crossref finds.</p>
+  <p><strong>Every review runs it</strong> (section 01), before the review, so the editor answers its problems beside the review's own; each of its comments is signed by the reference checker. <code>andamentum-references</code> runs it alone, and needs no model. It exits 1 when it finds problems. It is also a stop condition for <code>revise</code> in section 06 (<code>--until-clean citations</code>). In the loop it runs every round, without the Crossref lookup, because an edit cannot change what Crossref finds.</p>
 
   <h3>How it reads a draft</h3>
 
@@ -811,7 +810,7 @@ andamentum-references draft.pdf --model ollama:gemma4:26b</code></pre>
 
   <div class="callout tone-info">
     <p class="eyebrow">What leaves your machine</p>
-    <p>The lookup sends only the text of each reference entry to Crossref, never the text of the draft. <code>--offline</code> (in the command and in a whetstone review) sends nothing. "Not found" means that Crossref has no matching record; some conference papers and reports are not indexed there. When Crossref does not answer, the entry is reported as not checked, never as wrong.</p>
+    <p>The lookup sends only the text of each reference entry to Crossref, never the text of the draft. <code>--offline</code> (in the command and in a whetstone review) makes no network call besides the model. "Not found" means that Crossref has no matching record; some conference papers and reports are not indexed there. When Crossref does not answer, the entry is reported as not checked, never as wrong.</p>
   </div>
 
   <h3>How it is measured</h3>
@@ -974,6 +973,7 @@ andamentum-references draft.pdf --model ollama:gemma4:26b</code></pre>
 
   <pre><code><span class="tok-kw">from</span> andamentum.whetstone <span class="tok-kw">import</span> (
     review_document, run_checklist, run_panel,
+    revise_document, RevisionSpec, open_source,
     render_markdown, render_html, render_docx,
 )
 
@@ -986,6 +986,18 @@ result = <span class="tok-kw">await</span> <span class="tok-fn">run_checklist</s
 
 <span class="tok-kw">for</span> finding <span class="tok-kw">in</span> result.findings:
     <span class="tok-fn">print</span>(finding.severity, finding.title, finding.quotes)
+
+<span class="tok-com"># revise until a check comes back clean; every setting is a keyword</span>
+document = <span class="tok-kw">await</span> <span class="tok-fn">open_source</span>(<span class="tok-str">"draft.docx"</span>)
+<span class="tok-kw">try</span>:
+    revision = <span class="tok-kw">await</span> <span class="tok-fn">revise_document</span>(
+        document,
+        spec=<span class="tok-fn">RevisionSpec</span>(check=<span class="tok-str">"structure"</span>, max_rounds=4),
+        model=<span class="tok-str">"openai:gpt-5.4-nano"</span>,
+    )
+<span class="tok-kw">finally</span>:
+    document.<span class="tok-fn">cleanup</span>()
+<span class="tok-fn">print</span>(revision.condition_met, revision.stopped_reason)
 
 <span class="tok-com"># references — any text; model only for what the text leaves open</span>
 <span class="tok-kw">from</span> andamentum.references <span class="tok-kw">import</span> check_references

@@ -335,10 +335,13 @@ def _open_folder(path: Path):  # noqa: ANN202
         raise ComposeInputError(str(exc)) from exc
 
 
-def _research(args: argparse.Namespace, *, wanted: bool, mode: str | None):  # noqa: ANN202
+def _research(  # noqa: ANN202
+    args: argparse.Namespace, *, wanted: bool, mode: str | None, recorded: bool = False
+):
     """The research settings, or None when research is not wanted.
 
-    *mode* is where to search (``None``: the genre's choice).
+    *mode* is where to search (``None``: the genre's choice). *recorded* is
+    True for ``continue``, whose research setting comes from the folder.
     """
     from .errors import ComposeUsageError
     from .research import research_setup
@@ -354,7 +357,12 @@ def _research(args: argparse.Namespace, *, wanted: bool, mode: str | None):  # n
     ]
     if not wanted:
         if idle:
-            raise ComposeUsageError(f"{', '.join(idle)} need --research")
+            if recorded:
+                raise ComposeUsageError(
+                    f"this folder was written without research, so {', '.join(idle)} "
+                    "has nothing to do; leave it out"
+                )
+            raise ComposeUsageError(f"{', '.join(idle)} only works with --research")
         return None
     return research_setup(
         mailto=args.mailto,
@@ -420,7 +428,7 @@ async def _continue(args: argparse.Namespace, parser: argparse.ArgumentParser) -
         roles=Roles.all(args.model),
         research=_research(args, wanted=True, mode=settings.research_mode)
         if settings.research
-        else _research(args, wanted=False, mode=None),
+        else _research(args, wanted=False, mode=None, recorded=True),
         confirm_own_sources=settings.confirm_own_sources or args.confirm_own_sources,
         provenance=settings.provenance,
         formats=settings.formats,

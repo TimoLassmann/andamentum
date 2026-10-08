@@ -152,7 +152,7 @@ def test_research_flags_need_research(tmp_path, capsys):
     ):
         assert run([*base, flag, *value]) == 2
         err = capsys.readouterr().err
-        assert flag in err and "need --research" in err
+        assert flag in err and "only works with --research" in err
 
 
 def test_mailto_is_a_research_flag_only(tmp_path, capsys):
@@ -301,7 +301,9 @@ def test_continue_without_research_refuses_research_flags(
     folder = tmp_path / "memo"
     assert run(["write", "A memo", "-o", str(folder), "--model", "m"]) == 0
     assert run(["continue", str(folder), "--model", "m", "--browser"]) == 2
-    assert "need --research" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "written without research" in err and "--browser" in err
+    assert "--research" not in err  # continue has no such flag
 
 
 def test_continue_takes_confirm_own_sources_when_write_did_not(tmp_path, monkeypatch):

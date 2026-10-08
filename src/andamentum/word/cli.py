@@ -80,7 +80,13 @@ def _mailto(parser: argparse.ArgumentParser, *, what: str = "Crossref") -> None:
 
 
 def _offline(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--offline", action="store_true", help="make no network call")
+    parser.add_argument(
+        "--offline",
+        action="store_true",
+        help="Make no network call besides the model: no Crossref, retraction or "
+        "web checks, and a web address as --source is refused (a local Zotero "
+        "library is still read)",
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -438,6 +444,14 @@ async def _dispatch(args: argparse.Namespace) -> int:
         return EXIT_OK
 
     if command == "draft":
+        if args.offline:
+            from andamentum.compose.harness.errors import WordUsageError
+
+            for source in args.source or ():
+                if source.startswith(("http://", "https://")):
+                    raise WordUsageError(
+                        f"--offline rules out fetching {source}; save it as a file first"
+                    )
         _must_exist(args.into, flag="--into")
         _must_exist(args.results, flag="--results", folder=True)
         _must_exist(args.library, flag="--library")

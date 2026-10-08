@@ -189,6 +189,64 @@ async def test_the_confidentiality_check_runs_before_any_reference_leaves(
     assert lookups == []
 
 
+def _major_finding() -> Finding:
+    return Finding(
+        title="The claim outruns the data",
+        severity="major",
+        confidence="high",
+        rationale="x",
+        quotes=[Quote(section_id="s1", char_start=0, char_end=4, text="Rare")],
+    )
+
+
+def test_the_next_step_repeats_the_flags_that_decide_what_revise_may_do() -> None:
+    args = _args(
+        [
+            "draft.docx", "--model", "stub:none", "--out", "review.md",
+            "--confirm-own-draft", "--offline", "--no-references",
+            "--decision-model", "nimble:9b",
+        ]
+    )
+    steps = cli_mod._next_steps(args, ReviewResult(summary="x", findings=[_major_finding()]))
+    command = steps[0]
+    for flag in (
+        "--confirm-own-draft", "--offline", "--no-references",
+        "--decision-model nimble:9b", "--until-clean structure",
+    ):
+        assert flag in command
+    assert "--max-rounds" not in "".join(steps)
+    assert "costs up to 4 times this run." in steps[-1]
+
+
+def test_the_next_step_adds_no_flag_that_was_not_set() -> None:
+    args = _args(["draft.docx", "--model", "stub:none", "--out", "review.md"])
+    [command, _cost] = cli_mod._next_steps(
+        args, ReviewResult(summary="x", findings=[_major_finding()])
+    )
+    for flag in ("--confirm-own-draft", "--offline", "--no-references", "--decision-model"):
+        assert flag not in command
+
+
+@pytest.mark.parametrize("command", ["review", "revise"])
+@pytest.mark.parametrize("url", ["https://example.org/paper", "http://example.org/p.pdf"])
+def test_offline_refuses_a_web_address_as_the_input(
+    command: str, url: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    argv = [command, url, "--model", "m", "--out", "r.md", "--offline"]
+    if command == "revise":
+        argv += ["--until-clean", "structure"]
+    with pytest.raises(SystemExit) as exc:
+        _args(argv)
+    assert exc.value.code == 2
+    assert capsys.readouterr().err.strip() == (
+        f"error: --offline rules out fetching {url}; save it as a file first"
+    )
+
+
+def test_a_web_address_without_offline_is_accepted() -> None:
+    _args(["https://example.org/paper", "--model", "m", "--out", "r.md"])
+
+
 def test_check_novelty_with_offline_is_a_usage_error(
     capsys: pytest.CaptureFixture[str],
 ) -> None:

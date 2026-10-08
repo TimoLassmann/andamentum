@@ -125,9 +125,9 @@ def test_revise_defaults_are_the_library_defaults() -> None:
     parser = _subparser("revise")
     sig = inspect.signature(revise_document).parameters
     assert sig["document_type"].default == _default(parser, "document_type")
-    assert RevisionSpec.model_fields["max_rounds"].default == _default(
-        parser, "max_rounds"
-    )
+    # The round cap is a preset, not a flag: 4, named in the help.
+    assert RevisionSpec.model_fields["max_rounds"].default == 4
+    assert "4 rounds are done" in parser.description
 
 
 def test_checklist_defaults_are_the_library_defaults() -> None:
@@ -249,7 +249,7 @@ def test_review_offers_exactly_these_flags() -> None:
 
 def test_revise_offers_exactly_these_flags() -> None:
     assert _flags("revise") == _COMMON | {
-        "--until", "--until-clean", "--max-rounds", "--figure", "--figure-model",
+        "--until", "--until-clean", "--figure", "--figure-model",
         "--brief",
         "--references", "--no-references",
         "--offline",

@@ -302,3 +302,32 @@ def test_the_public_surface():
     for name in word.__all__:
         assert getattr(word, name) is not None
     assert EFFECT  # the synthetic helper text is shared with the harness tests
+
+
+@pytest.mark.parametrize("where", ["web", "scholarly", "both"])
+def test_draft_research_passes_each_place(tmp_path, monkeypatch, where):
+    from andamentum import word
+
+    seen: dict[str, object] = {}
+
+    async def fake_draft(task, **kwargs):
+        seen.update(kwargs)
+        raise RuntimeError("stop here")
+
+    monkeypatch.setattr(word, "draft_document", fake_draft)
+    argv = ["draft", "t", "-o", str(tmp_path / "d"), "--model", "m", "--research", where]
+    assert cli.main(argv) == 4
+    assert seen["research"] is True and seen["research_mode"] == where
+
+
+def test_draft_offline_refuses_a_web_source(tmp_path, monkeypatch, capsys):
+    from andamentum import word
+
+    async def never(task, **kwargs):
+        raise AssertionError("the draft must not start")
+
+    monkeypatch.setattr(word, "draft_document", never)
+    argv = ["draft", "t", "-o", str(tmp_path / "d"), "--model", "m", "--offline",
+            "--source", "https://example.org/saltlog.html"]
+    assert cli.main(argv) == 2
+    assert "--offline rules out fetching https://example.org/saltlog.html" in capsys.readouterr().err

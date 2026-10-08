@@ -14,11 +14,18 @@ from __future__ import annotations
 import types
 from contextlib import ExitStack
 from pathlib import Path
+from typing import get_args
 from unittest.mock import patch
 
 from docx import Document
 
-from andamentum.whetstone.revise import RevisionSpec, revise_document
+from andamentum.whetstone.revise import (
+    FIXED_CONDITION_TEXT,
+    FigureRef,
+    RevisionCheck,
+    RevisionSpec,
+    revise_document,
+)
 from andamentum.whetstone.reviewed_document import open_source
 from andamentum.whetstone.pipeline.consolidate import _Consolidation
 from andamentum.whetstone.pipeline.editor import EditorOutput, EditProposal
@@ -471,3 +478,15 @@ def test_a_judged_condition_needs_a_text() -> None:
         RevisionSpec(check="judged")
     with pytest.raises(ValidationError, match="needs `text`"):
         RevisionSpec(text="   ")
+
+
+def test_every_fixed_check_has_its_wording() -> None:
+    """Each check but ``judged`` has a fixed wording, and a spec built with
+    no text gets it — the figures check included."""
+    assert set(FIXED_CONDITION_TEXT) == set(get_args(RevisionCheck)) - {"judged"}
+    spec = RevisionSpec(
+        check="figures",
+        figures=(FigureRef(label="Figure 1", path=Path("fig1.png")),),
+        figure_model="m",
+    )
+    assert spec.text == FIXED_CONDITION_TEXT["figures"]

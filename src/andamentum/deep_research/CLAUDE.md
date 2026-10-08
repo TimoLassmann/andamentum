@@ -20,7 +20,7 @@ A research system is a closed loop: decide what is missing, search, choose what 
 
 ## The store
 
-One SQLite file (WAL) and a `blobs/` folder beside it; the caller always names the path. No default location, nothing under the home directory. A lab can keep one store for all projects; compose passes `<doc>.harness/research.db` (Word) or `<bundle>/research.db` (bundle), whetstone's `--novelty-store` a path of the caller's choosing. `in_memory()` leaves nothing behind.
+One SQLite file (WAL) and a `blobs/` folder beside it; the caller always names the path. No default location, nothing under the home directory. A lab can keep one store for all projects; compose passes `<doc>.harness/research.db` (Word) or `<bundle>/research.db` (bundle), whetstone's `NoveltyResearch(store=PATH)` (Python only) a path of the caller's choosing. `in_memory()` leaves nothing behind.
 
 - **Blobs** are named by sha256. Up to `INLINE_BLOB_LIMIT` (16 KiB) they sit in the `blobs_inline` table, above it in `blobs/<aa>/<sha>` (written to a temporary name, then renamed). Every `*_blob` column holds a digest.
 - **HTTP cache**: `cache_key(source, url, params)`, `cache_get` (None once the TTL has run out), `cache_put`. TTL constants: `TTL_SEARCH_S` 7 days, `TTL_METADATA_S` 30, `TTL_FULL_TEXT_S` 180. Hits and misses are counted on the store (`cache_hits`, `cache_misses`) for `RunStats`. A row tagged `no_redistribute` is usable inside the store but `iter_cache()` (the export path) leaves it out, and `Work.to_csl()` omits the abstract of such a work. `reference_cache()` returns the store as the `references.http.Cache` protocol, so Crossref lookups share the cache instead of keeping their own.

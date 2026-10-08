@@ -231,7 +231,7 @@ def test_draft_cli_refuses_research_flags_without_research(
         ["draft", "t", "--out", str(tmp_path / "d"), "--model", "m", "--browser"]
     )
     assert code == 2
-    assert "need --research" in capsys.readouterr().err
+    assert "only works with --research" in capsys.readouterr().err
 
 
 # ---------------------------------------------------------------------- refresh

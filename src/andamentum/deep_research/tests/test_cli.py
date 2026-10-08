@@ -287,6 +287,19 @@ def test_local_corpus_is_added_to_the_scholarly_sources(
     assert sources.local_corpus == corpus
 
 
+def test_local_corpus_with_web_mode_is_a_usage_error(
+    calls: list[dict[str, Any]], tmp_path: Path
+) -> None:
+    corpus = tmp_path / "corpus"
+    corpus.mkdir()
+    with pytest.raises(SystemExit) as stopped:
+        cli.main(
+            ["q", "--mode", "web", "--browser", "--model", "m", "--quiet"]
+            + ["--local-corpus", str(corpus)]
+        )
+    assert stopped.value.code == 2 and calls == []
+
+
 @pytest.mark.parametrize(
     "flag",
     [

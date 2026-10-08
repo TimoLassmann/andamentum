@@ -5,6 +5,7 @@
         [--depth {quick,standard,deep}] [--searxng-url URL | --browser]
         [--mailto EMAIL] [--local-corpus PATH] [--tdm-host HOST ...] [--quiet]
     andamentum-research mcp [--store PATH] [--model M] [--searxng-url URL | --browser]
+        [--mailto EMAIL]
     andamentum-research cache info --cache PATH
     andamentum-research cache prune --cache PATH [--max-bytes N]
 
@@ -341,6 +342,10 @@ def _ask(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
         parser.error("the question is empty")
     if args.mode in ("web", "both") and not (args.searxng_url or args.browser):
         parser.error(f"--mode {args.mode} needs --searxng-url or --browser")
+    if args.local_corpus is not None and args.mode == "web":
+        parser.error(
+            "--local-corpus is searched with the scholarly sources; use --mode scholarly or both"
+        )
     if args.out and Path(args.out).is_file():
         parser.error(f"--out must be a folder, but {args.out} is a file")
     if args.local_corpus is not None and not args.local_corpus.exists():

@@ -63,7 +63,7 @@ def build_parser() -> argparse.ArgumentParser:
             "citation style, then look each entry up in Crossref: does the "
             "work exist, and do its title, year and first author match? Only "
             "the text of the reference entries is sent to Crossref, never "
-            "the draft; --offline sends nothing."
+            "the draft; --offline makes no network call besides the model."
         ),
         epilog=_EPILOG,
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -101,7 +101,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--offline",
         action="store_true",
-        help="Make no network call besides the model: check citations against the list only, without the Crossref lookup.",
+        help=(
+            "Make no network call besides the model: the reference check "
+            "runs on the text alone, without the Crossref lookup."
+        ),
     )
     parser.add_argument(
         "--mailto",

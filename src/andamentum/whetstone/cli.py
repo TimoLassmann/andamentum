@@ -231,9 +231,6 @@ EXIT CODES
 
 _SUPPORTED_OUT_EXTENSIONS = {".md", ".html", ".docx"}
 
-# The revise loop's round cap. Named once: _next_steps quotes it too.
-_DEFAULT_MAX_ROUNDS = 4
-
 _UNTIL_CLEAN_CHOICES: tuple[str, ...] = ("structure", "citations", "figures")
 
 _COMMANDS: tuple[str, ...] = (
@@ -456,9 +453,8 @@ def _add_references_flags(
         "--offline",
         action="store_true",
         help="Make no network call besides the model: the reference check "
-        "runs on the text alone, without looking the entries up in Crossref "
-        "(the lookup sends the text of the reference entries, never the "
-        "draft).",
+        "runs on the text alone, without the Crossref lookup. A web address "
+        "as the input is refused; save the page as a file first.",
     )
 
 
@@ -540,7 +536,7 @@ def build_parser() -> argparse.ArgumentParser:
         "revise",
         "Revise a draft until a condition holds: review, edit and review "
         "again, until the condition holds twice running, a round changes "
-        "nothing, or --max-rounds is reached. The editor runs every round.",
+        "nothing, or 4 rounds are done. The editor runs every round.",
         epilog=_REVISE_EPILOG,
     )
     revise.set_defaults(mode="revise")
@@ -568,14 +564,6 @@ def build_parser() -> argparse.ArgumentParser:
         "problems go to the editor each round. Never whether a citation "
         "says what the sentence claims. 'figures': each --figure image "
         "matches its caption and the sentences that mention it.",
-    )
-    stop.add_argument(
-        "--max-rounds",
-        type=int,
-        default=_DEFAULT_MAX_ROUNDS,
-        metavar="N",
-        help=f"Hard cap on review-edit-review rounds. Default: "
-        f"{_DEFAULT_MAX_ROUNDS}. Each round is a full review.",
     )
     stop.add_argument(
         "--figure",
@@ -772,8 +760,9 @@ def _validate_args(args: argparse.Namespace) -> None:
                 "property checklist exists for. Run it once per reviewer, or "
                 "use review mode, which stacks them.",
             )
-    if args.mode == "review":
+    if args.mode in ("review", "revise"):
         _validate_offline_args(args)
+    if args.mode == "review":
         _reject_a_review_that_would_review_nothing(args)
     if args.mode == "revise":
         _validate_revise_args(args)
@@ -804,8 +793,21 @@ def _validate_decision_args(args: argparse.Namespace) -> None:
 
 
 def _validate_offline_args(args: argparse.Namespace) -> None:
-    """Refuse --check-novelty with --offline: the check is a literature search."""
-    if args.offline and args.check_novelty:
+    """Refuse what --offline rules out: fetching a web address as the input,
+    and --check-novelty, which is a literature search.
+
+    ``--offline`` means no network call besides the model, so a URL input is
+    refused rather than fetched. A ``file://`` address reads a local file and
+    is allowed.
+    """
+    if not args.offline:
+        return
+    if args.input.startswith(("http://", "https://")):
+        _die(
+            _EXIT_USAGE,
+            f"--offline rules out fetching {args.input}; save it as a file first",
+        )
+    if getattr(args, "check_novelty", False):
         _die(
             _EXIT_USAGE,
             "--check-novelty searches the scholarly sources, which --offline "
@@ -861,8 +863,12 @@ def _validate_revise_args(args: argparse.Namespace) -> None:
             "reviewers' findings every round is not what this loop does. "
             "Drop --reviewer to use the default, or name one reviewer.",
         )
-    if args.max_rounds < 1:
-        _die(_EXIT_USAGE, "--max-rounds must be at least 1.")
+    if args.until_clean == "citations" and not args.references:
+        _die(
+            _EXIT_USAGE,
+            "--until-clean citations runs the reference check every round; "
+            "drop --no-references",
+        )
     if args.until is not None and not args.until.strip():
         _die(_EXIT_USAGE, "--until needs a condition, for example --until 'the flow is correct'.")
     if args.until_clean == "figures":
@@ -1236,8 +1242,10 @@ def _next_steps(args: argparse.Namespace, result: Any) -> list[str]:
     Two cases, each only when it applies: major or moderate findings from the
     review, and citation problems an edit can fix (a Crossref "not found" is
     not one). The command repeats the choices that decide what the loop
-    reviews — reviewer, brief, document type — and writes to a new file, so
-    running it does not overwrite this run's output.
+    reviews — reviewer, brief, document type, decision model — and the
+    choices that decide what it may do — --confirm-own-draft, --offline,
+    --no-references — and writes to a new file, so running it does not
+    overwrite this run's output.
     """
     from andamentum.references import LOOKUP_KINDS
 
@@ -1271,6 +1279,14 @@ def _next_steps(args: argparse.Namespace, result: Any) -> list[str]:
         parts += ["--brief", shlex.quote(args.brief)]
     if args.document_type != "auto":
         parts += ["--document-type", args.document_type]
+    if getattr(args, "decision_model", None):
+        parts += ["--decision-model", shlex.quote(args.decision_model)]
+    if args.confirm_own_draft:
+        parts.append("--confirm-own-draft")
+    if args.offline:
+        parts.append("--offline")
+    if not args.references:
+        parts.append("--no-references")
     first = _outputs(args)[0]
     revised_out = shlex.quote(
         str(first.with_name(f"{first.stem}.revised{first.suffix}"))
@@ -1294,9 +1310,12 @@ def _next_steps(args: argparse.Namespace, result: Any) -> list[str]:
             f"again until the citations and the list agree, run:\n\n"
             f"`{base} --until-clean citations -o {revised_out}`"
         )
+    from .revise import RevisionSpec
+
+    max_rounds = RevisionSpec.model_fields["max_rounds"].default
     steps.append(
         f"*Each round of the loop is a full review, so it costs up to "
-        f"{_DEFAULT_MAX_ROUNDS} times this run (--max-rounds changes the cap).*"
+        f"{max_rounds} times this run.*"
     )
     return steps
 
@@ -1559,7 +1578,6 @@ async def _review_and_write(
                 spec=RevisionSpec(
                     text=args.until or "",
                     check=check,
-                    max_rounds=args.max_rounds,
                     figures=tuple(
                         FigureRef(label=label, path=path)
                         for label, path in getattr(args, "figures", [])
@@ -1826,7 +1844,11 @@ def _log_run_config(console: Console, args: argparse.Namespace) -> None:
                 if args.until is not None
                 else f"{args.until_clean} is clean",
             )
-            table.add_row("round cap:", str(args.max_rounds))
+            from .revise import RevisionSpec
+
+            table.add_row(
+                "round cap:", str(RevisionSpec.model_fields["max_rounds"].default)
+            )
         else:
             table.add_row("pipeline:", "review (criterion cascade + gap loop)")
         if args.brief:

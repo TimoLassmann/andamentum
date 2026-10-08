@@ -61,6 +61,8 @@ Removed flags exit 2; there are no aliases.
   `--window-chars`, `--expand-per-round`, `--results-per-query`,
   `--max-llm-calls`, `--max-wall-s`, `--max-fetch-bytes`, `--concurrency`,
   `--openalex-search`, `--sources`) with `--depth {quick,standard,deep}`.
+  `--local-corpus` with `--mode web` is a usage error (the corpus is searched
+  with the scholarly sources).
   `standard`, the default, is the old default budget exactly; `quick` and
   `deep` are starting points, not measured. Python: `Budget.for_depth(depth)`
   and the `Depth` type. The scholarly sources are always OpenAlex, Europe PMC
@@ -68,8 +70,8 @@ Removed flags exit 2; there are no aliases.
   is reachable only from Python (`SourceConfig`).
 - **whetstone:** the goal loop is the command `revise`:
   `andamentum-whetstone revise DRAFT (--until "TEXT" | --until-clean
-  {structure,citations,figures}) --model M -o OUT` (`--max-rounds N`, default
-  4; `--figure LABEL=FILE` and `--figure-model` with `--until-clean figures`;
+  {structure,citations,figures}) --model M -o OUT` (at most 4 rounds,
+  `RevisionSpec(max_rounds=)` in Python; `--figure LABEL=FILE` and `--figure-model` with `--until-clean figures`;
   exit 1 when the condition was not met, output still written). `review`
   loses `--goal`, `--goal-check`, `--goal-figure`, `--figure-model`,
   `--max-rounds`, `--editor-criteria`, `--rounds`, `--novelty-search-depth`
@@ -79,8 +81,15 @@ Removed flags exit 2; there are no aliases.
   → `revise_document(doc, *, spec=RevisionSpec(...), model=)` /
   `RevisionSpec` / `RevisionResult` (`condition_met`); `whetstone/goal/` →
   `whetstone/revise/`. The watermark and author flags stay.
+  `revise --until-clean citations` refuses `--no-references` (exit 2). The
+  suggested next-step `revise` command repeats `--decision-model`,
+  `--confirm-own-draft`, `--offline` and `--no-references`.
 - **references:** `--no-lookup` → `--offline`, the same word as whetstone and
   word.
+- **`--offline` means "make no network call besides the model"** in every
+  tool, with one help sentence. whetstone `review` / `revise` refuse a web
+  address as the input with it, and `andamentum-word draft` refuses a web
+  address as `--source` (exit 2: save the page as a file first).
 - **compose and word:** `andamentum-compose write`, `continue`, `check`,
   `eval` and `andamentum-word draft` take one required `--model`; the role
   flags `--drafter`, `--critic`, `--judge`, `--reader` are gone (Python keeps

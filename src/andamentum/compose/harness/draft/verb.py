@@ -159,7 +159,7 @@ def _refuse_idle_flags(params: DraftParams) -> None:
             if on
         ]
         if idle:
-            raise DraftUsageError(f"{', '.join(idle)} need --research")
+            raise DraftUsageError(f"{', '.join(idle)} only works with --research")
     if params.research and params.offline:
         raise DraftUsageError("--research searches the network; drop --offline")
 

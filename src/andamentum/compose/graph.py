@@ -224,8 +224,9 @@ class Research(BaseNode[ComposeState, ComposeDeps, ComposeResult]):
         else:
             if deps.research is None:
                 raise ResearchSetupError(
-                    "this bundle was started with --research and the research did "
-                    "not finish; give the research settings again to continue"
+                    "this folder was started with research and the research did "
+                    "not finish; give the research settings again (research= in "
+                    "Python; on the command line, --searxng-url or --browser)"
                 )
             result = await run_research(
                 deps.task,

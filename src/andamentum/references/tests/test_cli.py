@@ -151,3 +151,27 @@ def test_an_unavailable_decision_model_stops_the_run_before_reading(
 def test_a_model_flag_has_no_default() -> None:
     args = build_parser().parse_args(["draft.md"])
     assert args.model is None and args.decision_model is None
+
+
+def test_offline_turns_the_lookup_off(tmp_path: Path, monkeypatch, capsys) -> None:
+    """--offline reaches check_references as lookup=False, and without it the
+    lookup is on. The spy never really looks anything up."""
+    import andamentum.references as refs
+
+    real = refs.check_references
+    seen: dict = {}
+
+    async def spy(text, **kwargs):
+        seen.update(kwargs)
+        return await real(text, **{**kwargs, "lookup": False})
+
+    monkeypatch.setattr(refs, "check_references", spy)
+    draft = tmp_path / "draft.md"
+    draft.write_text(DRAFT)
+    main([str(draft), "--offline"])
+    capsys.readouterr()
+    assert seen["lookup"] is False
+    seen.clear()
+    main([str(draft)])
+    capsys.readouterr()
+    assert seen["lookup"] is True

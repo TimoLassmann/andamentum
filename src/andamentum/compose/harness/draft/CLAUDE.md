@@ -32,7 +32,7 @@ The draft is written as **tracked insertions**, also in a new document (Accept A
 2. `Bind` (kind `number`) for bound numbers and `CommentOp` for `[TO FILL: ...]` ranges, interpretation sentences and document-level questions.
 3. `InsertCitation` per cite position plus `UpdateBibliography` in the **same** transaction (the writer lists the works of the transaction).
 
-A citation is inserted verbatim by the writer, so the paragraph is written with a space opened at each cite position (`PlacedParagraph.gaps`; `start` / `end` map drafted offsets, a range that ends where a space was opened leaves it outside). If a citation is refused the space stays; the refusal is in `DraftResult.refused` and the exit code is 4. A refused citation adds nothing to the bibliography: the writer plans again without it.
+A citation is inserted verbatim by the writer, so the paragraph is written with a space opened at each cite position (`PlacedParagraph.gaps`; `start` / `end` map drafted offsets, a range that ends where a space was opened leaves it outside). If a citation is refused the space stays; the refusal is in `DraftResult.refused` and the exit code is 1. A refused citation adds nothing to the bibliography: the writer plans again without it.
 
 A round is a pure function of the drafted bodies and the base document, so the repair loop **rebuilds from the base** instead of editing its own output. `carry_ids` maps paragraphs of the second file to the third (which only grew), by order and character-subsequence containment, to keep section ownership across the bibliography insertion.
 
@@ -52,7 +52,7 @@ The harness inserts a citation only from a `[[fN]]` marker on a verified work. C
 
 After every build the harness `check` runs on the file (all checks whose needs are met: tier-0 always, network ones unless `offline`, `numbers` with `results`, using the judge model). Errors located in drafted paragraphs go to `revise_section` as work items per section (whole-section rewrite, one call per section per round); unchanged text or `max_rounds` stops the loop (`max_rounds=0` checks only). Warnings are never repaired. What remains: errors and warnings in drafted paragraphs become comments signed "andamentum compose" (`[error] check: message`); in a new document every diagnostic counts, in `--into` only those located in drafted paragraphs (errors in the author's own text are in the report counts, not in the exit code).
 
-**Exit code:** `DraftResult.exit_code` is 0 when nothing is left for the authors and 4 otherwise: a check error left in the drafted text, a refused operation, or an author question (`[TO FILL]`, an interpretation claim, an unverified work). The report lists each; the questions are also comments. Usage errors raise `DraftUsageError` (the CLI maps it to 2).
+**Exit code:** `DraftResult.exit_code` is 0 when nothing is left for the authors and 1 otherwise: a check error left in the drafted text, a refused operation, or an author question (`[TO FILL]`, an interpretation claim, an unverified work). The report lists each; the questions are also comments. Usage errors raise `DraftUsageError` (the CLI maps it to 2).
 
 ## Literature
 

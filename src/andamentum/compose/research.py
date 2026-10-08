@@ -86,8 +86,8 @@ async def run_research(
     if mode != "scholarly" and not (setup.sources.searxng_url or setup.sources.browser):
         raise ResearchSetupError(
             f"research mode {mode!r} (genre {genre.name!r}) searches the web and "
-            "needs a SearxNG address or the isolated browser (browser); pass "
-            "one, or choose the scholarly mode"
+            "needs a SearxNG address (--searxng-url) or the isolated browser "
+            "(--browser); pass one"
         )
     progress(f"Research: {mode} search")
     return await research(

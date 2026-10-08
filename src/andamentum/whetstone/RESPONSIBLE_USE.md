@@ -58,7 +58,8 @@ be inappropriate if the draft contains:
 - Material subject to your institution's classified-data policy.
 
 For these cases, **use a local Ollama model end-to-end, and pass
-`--offline`** (no network call besides the model):
+`--offline`** (no network call besides the model; a web address as
+the input is refused, so save the page as a file first):
 
 ```bash
 andamentum-whetstone draft.md \
