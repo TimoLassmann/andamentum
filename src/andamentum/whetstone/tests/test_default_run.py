@@ -2,7 +2,7 @@
 
 The review is stubbed; the reference check runs for real on a small Word file
 whose citation [2] has no entry. Crossref is refused by ``conftest.py``, so
-the lookup here is either stubbed or turned off.
+the lookup here is either stubbed or turned off with --offline.
 """
 
 from __future__ import annotations
@@ -75,7 +75,7 @@ def _found_everything(monkeypatch: pytest.MonkeyPatch) -> list[int]:
 
 def test_the_editor_the_reference_check_and_the_lookup_are_on_by_default() -> None:
     args = _args(["draft.md", "--model", "stub:none", "--out", "review.md"])
-    assert (args.editor, args.references, args.lookup) == (True, True, True)
+    assert (args.editor, args.references, args.offline) == (True, True, False)
 
 
 async def test_reference_problems_reach_the_editor_and_the_report(
@@ -106,11 +106,12 @@ async def test_reference_problems_reach_the_editor_and_the_report(
     report = out.read_text()
     assert "## Reference check" in report
     assert "Crossref lookup:** 2 found as written" in report
-    # The next step names the goal loop, with a command that writes elsewhere.
+    # The next step names the revise command, writing elsewhere.
     assert "## Next step" in report
-    assert "--goal-check citations" in report
-    assert f"-o {tmp_path / 'review.goal.md'}" in report
-    assert "--goal-check structure" not in report  # no review finding was raised
+    assert f"andamentum-whetstone revise {source}" in report
+    assert "--until-clean citations" in report
+    assert f"-o {tmp_path / 'review.revised.md'}" in report
+    assert "--until-clean structure" not in report  # no review finding was raised
 
 
 async def test_a_major_review_finding_suggests_the_structure_loop(
@@ -143,11 +144,11 @@ async def test_a_major_review_finding_suggests_the_structure_loop(
     )
     report = out.read_text()
     assert "This review raised 1 major or moderate finding." in report
-    assert "--reviewer claims" in report and "--goal-check structure" in report
+    assert "--reviewer claims" in report and "--until-clean structure" in report
     assert "## Reference check" not in report
 
 
-async def test_no_references_and_no_lookup_turn_the_parts_off(
+async def test_no_references_and_offline_turn_the_parts_off(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     source = _draft(tmp_path / "draft.docx")
@@ -162,10 +163,10 @@ async def test_no_references_and_no_lookup_turn_the_parts_off(
     assert seen["extra_findings"] is None
     assert "Reference check" not in out.read_text()
 
-    # --no-lookup: still checked, offline (the conftest refuses any lookup).
+    # --offline: still checked, without the lookup (the conftest refuses any).
     out = tmp_path / "offline.md"
     await cli_mod._run(
-        _args([str(source), "--model", "stub:none", "--no-lookup", "--out", str(out)]),
+        _args([str(source), "--model", "stub:none", "--offline", "--out", str(out)]),
         Console(stderr=True),
     )
     assert "Crossref lookup:** off" in out.read_text()
@@ -188,10 +189,59 @@ async def test_the_confidentiality_check_runs_before_any_reference_leaves(
     assert lookups == []
 
 
-def test_the_goal_loop_refuses_no_editor(capsys: pytest.CaptureFixture[str]) -> None:
-    with pytest.raises(SystemExit):
-        _args(["d.md", "--model", "m", "--out", "r.md", "--goal", "x", "--no-editor"])
-    assert "--no-editor cannot be combined with --goal" in capsys.readouterr().err
+def test_check_novelty_with_offline_is_a_usage_error(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit) as exc:
+        _args(["d.md", "--model", "m", "--out", "r.md", "--offline", "--check-novelty"])
+    assert exc.value.code == 2
+    assert "--check-novelty searches the scholarly sources" in capsys.readouterr().err
+
+
+async def test_a_brief_reaches_the_review_as_guidelines(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """--brief is the guidelines path: its text (or the file's, with @) goes
+    to the review as ``guidelines_text``, and no inline criteria are passed."""
+    source = _draft(tmp_path / "draft.docx")
+    brief = tmp_path / "brief.md"
+    brief.write_text("Ask whether the sample is large enough.")
+    for value, expected in (
+        ("Is the abstract honest?", "Is the abstract honest?"),
+        (f"@{brief}", "Ask whether the sample is large enough."),
+    ):
+        seen = _stub_review(monkeypatch)
+        await cli_mod._run(
+            _args(
+                [
+                    str(source), "--model", "stub:none", "--no-references",
+                    "--brief", value, "--out", str(tmp_path / "r.md"),
+                ]
+            ),
+            Console(stderr=True),
+        )
+        assert seen["guidelines_text"] == expected
+        # The reviewer sets the editor criteria; the command line passes none.
+        assert "criteria" not in seen and "editor_criteria" not in seen
+
+
+async def test_an_unreadable_brief_file_exits_three(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = _draft(tmp_path / "draft.docx")
+    _stub_review(monkeypatch)
+    with pytest.raises(SystemExit) as exc:
+        await cli_mod._run(
+            _args(
+                [
+                    str(source), "--model", "stub:none",
+                    "--brief", f"@{tmp_path / 'missing.md'}",
+                    "--out", str(tmp_path / "r.md"),
+                ]
+            ),
+            Console(stderr=True),
+        )
+    assert exc.value.code == 3
 
 
 def test_checklist_refuses_the_review_switches(
@@ -206,7 +256,7 @@ def test_checklist_refuses_the_review_switches(
                 "m",
                 "--out",
                 "r.md",
-                "--no-lookup",
+                "--offline",
             ]
         )
-    assert "unrecognized arguments: --no-lookup" in capsys.readouterr().err
+    assert "unrecognized arguments: --offline" in capsys.readouterr().err

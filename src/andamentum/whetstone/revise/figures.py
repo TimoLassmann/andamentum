@@ -1,4 +1,4 @@
-"""Figure-vs-text goal check. The one genuinely new, narrowly-scoped piece.
+"""Figure-vs-text check. The one genuinely new, narrowly-scoped piece.
 
 Whetstone has no image-extraction path from a ``.docx`` and no notion of a
 figure at all — building a general figure-locator is out of scope here.
@@ -39,7 +39,7 @@ class FigureCheckResult(BaseModel):
     error: str = ""
 
 
-class FigureTextGoalReport(BaseModel):
+class FigureTextReport(BaseModel):
     checks: list[FigureCheckResult] = Field(default_factory=list)
 
     @property
@@ -105,13 +105,13 @@ def unmentioned_figures(text: str, figures: tuple[FigureRef, ...]) -> list[str]:
 
 async def check_figure_text_match(
     text: str, figures: tuple[FigureRef, ...], *, model: str
-) -> FigureTextGoalReport:
+) -> FigureTextReport:
     """Check each of *figures* against the caption/text that names it.
 
     A figure never mentioned in *text*, or whose vision call crashes, is
     recorded with ``matched=None`` and an ``error`` — never silently
     dropped, and never counted as a pass (see
-    :attr:`FigureTextGoalReport.satisfied`).
+    :attr:`FigureTextReport.satisfied`).
     """
     from andamentum.vision_critique import critique_figure
 
@@ -147,4 +147,4 @@ async def check_figure_text_match(
             )
             continue
         checks.append(FigureCheckResult(label=figure.label, matched=matched))
-    return FigureTextGoalReport(checks=checks)
+    return FigureTextReport(checks=checks)

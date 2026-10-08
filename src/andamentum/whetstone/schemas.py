@@ -529,7 +529,7 @@ class ReviewResult(BaseModel):
     # check ran, and what it found to be fine.
     reference_summary: str = ""
     # What to run next, as markdown lines, when a follow-up would help — the
-    # goal loop with the exact command, when problems remain. Filled by the
+    # `revise` command, written out in full, when problems remain. Filled by the
     # caller that knows the command line; empty from the library.
     next_steps: list[str] = Field(default_factory=list)
     author_questions: list[AuthorQuestion] = Field(default_factory=list)

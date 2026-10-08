@@ -2,10 +2,10 @@
 
 Check the citations and the reference list of a draft, in any citation style:
 does every citation point to an entry, is every entry cited, and (unless
-``--no-lookup``) does each entry exist in Crossref with the details written.
+``--offline``) does each entry exist in Crossref with the details written.
 
     andamentum-references DRAFT [--model M] [--decision-model M]
-        [--no-lookup] [--mailto EMAIL] [--json] [-o FILE]
+        [--offline] [--mailto EMAIL] [--json] [-o FILE]
 
 DRAFT is a markdown or plain-text file, or ``-`` for text on stdin. A Word,
 PDF or HTML file is converted to markdown first with ``andamentum.harvest``.
@@ -63,7 +63,7 @@ def build_parser() -> argparse.ArgumentParser:
             "citation style, then look each entry up in Crossref: does the "
             "work exist, and do its title, year and first author match? Only "
             "the text of the reference entries is sent to Crossref, never "
-            "the draft; --no-lookup keeps everything offline."
+            "the draft; --offline sends nothing."
         ),
         epilog=_EPILOG,
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -99,9 +99,9 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
-        "--no-lookup",
+        "--offline",
         action="store_true",
-        help="Check citations against the list only; send nothing to Crossref.",
+        help="Make no network call besides the model: check citations against the list only, without the Crossref lookup.",
     )
     parser.add_argument(
         "--mailto",
@@ -250,7 +250,7 @@ async def _run(args: argparse.Namespace) -> int:
             report = await check_references(
                 text,
                 model=args.model,
-                lookup=not args.no_lookup,
+                lookup=not args.offline,
                 mailto=args.mailto,
                 decision_model=handle,
             )
@@ -263,7 +263,7 @@ async def _run(args: argparse.Namespace) -> int:
     output = (
         _as_json(report, text)
         if args.json
-        else _human(report, text, lookup=not args.no_lookup)
+        else _human(report, text, lookup=not args.offline)
     )
     if args.out is None:
         sys.stdout.write(output + "\n")

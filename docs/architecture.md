@@ -127,8 +127,7 @@ machine-checkable via grep and are enforced by code review.
   `deep_research` for HTML/PDF output.
 - **`whetstone`** depends on `core`, `typeset`, `chunker`, `harvest`,
   `references` (its only citation reader — the review's citation
-  summary, the default reference check and the goal loop's `citations`
-  check), and (opt-in only) `deep_research`. MUST NOT depend on
+  summary, the default reference check and `revise --until-clean citations`), and (opt-in only) `deep_research`. MUST NOT depend on
   `document_store`.
 - **`references`** depends on `pydantic`, `httpx`, `rapidfuzz` and —
   for its two model calls only — `core`. It imports no other
@@ -162,7 +161,7 @@ src/andamentum/
 ├── typeset/          — typesetting system (HTML + PDF output)
 ├── compose/          — a task in, a finished document out (brief → evidence → draft → checks → revise); `compose/bundle/` is the model-free folder-bundle layer → .docx / .md / .html / .txt
 ├── figures/          — publication-quality figure rendering
-├── whetstone/        — document review over user drafts (criterion cascade, panel, checklist, goal loop)
+├── whetstone/        — document review over user drafts (criterion cascade, panel, checklist, revise)
 ├── references/       — reference checking in any citation style, with a Crossref lookup
 ├── proofread/        — deterministic readability + style checking
 └── vision_critique/  — bounded LLM critique of rendered figures

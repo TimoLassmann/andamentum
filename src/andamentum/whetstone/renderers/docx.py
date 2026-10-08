@@ -546,7 +546,7 @@ def _collect_own_edits(result: ReviewResult) -> str:
 def _collect_author_questions(result: ReviewResult) -> str:
     """Questions only the author can answer, as report markdown, or ``""``.
 
-    The .docx used to drop them — so a goal-loop run that stopped with a
+    The .docx used to drop them — so a revise run that stopped with a
     question for the author said so only in the markdown and HTML outputs.
     """
     if not result.author_questions:

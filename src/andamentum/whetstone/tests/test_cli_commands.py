@@ -44,6 +44,7 @@ def test_the_commands_are_exactly_the_documented_ones() -> None:
     (action,) = [a for a in parser._actions if isinstance(a, argparse._SubParsersAction)]
     assert set(action.choices) == set(cli_mod._COMMANDS) == {
         "review",
+        "revise",
         "panel",
         "checklist",
         "reviewers",
@@ -95,12 +96,11 @@ def test_each_command_has_only_its_own_flags() -> None:
         return {o for a in _subparser(name)._actions for o in a.option_strings}
 
     assert "--n-experts" in flags("panel") and "--n-experts" not in flags("review")
-    assert "--goal" in flags("review")
-    assert not {"--goal", "--editor", "--lookup", "--reviewer"} & flags("panel")
-    assert not {"--goal", "--editor", "--lookup"} & flags("checklist")
+    assert not {"--until", "--editor", "--offline", "--reviewer"} & flags("panel")
+    assert not {"--until", "--editor", "--offline"} & flags("checklist")
     assert "--reviewer" in flags("checklist")
     assert "--patches" in flags("apply-patches")
-    assert not {"--model", "--reviewer", "--goal"} & flags("apply-patches")
+    assert not {"--model", "--reviewer", "--until"} & flags("apply-patches")
     assert flags("reviewers") >= {"--document-type"}
     # One way to do each thing: no hidden mode flag, no flag twin of a command.
     for name in cli_mod._COMMANDS:
@@ -115,12 +115,19 @@ def test_review_defaults_are_the_library_defaults() -> None:
     for function in (review_document, run_review):
         sig = inspect.signature(function).parameters
         assert sig["editor"].default is _default(parser, "editor") is True
-        assert sig["cap"].default == _default(parser, "rounds")
         assert sig["document_type"].default == _default(parser, "document_type")
         assert sig["check_novelty"].default == _default(parser, "check_novelty")
-        assert sig["novelty_search_depth"].default == _default(
-            parser, "novelty_search_depth"
-        )
+
+
+def test_revise_defaults_are_the_library_defaults() -> None:
+    from andamentum.whetstone import RevisionSpec, revise_document
+
+    parser = _subparser("revise")
+    sig = inspect.signature(revise_document).parameters
+    assert sig["document_type"].default == _default(parser, "document_type")
+    assert RevisionSpec.model_fields["max_rounds"].default == _default(
+        parser, "max_rounds"
+    )
 
 
 def test_checklist_defaults_are_the_library_defaults() -> None:
@@ -202,5 +209,71 @@ def test_review_help_is_grouped(capsys):
 
     assert cli.main(["review", "--help"]) == 0
     out = capsys.readouterr().out
-    for title in ("input and output:", "model:", "what to check:", "editing:", "goal loop:", "advanced:"):
+    for title in ("input and output:", "model:", "what to check:", "editing:"):
         assert out.count("\n" + title + "\n") == 1, title
+    assert "when to stop:" not in out
+
+
+def test_revise_help_is_grouped(capsys):
+    from andamentum.whetstone import cli
+
+    assert cli.main(["revise", "--help"]) == 0
+    out = capsys.readouterr().out
+    for title in ("input and output:", "model:", "when to stop:", "what to check:", "editing:"):
+        assert out.count("\n" + title + "\n") == 1, title
+
+
+# ── the flags each command offers: presets, few flags ──────────────────────
+
+_COMMON = {
+    "-h", "--help", "-o", "--out", "--model", "-v", "--verbose",
+    "--visible-watermark", "--no-visible-watermark",
+    "--patch-author", "--allow-author-override",
+    "--document-type", "--decision-model", "--reviewer", "--confirm-own-draft",
+}
+
+
+def _flags(name: str) -> set[str]:
+    return {o for a in _subparser(name)._actions for o in a.option_strings}
+
+
+def test_review_offers_exactly_these_flags() -> None:
+    assert _flags("review") == _COMMON | {
+        "--brief",
+        "--editor", "--no-editor",
+        "--references", "--no-references",
+        "--offline",
+        "--check-novelty",
+    }
+
+
+def test_revise_offers_exactly_these_flags() -> None:
+    assert _flags("revise") == _COMMON | {
+        "--until", "--until-clean", "--max-rounds", "--figure", "--figure-model",
+        "--brief",
+        "--references", "--no-references",
+        "--offline",
+    }
+
+
+@pytest.mark.parametrize(
+    "flag",
+    [
+        ["--criteria", "x"],
+        ["--guidelines", "x"],
+        ["--editor-criteria", "x"],
+        ["--rounds", "2"],
+        ["--novelty-search-depth", "2"],
+        ["--novelty-store", "n.db"],
+        ["--lookup"],
+        ["--no-lookup"],
+        ["--goal", "x"],
+        ["--goal-check", "structure"],
+        ["--goal-figure", "Figure 1=f.png"],
+    ],
+)
+def test_the_removed_review_flags_are_usage_errors(
+    flag: list[str], capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert cli_mod.main(["review", "d.md", "--model", "m", "-o", "r.md", *flag]) == 2
+    assert "unrecognized arguments" in capsys.readouterr().err

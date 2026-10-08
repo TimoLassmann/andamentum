@@ -1,4 +1,4 @@
-"""End-to-end tests for the goal-driven loop, in the style of
+"""End-to-end tests for the revision loop (``revise_document``), in the style of
 ``test_sequential_rounds.py``: a real ``.docx`` on disk, every LLM call
 stubbed, and the round trip exercised for real.
 
@@ -18,7 +18,7 @@ from unittest.mock import patch
 
 from docx import Document
 
-from andamentum.whetstone.goal import GoalSpec, run_goal_loop
+from andamentum.whetstone.revise import RevisionSpec, revise_document
 from andamentum.whetstone.reviewed_document import open_source
 from andamentum.whetstone.pipeline.consolidate import _Consolidation
 from andamentum.whetstone.pipeline.editor import EditorOutput, EditProposal
@@ -143,7 +143,7 @@ async def _open(tmp_path: Path):
     return await open_source(str(source))
 
 
-async def test_goal_met_on_two_consecutive_satisfied_rounds(tmp_path: Path) -> None:
+async def test_condition_met_on_two_consecutive_satisfied_rounds(tmp_path: Path) -> None:
     """Round 1 fails, rounds 2 and 3 pass — the loop stops after 3 rounds
     and does NOT apply round 3's own edit."""
     document = await _open(tmp_path)
@@ -156,15 +156,15 @@ async def test_goal_met_on_two_consecutive_satisfied_rounds(tmp_path: Path) -> N
         {"findings": [], "edit": ("earns its salt", "earns its worth")},
     ]
     with _stub_agents(rounds=rounds):
-        result = await run_goal_loop(
+        result = await revise_document(
             document,
-            GoalSpec(text="the flow is correct", check="structure", max_rounds=5),
+            spec=RevisionSpec(text="the flow is correct", check="structure", max_rounds=5),
             model="stub",
             document_type="academic",
         )
 
-    assert result.goal_met is True
-    assert result.stopped_reason == "goal_met"
+    assert result.condition_met is True
+    assert result.stopped_reason == "condition_met"
     assert len(result.rounds) == 3
     # Round 2's edit landed; round 3's own edit — the satisfying one — did not.
     assert "earns its salt" in result.final_document.text
@@ -176,14 +176,14 @@ async def test_no_progress_when_the_editor_proposes_nothing(tmp_path: Path) -> N
     document = await _open(tmp_path)
     rounds = [{"findings": [("major", "too vague")], "edit": None}]
     with _stub_agents(rounds=rounds):
-        result = await run_goal_loop(
+        result = await revise_document(
             document,
-            GoalSpec(text="the flow is correct", check="structure"),
+            spec=RevisionSpec(text="the flow is correct", check="structure"),
             model="stub",
             document_type="academic",
         )
 
-    assert result.goal_met is False
+    assert result.condition_met is False
     assert result.stopped_reason == "no_progress"
     assert len(result.rounds) == 1
     assert "nothing left to change" in result.reason
@@ -197,34 +197,34 @@ async def test_no_progress_on_two_back_oscillation(tmp_path: Path) -> None:
         {"findings": [("major", "x")], "edit": ("earns its keep", "earns its place")},
     ]
     with _stub_agents(rounds=rounds):
-        result = await run_goal_loop(
+        result = await revise_document(
             document,
-            GoalSpec(text="the flow is correct", check="structure", max_rounds=5),
+            spec=RevisionSpec(text="the flow is correct", check="structure", max_rounds=5),
             model="stub",
             document_type="academic",
         )
 
-    assert result.goal_met is False
+    assert result.condition_met is False
     assert result.stopped_reason == "no_progress"
     assert "alternating" in result.reason
     assert len(result.rounds) == 2
 
 
-async def test_cap_reached_with_the_goal_still_unmet(tmp_path: Path) -> None:
+async def test_cap_reached_with_the_condition_still_unmet(tmp_path: Path) -> None:
     document = await _open(tmp_path)
     rounds = [
         {"findings": [("major", "x")], "edit": ("earns its place", "earns its keep")},
         {"findings": [("major", "x")], "edit": ("earns its keep", "earns its salt")},
     ]
     with _stub_agents(rounds=rounds):
-        result = await run_goal_loop(
+        result = await revise_document(
             document,
-            GoalSpec(text="the flow is correct", check="structure", max_rounds=2),
+            spec=RevisionSpec(text="the flow is correct", check="structure", max_rounds=2),
             model="stub",
             document_type="academic",
         )
 
-    assert result.goal_met is False
+    assert result.condition_met is False
     assert result.stopped_reason == "cap_reached"
     assert len(result.rounds) == 2
     assert "earns its salt" in result.final_document.text
@@ -235,14 +235,14 @@ async def test_citations_check_with_no_reference_section_is_unresolvable(
 ) -> None:
     """No stubbing needed: the check must never reach a review call."""
     document = await _open(tmp_path)
-    result = await run_goal_loop(
+    result = await revise_document(
         document,
-        GoalSpec(text="every reference is consistent", check="citations"),
+        spec=RevisionSpec(text="every reference is consistent", check="citations"),
         model="stub",
         document_type="academic",
     )
 
-    assert result.goal_met is False
+    assert result.condition_met is False
     assert result.stopped_reason == "unresolvable"
     assert result.rounds == []
     assert result.reason.startswith("No reference list")
@@ -252,9 +252,9 @@ async def test_a_non_met_stop_always_carries_an_author_question(tmp_path: Path) 
     document = await _open(tmp_path)
     rounds = [{"findings": [("major", "too vague")], "edit": None}]
     with _stub_agents(rounds=rounds):
-        result = await run_goal_loop(
+        result = await revise_document(
             document,
-            GoalSpec(text="the flow is correct", check="structure"),
+            spec=RevisionSpec(text="the flow is correct", check="structure"),
             model="stub",
             document_type="academic",
         )
@@ -307,19 +307,19 @@ async def test_judged_check_calls_the_judge_separately_every_round(
         _stub_agents(rounds=rounds),
         patch("andamentum.llm_judge.judge_score", new=_fake_judge_score),
     ):
-        result = await run_goal_loop(
+        result = await revise_document(
             document,
-            GoalSpec(text="the introduction motivates the study", check="judged"),
+            spec=RevisionSpec(text="the introduction motivates the study", check="judged"),
             model="stub",
             judge_model="judge-model",
             document_type="academic",
         )
 
-    assert result.goal_met is True
+    assert result.condition_met is True
     assert calls == ["judge-model", "judge-model", "judge-model"]
 
 
-# ── --goal-check citations: the reference checker, with its problems edited ──
+# ── --until-clean citations: the reference checker, with its problems edited ──
 
 CITING_SENTENCE = "Costs are high [2]."
 
@@ -339,12 +339,12 @@ def _citing_docx(path: Path) -> Path:
     return path
 
 
-async def test_reference_problems_reach_the_editor_and_the_goal_holds_once_fixed(
+async def test_reference_problems_reach_the_editor_and_the_condition_holds_once_fixed(
     tmp_path: Path,
 ) -> None:
     """Round 1: the checker finds [2] missing from the list, and the editor —
     shown that problem beside the review's own findings — rewrites the
-    citation. Rounds 2 and 3 find nothing, so the goal is confirmed twice.
+    citation. Rounds 2 and 3 find nothing, so the condition is confirmed twice.
 
     The editor runs once per SECTION, and this document has two (Methods and
     References), so every round takes two entries of *rounds*. The rewrite
@@ -357,16 +357,16 @@ async def test_reference_problems_reach_the_editor_and_the_goal_holds_once_fixed
     with _stub_agents(
         rounds=[fix, fix, quiet, quiet, quiet, quiet], editor_prompts=prompts
     ):
-        result = await run_goal_loop(
+        result = await revise_document(
             document,
-            GoalSpec(
+            spec=RevisionSpec(
                 text="every reference is consistent", check="citations", max_rounds=4
             ),
             model="stub",
             document_type="academic",
         )
 
-    assert result.goal_met is True, result.reason
+    assert result.condition_met is True, result.reason
     assert len(result.rounds) == 3
     first = result.rounds[0]
     assert first.verdict.satisfied is False
@@ -400,9 +400,9 @@ async def test_a_document_whose_citation_style_cannot_be_told_is_unresolvable(
         raise AssertionError("the style is not the model's to decide here")
 
     monkeypatch.setattr("andamentum.references.llm.ask_style", no_model)
-    result = await run_goal_loop(
+    result = await revise_document(
         await open_source(str(path)),
-        GoalSpec(text="every reference is consistent", check="citations"),
+        spec=RevisionSpec(text="every reference is consistent", check="citations"),
         model="stub",
         document_type="academic",
     )
@@ -427,13 +427,13 @@ async def test_the_novelty_setup_reaches_the_first_round_only(
     with (
         _stub_agents(rounds=rounds),
         patch(
-            "andamentum.whetstone.goal.loop.review_document",
+            "andamentum.whetstone.revise.loop.review_document",
             wraps=review_document,
         ) as review,
     ):
-        await run_goal_loop(
+        await revise_document(
             document,
-            GoalSpec(text="the flow is correct", check="structure", max_rounds=2),
+            spec=RevisionSpec(text="the flow is correct", check="structure", max_rounds=2),
             model="stub",
             document_type="academic",
             check_novelty=True,
@@ -446,3 +446,28 @@ async def test_the_novelty_setup_reaches_the_first_round_only(
         True,
         False,
     ]
+
+
+# ── RevisionSpec: the fixed wording of the checks that need no text ──
+
+
+def test_a_fixed_check_needs_no_text_and_gets_its_fixed_wording() -> None:
+    from andamentum.whetstone.revise import FIXED_CONDITION_TEXT
+
+    for check in ("structure", "citations"):
+        spec = RevisionSpec(check=check)
+        assert spec.text == FIXED_CONDITION_TEXT[check]
+
+
+def test_a_caller_text_is_kept_for_a_fixed_check() -> None:
+    assert RevisionSpec(text="no loose ends", check="structure").text == "no loose ends"
+
+
+def test_a_judged_condition_needs_a_text() -> None:
+    import pytest
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="needs `text`"):
+        RevisionSpec(check="judged")
+    with pytest.raises(ValidationError, match="needs `text`"):
+        RevisionSpec(text="   ")

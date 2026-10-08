@@ -15,7 +15,7 @@ import pytest
 def _no_crossref(monkeypatch: pytest.MonkeyPatch) -> None:
     async def refuse(*_args, **_kwargs):
         raise AssertionError(
-            "a whetstone test reached the Crossref lookup; pass --no-lookup "
+            "a whetstone test reached the Crossref lookup; pass --offline "
             "or stub andamentum.references.lookup_entries"
         )
 

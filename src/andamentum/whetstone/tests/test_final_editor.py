@@ -349,54 +349,6 @@ async def test_the_rounds_do_not_edit_and_the_editor_runs_once_over_all_of_them(
     assert result.metrics.edits_count == 1
 
 
-async def test_editor_criteria_typed_on_the_command_line_win(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    source = tmp_path / "draft.docx"
-    _draft(source)
-    editor_calls: list[dict[str, Any]] = []
-
-    async def fake_review(_source: Any, **kwargs: Any) -> ReviewResult:
-        return ReviewResult(summary="stub")
-
-    async def fake_reconcile(reviews: Any, *, model: str) -> Any:
-        from types import SimpleNamespace as N
-
-        return N(verdict="", agreed=[], disagreements=[], raised_by_one=[])
-
-    async def fake_edit_findings(sections: Any, findings: Any, **kwargs: Any) -> Any:
-        editor_calls.append(kwargs)
-        return [], []
-
-    monkeypatch.setattr("andamentum.whetstone.pipeline.review_document", fake_review)
-    monkeypatch.setattr(
-        "andamentum.whetstone.pipeline.reconcile.reconcile_reviewers", fake_reconcile
-    )
-    monkeypatch.setattr(
-        "andamentum.whetstone.pipeline.editor.edit_findings", fake_edit_findings
-    )
-    monkeypatch.setattr(
-        "andamentum.whetstone.renderers.render_markdown",
-        lambda r, out, **kw: Path(out).write_text("stub"),
-    )
-
-    args = _args(
-        [
-            str(source),
-            "--model",
-            "stub:none",
-            "--out",
-            str(tmp_path / "review.md"),
-            "--reviewer",
-            "claims,methods,editor",
-            "--editor-criteria",
-            "voice, tone",
-        ]
-    )
-    await cli_mod._run(args, Console(stderr=True))
-    assert editor_calls[0]["criteria"] == ["voice", "tone"]
-
-
 async def test_a_point_both_reviewers_raised_is_one_comment_in_the_docx(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

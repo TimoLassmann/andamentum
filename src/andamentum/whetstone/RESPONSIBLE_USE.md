@@ -57,18 +57,18 @@ be inappropriate if the draft contains:
   CDA.
 - Material subject to your institution's classified-data policy.
 
-For these cases, **use a local Ollama model end-to-end, and turn the
-Crossref lookup off**:
+For these cases, **use a local Ollama model end-to-end, and pass
+`--offline`** (no network call besides the model):
 
 ```bash
 andamentum-whetstone draft.md \
     --model ollama:gemma3-12b \
-    --no-lookup \
+    --offline \
     --out review.md
 ```
 
 Whetstone supports local-only operation in every mode that calls a
-model — `review`, `panel` and `checklist` all accept an `ollama:*`
+model — `review`, `revise`, `panel` and `checklist` all accept an `ollama:*`
 id. The `apply-patches` and `verify-provenance` commands (and the
 separate `andamentum-proofread`) involve no model calls at all.
 
@@ -77,7 +77,7 @@ call.** The reference check looks up each entry of the draft's
 reference list in Crossref. Only the text of the reference entries is
 sent — descriptions of published works — never the text of the draft.
 It is on by default because a wrong or non-existent reference is worth
-finding; `--no-lookup` keeps the check offline, and `--no-references`
+finding; `--offline` keeps the check off the network, and `--no-references`
 skips it. The confidentiality tripwire runs before any entry is sent.
 The novelty web search (`--check-novelty`), which sends sentences from
 the draft to a search engine, stays off unless you ask for it.
@@ -178,8 +178,10 @@ invisible metadata and customXml provenance part are still written.
 issues search queries derived from them. The novelty pipeline
 deliberately does NOT persist a per-claim cache to disk — hashed
 digests of unpublished claims should not sit on your filesystem
-between runs unless you pass `--novelty-store PATH`, which keeps the works and
-passages found, never your claim text. Repeated runs re-query deep_research.
+between runs. From the command line the research store is in memory and
+nothing is kept; a Python caller can keep the works and passages found (never
+your claim text) with `NoveltyResearch(store=PATH)`. Repeated runs re-query
+deep_research. `--check-novelty` is refused beside `--offline`.
 
 **The search queries themselves leave your machine** through
 deep_research → the scholarly sources (OpenAlex, Europe PMC, arXiv, Semantic

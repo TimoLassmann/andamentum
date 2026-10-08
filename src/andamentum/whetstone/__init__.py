@@ -7,9 +7,9 @@ for the same three renderers:
   harvests a path or URL first; ``await run_review(markdown, *, model)``
   takes text you already have.
 - **panel** — ``await run_panel(markdown, *, model)``.
-- **goal loop** — ``await run_goal_loop(document, GoalSpec(...), *, model)``
-  reviews, edits and re-reviews until a stated condition holds (the
-  ``--goal`` flag of ``andamentum-whetstone review``).
+- **revise** — ``await revise_document(document, spec=RevisionSpec(...),
+  model=...)`` reviews, edits and re-reviews until a stated condition holds (the
+  ``andamentum-whetstone revise`` command).
 - **checklist** — ``await checklist_document(source, *, model)`` harvests
   first; ``await run_checklist(markdown, *, model)`` takes text.
 
@@ -82,7 +82,6 @@ from .docx.surgery import (  # noqa: F401  (read by compose.harness; not part of
 from .docx.textmap import AtomSpan, TextMap  # noqa: F401
 from .docx.xml_builder import XMLElementBuilder  # noqa: F401
 from .errors import WhetstoneError
-from .goal import FigureRef, GoalRunResult, GoalSpec, run_goal_loop
 from .pipeline import (
     Criterion,
     Probe,
@@ -98,6 +97,7 @@ from .pipeline.panel import run_panel
 from .pipeline.reviewers import PROFILES, ReviewerProfile
 from .renderers import render_docx, render_html, render_markdown
 from .reviewed_document import ReviewedDocument, open_source
+from .revise import FigureRef, RevisionResult, RevisionSpec, revise_document
 from .schemas import (  # noqa: F401
     AuthorQuestion,
     CheckableItem,
@@ -145,7 +145,7 @@ __all__ = [
     "run_panel",
     "checklist_document",
     "run_checklist",
-    "run_goal_loop",
+    "revise_document",
     "open_source",
     # renderers
     "render_docx",
@@ -157,7 +157,7 @@ __all__ = [
     "ReviewerProfile",
     "reviewer_profile",
     "ReviewedDocument",
-    "GoalSpec",
+    "RevisionSpec",
     "FigureRef",
     # results
     "ReviewResult",
@@ -165,7 +165,7 @@ __all__ = [
     "Edit",
     "Quote",
     "AuthorQuestion",
-    "GoalRunResult",
+    "RevisionResult",
     # provenance and the confidentiality check
     "check_confidentiality",
     "stamp_provenance",

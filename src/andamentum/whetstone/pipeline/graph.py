@@ -98,7 +98,7 @@ class ReviewDeps:
     # reviewer ran and there is nothing to print. Carried on Deps rather than
     # rebuilt at the end: it is an input to the run, not a result of it.
     reviewer_header: ReviewerHeader | None = None
-    # Findings the caller already has — the goal loop's reference problems —
+    # Findings the caller already has — the revise loop's reference problems —
     # that the editor answers beside the review's own, and that the result
     # lists after them. They are not reviewed, verified or consolidated: they
     # come from a deterministic check, not from a criterion.
@@ -503,7 +503,7 @@ async def run_review(
     and passes them in. Omitted, the sections are derived from *markdown*.
 
     ``extra_findings`` are findings the caller already holds, in the same
-    coordinates — the goal loop's reference problems. The editor answers them
+    coordinates — the revise loop's reference problems. The editor answers them
     beside the review's own findings, and the result lists them after those.
     They are not reviewed, verified or consolidated; nothing reads them when
     the editor is off except the result.

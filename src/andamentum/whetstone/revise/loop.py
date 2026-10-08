@@ -1,4 +1,4 @@
-"""The goal-driven loop: review, edit, re-review until a win condition holds.
+"""The revision loop: review, edit, re-review until a stated condition holds.
 
 A plain bounded loop over functions whetstone already has — not a second
 pydantic-graph graph beside ``pipeline/graph.py``. The house style
@@ -6,7 +6,7 @@ pydantic-graph graph beside ``pipeline/graph.py``. The house style
 generates, checks, and retries within one run is ordinary control flow, not
 an external driver, as long as the stop decision is a deterministic function
 of typed state and the bound traces to a named value (here,
-``GoalSpec.max_rounds``, checked through :func:`_loop_allowed`, structurally
+``RevisionSpec.max_rounds``, checked through :func:`_loop_allowed`, structurally
 the same guard as ``andamentum.forge.runtime.loop_allowed`` — mirrored, not
 imported, since whetstone must not depend on ``forge`` for a two-line helper).
 
@@ -14,23 +14,23 @@ Each round:
 
 1. Run the ordinary ``review_document(..., editor=True)`` over the
    document as it currently stands.
-2. Compute the goal verdict for THAT document (from the round's findings,
+2. Compute the round's verdict for THAT document (from the round's findings,
    for ``structure``; from the reference checker, for ``citations``, whose
    problems are also handed to the round's editor beside the review's own
    findings; from the document text directly, for ``figures``; from a separate ``llm_judge.judge_score`` call, for
    ``judged`` — never the reviewer/editor pass that produced the edit).
 3. Stop once the verdict is satisfied twice in a row — confirming the next
-   round's ordinary edits, which may touch criteria unrelated to the goal,
-   did not undo it. When the goal already holds and the editor finds
+   round's ordinary edits, which may touch criteria unrelated to the condition,
+   did not undo it. When the condition already holds and the editor finds
    nothing to change, the SAME text is reviewed again for that second
    confirmation, rather than treating "nothing left to change" as
-   stalling — it is only stalling when the goal is NOT yet met. Otherwise,
+   stalling — it is only stalling when the condition is NOT yet met. Otherwise,
    apply this round's edits and continue.
 
-The loop never trusts a single pass, never lets the goal itself change once
-the run has started (:class:`~.spec.GoalSpec` is frozen), and always stops
-with a typed, visible reason: ``goal_met``, ``no_progress`` (no edits while
-the goal is unmet, edits with no net effect, or the draft alternating
+The loop never trusts a single pass, never lets the condition itself change
+once the run has started (:class:`~.spec.RevisionSpec` is frozen), and always stops
+with a typed, visible reason: ``condition_met``, ``no_progress`` (no edits
+while the condition is unmet, edits with no net effect, or the draft alternating
 between two prior states),
 ``cap_reached``, or ``unresolvable`` (checked once, before spending a single
 round, for a check that cannot be evaluated at all).
@@ -51,15 +51,15 @@ from ..pipeline.criteria import Criterion
 from ..pipeline.graph import review_document
 from ..pipeline.reviewers import DEFAULT_PROFILE, ReviewerProfile, author_for
 from .figures import check_figure_text_match, unmentioned_figures
-from .references import ReferenceGoalReport, check_reference_goal
-from .spec import GoalSpec
-from .structure import structure_goal_met
-from .verdict import GoalVerdict
+from .references import ReferenceCheckReport, check_references_clean
+from .spec import RevisionSpec
+from .structure import structure_clean
+from .verdict import RoundVerdict
 
 if TYPE_CHECKING:
     from andamentum.deep_research import NoveltyResearch
 
-StoppedReason = Literal["goal_met", "no_progress", "cap_reached", "unresolvable"]
+StoppedReason = Literal["condition_met", "no_progress", "cap_reached", "unresolvable"]
 
 # How many times running does a check have to report "satisfied" before the
 # loop trusts it — see the module docstring. Not user-configurable: it is
@@ -73,16 +73,19 @@ class RoundRecord:
     """What happened in one round, kept in full — nothing summarised away."""
 
     index: int
-    verdict: GoalVerdict
+    verdict: RoundVerdict
     review: ReviewResult
     document_text_before: str
 
 
 @dataclass(frozen=True)
-class GoalRunResult:
-    goal: GoalSpec
+class RevisionResult:
+    """What a revision did: every round in full, whether the condition was
+    met, why the loop stopped, and the document it ended on."""
+
+    spec: RevisionSpec
     rounds: list[RoundRecord]
-    goal_met: bool
+    condition_met: bool
     stopped_reason: StoppedReason
     reason: str
     final_document: ReviewedDocument
@@ -95,16 +98,16 @@ def _loop_allowed(count: int, cap: int) -> bool:
     Structurally identical to ``andamentum.forge.runtime.loop_allowed`` —
     mirrored rather than imported, since whetstone must not depend on
     ``forge`` for a two-line helper. Termination is a comparison against a
-    value on ``GoalSpec``, never the model's own judgment.
+    value on ``RevisionSpec``, never the model's own judgment.
     """
     return count < cap
 
 
 def _unresolvable_reason(
-    spec: GoalSpec,
+    spec: RevisionSpec,
     document: ReviewedDocument,
     *,
-    references: ReferenceGoalReport | None,
+    references: ReferenceCheckReport | None,
 ) -> str | None:
     """Checked once, before spending a round. ``None`` means resolvable."""
     if references is not None and references.unresolvable is not None:
@@ -121,19 +124,19 @@ def _unresolvable_reason(
 
 
 async def _compute_verdict(
-    spec: GoalSpec,
+    spec: RevisionSpec,
     *,
     document: ReviewedDocument,
     result: ReviewResult,
     judge_model: str,
-    references: ReferenceGoalReport | None,
-) -> GoalVerdict:
+    references: ReferenceCheckReport | None,
+) -> RoundVerdict:
     """Dispatch on ``spec.check`` — a closed, caller-supplied value, never a
     classifier's guess (dialect Law 4). *references* is the round's reference
     check, already run on *document* before the review so its problems could
     reach the editor; set exactly when ``spec.check == "citations"``."""
     if spec.check == "structure":
-        report = structure_goal_met(result)
+        report = structure_clean(result)
         if report.satisfied:
             reason = "No major or moderate findings this round."
         else:
@@ -141,11 +144,11 @@ async def _compute_verdict(
                 f"{report.blocking_count} major/moderate finding(s) remain: "
                 + "; ".join(report.blocking_titles)
             )
-        return GoalVerdict(satisfied=report.satisfied, reason=reason)
+        return RoundVerdict(satisfied=report.satisfied, reason=reason)
 
     if spec.check == "citations":
         assert references is not None
-        return GoalVerdict(satisfied=references.satisfied, reason=references.reason)
+        return RoundVerdict(satisfied=references.satisfied, reason=references.reason)
 
     if spec.check == "judged":
         # Imported here, not at module level: this is the one branch that
@@ -156,19 +159,19 @@ async def _compute_verdict(
 
         score = await judge_score(
             document.text,
-            criteria=[JudgeCriterion(name="goal", description=spec.text)],
+            criteria=[JudgeCriterion(name="condition", description=spec.text)],
             model=judge_model,
         )
         satisfied = score.overall == "meets" and not score.needs_review
         reason = (
             score.per_criterion[0].reasoning if score.per_criterion else score.overall
         )
-        return GoalVerdict(
+        return RoundVerdict(
             satisfied=satisfied, reason=reason, progress_score=score.expected_score
         )
 
     if spec.check == "figures":
-        # GoalSpec's own validator guarantees figure_model is set whenever
+        # RevisionSpec's own validator guarantees figure_model is set whenever
         # check == "figures" — asserted here only so the type checker knows
         # it too.
         assert spec.figure_model is not None
@@ -186,21 +189,21 @@ async def _compute_verdict(
                     detail = "; ".join(check.matched.discrepancies) or "does not match"
                     problems.append(f"{check.label}: {detail}")
             reason = "; ".join(problems)
-        return GoalVerdict(satisfied=report.satisfied, reason=reason)
+        return RoundVerdict(satisfied=report.satisfied, reason=reason)
 
     raise NotImplementedError(
-        f"goal check {spec.check!r} is not wired into the loop yet."
+        f"check {spec.check!r} is not wired into the loop yet."
     )
 
 
 def _with_author_question(
-    review: ReviewResult, *, goal_text: str, reason: str
+    review: ReviewResult, *, condition_text: str, reason: str
 ) -> ReviewResult:
-    """A non-``goal_met`` stop gets one ``AuthorQuestion`` naming what the
+    """A non-``condition_met`` stop gets one ``AuthorQuestion`` naming what the
     loop could not settle — the same schema whetstone already carries for
     "only the author can answer this", given its first real producer here."""
     question = AuthorQuestion(
-        question=f'The goal loop stopped without confirming "{goal_text}": {reason}',
+        question=f'The revision stopped without confirming "{condition_text}": {reason}',
         sections_involved=[],
         why=reason,
     )
@@ -209,10 +212,10 @@ def _with_author_question(
     )
 
 
-async def run_goal_loop(
+async def revise_document(
     document: ReviewedDocument,
-    goal: GoalSpec,
     *,
+    spec: RevisionSpec,
     model: str,
     reviewer: ReviewerProfile | None = None,
     criteria: list[Criterion] | None = None,
@@ -227,8 +230,8 @@ async def run_goal_loop(
     patch_author: str | None = None,
     workdir: Path | None = None,
     decision_model: DecisionModel | None = None,
-) -> GoalRunResult:
-    """Review, edit, and re-review *document* until *goal* holds.
+) -> RevisionResult:
+    """Review, edit, and re-review *document* until *spec*'s condition holds.
 
     *document* is a document the caller already opened (see
     :func:`~..reviewed_document.open_source`) and still owns — this function
@@ -236,7 +239,7 @@ async def run_goal_loop(
     working state, written under *workdir* (a caller-owned directory, or a
     temporary one this function creates and removes).
 
-    *judge_model* is the model used for ``goal.check == "judged"``; ``None``
+    *judge_model* is the model used for ``spec.check == "judged"``; ``None``
     reuses *model*. It is deliberately a separate parameter, not implicitly
     the same call, so a caller can hand the arbiter a different model from
     the one drafting the edits.
@@ -251,10 +254,10 @@ async def run_goal_loop(
     See :mod:`.loop`'s module docstring for the stop conditions.
     """
     if workdir is None:
-        with tempfile.TemporaryDirectory(prefix="whetstone-goal-") as tmp:
-            return await _run_goal_loop(
+        with tempfile.TemporaryDirectory(prefix="whetstone-revise-") as tmp:
+            return await _revise(
                 document,
-                goal,
+                spec,
                 model=model,
                 reviewer=reviewer,
                 criteria=criteria,
@@ -270,9 +273,9 @@ async def run_goal_loop(
                 workdir=Path(tmp),
                 decision_model=decision_model,
             )
-    return await _run_goal_loop(
+    return await _revise(
         document,
-        goal,
+        spec,
         model=model,
         reviewer=reviewer,
         criteria=criteria,
@@ -290,9 +293,9 @@ async def run_goal_loop(
     )
 
 
-async def _run_goal_loop(
+async def _revise(
     document: ReviewedDocument,
-    goal: GoalSpec,
+    spec: RevisionSpec,
     *,
     model: str,
     reviewer: ReviewerProfile | None,
@@ -308,7 +311,7 @@ async def _run_goal_loop(
     patch_author: str | None,
     workdir: Path,
     decision_model: DecisionModel | None,
-) -> GoalRunResult:
+) -> RevisionResult:
     resolved_judge_model = judge_model or model
     profile = reviewer if reviewer is not None else DEFAULT_PROFILE
     base_author = author_for(profile=profile, patch_author=patch_author)
@@ -324,21 +327,21 @@ async def _run_goal_loop(
     # problems are findings the round's editor answers. The first round's
     # reading doubles as the resolvability check, so it is not made twice.
     references = (
-        await check_reference_goal(document, model=model)
-        if goal.check == "citations"
+        await check_references_clean(document, model=model)
+        if spec.check == "citations"
         else None
     )
-    unresolvable = _unresolvable_reason(goal, document, references=references)
+    unresolvable = _unresolvable_reason(spec, document, references=references)
     if unresolvable is not None:
-        return GoalRunResult(
-            goal=goal,
+        return RevisionResult(
+            spec=spec,
             rounds=[],
-            goal_met=False,
+            condition_met=False,
             stopped_reason="unresolvable",
             reason=unresolvable,
             final_document=document,
             final_review=_with_author_question(
-                ReviewResult(), goal_text=goal.text, reason=unresolvable
+                ReviewResult(), condition_text=spec.text, reason=unresolvable
             ),
         )
 
@@ -347,14 +350,14 @@ async def _run_goal_loop(
     consecutive_met = 0
     round_idx = 0
 
-    while _loop_allowed(round_idx, goal.max_rounds):
+    while _loop_allowed(round_idx, spec.max_rounds):
         round_idx += 1
-        if goal.check == "citations" and round_idx > 1:
-            references = await check_reference_goal(document, model=model)
+        if spec.check == "citations" and round_idx > 1:
+            references = await check_references_clean(document, model=model)
         result = await review_document(
             document,
             model=model,
-            cap=2,  # the goal loop's per-round review keeps two gap-loop rounds
+            cap=2,  # each round's review keeps two gap-loop rounds
             reviewer=reviewer,
             criteria=criteria,
             guidelines_text=guidelines_text,
@@ -371,7 +374,7 @@ async def _run_goal_loop(
             decision_model=decision_model,
         )
         verdict = await _compute_verdict(
-            goal,
+            spec,
             document=document,
             result=result,
             judge_model=resolved_judge_model,
@@ -389,37 +392,37 @@ async def _run_goal_loop(
         if verdict.satisfied:
             consecutive_met += 1
             if consecutive_met >= _CONFIRMATIONS_NEEDED:
-                return GoalRunResult(
-                    goal=goal,
+                return RevisionResult(
+                    spec=spec,
                     rounds=rounds,
-                    goal_met=True,
-                    stopped_reason="goal_met",
+                    condition_met=True,
+                    stopped_reason="condition_met",
                     reason=verdict.reason,
                     final_document=document,
                     final_review=result,
                 )
             if not result.edits:
-                # The goal already holds and the editor found nothing else
+                # The condition already holds and the editor found nothing else
                 # to fix — re-review the SAME text next round for the second
                 # confirmation, rather than treating "nothing left to
-                # change" as stalling, which it is only when the goal is NOT
+                # change" as stalling, which it is only when the condition is NOT
                 # yet met (the branch below).
                 continue
         else:
             consecutive_met = 0
             if not result.edits:
                 reason = (
-                    "The editor found nothing left to change, and the goal was not met."
+                    "The editor found nothing left to change, and the condition was not met."
                 )
-                return GoalRunResult(
-                    goal=goal,
+                return RevisionResult(
+                    spec=spec,
                     rounds=rounds,
-                    goal_met=False,
+                    condition_met=False,
                     stopped_reason="no_progress",
                     reason=reason,
                     final_document=document,
                     final_review=_with_author_question(
-                        result, goal_text=goal.text, reason=reason
+                        result, condition_text=spec.text, reason=reason
                     ),
                 )
 
@@ -435,44 +438,44 @@ async def _run_goal_loop(
 
         if new_document.text == document.text:
             reason = "This round's edits had no net effect on the text."
-            return GoalRunResult(
-                goal=goal,
+            return RevisionResult(
+                spec=spec,
                 rounds=rounds,
-                goal_met=False,
+                condition_met=False,
                 stopped_reason="no_progress",
                 reason=reason,
                 final_document=new_document,
                 final_review=_with_author_question(
-                    result, goal_text=goal.text, reason=reason
+                    result, condition_text=spec.text, reason=reason
                 ),
             )
         if len(recent_texts) >= 2 and new_document.text == recent_texts[-2]:
             reason = "The draft is alternating between two states across rounds."
-            return GoalRunResult(
-                goal=goal,
+            return RevisionResult(
+                spec=spec,
                 rounds=rounds,
-                goal_met=False,
+                condition_met=False,
                 stopped_reason="no_progress",
                 reason=reason,
                 final_document=new_document,
                 final_review=_with_author_question(
-                    result, goal_text=goal.text, reason=reason
+                    result, condition_text=spec.text, reason=reason
                 ),
             )
 
         recent_texts.append(new_document.text)
         document = new_document
 
-    reason = f"Reached the {goal.max_rounds}-round cap with the goal not yet met."
+    reason = f"Reached the {spec.max_rounds}-round cap with the condition not yet met."
     last_review = rounds[-1].review if rounds else ReviewResult()
-    return GoalRunResult(
-        goal=goal,
+    return RevisionResult(
+        spec=spec,
         rounds=rounds,
-        goal_met=False,
+        condition_met=False,
         stopped_reason="cap_reached",
         reason=reason,
         final_document=document,
         final_review=_with_author_question(
-            last_review, goal_text=goal.text, reason=reason
+            last_review, condition_text=spec.text, reason=reason
         ),
     )

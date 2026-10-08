@@ -1,8 +1,6 @@
-"""``--check-novelty`` and ``--novelty-store`` on the whetstone CLI."""
+"""``--check-novelty`` on the whetstone CLI."""
 
 from __future__ import annotations
-
-from pathlib import Path
 
 import pytest
 
@@ -54,32 +52,21 @@ def test_an_explicit_document_type_with_check_novelty_leaves_no_decision_model_i
     assert "document-type" in _refused(argv, capsys)
 
 
-def test_a_store_needs_check_novelty(capsys: pytest.CaptureFixture[str]) -> None:
-    assert "needs --check-novelty" in _refused(
-        [*BASE, "--novelty-store", "n.db"], capsys
-    )
-
-
-def test_a_store_with_check_novelty_is_accepted() -> None:
-    _validate([*NOVELTY, "--novelty-store", "n.db"])
-
-
-def test_checklist_refuses_the_novelty_flags(
+def test_checklist_refuses_the_novelty_flag(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    argv = ["checklist", *BASE, "--novelty-store", "n.db"]
-    assert "--novelty-store" in _refused(argv, capsys)
+    argv = ["checklist", *BASE, "--check-novelty"]
+    assert "--check-novelty" in _refused(argv, capsys)
 
 
-def test_the_setup_carries_the_store_and_the_environment(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+def test_the_setup_carries_the_environment_and_keeps_nothing(
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("OPENALEX_EMAIL", "jane@example.org")
     monkeypatch.delenv("OPENALEX_API_KEY", raising=False)
     monkeypatch.delenv("SEMANTIC_SCHOLAR_API_KEY", raising=False)
-    store = tmp_path / "n.db"
-    setup = cli_mod._novelty_research(_args([*NOVELTY, "--novelty-store", str(store)]))
+    setup = cli_mod._novelty_research(_args(NOVELTY))
     assert setup is not None
-    assert setup.store == store
+    assert setup.store is None  # in memory: the command line keeps no store
     assert setup.sources.mailto == "jane@example.org"
     assert setup.sources.openalex_api_key is None

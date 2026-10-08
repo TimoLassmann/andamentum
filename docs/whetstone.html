@@ -444,7 +444,7 @@ andamentum-whetstone draft.docx --model openai:gpt-5.4-mini \
     <li><strong>Rewrites</strong> what a rewrite can fix, as tracked changes you accept or reject.</li>
     <li><strong>Checks the references</strong>: every citation against the reference list, in any citation style, and each entry against Crossref (section 07). The editor answers these problems too.</li>
     <li><strong>Lists what the draft claims as new</strong>, so you can see what a reader will test you on.</li>
-    <li><strong>Suggests a next step</strong> when problems remain: the exact command for the goal loop (section 06), which revises and checks again until they are gone.</li>
+    <li><strong>Suggests a next step</strong> when problems remain: the exact <code>revise</code> command (section 06), which revises and checks again until they are gone.</li>
   </ul>
 
   <p>Open the result in Word and work through it. Parts you do not want are switched off, not on:</p>
@@ -455,7 +455,7 @@ andamentum-whetstone draft.docx --model openai:gpt-5.4-mini \
     <tbody>
       <tr><td><code>--no-editor</code></td><td>The rewrites. You get comments only.</td></tr>
       <tr><td><code>--no-references</code></td><td>The reference check.</td></tr>
-      <tr><td><code>--no-lookup</code></td><td>The Crossref lookup only. The citations are still checked against the list, offline.</td></tr>
+      <tr><td><code>--offline</code></td><td>Every network call besides the model: the Crossref lookup. The citations are still checked against the list, on the text alone. Refused with <code>--check-novelty</code>.</td></tr>
     </tbody>
   </table>
   </div>
@@ -476,7 +476,7 @@ andamentum-whetstone draft.docx --model openai:gpt-5.4-mini \
 
   <div class="callout tone-info">
     <p class="eyebrow">What a run costs</p>
-    <p>A two-page draft is roughly thirty model calls and a minute of wall time on a hosted model. The draft goes only to the model you named. Two other things can leave your machine. The <strong>reference entries</strong> go to Crossref, which is on by default: they describe published works, and the text of the draft is never sent (<code>--no-lookup</code> stops it). The <strong>sentences that claim novelty</strong> go to a web search, which is off by default because those sentences are unpublished (<code>--check-novelty</code> turns it on).</p>
+    <p>A two-page draft is roughly thirty model calls and a minute of wall time on a hosted model. The draft goes only to the model you named. Two other things can leave your machine. The <strong>reference entries</strong> go to Crossref, which is on by default: they describe published works, and the text of the draft is never sent (<code>--offline</code> stops it). The <strong>sentences that claim novelty</strong> go to a web search, which is off by default because those sentences are unpublished (<code>--check-novelty</code> turns it on).</p>
   </div>
 
   <h2><span class="n">02</span>Choosing a reviewer</h2>
@@ -518,7 +518,7 @@ andamentum-whetstone draft.docx --model openai:gpt-5.4-mini \
 
   <p>Reviewers are orthogonal to document type, so each carries the set of types it suits and one predicate decides. A mismatch <strong>warns and proceeds</strong> rather than refusing: the classifier can be wrong, the user wrote the draft and asked for this reviewer, and the failure mode is a page of unhelpful findings rather than damage. The warning is written into the report header, not only into the terminal.</p>
 
-  <p><code>--criteria</code>, <code>--probes</code>, <code>--editor-criteria</code> and <code>--patch-author</code> override a profile field by field, which is how the next profile gets written — start from one, change one thing. The run prints the effective configuration with the source of every value, so what actually ran is never a guess.</p>
+  <p>In Python, <code>criteria=</code>, <code>probes=</code>, <code>editor_criteria=</code> and <code>patch_author=</code> override a profile field by field, which is how the next profile gets written — start from one, change one thing. On the command line the reviewer is a preset: <code>--brief</code> replaces its criteria with your own, and <code>--patch-author</code> its signature. The run prints the effective configuration with the source of every value, so what actually ran is never a guess.</p>
 
   <pre><code><span class="tok-com"># list them, with a fit marker for a given kind of document</span>
 andamentum-whetstone reviewers --document-type academic
@@ -527,9 +527,9 @@ andamentum-whetstone reviewers --document-type academic
 andamentum-whetstone draft.docx --reviewer claims --model openai:gpt-5.4-nano \
     --out review.md
 
-<span class="tok-com"># start from a profile, change one field</span>
-andamentum-whetstone draft.docx --reviewer methods \
-    --editor-criteria "precision,hedging" --model openai:gpt-5.4-nano --out review.md</code></pre>
+<span class="tok-com"># your own brief instead of a reviewer's criteria (@FILE reads a file)</span>
+andamentum-whetstone draft.docx --brief @journal-guidelines.md \
+    --model openai:gpt-5.4-nano --out review.md</code></pre>
 
   <h3>Several reviewers at once</h3>
 
@@ -557,7 +557,7 @@ andamentum-whetstone draft.docx --reviewer methods \
 
   <h2><span class="n">03</span>Which mode do I want</h2>
 
-  <p>Five things check a document, and they are not interchangeable. The first question is what you are asking for.</p>
+  <p>Six things check a document, and they are not interchangeable. The first question is what you are asking for.</p>
 
   <div class="table-scroll">
   <table>
@@ -570,6 +570,12 @@ andamentum-whetstone draft.docx --reviewer methods \
         <td>“Help me improve this draft”</td>
         <td>Connected findings plus synthesised prose</td>
         <td>Mid-draft, one document</td>
+      </tr>
+      <tr>
+        <td><code>revise</code></td>
+        <td>“Revise it until this holds”</td>
+        <td>The last round's review and the revised draft, or the reason it stopped</td>
+        <td>After a review leaves problems an edit can fix — section 06</td>
       </tr>
       <tr>
         <td><code>checklist</code></td>
@@ -626,7 +632,7 @@ andamentum-whetstone draft.docx --reviewer methods \
 
   <h3>What a report contains</h3>
 
-  <p>Ordered by what a reader needs first. The AI-content banner and the provenance line, once — a warning that appears four times stops being read, so on a multi-reviewer run only the topmost report carries it. Then <strong>who reviewed and under what brief</strong>, because a methods reviewer finding nothing wrong with the argument is not a clean bill of health for the argument. Then the summary, the strengths and the weaknesses. Then the findings — must fix, should fix, consider, and within each group in the order they occur in the draft — each with the passage it concerns, what is wrong, one fix, and what the editor did about it: the suggested rewrite, or what is left to you. A finding and its answer are one item: in Word the comment says "Suggested rewrite: the tracked change here" or "Left to you: …", instead of a comment, a tracked change with no reason, and a separate list saying the same thing again. Then what the draft claims as new. Then the <strong>reference check</strong> — how the draft cites, how many citations were read, and what Crossref found — whose problems are among the findings above, signed by the reference checker. Last, when problems remain, the <strong>next step</strong>: the goal-loop command that would revise and check again, written to a new file so it does not overwrite this one. (In the Word report these two follow the summary.)</p>
+  <p>Ordered by what a reader needs first. The AI-content banner and the provenance line, once — a warning that appears four times stops being read, so on a multi-reviewer run only the topmost report carries it. Then <strong>who reviewed and under what brief</strong>, because a methods reviewer finding nothing wrong with the argument is not a clean bill of health for the argument. Then the summary, the strengths and the weaknesses. Then the findings — must fix, should fix, consider, and within each group in the order they occur in the draft — each with the passage it concerns, what is wrong, one fix, and what the editor did about it: the suggested rewrite, or what is left to you. A finding and its answer are one item: in Word the comment says "Suggested rewrite: the tracked change here" or "Left to you: …", instead of a comment, a tracked change with no reason, and a separate list saying the same thing again. Then what the draft claims as new. Then the <strong>reference check</strong> — how the draft cites, how many citations were read, and what Crossref found — whose problems are among the findings above, signed by the reference checker. Last, when problems remain, the <strong>next step</strong>: the <code>revise</code> command that would revise and check again, written to a new file so it does not overwrite this one. (In the Word report these two follow the summary.)</p>
 
   <p>Last and quiet: one italic line naming the exact criteria, probes, editor criteria and author, each with where it came from, and the package version. It is provenance — worth having when you want to check what ran or compare two reports, and not worth the weight of a heading and a bulleted list at the top of the page.</p>
 
@@ -639,6 +645,7 @@ andamentum-whetstone draft.docx --reviewer methods \
     <thead><tr><th>Subcommand</th><th>What it does</th><th>Model</th></tr></thead>
     <tbody>
       <tr><td><code>review</code></td><td>Criterion cascade. The word is optional when the first argument is a file — it is the default.</td><td><span class="badge badge--warn">required</span></td></tr>
+      <tr><td><code>revise</code></td><td>Review, edit and review again until a condition holds: <code>--until TEXT</code> or <code>--until-clean structure|citations|figures</code>. Section 06.</td><td><span class="badge badge--warn">required</span></td></tr>
       <tr><td><code>checklist</code></td><td>Probe bank plus coverage table.</td><td><span class="badge badge--warn">required</span></td></tr>
       <tr><td><code>panel</code></td><td>Multi-expert simulated review. Needs <code>--i-am-the-author</code>.</td><td><span class="badge badge--warn">required</span></td></tr>
       <tr><td><code>reviewers</code></td><td>List the named reviewers, with the fit for a <code>--document-type</code>. Needs no input; <code>--json</code> prints the list as JSON.</td><td><span class="badge badge--success">none</span></td></tr>
@@ -664,36 +671,40 @@ andamentum-proofread draft.md</code></pre>
 
   <p><code>--document-type</code> defaults to <code>auto</code> on the command line and in the Python functions alike, which spends one classifier call. Pass the type explicitly to skip the call. The editor is also on by default in both.</p>
 
-  <h2><span class="n">06</span>The goal loop — review until it holds</h2>
+  <h2><span class="n">06</span>Revise — review until it holds</h2>
 
-  <p>Every mode above runs once. <code>--goal</code> instead sets a win condition and reviews, edits, and re-reviews the same draft until it holds — <strong>twice in a row</strong>, so the next round's ordinary edits cannot have quietly undone it — or the loop stops and says why.</p>
+  <p>Every mode above runs once. <code>revise</code> instead sets a condition and reviews, edits, and re-reviews the same draft until it holds — <strong>twice in a row</strong>, so the next round's ordinary edits cannot have quietly undone it — or the loop stops and says why.</p>
 
-  <pre><code><span class="tok-com"># loop until a model judge agrees the flow is correct</span>
-andamentum-whetstone draft.docx --model openai:gpt-5.4-nano \
-    --reviewer reader --goal "the flow is correct" \
-    --out draft.reviewed.docx</code></pre>
+  <pre><code><span class="tok-com"># revise until a model judge agrees the flow is correct</span>
+andamentum-whetstone revise draft.docx --model openai:gpt-5.4-nano \
+    --reviewer reader --until "the flow is correct" \
+    --out draft.revised.docx
 
-  <p>What checks the goal is a separate question from what the review reads. <code>--goal-check</code> picks the check; <code>--reviewer</code>, <code>--criteria</code> and <code>--document-type</code> still pick what every round reviews against, exactly as in section 02.</p>
+<span class="tok-com"># revise until the reference check comes back clean</span>
+andamentum-whetstone revise draft.docx --model openai:gpt-5.4-nano \
+    --until-clean citations --out draft.revised.docx</code></pre>
+
+  <p>What ends the loop is a separate question from what the review reads. <code>--until</code> or <code>--until-clean</code> picks the check (exactly one of them); <code>--reviewer</code>, <code>--brief</code> and <code>--document-type</code> still pick what every round reviews against, exactly as in section 02.</p>
 
   <div class="table-scroll">
   <table>
-    <thead><tr><th><code>--goal-check</code></th><th>What holds the goal</th></tr></thead>
+    <thead><tr><th>Flag</th><th>What has to hold</th></tr></thead>
     <tbody>
       <tr>
-        <td><code>judged</code> <span class="badge badge--info">default</span></td>
-        <td>A separate model call scores your goal text as one criterion, every round — never the pass that wrote the edit.</td>
+        <td><code>--until TEXT</code></td>
+        <td>A condition in your own words. A separate model call judges it as one criterion, every round — never the pass that wrote the edit.</td>
       </tr>
       <tr>
-        <td><code>structure</code></td>
+        <td><code>--until-clean structure</code></td>
         <td>The active review criteria raise nothing major or moderate. Pair with <code>--reviewer reader</code> for "the flow is correct".</td>
       </tr>
       <tr>
-        <td><code>citations</code></td>
+        <td><code>--until-clean citations</code></td>
         <td>The reference checker of section 07 finds no problem: every citation points to an entry, and every entry is cited. Any citation style. Each round, its problems go to the editor next to the review's own findings, so the loop can fix a wrong citation number, not only report it. No Crossref lookup, because an edit cannot change what Crossref finds. Never whether a citation says what the sentence claims.</td>
       </tr>
       <tr>
-        <td><code>figures</code></td>
-        <td>Each named figure's image matches its caption and the sentences that mention it. Needs <code>--goal-figure</code> and <code>--figure-model</code> below.</td>
+        <td><code>--until-clean figures</code></td>
+        <td>Each named figure's image matches its caption and the sentences that mention it. Needs <code>--figure</code> and <code>--figure-model</code> below.</td>
       </tr>
     </tbody>
   </table>
@@ -705,16 +716,15 @@ andamentum-whetstone draft.docx --model openai:gpt-5.4-nano \
   <table>
     <thead><tr><th>Flag</th><th>What it does</th></tr></thead>
     <tbody>
-      <tr><td><code>--goal TEXT</code></td><td>Turns the loop on. The win condition, in your own words.</td></tr>
-      <tr><td><code>--goal-check KIND</code></td><td>One of the four above. Default <code>judged</code>.</td></tr>
-      <tr><td><code>--max-rounds N</code></td><td>Hard cap on review-edit-review rounds. Default 4. Not the same flag as <code>--rounds</code>, which caps the gap loop inside one review pass.</td></tr>
-      <tr><td><code>--goal-figure LABEL=FILE</code></td><td>One figure to check, e.g. <code>"Figure 1=fig1.png"</code>. Repeat for more than one. Required with <code>--goal-check figures</code>.</td></tr>
-      <tr><td><code>--figure-model MODEL</code></td><td>A multimodal model id, e.g. <code>ollama:qwen3.8</code>. Required with <code>--goal-check figures</code>.</td></tr>
+      <tr><td><code>--max-rounds N</code></td><td>Hard cap on review-edit-review rounds. Default 4. Each round is a full review.</td></tr>
+      <tr><td><code>--figure LABEL=FILE</code></td><td>One figure to check, e.g. <code>"Figure 1=fig1.png"</code>. Repeat for more than one. Required with <code>--until-clean figures</code>, refused otherwise.</td></tr>
+      <tr><td><code>--figure-model MODEL</code></td><td>A multimodal model id, e.g. <code>ollama:qwen3.8</code>. No default. Required with <code>--until-clean figures</code>, refused otherwise.</td></tr>
+      <tr><td><code>--no-references</code>, <code>--offline</code></td><td>As for <code>review</code>. Unless <code>--no-references</code>, the reference check runs once on the revised draft, after the last round.</td></tr>
     </tbody>
   </table>
   </div>
 
-  <p><code>--goal</code> takes one reviewer, not a list, and it runs the editor every round, so <code>--no-editor</code> is refused with it — a round with nothing left to fix is what the loop is trying to confirm, not a step it should quietly skip.</p>
+  <p><code>revise</code> takes one reviewer, not a list, and it runs the editor every round, so it has no <code>--no-editor</code> — a round with nothing left to fix is what the loop is trying to confirm, not a step it should quietly skip. In Python the same loop is <code>await revise_document(document, spec=RevisionSpec(check="structure"), model=...)</code>, returning a <code>RevisionResult</code>.</p>
 
   <h3>How it stops</h3>
 
@@ -724,19 +734,19 @@ andamentum-whetstone draft.docx --model openai:gpt-5.4-nano \
   <table>
     <thead><tr><th>Stops with</th><th>Meaning</th></tr></thead>
     <tbody>
-      <tr><td><code>goal_met</code></td><td>The check passed twice running. That round's own edits are discarded — a pass that already meets the goal gets no further unrequested rewrite.</td></tr>
-      <tr><td><code>no_progress</code></td><td>A round with nothing to edit while the goal is still unmet, an edit with no net effect on the text, or the draft alternating between two earlier states.</td></tr>
-      <tr><td><code>cap_reached</code></td><td><code>--max-rounds</code> was reached with the goal still unmet.</td></tr>
+      <tr><td><code>condition_met</code></td><td>The check passed twice running. That round's own edits are discarded — a pass that already meets the condition gets no further unrequested rewrite.</td></tr>
+      <tr><td><code>no_progress</code></td><td>A round with nothing to edit while the condition is still unmet, an edit with no net effect on the text, or the draft alternating between two earlier states.</td></tr>
+      <tr><td><code>cap_reached</code></td><td><code>--max-rounds</code> was reached with the condition still unmet.</td></tr>
       <tr><td><code>unresolvable</code></td><td>Checked once, before spending a round: for <code>citations</code>, no reference list and no citation notes, or no way to tell how the document cites; for <code>figures</code>, a named figure never mentioned in the text. Zero rounds run.</td></tr>
     </tbody>
   </table>
   </div>
 
-  <p>A run that stops without meeting the goal still writes a real, usable review. The CLI exits with code <strong>1</strong> instead of the usual 0, and one author question in the report names what it could not settle.</p>
+  <p>A run that stops without meeting the condition still writes a real, usable review. The CLI exits with code <strong>1</strong> instead of the usual 0, and one author question in the report names what it could not settle.</p>
 
   <div class="callout tone-info">
     <p class="eyebrow">Figures need naming</p>
-    <p>Whetstone does not find figures in your document on its own. <code>--goal-figure "Figure 1=fig1.png"</code> names the label to look for and the image file to check it against — the label only needs the figure's number, so <code>"Figure 1"</code> also matches <code>"Fig. 1"</code> in the text. Locating and describing figures automatically is on the list, not yet built.</p>
+    <p>Whetstone does not find figures in your document on its own. <code>--figure "Figure 1=fig1.png"</code> names the label to look for and the image file to check it against — the label only needs the figure's number, so <code>"Figure 1"</code> also matches <code>"Fig. 1"</code> in the text. Locating and describing figures automatically is on the list, not yet built.</p>
   </div>
 
   <h2><span class="n">07</span>Checking references</h2>
@@ -747,7 +757,7 @@ andamentum-whetstone draft.docx --model openai:gpt-5.4-nano \
 andamentum-references draft.docx
 
 <span class="tok-com"># offline: citations against the list only, nothing sent anywhere</span>
-andamentum-references draft.md --no-lookup --json -o refs.json
+andamentum-references draft.md --offline --json -o refs.json
 
 <span class="tok-com"># a model for what the text leaves open — a local one keeps it local</span>
 andamentum-references draft.pdf --model ollama:gemma4:26b</code></pre>
@@ -801,7 +811,7 @@ andamentum-references draft.pdf --model ollama:gemma4:26b</code></pre>
 
   <div class="callout tone-info">
     <p class="eyebrow">What leaves your machine</p>
-    <p>The lookup sends only the text of each reference entry to Crossref, never the text of the draft. <code>--no-lookup</code> sends nothing. "Not found" means that Crossref has no matching record; some conference papers and reports are not indexed there. When Crossref does not answer, the entry is reported as not checked, never as wrong.</p>
+    <p>The lookup sends only the text of each reference entry to Crossref, never the text of the draft. <code>--offline</code> (in the command and in a whetstone review) sends nothing. "Not found" means that Crossref has no matching record; some conference papers and reports are not indexed there. When Crossref does not answer, the entry is reported as not checked, never as wrong.</p>
   </div>
 
   <h3>How it is measured</h3>

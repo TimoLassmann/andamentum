@@ -442,84 +442,6 @@ def test_a_configuration_line_names_its_own_source() -> None:
     assert by_label["editor criteria"].source == "editor default"
 
 
-# ── what the command line actually passes on ────────────────────────────────
-#
-# The precedence assertions above call `resolve` directly, which is the right
-# shape for a library test and the wrong shape for a flag: a flag's default is
-# part of what it means, and a default that is not a sentinel turns every run
-# into an inline override of the reviewer that was named. These go through the
-# parser for that reason.
-
-
-def test_the_editor_criteria_flag_defaults_to_a_sentinel() -> None:
-    """Not to the editor's default list.
-
-    The list would be indistinguishable from the user typing it, and an
-    inline value replaces the reviewer's own — so the ``claims`` reviewer's
-    single "hedging" would be silently overwritten on every command-line run.
-    """
-    assert _args(BASE).editor_criteria is None
-    assert cli_mod._editor_criteria(_args(BASE)) is None
-
-
-def test_each_reviewers_editor_criteria_survive_the_command_line() -> None:
-    """The whole path: parse real argv, then resolve what it produced."""
-    for name, profile in PROFILES.items():
-        resolved = resolve(
-            profile=profile,
-            document_type="academic",
-            editor_criteria=cli_mod._editor_criteria(
-                _args([*BASE, "--reviewer", name])
-            ),
-        )
-        expected = (
-            list(profile.editor_criteria)
-            if profile.editor_criteria is not None
-            else ["clarity", "concision", "grammar"]
-        )
-        assert resolved.editor_criteria == expected, name
-        source = next(
-            line for line in resolved.configuration if line.label == "editor criteria"
-        )
-        assert source.source == (
-            f"reviewer {name}" if profile.editor_criteria else "editor default"
-        )
-
-
-def test_the_flag_still_overrides_the_reviewer_when_it_is_given() -> None:
-    resolved = resolve(
-        profile=PROFILES["claims"],
-        document_type="academic",
-        editor_criteria=cli_mod._editor_criteria(
-            _args([*BASE, "--reviewer", "claims", "--editor-criteria", "voice, tone"])
-        ),
-    )
-    assert resolved.editor_criteria == ["voice", "tone"]
-    source = next(
-        line for line in resolved.configuration if line.label == "editor criteria"
-    )
-    assert source.source == "supplied inline"
-
-
-def test_an_all_blank_editor_criteria_flag_reads_as_not_given() -> None:
-    """The editor has no "run with no criteria" state, so neither has this."""
-    assert cli_mod._editor_criteria(_args([*BASE, "--editor-criteria", " , "])) is None
-
-
-def test_checklist_still_refuses_an_editor_criteria_flag(
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """Checklist has no editor, so its parser has no such flag."""
-    with pytest.raises(SystemExit) as exc:
-        _validate(["checklist", *BASE, "--editor-criteria", "clarity"])
-    assert exc.value.code == 2
-    assert "unrecognized arguments: --editor-criteria" in capsys.readouterr().err
-
-
-def test_checklist_tolerates_the_editor_criteria_flag_being_absent() -> None:
-    _validate(["checklist", *BASE])
-
-
 # ── a review that would review nothing ──────────────────────────────────────
 
 
@@ -544,10 +466,9 @@ def test_review_accepts_the_line_editor_with_the_editor() -> None:
     _validate([*BASE, "--reviewer", "editor"])
 
 
-def test_review_accepts_the_line_editor_given_criteria_of_its_own() -> None:
-    """Inline criteria replace the profile's empty set, so the run reviews."""
-    _validate([*BASE, "--reviewer", "editor", "--criteria", "tone"])
-    _validate([*BASE, "--reviewer", "editor", "--guidelines", "Be brief."])
+def test_review_accepts_the_line_editor_given_a_brief_of_its_own() -> None:
+    """A brief replaces the profile's empty set of criteria, so the run reviews."""
+    _validate([*BASE, "--reviewer", "editor", "--no-editor", "--brief", "Be brief."])
 
 
 def test_the_refusal_is_stated_as_a_property_not_as_a_name() -> None:

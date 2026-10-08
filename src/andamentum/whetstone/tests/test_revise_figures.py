@@ -1,4 +1,4 @@
-"""Tests for the figure-vs-text goal check.
+"""Tests for the figure-vs-text check of `revise`.
 
 ``locate_figure_mentions`` is pure — no model call. ``check_figure_text_match``
 stubs ``vision_critique.critique_figure`` the way ``test_sequential_rounds.py``
@@ -11,13 +11,13 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import patch
 
-from andamentum.whetstone.goal.figures import (
+from andamentum.whetstone.revise.figures import (
     FigureTextMatch,
     check_figure_text_match,
     locate_figure_mentions,
     unmentioned_figures,
 )
-from andamentum.whetstone.goal.spec import FigureRef
+from andamentum.whetstone.revise.spec import FigureRef
 
 
 def test_caption_and_referencing_sentence_are_split() -> None:
