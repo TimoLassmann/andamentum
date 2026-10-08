@@ -23,7 +23,8 @@ the judging. A retracted work is never evidence.
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
 
 from pydantic import BaseModel, Field
@@ -31,13 +32,47 @@ from pydantic_ai.models import Model
 
 from andamentum.references import Work
 
-from ..novelty.models import NoveltyReport, Relevance, SimilarWork
 from .ask import MODEL_ERRORS, Asker, BudgetExhausted, fence
 from .engine import research
 from .sources import SourceConfig
 from .sources.base import SourceClient
 from .store import ResearchStore
 from .types import Budget, Finding, ResearchResult, RunStats
+
+
+class Relevance(str, Enum):
+    """How closely related prior work is to the claim."""
+
+    DIRECT = "direct"  # Same claim, established knowledge
+    PARTIAL = "partial"  # Related work, partial overlap
+    TANGENTIAL = "tangential"  # Loosely related, different context
+
+
+@dataclass
+class SimilarWork:
+    """A piece of prior work related to the claim."""
+
+    title: str
+    url: str
+    relevance: Relevance
+    summary: str  # How it relates to the claim
+
+
+@dataclass
+class NoveltyReport:
+    """Result of a novelty check."""
+
+    claim: str
+    # ``None`` means undetermined: the search could not be completed, so the
+    # report makes no novelty claim either way. Consumers must distinguish
+    # None from True/False rather than coercing (``bool(None)`` would read as
+    # "not novel").
+    is_novel: bool | None
+    confidence: float  # 0.0 - 1.0
+    assessment: str  # Human-readable explanation
+    similar_work: list[SimilarWork] = field(default_factory=list)
+    sources: list[str] = field(default_factory=list)  # All URLs consulted
+    search_queries_used: list[str] = field(default_factory=list)
 
 # A finding anticipates the claim from p >= 0.5; it is direct prior work from 0.8.
 ANTICIPATES_AT = 0.5
