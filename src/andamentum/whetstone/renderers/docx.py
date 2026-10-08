@@ -460,8 +460,13 @@ def _collect_novelty_claims(result: ReviewResult) -> str:
     if not result.novelty_claims:
         return ""
     lines = [
-        "*These are checked against nothing. This is what the draft asserts, "
-        "not what the literature says.*",
+        (
+            "*These were checked against the literature; similar work found is "
+            "listed under Novelty above.*"
+            if result.novelty_checked
+            else "*These are checked against nothing. This is what the draft "
+            "asserts, not what the literature says.*"
+        ),
         "",
     ]
     for claim in result.novelty_claims:
@@ -470,11 +475,12 @@ def _collect_novelty_claims(result: ReviewResult) -> str:
             # One line, for the same reason as in _collect_declined.
             line += f" *Why it matters:* {claim.why_load_bearing}"
         lines.append(line)
-    lines += [
-        "",
-        "*To check them automatically, re-run with --check-novelty. That sends "
-        "these sentences to a search engine.*",
-    ]
+    if not result.novelty_checked:
+        lines += [
+            "",
+            "*To check them automatically, re-run with --check-novelty. That sends "
+            "these sentences to a search engine.*",
+        ]
     return "\n".join(lines)
 
 

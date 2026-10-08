@@ -196,11 +196,13 @@ def create_operations(
     embedding_model: Optional[str] = None,
     *,
     judge_model: Optional[str] = None,
+    searxng_url: Optional[str] = None,
+    browser: bool = False,
 ) -> dict[str, BaseOperation]:
     """Create all operation instances.
 
     When evidence_gatherer is not provided, attempts to create a default
-    WebSearchGatherer using deep_research (if installed). Pass
+    WebSearchGatherer. Pass
     evidence_gatherer=None explicitly and model=None to disable this.
 
     Args:
@@ -216,15 +218,23 @@ def create_operations(
             — three same-typed model ids (``model``, ``embedding_model``,
             ``judge_model``) sit on this signature, and the ``*`` is what makes
             a transposition a pyright error rather than a silent swap.
+        searxng_url, browser: Where the default gatherer's web search
+            goes (a SearXNG instance, or the isolated Chrome); one is
+            required when a default gatherer is created.
 
     Returns:
         Dict mapping operation name to instance
     """
-    # Auto-create evidence gatherer if not provided and deep_research is available
+    # Auto-create evidence gatherer if not provided
     if evidence_gatherer is None and model is not None:
         from ..evidence_gathering import get_default_gatherer
 
-        evidence_gatherer = get_default_gatherer(model=model, providers=providers)
+        evidence_gatherer = get_default_gatherer(
+            model=model,
+            providers=providers,
+            searxng_url=searxng_url,
+            browser=browser,
+        )
 
     return {
         name: cls(

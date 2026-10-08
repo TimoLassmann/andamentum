@@ -408,3 +408,41 @@ async def test_a_document_whose_citation_style_cannot_be_told_is_unresolvable(
     )
     assert result.stopped_reason == "unresolvable"
     assert result.rounds == []
+
+
+async def test_the_novelty_setup_reaches_the_first_round_only(
+    tmp_path: Path,
+) -> None:
+    """Novelty is checked once, in round 1 (the claims do not change between
+    rounds), so the setup is handed to that round's review and no other."""
+    from andamentum.deep_research import NoveltyResearch
+    from andamentum.whetstone.v3.graph import review_document_v3
+
+    document = await _open(tmp_path)
+    setup = NoveltyResearch()
+    rounds = [
+        {"findings": [("major", "x")], "edit": ("earns its place", "earns its keep")},
+        {"findings": [("major", "x")], "edit": ("earns its keep", "earns its salt")},
+    ]
+    with (
+        _stub_agents(rounds=rounds),
+        patch(
+            "andamentum.whetstone.goal.loop.review_document_v3",
+            wraps=review_document_v3,
+        ) as review,
+    ):
+        await run_goal_loop(
+            document,
+            GoalSpec(text="the flow is correct", check="structure", max_rounds=2),
+            model="stub",
+            document_type="academic",
+            check_novelty=True,
+            novelty_research=setup,
+        )
+
+    given = [call.kwargs["novelty_research"] for call in review.call_args_list]
+    assert given == [setup, None]
+    assert [call.kwargs["check_novelty"] for call in review.call_args_list] == [
+        True,
+        False,
+    ]

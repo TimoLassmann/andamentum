@@ -108,6 +108,7 @@ def test_public_surface_matches_documented_set():
         "ComposeResult",
         "Brief",
         "Roles",
+        "ResearchSetup",
         "Genre",
         "GENRES",
         "genre_for",

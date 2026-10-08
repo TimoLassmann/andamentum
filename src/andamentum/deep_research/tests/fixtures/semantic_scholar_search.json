@@ -1,0 +1,29 @@
+{
+  "total": 2,
+  "offset": 0,
+  "next": null,
+  "data": [
+    {
+      "paperId": "0123456789abcdef0123456789abcdef01234567",
+      "externalIds": {"DOI": "10.1000/apollo.1", "ArXiv": "2101.00001", "PubMed": "11111111", "PubMedCentral": "7777777", "CorpusId": 42},
+      "title": "Apollo lattice sampling",
+      "abstract": "We invent a sampling scheme for the Apollo lattice.",
+      "year": 2021,
+      "venue": "Journal of Invented Results",
+      "authors": [{"authorId": "1", "name": "Jane Doe"}, {"authorId": "2", "name": "Richard Roe"}],
+      "openAccessPdf": {"url": "https://example.org/apollo.pdf", "status": "GREEN"},
+      "isOpenAccess": true
+    },
+    {
+      "paperId": "fedcba9876543210fedcba9876543210fedcba98",
+      "externalIds": {},
+      "title": "SaltLog notes without an abstract",
+      "abstract": null,
+      "year": null,
+      "venue": "",
+      "authors": [],
+      "openAccessPdf": {"url": "", "status": null},
+      "isOpenAccess": false
+    }
+  ]
+}

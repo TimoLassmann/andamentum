@@ -22,8 +22,9 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Awaitable, Callable, Iterable, TypeVar
+from typing import Any, Awaitable, Callable, Iterable, TypeVar, cast
 
 from pydantic import BaseModel
 
@@ -303,6 +304,7 @@ async def run_agent_with_usage(
     retries: int = 3,
     output_retries: int = 5,
     validators: list[Callable[..., Any]] | None = None,
+    model_settings: Mapping[str, Any] | None = None,
 ) -> tuple[Any, Any]:
     """One-shot agent execution with PromptedOutput fallback, plus token usage.
 
@@ -322,6 +324,9 @@ async def run_agent_with_usage(
         retries: Max retries for the agent
         output_retries: Max retries for output validation
         validators: Optional output validator callables
+        model_settings: Optional pydantic-ai ``ModelSettings`` for the run
+            (e.g. ``{"temperature": 0.0, "seed": 0}``); ``None`` sends none,
+            so the provider's defaults apply
 
     Returns:
         ``(instance of output_type, RunUsage)``
@@ -344,8 +349,9 @@ async def run_agent_with_usage(
         for v in validators:
             agent.output_validator(v)
 
+    settings = cast(Any, dict(model_settings)) if model_settings else None
     try:
-        result = await agent.run(user_message)
+        result = await agent.run(user_message, model_settings=settings)
         return result.output, result.usage
     except (UnexpectedModelBehavior, ModelHTTPError):
         logger.info("One-shot agent: falling back to PromptedOutput")
@@ -358,7 +364,7 @@ async def run_agent_with_usage(
         if validators:
             for v in validators:
                 fallback.output_validator(v)
-        result = await fallback.run(user_message)
+        result = await fallback.run(user_message, model_settings=settings)
         return result.output, result.usage
 
 

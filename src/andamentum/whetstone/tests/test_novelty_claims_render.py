@@ -61,3 +61,15 @@ def test_silence_when_the_draft_stakes_no_claim() -> None:
     assert "staking as novel" not in render_markdown(empty)
     assert "staking as novel" not in render_html(empty)
     assert _collect_novelty_claims(empty) == ""
+
+
+def test_when_the_novelty_check_ran_no_renderer_says_nothing_checked_them() -> None:
+    result = ReviewResult(summary="s", novelty_claims=_claims(1), novelty_checked=True)
+    for out in (
+        render_markdown(result),
+        render_html(result),
+        _collect_novelty_claims(result),
+    ):
+        assert "checked against nothing" not in out
+        assert "re-run with --check-novelty" not in out
+        assert "checked against the literature" in out

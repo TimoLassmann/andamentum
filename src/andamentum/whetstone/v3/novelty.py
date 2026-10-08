@@ -9,7 +9,7 @@ agent-with-tool shape v2 used worked but had three problems:
   * difficult to benchmark (no reproducible flag-set + budget)
 
 The three-node split gives reproducible flag-set, bounded search budget,
-and explicit cost shape: 1 LLM call (extract) + N deep_research calls
+and explicit cost shape: 1 LLM call (extract) + N deep_research checks
 (one per target, max novelty_target_cap=8 by default) + 0 LLM calls in
 the pure adapter (judge_novelty).
 
@@ -28,9 +28,8 @@ should run novelty at a coarser cadence than the full review loop.
 
 from __future__ import annotations
 
-import asyncio
 import logging
-from typing import Literal, cast
+from typing import TYPE_CHECKING, Literal, cast
 
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
@@ -39,6 +38,9 @@ from andamentum.core.models import resolve_model
 
 from .model import Section
 from .review import Finding
+
+if TYPE_CHECKING:
+    from andamentum.deep_research import NoveltyResearch
 
 logger = logging.getLogger("andamentum.whetstone.v3")
 
@@ -194,31 +196,8 @@ async def flag_novelty_targets(
 # ── Node 2: search per target ──────────────────────────────────────────────
 
 
-async def _check_one_target(
-    target: NoveltyTarget,
-    *,
-    agent_model: str,
-    search_depth: int,
-) -> NoveltyEvidence:
-    """Per-target deep_research call. Failures become NoveltyEvidence(
-    error=...) — never raise — so the gather() loop never aborts."""
-    try:
-        from andamentum.deep_research import run_novelty_check
-
-        report = await run_novelty_check(
-            claim=target.short_summary,
-            model=agent_model,
-            search_depth=search_depth,
-            verbose=False,
-        )
-    except Exception as exc:
-        logger.warning(
-            "[v3.novelty] target '%s...' deep_research crashed: %s",
-            target.short_summary[:60],
-            exc,
-        )
-        return NoveltyEvidence(target=target, error=str(exc))
-
+def _evidence_from_report(target: NoveltyTarget, report: object) -> NoveltyEvidence:
+    """Normalise one novelty report into NoveltyEvidence."""
     # is_novel=None means deep_research could not determine novelty (search
     # failed / no evidence). Route that into the existing no-signal path so no
     # spurious "prior work" Finding is emitted — undetermined is not a verdict.
@@ -264,19 +243,61 @@ async def run_novelty_searches(
     *,
     agent_model: str,
     search_depth: int = _DEFAULT_SEARCH_DEPTH,
+    research: "NoveltyResearch | None" = None,
 ) -> list[NoveltyEvidence]:
-    """Parallel deep_research over targets, with per-target failure
-    isolation. Order of results matches the order of ``targets``."""
+    """The deep_research novelty check over targets, with per-target failure
+    isolation. Order of results matches the order of ``targets``.
+
+    The targets run one after another over one research store, so works and
+    passages found for one claim are reused for the next (the store has one
+    writer); ``search_depth`` is the number of search rounds. ``research``
+    says where the sources are and where the store lives; ``None`` takes the
+    defaults (the public scholarly sources, a store kept in memory). The
+    findings are judged by ``agent_model``, the review's own model.
+    """
     if not targets:
         return []
-    return list(
-        await asyncio.gather(
-            *[
-                _check_one_target(t, agent_model=agent_model, search_depth=search_depth)
-                for t in targets
-            ]
-        )
+    from andamentum.deep_research import (
+        NoveltyResearch,
+        ResearchStore,
+        run_novelty_check,
     )
+
+    research = research if research is not None else NoveltyResearch()
+    given = research.store
+    store = (
+        given
+        if isinstance(given, ResearchStore)
+        else ResearchStore(given)
+        if given is not None
+        else ResearchStore.in_memory()
+    )
+    budget = research.budget.model_copy(update={"max_rounds": search_depth})
+    evidence: list[NoveltyEvidence] = []
+    try:
+        for target in targets:
+            try:
+                report = await run_novelty_check(
+                    target.short_summary,
+                    model=agent_model,
+                    store=store,
+                    sources=research.sources,
+                    budget=budget,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "[v3.novelty] target '%s...' novelty check crashed: %s",
+                    target.short_summary[:60],
+                    exc,
+                )
+                evidence.append(NoveltyEvidence(target=target, error=str(exc)))
+                continue
+            evidence.append(_evidence_from_report(target, report))
+    finally:
+        if not isinstance(given, ResearchStore):
+            store.close()
+    return evidence
+    return evidence
 
 
 # ── Node 3: judge + adapt ──────────────────────────────────────────────────

@@ -280,7 +280,6 @@
     .pill.podman-missing { background: #fee2e2; color: var(--danger); }
     .pill.error { background: #fee2e2; color: var(--danger); }
     .pill.unknown { background: #f3f4f6; color: var(--muted); }
-    #search-status-msg { font-size: 12px; color: var(--muted); margin-left: 6px; }
 
     #search-results { margin-top: 10px; max-height: 280px; overflow: auto; }
     .search-hit {
@@ -307,10 +306,7 @@
   <div id="search-pane">
     <div class="row">
       <strong style="font-size: 14px;">Find content from the web</strong>
-      <span>SearXNG: <span id="searxng-pill" class="pill unknown">unknown</span></span>
-      <span id="search-status-msg"></span>
-      <button id="searxng-start" class="ghost" style="display: none;">Start SearXNG</button>
-      <button id="searxng-refresh" class="ghost">↻</button>
+      <span style="color: var(--muted); font-size: 12px;">searches through an isolated Chrome in podman</span>
     </div>
     <div class="row" style="margin-top: 8px;">
       <input type="text" id="search-query" placeholder="search query…" style="flex: 1; min-width: 280px;">

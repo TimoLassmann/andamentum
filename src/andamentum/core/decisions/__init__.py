@@ -41,8 +41,10 @@ from .model import (
     DecisionModel,
     DecisionResult,
     decide,
+    find_digest,
     make_decision_model,
     model_digest,
+    server_lock,
 )
 
 __all__ = [
@@ -61,8 +63,10 @@ __all__ = [
     "Question",
     "Usage",
     "decide",
+    "find_digest",
     "make_decision_model",
     "model_digest",
     "model_name",
     "question_hash",
+    "server_lock",
 ]

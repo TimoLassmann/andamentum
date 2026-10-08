@@ -65,6 +65,13 @@ def _lock_for(base_url: str) -> asyncio.Lock:
     return per_url.setdefault(base_url.rstrip("/"), asyncio.Lock())
 
 
+def server_lock(base_url: str = DEFAULT_OLLAMA_URL) -> asyncio.Lock:
+    """The lock every decision request to the Ollama server at *base_url*
+    holds. Other local model calls to the same server (an embedding request)
+    take it too, so no two local calls run at once."""
+    return _lock_for(base_url)
+
+
 def _parse_version(text: str) -> tuple[int, ...]:
     found = re.match(r"(\d+)\.(\d+)\.(\d+)", text)
     if found is None:

@@ -7,19 +7,25 @@ inspected from the folder alone. Writes are atomic and idempotent.
 
 from __future__ import annotations
 
+import json
 import os
 import tempfile
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from pydantic import TypeAdapter
 
 from .schemas import Brief, Fact, Outline, RoundRecord, Source
+
+if TYPE_CHECKING:
+    from andamentum.deep_research import ResearchResult
 
 BRIEF = "brief.json"
 OUTLINE = "outline.json"
 SOURCES = "evidence/sources.json"
 FACTS = "evidence/facts.json"
 ROUNDS = "rounds.json"
+RESEARCH = "evidence/research.json"
 
 _SOURCES = TypeAdapter(list[Source])
 _FACTS = TypeAdapter(list[Fact])
@@ -86,3 +92,22 @@ def load_rounds(bundle_dir: str | Path) -> list[RoundRecord]:
     if not has(bundle_dir, ROUNDS):
         return []
     return _ROUNDS.validate_json(_read(bundle_dir, ROUNDS))
+
+
+def save_research(bundle_dir: str | Path, result: ResearchResult) -> None:
+    """The research result without its run log, so a resumed run never searches
+    again. The log (it holds every page's text) stays in the project's
+    ``research.db`` as the run item ``log/run``; compose reads the evidence
+    table only."""
+    _write(
+        Path(bundle_dir) / RESEARCH,
+        result.model_dump_json(indent=2, exclude={"log"}),
+    )
+
+
+def load_research(bundle_dir: str | Path) -> ResearchResult:
+    from andamentum.deep_research import ResearchResult
+
+    saved = json.loads(_read(bundle_dir, RESEARCH))
+    saved.pop("log", None)  # a file written before the log was left out
+    return ResearchResult.model_validate(saved)

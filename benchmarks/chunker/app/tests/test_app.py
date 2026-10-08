@@ -7,14 +7,15 @@ import pytest
 from fastapi.testclient import TestClient
 
 from andamentum.chunker.judge import JudgeVerdict
-from andamentum.deep_research.models import FetchedPage, SearchResult
+from andamentum.deep_research.sources import SourceError
+from andamentum.deep_research.types import Candidate
+from andamentum.references import Work
 from benchmarks.chunker.app.main import (
     _canonicalise_pdf_url,
     _extract_pdf_links,
     _set_cases_dir,
     _set_executor_factory,
-    _set_search_backend_factory,
-    _set_searxng_manager_factory,
+    _set_web_search_factory,
     app,
 )
 
@@ -262,159 +263,62 @@ def test_save_case_rejects_bad_extension(tmp_cases_dir: Path):
     assert r.status_code in (400, 422)
 
 
-# ---------- /api/searxng-status -------------------------------------------
+# ---------- /api/search ---------------------------------------------------
 
 
-class _FakeManager:
-    """Stub of SearxngManager — drives status/start endpoints in tests."""
-
-    def __init__(self, *, running: bool = False, podman_missing: bool = False):
-        self._running = running
-        self._podman_missing = podman_missing
-        self.start_calls = 0
-
-    def is_running(self) -> bool:
-        if self._podman_missing:
-            raise RuntimeError("podman is not installed or not in PATH")
-        return self._running
-
-    def ensure_running(self) -> None:
-        if self._podman_missing:
-            raise RuntimeError("podman is not installed or not in PATH")
-        self.start_calls += 1
-        self._running = True
-
-
-@pytest.fixture
-def fake_manager():
-    """Inject a fake SearxngManager and reset on teardown."""
-    holder: dict[str, _FakeManager] = {}
-
-    def factory():
-        return holder["m"]
-
-    _set_searxng_manager_factory(factory)
-
-    def _install(manager: _FakeManager) -> _FakeManager:
-        holder["m"] = manager
-        return manager
-
-    yield _install
-    # Reset to the real factory after the test.
-    from benchmarks.chunker.app.main import _default_searxng_manager_factory
-
-    _set_searxng_manager_factory(_default_searxng_manager_factory)
-
-
-def test_searxng_status_running(fake_manager):
-    fake_manager(_FakeManager(running=True))
-    client = TestClient(app)
-    r = client.get("/api/searxng-status")
-    assert r.status_code == 200
-    data = r.json()
-    assert data["state"] == "running"
-
-
-def test_searxng_status_stopped(fake_manager):
-    fake_manager(_FakeManager(running=False))
-    client = TestClient(app)
-    r = client.get("/api/searxng-status")
-    assert r.status_code == 200
-    assert r.json()["state"] == "stopped"
-
-
-def test_searxng_status_podman_missing(fake_manager):
-    fake_manager(_FakeManager(podman_missing=True))
-    client = TestClient(app)
-    r = client.get("/api/searxng-status")
-    assert r.status_code == 200
-    data = r.json()
-    assert data["state"] == "podman-missing"
-    assert "podman" in data["message"].lower()
-
-
-# ---------- /api/searxng-start --------------------------------------------
-
-
-def test_searxng_start_succeeds(fake_manager):
-    m = fake_manager(_FakeManager(running=False))
-    client = TestClient(app)
-    r = client.post("/api/searxng-start")
-    assert r.status_code == 200
-    assert r.json()["state"] == "running"
-    assert m.start_calls == 1
-
-
-def test_searxng_start_returns_503_when_podman_missing(fake_manager):
-    fake_manager(_FakeManager(podman_missing=True))
-    client = TestClient(app)
-    r = client.post("/api/searxng-start")
-    assert r.status_code == 503
-    assert "podman" in r.json()["detail"].lower()
-
-
-# ---------- /api/search + /api/fetch --------------------------------------
-
-
-class _FakeBackend:
-    """Stub of SearchBackend that returns canned hits/pages."""
+class _FakeSearch:
+    """Stub of the browser search that returns canned candidates or fails."""
 
     def __init__(
         self,
         *,
-        hits: list[SearchResult] | None = None,
-        page: FetchedPage | None = None,
-        fetch_error: Exception | None = None,
+        hits: list[Candidate] | None = None,
+        error: Exception | None = None,
     ):
         self.hits = hits or []
-        self.page = page
-        self.fetch_error = fetch_error
+        self.error = error
         self.search_calls: list[tuple[str, int]] = []
-        self.fetch_calls: list[str] = []
+        self.closed = False
 
-    async def search(self, query: str, max_results: int = 10):
-        self.search_calls.append((query, max_results))
+    async def search(self, query: str, *, limit: int):
+        self.search_calls.append((query, limit))
+        if self.error:
+            raise self.error
         return self.hits
 
-    async def fetch_page(self, url: str):
-        self.fetch_calls.append(url)
-        if self.fetch_error:
-            raise self.fetch_error
-        assert self.page is not None
-        return self.page
+    async def close(self) -> None:
+        self.closed = True
 
 
 @pytest.fixture
-def fake_backend():
-    holder: dict[str, _FakeBackend] = {}
+def fake_search():
+    holder: dict[str, _FakeSearch] = {}
 
     def factory():
-        return holder["b"]
+        return holder["s"]
 
-    _set_search_backend_factory(factory)
+    _set_web_search_factory(factory)
 
-    def _install(backend: _FakeBackend) -> _FakeBackend:
-        holder["b"] = backend
-        return backend
+    def _install(search: _FakeSearch) -> _FakeSearch:
+        holder["s"] = search
+        return search
 
     yield _install
-    from benchmarks.chunker.app.main import _default_search_backend_factory
+    from benchmarks.chunker.app.main import _default_web_search_factory
 
-    _set_search_backend_factory(_default_search_backend_factory)
+    _set_web_search_factory(_default_web_search_factory)
 
 
-def test_search_returns_hits(fake_backend, fake_manager):
-    fake_manager(_FakeManager(running=True))
-    fake_backend(
-        _FakeBackend(
+def test_search_returns_hits(fake_search):
+    backend = fake_search(
+        _FakeSearch(
             hits=[
-                SearchResult(
-                    link_id=0,
-                    title="Hello",
-                    url="https://example.com/a",
+                Candidate(
+                    work=Work(
+                        title="Hello", url="https://example.com/a", venue="example.com"
+                    ),
+                    sources=["web"],
                     snippet="snip",
-                    domain="example.com",
-                    relevance_score=0.8,
                 ),
             ]
         )
@@ -426,22 +330,24 @@ def test_search_returns_hits(fake_backend, fake_manager):
     assert len(data["hits"]) == 1
     assert data["hits"][0]["url"] == "https://example.com/a"
     assert data["hits"][0]["domain"] == "example.com"
+    assert data["hits"][0]["snippet"] == "snip"
+    assert backend.search_calls == [("hello", 5)] and backend.closed
 
 
-def test_search_503_when_searxng_stopped(fake_backend, fake_manager):
-    """Empty hits + container down → 503 (not silent empty list)."""
-    fake_manager(_FakeManager(running=False))
-    fake_backend(_FakeBackend(hits=[]))
+def test_search_503_when_the_search_fails(fake_search):
+    """A failed search (no Chrome, bot check) is a 503 with the reason, not []."""
+    backend = fake_search(
+        _FakeSearch(error=SourceError("web", "no Chrome answers", kind="transport"))
+    )
     client = TestClient(app)
     r = client.post("/api/search", json={"query": "hello"})
     assert r.status_code == 503
-    assert "not running" in r.json()["detail"].lower()
+    assert "no chrome answers" in r.json()["detail"].lower()
+    assert backend.closed
 
 
-def test_search_empty_when_running_returns_empty_list(fake_backend, fake_manager):
-    """Empty hits + container running → 200 with [] (legitimately no results)."""
-    fake_manager(_FakeManager(running=True))
-    fake_backend(_FakeBackend(hits=[]))
+def test_search_empty_returns_empty_list(fake_search):
+    fake_search(_FakeSearch(hits=[]))
     client = TestClient(app)
     r = client.post("/api/search", json={"query": "asdjkasdjkasd"})
     assert r.status_code == 200

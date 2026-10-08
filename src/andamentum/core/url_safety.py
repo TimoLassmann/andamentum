@@ -2,8 +2,7 @@
 
 Combines the strengths of the two pre-consolidation implementations:
 - DNS resolution + private/loopback/reserved/multicast IP check (was harvest)
-- Cloud metadata blocklist, hostname-pattern blocklist, SearXNG whitelist
-  (was deep_research)
+- Cloud metadata blocklist, hostname-pattern blocklist (was deep_research)
 
 Why it lives in ``core``: SSRF safety is shared infrastructure with no
 andamentum dependencies of its own (stdlib + httpx only), and more than one
@@ -21,9 +20,6 @@ import socket
 from urllib.parse import urlparse
 
 import httpx
-
-# Default-allowed local endpoints when callers opt in via ``allow_searxng=True``.
-SEARXNG_WHITELIST = frozenset({"localhost:4070", "127.0.0.1:4070"})
 
 # Cloud-provider metadata endpoints — never safe to fetch from a server-side
 # fetcher; they expose IAM tokens, instance secrets, etc.
@@ -73,21 +69,18 @@ def is_internal_ip(ip_str: str) -> bool:
     )
 
 
-def is_safe_url(url: str, *, allow_searxng: bool = False) -> tuple[bool, str]:
+def is_safe_url(url: str) -> tuple[bool, str]:
     """Validate a URL for SSRF protection.
 
     Performs (in order, cheapest-first):
       1. Scheme allow/blocklist (must be http or https)
-      2. SearXNG whitelist (only when ``allow_searxng=True``)
-      3. Cloud-metadata hostname blocklist
-      4. Localhost / internal hostname-pattern blocklist
-      5. Direct private-IP check on the host (catches literal IPs)
-      6. DNS resolution → private-IP check on the resolved address
+      2. Cloud-metadata hostname blocklist
+      3. Localhost / internal hostname-pattern blocklist
+      4. Direct private-IP check on the host (catches literal IPs)
+      5. DNS resolution → private-IP check on the resolved address
 
     Args:
         url: URL to validate.
-        allow_searxng: When True, allow whitelisted local SearXNG endpoints.
-            Used by deep_research's search backend; harvest never sets this.
 
     Returns:
         ``(is_safe, reason)``. ``reason`` is empty on success and a short
@@ -112,12 +105,6 @@ def is_safe_url(url: str, *, allow_searxng: bool = False) -> tuple[bool, str]:
     host = parsed.hostname or ""
     if not host:
         return False, "URL has no hostname"
-
-    port = parsed.port
-    host_with_port = f"{host}:{port}" if port else host
-
-    if allow_searxng and host_with_port in SEARXNG_WHITELIST:
-        return True, ""
 
     if host.lower() in CLOUD_METADATA_HOSTS:
         return False, f"Blocked cloud metadata endpoint: {host}"
@@ -227,7 +214,6 @@ async def fetch_with_safe_redirects(
     client: httpx.AsyncClient,
     url: str,
     *,
-    allow_searxng: bool = False,
     max_redirects: int = 5,
     max_bytes: int | None = DEFAULT_MAX_RESPONSE_BYTES,
 ) -> httpx.Response:
@@ -244,8 +230,6 @@ async def fetch_with_safe_redirects(
     Args:
         client: The httpx client to issue requests on.
         url: The initial URL to fetch.
-        allow_searxng: Forwarded to :func:`is_safe_url`; permits the
-            whitelisted local SearXNG endpoint as a (redirect) target.
         max_redirects: Maximum number of hops to follow before giving up.
         max_bytes: Hard ceiling on the response body size, or ``None``.
 
@@ -259,7 +243,7 @@ async def fetch_with_safe_redirects(
     """
     current = url
     for _ in range(max_redirects + 1):
-        safe, reason = is_safe_url(current, allow_searxng=allow_searxng)
+        safe, reason = is_safe_url(current)
         if not safe:
             raise SsrfBlocked(f"URL blocked: {reason} ({current})")
 

@@ -41,7 +41,7 @@ from __future__ import annotations
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from andamentum.core.decisions import DecisionModel
 
@@ -55,6 +55,9 @@ from .references import ReferenceGoalReport, check_reference_goal
 from .spec import GoalSpec
 from .structure import structure_goal_met
 from .verdict import GoalVerdict
+
+if TYPE_CHECKING:
+    from andamentum.deep_research import NoveltyResearch
 
 StoppedReason = Literal["goal_met", "no_progress", "cap_reached", "unresolvable"]
 
@@ -219,6 +222,7 @@ async def run_goal_loop(
     editor_criteria: list[str] | None = None,
     check_novelty: bool = False,
     novelty_search_depth: int = 2,
+    novelty_research: NoveltyResearch | None = None,
     judge_model: str | None = None,
     patch_author: str | None = None,
     workdir: Path | None = None,
@@ -241,6 +245,9 @@ async def run_goal_loop(
     the document-type question instead of the LLM classifier
     (see :func:`~..v3.graph.run_review_v3`); ``None`` changes nothing.
 
+    *novelty_research* runs the first round's novelty check on deep_research
+    (see :func:`~..v3.graph.run_review_v3`); it needs ``check_novelty=True``.
+
     See :mod:`.loop`'s module docstring for the stop conditions.
     """
     if workdir is None:
@@ -257,6 +264,7 @@ async def run_goal_loop(
                 editor_criteria=editor_criteria,
                 check_novelty=check_novelty,
                 novelty_search_depth=novelty_search_depth,
+                novelty_research=novelty_research,
                 judge_model=judge_model,
                 patch_author=patch_author,
                 workdir=Path(tmp),
@@ -274,6 +282,7 @@ async def run_goal_loop(
         editor_criteria=editor_criteria,
         check_novelty=check_novelty,
         novelty_search_depth=novelty_search_depth,
+        novelty_research=novelty_research,
         judge_model=judge_model,
         patch_author=patch_author,
         workdir=workdir,
@@ -294,6 +303,7 @@ async def _run_goal_loop(
     editor_criteria: list[str] | None,
     check_novelty: bool,
     novelty_search_depth: int,
+    novelty_research: NoveltyResearch | None,
     judge_model: str | None,
     patch_author: str | None,
     workdir: Path,
@@ -354,6 +364,7 @@ async def _run_goal_loop(
             check_novelty=check_novelty and round_idx == 1,
             flag_novelty=round_idx == 1,
             novelty_search_depth=novelty_search_depth,
+            novelty_research=novelty_research if round_idx == 1 else None,
             patch_author=patch_author,
             extra_findings=references.findings if references is not None else None,
             decision_model=decision_model,

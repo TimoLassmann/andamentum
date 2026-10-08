@@ -6,7 +6,7 @@ stage spinning with its elapsed time, a live bar while node bodies are authored,
 sandbox audit ticking through its checks. Library callers and tests use the default
 :class:`NoopReporter` (silent).
 
-This follows the same Port shape as ``deep_research.reporter``: every method is
+This is a Port: every method is
 keyword-only so the interface stays forward-compatible, and it is *not* Python logging —
 progress events want a structured, hierarchical, visual display, not a log line.
 

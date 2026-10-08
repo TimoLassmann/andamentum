@@ -400,48 +400,7 @@ function escapeAttr(s) {
   return escapeHtml(s).replace(/"/g, "&quot;");
 }
 
-// ---------- SearXNG status + Search + Fetch ------------------------------
-
-async function refreshSearxngStatus() {
-  setPill("unknown", "");
-  try {
-    const r = await fetch("/api/searxng-status");
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    const data = await r.json();
-    setPill(data.state, data.message);
-  } catch (e) {
-    setPill("error", e.message);
-  }
-}
-
-function setPill(state, msg) {
-  const pill = $("searxng-pill");
-  pill.className = `pill ${state}`;
-  pill.textContent = state;
-  $("search-status-msg").textContent = msg || "";
-  $("searxng-start").style.display =
-    (state === "stopped" || state === "podman-missing") ? "" : "none";
-}
-
-$("searxng-refresh").addEventListener("click", refreshSearxngStatus);
-
-$("searxng-start").addEventListener("click", async () => {
-  $("searxng-start").disabled = true;
-  setPill("starting", "pulling image and starting container (can take 30-60s)…");
-  try {
-    const r = await fetch("/api/searxng-start", { method: "POST" });
-    if (!r.ok) {
-      let detail = await r.text();
-      try { detail = JSON.parse(detail).detail || detail; } catch (_) {}
-      throw new Error(detail);
-    }
-    await refreshSearxngStatus();
-  } catch (e) {
-    setPill("error", e.message);
-  } finally {
-    $("searxng-start").disabled = false;
-  }
-});
+// ---------- Search + Fetch ------------------------------------------------
 
 $("search-go").addEventListener("click", async () => {
   const q = $("search-query").value.trim();
@@ -469,7 +428,6 @@ $("search-go").addEventListener("click", async () => {
     }
   } catch (e) {
     setSearchMsg(e.message, "bad");
-    refreshSearxngStatus();  // a 503 usually means status flipped
   } finally {
     $("search-go").disabled = false;
   }
@@ -576,9 +534,6 @@ function setSearchMsg(msg, cls) {
   el.className = cls || "";
   el.textContent = msg;
 }
-
-// Auto-poll status on first load.
-refreshSearxngStatus();
 
 // ---------- Selection-driven boundary editing ----------------------------
 //

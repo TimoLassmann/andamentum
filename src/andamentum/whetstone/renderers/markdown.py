@@ -156,7 +156,11 @@ def render_markdown(
         )
 
     if result.novelty_claims:
-        sections.append(_render_novelty_claims(result.novelty_claims))
+        sections.append(
+            _render_novelty_claims(
+                result.novelty_claims, checked=result.novelty_checked
+            )
+        )
 
     if result.reference_summary:
         sections.append(f"## {REFERENCE_CHECK_HEADING}\n\n{result.reference_summary}")
@@ -213,7 +217,7 @@ def _render_questions(qs: Iterable[AuthorQuestion]) -> str:
     return "\n".join(lines)
 
 
-def _render_novelty_claims(claims: list[NoveltyClaim]) -> str:
+def _render_novelty_claims(claims: list[NoveltyClaim], *, checked: bool = False) -> str:
     """What the draft stakes as new — found on every run, verified on none.
 
     The heading and the first line both say "checked against nothing", because
@@ -228,18 +232,23 @@ def _render_novelty_claims(claims: list[NoveltyClaim]) -> str:
     lines = [
         f"## Claims you are staking as novel ({len(claims)})",
         "",
-        "_These are checked against nothing. This is what the draft asserts, not what the literature says._",
+        (
+            "_These were checked against the literature; similar work found is listed under Novelty above._"
+            if checked
+            else "_These are checked against nothing. This is what the draft asserts, not what the literature says._"
+        ),
         "",
     ]
     for claim in claims:
         lines.append(f'- "{claim.claim_text}"')
         if claim.why_load_bearing:
             lines.append(f"  - _Why it matters:_ {claim.why_load_bearing}")
-    lines += [
-        "",
-        "_To check them automatically, re-run with --check-novelty. That sends these sentences to a search engine._",
-        "",
-    ]
+    if not checked:
+        lines += [
+            "",
+            "_To check them automatically, re-run with --check-novelty. That sends these sentences to a search engine._",
+        ]
+    lines.append("")
     return "\n".join(lines)
 
 

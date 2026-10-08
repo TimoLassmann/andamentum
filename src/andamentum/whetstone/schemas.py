@@ -524,6 +524,9 @@ class ReviewResult(BaseModel):
     # tutorial produces an empty list naturally, so no document-type rule
     # is needed.
     novelty_claims: list[NoveltyClaim] = Field(default_factory=list)
+    # True when the literature check ran on those claims (--check-novelty), so a
+    # renderer does not tell the reader they were checked against nothing.
+    novelty_checked: bool = False
     # The reference check's own summary (how the draft cites, the counts, the
     # Crossref result), as markdown. Empty when no reference check ran. Its
     # problems are ordinary findings; this is what they do not say — that the

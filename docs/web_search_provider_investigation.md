@@ -71,9 +71,8 @@ hard-wired fallback:
 - New `providers/web_search.py::WebSearchProvider` — a pure-retrieval dispatch
   provider (contract-compliant: `quality_score=None`, returns
   `list[GatheredEvidence]`, never raises). It composes the **model-free**
-  deep_research backend (`HttpxSearchBackend.search` + `fetch_page`), inheriting
-  SSRF protection, robots/paywall gating, safe redirects, and the circuit
-  breaker. No LLM synthesis (the epistemic judge does the reasoning).
+  deep_research web source (`WebSource.search` + `fetch_text`), inheriting
+  SSRF protection, robots/paywall gating and safe redirects. No LLM synthesis (the epistemic judge does the reasoning).
 - Registered as `web_search` in `PROVIDER_REGISTRY`, with full dispatch metadata
   (`description`, `query_guidance`, `query_examples` incl. out-of-domain abstain
   cases, `output_kind`, `independence_group="general_web"`,

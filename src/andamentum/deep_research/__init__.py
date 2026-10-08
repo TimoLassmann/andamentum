@@ -1,99 +1,70 @@
-"""Deep research system — web research, novelty checking, and URL summarisation.
+"""deep_research: an evidence-first research loop, web and scholarly.
 
-Three end-user one-shot entry points:
-
-  • :func:`run_research` — multi-iteration search/fetch/synthesis against
-    a research question.
-  • :func:`run_novelty_check` — claim → web research → novelty verdict.
-  • :func:`run_fetch` — single URL → structured summary.
-
-Everything else (extraction primitives, SearxNG manager, circuit
-breaker, agent registry) is internal infrastructure that the three
-one-shots compose. They remain importable for advanced users who need
-them.
+``research(question, *, mode, model, ...)`` runs the engine and returns a
+``ResearchResult``: sub-questions, the works found, verbatim passages, findings
+(each with the quote behind it, checked in code or marked unverified), the
+answer the research reached for each sub-question, and a report that cites
+findings by id, verified. The loop is plan, then per sub-question: queries,
+search, choose what to read, read, take notes, reflect (is it answered?), then
+one write and a code-only verify. See ``CLAUDE.md`` for the design.
 """
 
-# === End-user one-shots ===
-from .fetch import run_fetch
-from .novelty import run_novelty_check
-from .orchestrator import run_research
-
-# === Internal infrastructure (advanced use) ===
-from .circuit_breaker import CircuitBreaker, get_searxng_breaker
-from .content_extractor import extract_content, extract_html, extract_pdf
-from .searxng import HealthCheck, SearxngManager, check_health as check_searxng_health
-from .verification import verify_sources
-
-# === Result / data types ===
-from .agents import AGENT_REGISTRY, AgentDefinition
-from .circuit_breaker import CircuitOpenError
-from .content_extractor import ExtractionError
-from .models import (
-    EvidenceItem,
-    EvidenceReport,
-    FetchedPage,
-    FetchError,
-    FetchPlan,
-    FetchResults,
-    FetchSummary,
-    GapAnalysis,
-    GeneratorOutput,
-    PageSummary,
-    ResearchErrors,
+from .ask import MODEL_ERRORS, Asker, BudgetExhausted
+from .engine import research
+from .identity import merge
+from .novelty import NoveltyResearch, run_novelty_check
+from .read import locate_quote
+from .sources import (
+    SourceClient,
+    SourceConfig,
+    SourceError,
+    SourceSet,
+    build_sources,
+)
+from .store import ResearchStore, StoreError
+from .write import ReportWriterError
+from .types import (
+    Budget,
+    Candidate,
+    Finding,
+    LogEvent,
+    Mode,
+    Passage,
     ResearchResult,
-    SearchError,
-    SearchQuery,
-    SearchResult,
-    VerifierOutput,
+    RunLog,
+    RunStats,
+    SubQuestion,
+    SubQuestionResult,
+    VerifyFlag,
 )
-from .novelty import (
-    NoveltyAssessment,
-    NoveltyReport,
-    Relevance,
-    SimilarWork,
-)
-from .state import ResearchState
-
 
 __all__ = [
-    # End-user one-shots
-    "run_fetch",
-    "run_novelty_check",
-    "run_research",
-    # Internal infrastructure (advanced use)
-    "CircuitBreaker",
-    "SearxngManager",
-    "check_searxng_health",
-    "extract_content",
-    "extract_html",
-    "extract_pdf",
-    "get_searxng_breaker",
-    "verify_sources",
-    # Data types
-    "AGENT_REGISTRY",
-    "AgentDefinition",
-    "CircuitOpenError",
-    "EvidenceItem",
-    "EvidenceReport",
-    "ExtractionError",
-    "FetchError",
-    "FetchPlan",
-    "FetchResults",
-    "FetchSummary",
-    "FetchedPage",
-    "GapAnalysis",
-    "GeneratorOutput",
-    "HealthCheck",
-    "NoveltyAssessment",
-    "NoveltyReport",
-    "PageSummary",
-    "Relevance",
-    "ResearchErrors",
+    "MODEL_ERRORS",
+    "Asker",
+    "Budget",
+    "BudgetExhausted",
+    "Candidate",
+    "Finding",
+    "LogEvent",
+    "Mode",
+    "NoveltyResearch",
+    "Passage",
     "ResearchResult",
-    "ResearchState",
-    "SearchError",
-    "SearchQuery",
-    "SearchResult",
-    "SimilarWork",
-    "VerifierOutput",
+    "ReportWriterError",
+    "ResearchStore",
+    "RunLog",
+    "RunStats",
+    "SourceClient",
+    "SourceConfig",
+    "SourceError",
+    "SourceSet",
+    "StoreError",
+    "SubQuestion",
+    "SubQuestionResult",
+    "VerifyFlag",
+    "build_sources",
+    "locate_quote",
+    "merge",
+    "research",
+    "run_novelty_check",
 ]

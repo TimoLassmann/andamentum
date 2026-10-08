@@ -14,6 +14,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, model_validator
 
 OutputFormat = Literal["docx", "md", "html", "txt"]
+ResearchMode = Literal["web", "scholarly", "both"]
 WHETSTONE_DOCUMENT_TYPES = (
     "academic",
     "external_communication",
@@ -49,6 +50,16 @@ class Genre(BaseModel):
     style_notes: str
     outputs: list[OutputFormat]
     provenance_required: bool = False
+    # Where ``--research`` looks. Unset: the web for a genre that does not
+    # cite, web and scholarly sources together for one that does.
+    research_mode: ResearchMode | None = None
+
+    @property
+    def research(self) -> ResearchMode:
+        """The research mode this genre asks for (see ``research_mode``)."""
+        if self.research_mode is not None:
+            return self.research_mode
+        return "both" if self.cites else "web"
 
     @model_validator(mode="after")
     def _consistent(self) -> Genre:
@@ -109,6 +120,7 @@ EMAIL = Genre(
     style_notes="Plain, direct, courteous. Short paragraphs. No greeting or sign-off "
     "boilerplate beyond one line each. No headings, no bullet walls. " + _NO_INVENTION,
     outputs=["txt", "md"],
+    research_mode="web",
 )
 
 MEMO = Genre(
@@ -157,6 +169,7 @@ MEMO = Genre(
     style_notes="Busy readers. Lead with the answer. Concrete over abstract; every "
     "option names its cost. " + _NO_INVENTION,
     outputs=["docx", "md"],
+    research_mode="web",
 )
 
 REPORT = Genre(
@@ -205,6 +218,7 @@ REPORT = Genre(
     style_notes="Neutral, evidence-led. Every factual claim carries its evidence marker. "
     "Separate what the sources show from what you infer. " + _NO_INVENTION,
     outputs=["docx", "html", "md"],
+    research_mode="scholarly",
 )
 
 ARTICLE = Genre(
@@ -254,6 +268,7 @@ ARTICLE = Genre(
     "no further. Methods in past tense. Results report; Discussion interprets. "
     + _NO_INVENTION,
     outputs=["docx", "md"],
+    research_mode="scholarly",
 )
 
 HOWTO = Genre(
@@ -302,6 +317,7 @@ HOWTO = Genre(
     style_notes="Imperative mood, second person. One action per step. Name every command, "
     "path and setting exactly as the sources give it. " + _NO_INVENTION,
     outputs=["md", "docx"],
+    research_mode="web",
 )
 
 PROPOSAL = Genre(
@@ -360,6 +376,7 @@ PROPOSAL = Genre(
     style_notes="Client-centred and concrete. Promise only what the facts support; a risk "
     "named plainly builds more trust than one avoided. " + _NO_INVENTION,
     outputs=["docx", "md"],
+    research_mode="both",
 )
 
 GRANT = Genre(
@@ -426,6 +443,7 @@ GRANT = Genre(
     "claims that the sources do not give are marked [TO FILL: what is needed], "
     "never invented. " + _NO_INVENTION,
     outputs=["docx", "md"],
+    research_mode="scholarly",
     provenance_required=True,
 )
 
