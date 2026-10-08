@@ -245,12 +245,6 @@ def cmd_all(args: argparse.Namespace) -> int:
 # ── argparse ────────────────────────────────────────────────────────────────
 
 
-def _resolve(model_arg: str | None) -> str:
-    from andamentum.core.models import resolve_model_from_args
-
-    return resolve_model_from_args(model_arg)
-
-
 def build_parser() -> argparse.ArgumentParser:
     # Shared options live on a parent parser so they're accepted AFTER the
     # subcommand (e.g. `discover --n 15`), which is what people type.
@@ -290,14 +284,15 @@ def main(argv: list[str] | None = None) -> int:
         load_dotenv()
     except ImportError:
         pass
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
 
-    # Resolve models only for the commands that need them (so `fetch`/`report`
+    # Require models only for the commands that need them (so `fetch`/`report`
     # don't demand a --model).
-    if args.command in ("arms", "all"):
-        args.model = _resolve(args.model)
-    if args.command in ("adjudicate", "all"):
-        args.judge_model = _resolve(args.judge_model)
+    if args.command in ("arms", "all") and not args.model:
+        parser.error(f"{args.command} needs --model")
+    if args.command in ("adjudicate", "all") and not args.judge_model:
+        parser.error(f"{args.command} needs --judge-model")
 
     dispatch = {
         "discover": cmd_discover,

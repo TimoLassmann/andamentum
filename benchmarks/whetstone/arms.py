@@ -40,7 +40,9 @@ async def run_arm_a(ref: PaperRef, *, model: str) -> ArmOutput:
     from andamentum.whetstone import review_document
 
     assert ref.markdown_path, f"{ref.slug}: harvest before running arm A"
-    result = await review_document(str(Path(ref.markdown_path)), model=model)
+    result = await review_document(
+        str(Path(ref.markdown_path)), model=model, editor=False
+    )
     findings = [
         ArmFinding(title=f.title, detail=f.rationale)
         for f in result.findings
@@ -110,7 +112,7 @@ async def run_arm_b_v3(ref: PaperRef, *, model: str) -> ArmOutput:
 
     Post-Phase-I this is the same review path as arm A (the v3 graph is
     now the only review path; ``review_document`` is just an alias for
-    ``run_review_v3``'s file-entry wrapper). Kept as an explicit
+    ``run_review``'s file-entry wrapper). Kept as an explicit
     benchmark arm so historical comparisons against arm A's findings
     remain interpretable.
     """
@@ -118,7 +120,7 @@ async def run_arm_b_v3(ref: PaperRef, *, model: str) -> ArmOutput:
 
     assert ref.markdown_path, f"{ref.slug}: harvest before running arm B (v3)"
     text = Path(ref.markdown_path).read_text(encoding="utf-8")
-    result = await run_review(text, model=model)
+    result = await run_review(text, model=model, editor=False)
     findings = [
         ArmFinding(title=f.title, detail=f.rationale)
         for f in result.findings

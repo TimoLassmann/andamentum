@@ -45,8 +45,8 @@ and `query_examples`, then re-run *that provider's* benchmark slice
 ## How to run
 
 ```bash
-# Default: every registered provider, model from $ANDAMENTUM_MAIN_LLM_MODEL
-uv run python -m benchmarks.epistemic.dispatch_quality.run
+# Every registered provider
+uv run python -m benchmarks.epistemic.dispatch_quality.run --model MODEL
 
 # Specific model
 uv run python -m benchmarks.epistemic.dispatch_quality.run \

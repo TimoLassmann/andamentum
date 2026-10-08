@@ -2,9 +2,8 @@
 
 Usage:
 
-    # Run Tier 1 with the model from $ANDAMENTUM_MAIN_LLM_MODEL, write
-    # reports to ./results/dispatch_quality/<timestamp>/
-    uv run python -m benchmarks.epistemic.dispatch_quality.run
+    # Run Tier 1, write reports to ./results/dispatch_quality/<timestamp>/
+    uv run python -m benchmarks.epistemic.dispatch_quality.run --model MODEL
 
     # Choose a specific dispatch model
     uv run python -m benchmarks.epistemic.dispatch_quality.run \\
@@ -27,7 +26,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
-import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -50,11 +48,10 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--model",
-        default=os.environ.get("ANDAMENTUM_MAIN_LLM_MODEL"),
+        required=True,
         help=(
             "Dispatch-agent model (e.g. openai:gpt-5.4-nano, "
-            "anthropic:claude-haiku-4-5). Falls back to "
-            "$ANDAMENTUM_MAIN_LLM_MODEL."
+            "anthropic:claude-haiku-4-5)."
         ),
     )
     parser.add_argument(
@@ -96,13 +93,6 @@ async def _async_main(args: argparse.Namespace) -> int:
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s — %(message)s",
     )
-
-    if not args.model:
-        print(
-            "ERROR: --model is required (or set $ANDAMENTUM_MAIN_LLM_MODEL).",
-            file=sys.stderr,
-        )
-        return 2
 
     all_providers = get_all_providers()
     if args.providers:
