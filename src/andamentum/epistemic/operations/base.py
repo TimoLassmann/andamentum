@@ -17,7 +17,7 @@ from ..adapters import ADAPTERS
 if TYPE_CHECKING:
     from ..entities.verdict import EpistemicVerdict
     from ..repository import EpistemicRepository
-    from .identifier_extraction import Identifiers
+    from andamentum.references.identifiers import Identifiers
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -243,7 +243,7 @@ class QualityScorer(Protocol):
         """Score a source's quality from pre-extracted identifiers.
 
         Phase 3 of the efficiency plan: identifiers are extracted
-        upstream (via ``operations.identifier_extraction.extract_identifiers``)
+        upstream (via ``references.identifiers.extract_identifiers``)
         from both the source_ref and the evidence content body, so the
         scorer has more context than just the source_ref. The scorer
         no longer does identifier extraction itself.

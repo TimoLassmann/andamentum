@@ -202,7 +202,7 @@ class TestOpenAlexQualityScorerSmoke:
         and look them up. Phase 3 of the efficiency plan moved
         identifier extraction upstream — the scorer no longer does its
         own primitive string parsing."""
-        from andamentum.epistemic.operations.identifier_extraction import (
+        from andamentum.references.identifiers import (
             extract_identifiers,
         )
         from andamentum.epistemic.providers.openalex import OpenAlexQualityScorer
@@ -218,7 +218,7 @@ class TestOpenAlexQualityScorerSmoke:
 
     async def test_scorer_class_handles_no_identifier(self):
         """OpenAlexQualityScorer with no DOI/PMID in identifiers should return None."""
-        from andamentum.epistemic.operations.identifier_extraction import Identifiers
+        from andamentum.references.identifiers import Identifiers
         from andamentum.epistemic.providers.openalex import OpenAlexQualityScorer
 
         scorer = OpenAlexQualityScorer()

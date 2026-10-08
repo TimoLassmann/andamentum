@@ -15,10 +15,10 @@ erratum and corrigendum as a correction.
 from __future__ import annotations
 
 from typing import Literal
-from urllib.parse import quote
 
 from pydantic import BaseModel, Field
 
+from .crossref import get_work, normalise_doi
 from .http import ReferenceHttp
 
 NoticeKind = Literal["retraction", "expression_of_concern", "correction"]
@@ -63,8 +63,8 @@ class RetractionStatus(BaseModel):
 
 async def lookup_retraction(doi: str, *, http: ReferenceHttp) -> RetractionStatus:
     """Update notices Crossref holds for *doi*."""
-    doi = doi.strip().removeprefix("https://doi.org/").removeprefix("doi:")
-    result = await http.crossref(f"/works/{quote(doi, safe='/')}")
+    doi = normalise_doi(doi)
+    result = await get_work(doi, http=http)
     if isinstance(result, str):
         return RetractionStatus(doi=doi, status="service_error", detail=result)
     code, body = result

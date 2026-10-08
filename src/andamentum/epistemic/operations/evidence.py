@@ -255,7 +255,7 @@ class ExtractEvidenceOperation(BaseOperation):
         # Path 2 (LLM-based quality assessment), saving an LLM call
         # per item.
         if self.quality_scorer:
-            from .identifier_extraction import extract_identifiers
+            from andamentum.references.identifiers import extract_identifiers
 
             content_window = (
                 evidence.extracted_content[:1000]

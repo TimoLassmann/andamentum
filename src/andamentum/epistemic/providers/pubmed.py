@@ -14,11 +14,12 @@ from __future__ import annotations
 
 import logging
 import os
-import xml.etree.ElementTree as ET
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from ..preflight import CheckResult
+
+from andamentum.references import PubMedRecord, parse_pubmed_xml
 
 from ..operations import GatheredEvidence
 
@@ -260,97 +261,18 @@ class PubMedProvider:
 
     def _parse_articles(self, xml_text: str) -> list[GatheredEvidence]:
         """Parse PubMed XML response into GatheredEvidence items."""
-        gathered: list[GatheredEvidence] = []
-
         try:
-            root = ET.fromstring(xml_text)
-        except ET.ParseError:
+            records = parse_pubmed_xml(xml_text)
+        except ValueError:
             return []
+        return [self._to_evidence(record) for record in records]
 
-        for article_el in root.findall(".//PubmedArticle"):
-            try:
-                gathered.append(self._parse_single_article(article_el))
-            except Exception as e:
-                logger.debug(f"Failed to parse article: {e}")
-                continue
-
-        return gathered
-
-    def _parse_single_article(self, article_el: Any) -> GatheredEvidence:
-        """Parse a single PubmedArticle XML element."""
-        medline = article_el.find(".//MedlineCitation")
-        article = medline.find(".//Article") if medline is not None else None
-
-        # PMID
-        pmid_el = medline.find(".//PMID") if medline is not None else None
-        pmid = pmid_el.text if pmid_el is not None else ""
-
-        # Title
-        title_el = article.find(".//ArticleTitle") if article is not None else None
-        title = title_el.text if title_el is not None else ""
-
-        # Abstract
-        abstract_parts = []
-        if article is not None:
-            for abs_text in article.findall(".//Abstract/AbstractText"):
-                label = abs_text.get("Label", "")
-                text = abs_text.text or ""
-                if label:
-                    abstract_parts.append(f"{label}: {text}")
-                else:
-                    abstract_parts.append(text)
-        abstract = " ".join(abstract_parts)
-
-        # Authors
-        authors = []
-        if article is not None:
-            for author_el in article.findall(".//AuthorList/Author"):
-                last = author_el.findtext("LastName", "")
-                initials = author_el.findtext("Initials", "")
-                if last:
-                    authors.append(f"{last} {initials}".strip())
-
-        # Journal
-        journal_el = article.find(".//Journal/Title") if article is not None else None
-        journal = journal_el.text if journal_el is not None else ""
-
-        # Year
-        year_el = (
-            article.find(".//Journal/JournalIssue/PubDate/Year")
-            if article is not None
-            else None
-        )
-        year = year_el.text if year_el is not None else ""
-
-        # DOI
-        doi = ""
-        for id_el in article_el.findall(".//PubmedData/ArticleIdList/ArticleId"):
-            if id_el.get("IdType") == "doi":
-                doi = id_el.text or ""
-                break
-
-        # PMC ID
-        pmcid = ""
-        for id_el in article_el.findall(".//PubmedData/ArticleIdList/ArticleId"):
-            if id_el.get("IdType") == "pmc":
-                pmcid = id_el.text or ""
-                break
-
-        # MeSH terms
-        mesh_terms = []
-        if medline is not None:
-            for mesh_el in medline.findall(
-                ".//MeshHeadingList/MeshHeading/DescriptorName"
-            ):
-                if mesh_el.text:
-                    mesh_terms.append(mesh_el.text)
-
-        # Publication types
-        pub_types = []
-        if article is not None:
-            for pt_el in article.findall(".//PublicationTypeList/PublicationType"):
-                if pt_el.text:
-                    pub_types.append(pt_el.text)
+    def _to_evidence(self, record: PubMedRecord) -> GatheredEvidence:
+        """Wrap one parsed PubMed record as GatheredEvidence."""
+        pmid, title, abstract = record.pmid, record.title, record.abstract
+        authors, journal, year = record.authors, record.journal, record.year
+        doi, pmcid = record.doi, record.pmcid
+        mesh_terms, pub_types = record.mesh_terms, record.publication_types
 
         # Build human-readable content
         content_parts = []

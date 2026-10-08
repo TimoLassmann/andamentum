@@ -12,7 +12,7 @@ from dataclasses import asdict
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ..operations.identifier_extraction import Identifiers
+    from andamentum.references.identifiers import Identifiers
     from ..preflight import CheckResult
 
 from ..operations import GatheredEvidence
@@ -223,7 +223,7 @@ class OpenAlexQualityScorer:
     Looks up DOI/PMID via OpenAlex API and returns quality score.
 
     Phase 3 of the efficiency plan: identifiers are now extracted
-    upstream by ``operations.identifier_extraction.extract_identifiers``
+    upstream by ``references.identifiers.extract_identifiers``
     and passed in directly. The scorer no longer does its own primitive
     string-based extraction (which missed DOIs in URL paths, content
     bodies, and non-standard formats); the upstream regex-based

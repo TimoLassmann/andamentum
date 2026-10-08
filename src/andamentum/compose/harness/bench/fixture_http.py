@@ -57,7 +57,11 @@ def _crossref(request: httpx.Request, recorded: Fixtures) -> httpx.Response:
     params = dict(request.url.params)
     if path.startswith("/works/"):
         doi = path[len("/works/") :]
-        found = recorded.crossref.works.get(doi)
+        # DOIs are case-insensitive and the client lower-cases them.
+        found = next(
+            (w for key, w in recorded.crossref.works.items() if key.lower() == doi),
+            None,
+        )
         if found is None:
             return httpx.Response(404, json={})
         return httpx.Response(found.status, json=found.body)

@@ -20,7 +20,7 @@ from andamentum.compose.harness.literature import (
     resolve,
     search_crossref,
 )
-from andamentum.compose.harness.literature.crossref import to_csl
+from andamentum.references import to_csl
 from andamentum.compose.harness.literature.search import rank
 from andamentum.references import ReferenceHttp
 

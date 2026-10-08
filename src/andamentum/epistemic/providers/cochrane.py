@@ -13,11 +13,12 @@ Architecture: Layer 1 (standalone package)
 from __future__ import annotations
 
 import logging
-import xml.etree.ElementTree as ET
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from ..preflight import CheckResult
+
+from andamentum.references import PubMedRecord, parse_pubmed_xml
 
 from ..operations import GatheredEvidence
 
@@ -209,48 +210,27 @@ class CochraneProvider:
 
     def _parse_articles(self, xml_text: str) -> list[GatheredEvidence]:
         """Parse PubMed XML response into GatheredEvidence items."""
-        gathered: list[GatheredEvidence] = []
-
         try:
-            root = ET.fromstring(xml_text)
-        except ET.ParseError:
+            records = parse_pubmed_xml(xml_text)
+        except ValueError:
             return []
-
-        for article_el in root.findall(".//PubmedArticle"):
-            try:
-                result = self._parse_single_article(article_el)
-                if result is not None:
-                    gathered.append(result)
-            except Exception as e:
-                logger.debug(f"Failed to parse Cochrane article: {e}")
-                continue
-
+        gathered: list[GatheredEvidence] = []
+        for record in records:
+            result = self._to_evidence(record)
+            if result is not None:
+                gathered.append(result)
         return gathered
 
-    def _parse_single_article(self, article_el: Any) -> GatheredEvidence | None:
-        """Parse a single PubmedArticle XML element into GatheredEvidence."""
-        medline = article_el.find(".//MedlineCitation")
-        article = medline.find(".//Article") if medline is not None else None
-
-        # PMID
-        pmid_el = medline.find(".//PMID") if medline is not None else None
-        pmid = pmid_el.text if pmid_el is not None else ""
-
-        # Title
-        title_el = article.find(".//ArticleTitle") if article is not None else None
-        title = title_el.text if title_el is not None else ""
-
+    def _to_evidence(self, record: PubMedRecord) -> GatheredEvidence | None:
+        """Wrap one parsed PubMed record as GatheredEvidence."""
+        pmid, title, authors, doi = (
+            record.pmid,
+            record.title,
+            record.authors,
+            record.doi,
+        )
         if not title:
             return None
-
-        # Authors
-        authors: list[str] = []
-        if article is not None:
-            for author_el in article.findall(".//AuthorList/Author"):
-                last = author_el.findtext("LastName", "")
-                initials = author_el.findtext("Initials", "")
-                if last:
-                    authors.append(f"{last} {initials}".strip())
 
         # Structured abstract sections
         abstract_sections: dict[str, str] = {}
@@ -262,36 +242,14 @@ class CochraneProvider:
                 )
             else:
                 content_parts.append(f"Authors: {', '.join(authors)}")
+        for label, text in record.abstract_sections:
+            if label:
+                abstract_sections[label] = text
+                content_parts.append(f"{label}: {text}")
+            else:
+                content_parts.append(text)
 
-        if article is not None:
-            for abstract_text in article.findall(".//Abstract/AbstractText"):
-                label = abstract_text.get("Label", "")
-                text = abstract_text.text or ""
-                if label:
-                    abstract_sections[label] = text
-                    content_parts.append(f"{label}: {text}")
-                else:
-                    content_parts.append(text)
-
-        # DOI — check both locations (MedlineCitation and PubmedData)
-        doi = ""
-        if article is not None:
-            for id_el in article.findall(".//ArticleIdList/ArticleId"):
-                if id_el.get("IdType") == "doi":
-                    doi = id_el.text or ""
-                    break
-        if not doi:
-            for id_el in article_el.findall(".//PubmedData/ArticleIdList/ArticleId"):
-                if id_el.get("IdType") == "doi":
-                    doi = id_el.text or ""
-                    break
-
-        # Publication date
-        pub_date = ""
-        if article is not None:
-            year_el = article.find(".//Journal/JournalIssue/PubDate/Year")
-            if year_el is not None and year_el.text:
-                pub_date = year_el.text
+        pub_date = record.year
 
         # Build identifiers
         identifiers: dict[str, str] = {}

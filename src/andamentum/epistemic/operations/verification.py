@@ -520,7 +520,7 @@ class AssessConvergenceOperation(BaseOperation):
         from ..convergence_detector import detect_convergence
         from ..domain_classifier import classify_evidence_domain as default_classify
         from ..primitives import DomainClassification
-        from .identifier_extraction import extract_identifiers
+        from andamentum.references.identifiers import extract_identifiers
 
         claim = await self.repo.get("claim", work.entity_id)
 

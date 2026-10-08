@@ -29,6 +29,11 @@ Four stages:
 Every problem carries offsets into *text*, so a caller holding the document in
 the same coordinates attaches it to the exact citation or entry.
 
+Also the home of three pieces of shared bibliographic code, usable alone:
+:mod:`.identifiers` (DOI / PMID / PMCID / arXiv / ISBN / URL extraction),
+:mod:`.crossref` (by-DOI fetch and search as CSL JSON) and :mod:`.pubmed`
+(PubMed XML to records, and the efetch call).
+
 Depends on ``pydantic``, ``httpx``, ``rapidfuzz`` and — for the model calls
 only — ``andamentum.core``. Imports no other andamentum sub-module.
 """
@@ -44,8 +49,10 @@ from andamentum.core.decisions import DecisionModel
 
 from .check import check_citations
 from .cited import resolve_cited_work, resolve_entry
+from .crossref import CrossrefError, fetch_work, normalise_doi, search_crossref, to_csl
 from .decide import decide_style, judge_candidates
 from .http import Cache, ReferenceHttp, UrlHealth, UrlStatus
+from .identifiers import Identifiers, extract_identifiers
 from .lookup import lookup_entries
 from .models import (
     LOOKUP_KINDS,
@@ -61,12 +68,23 @@ from .models import (
     StyleDecision,
 )
 from .parse import DOI, find_reference_list, split_entries
+from .pubmed import PubMedRecord, fetch_pubmed, parse_pubmed_xml
 from .retraction import NoticeKind, RetractionStatus, UpdateNotice, lookup_retraction
 from .scan import pandoc_notes, scan
 
 __all__ = [
     "LOOKUP_KINDS",
     "Cache",
+    "CrossrefError",
+    "Identifiers",
+    "PubMedRecord",
+    "extract_identifiers",
+    "fetch_pubmed",
+    "fetch_work",
+    "normalise_doi",
+    "parse_pubmed_xml",
+    "search_crossref",
+    "to_csl",
     "NoticeKind",
     "ReferenceHttp",
     "RetractionStatus",

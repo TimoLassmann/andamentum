@@ -23,7 +23,7 @@ Andamentum is a single Python package (`src/andamentum/`) of tightly-scoped sub-
 - `andamentum.document_store` — SQLite + FTS5 + sqlite-vec knowledge base: 4-signal RRF search ranks documents and a cross-encoder reranks the top 50 by their best passage; `get_chunks` / `get_chunk` read the passages
 - `andamentum.whetstone` — criterion-cascade review of your own drafts → markdown / HTML / tracked-changes `.docx`; reviewer profiles, checklist and panel modes, the goal loop
 - `andamentum.figures` — publication-quality scientific figures: 10 chart types, journal palettes and the andamentum report look
-- `andamentum.chunker` — structural-first semantic chunking of long markdown into 2k–10k char self-contained units. Stage 1: split at markdown headings. Stage 2: embedding-based split for over-budget sections. Stage 3 (optional): small-LLM judge for grey-zone boundaries. The LLM is never the primary segmenter.
+- `andamentum.chunker` — deterministic, model-free chunking of markdown: `chunk(text, max_chars=N)` splits at headings, then paragraphs, then sentences; fenced code, tables and front matter are never cut; each `Chunk` carries source offsets and its heading path. Standard library only.
 - `andamentum.harvest` — any source (PDF / HTML / DOCX / PPTX / Markdown / plain) → markdown; `mode="fast"` (default) or `"accurate"` (VLM pipeline, PDF only, `vlm` extra)
 - `andamentum.vision_critique` — bounded, schema-checked vision critique of a rendered figure
 - `andamentum.proofread` — deterministic readability and style checks; no LLM, pure function
@@ -92,7 +92,7 @@ The scripts installed by the package. Run `--help` on any binary for the exhaust
 | `andamentum-research` | Web-research pipeline (search → fetch → extract → verify → synthesise) over a local SearxNG | required |
 | `andamentum-whetstone` | Review of your own draft → markdown / HTML / tracked-changes .docx. Subcommands: `review` (default), `panel`, `checklist`, `references`, `proofread`, `apply-patches`, `verify-provenance`. Details: `src/andamentum/whetstone/CLAUDE.md` | required for `review`, `panel`, `checklist`; optional for `references`; none for the rest |
 | `andamentum-figures` | Publication-quality scientific figures (10 chart types, 7 journal palettes and the andamentum report palette, journal-matched sizing; `--journal report --style andamentum --svg-inline` for a report figure) | none |
-| `andamentum-chunker` | Verifiable semantic chunking of long markdown into 2k–10k char self-contained units | optional (stage 3 only, `--judge-model`) |
+| `andamentum-chunker` | Deterministic chunking of markdown by headings, paragraphs and sentences (`INPUT --max-chars N [-o FILE] [--text-only]`; `-` reads stdin) | none |
 | `andamentum-harvest` | Any source → markdown (PDF / HTML / DOCX / PPTX / Markdown / plain). `--mode fast` (default) or `--mode accurate` (VLM pipeline, PDF only, `uv sync --extra vlm`); `--no-ocr`; `--figure-model` | none for `fast`; `accurate` needs local vision models |
 | `andamentum-vision-critique` | Vision-critique of a rendered figure → bounded JSON (label overlap, legibility, legend placement, aspect-ratio, suggested fixes from a fixed set, confidence). Validated local model: `ollama:qwen3.8` | required (multimodal) |
 | `andamentum-proofread` | Deterministic readability + style check (SMOG, Flesch-Kincaid, weasel words, passive voice, duplicate words, weak openers, adverb density). Accepts URLs, PDF, DOCX, HTML, PPTX, Markdown, plain text (via `harvest.extract`) — or `-` for stdin. `--format human` (default) or `--format json` | none |
@@ -123,10 +123,11 @@ Worked example — `document_store/public.py:_preflight` took `(database, embedd
 - `document_store` and `deep_research` MUST NOT depend on `epistemic` or on each other.
 - `whetstone` depends on `core`, `typeset`, `chunker`, `harvest` and `references`; on `deep_research`, `vision_critique` and `llm_judge` only behind opt-in features (novelty check, goal checks). It MUST NOT depend on `epistemic` or `document_store`.
 - `compose.bundle` depends only on `typeset`, `python-docx` and `pyyaml` (no `pydantic_ai`, `pydantic_graph`, `core`, `whetstone`, `llm_judge`, nor compose code outside `bundle/`; enforced by a test). `figures` depends only on matplotlib + numpy + pydantic; `figures.bundle_glue` is the ONLY place that imports `compose.bundle`.
-- `chunker`, `vision_critique`, `llm_judge` and `references` depend on `core` plus their own third-party libraries and on no other sub-module. `llm_judge` MUST NOT import `pydantic-graph`.
-- `compose` depends on `core`, `whetstone`, `proofread`, `llm_judge`, `harvest` and `figures`; `deep_research` only behind `--research` (deferred import). Nothing depends on `compose` except `figures.bundle_glue`, which imports only the model-free `compose.bundle`. It MUST NOT depend on `epistemic` or `document_store`.
+- `chunker` depends on nothing but the standard library.
+- `vision_critique`, `llm_judge` and `references` depend on `core` plus their own third-party libraries and on no other sub-module. `llm_judge` MUST NOT import `pydantic-graph`.
+- `compose` depends on `core`, `whetstone`, `proofread`, `llm_judge`, `harvest`, `references` and `figures`; `deep_research` only behind `--research` (deferred import). Nothing depends on `compose` except `figures.bundle_glue`, which imports only the model-free `compose.bundle`. It MUST NOT depend on `epistemic` or `document_store`.
 - Leaf modules that import no other sub-module: `harvest`, `agentic_dialect`, and `proofread` (only `proofread.cli` imports `harvest`).
-- `epistemic` MAY depend on `llm_judge`, one way only. `forge` depends on `core` and `agentic_dialect`.
+- `epistemic` MAY depend on `llm_judge` and on `references` (identifier extraction and PubMed record parsing live in `references`), one way only. `forge` depends on `core` and `agentic_dialect`.
 - The full rules, with their reasons, are in each module's `CLAUDE.md`; conformance tests enforce several of them.
 
 **Public API lives in `__init__.py`.** Each sub-module's `__init__.py` defines `__all__` explicitly; everything not listed is internal. `document_store` also re-exports its public surface from `public.py`.

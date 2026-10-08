@@ -149,7 +149,10 @@ EXPECTED_CHECKSUMS: dict[str, str] = {
     # Updated 2026-08-09: Path 2's near-zero TMS invalidation is now gated by
     # an ``llm_judge`` second opinion (``_confirm_or_retain_low_quality``) so a
     # single sampled point value can no longer destroy evidence on its own.
-    "Evidence scoring 3-path chain (no fallback)": "21f2d7018905750b",
+    # Updated 2026-10-08: only the import line changed (``extract_identifiers``
+    # now comes from ``andamentum.references.identifiers``); behaviour is
+    # unchanged.
+    "Evidence scoring 3-path chain (no fallback)": "c63b45ad78d5e74e",
     # Updated 2026-08-10: the loop now emits ``EvidenceSummary`` pairs rather
     # than bare strings, so an issue raised about one item stays attached to
     # that item all the way to the ``evidence_corrupted`` destroy gate.

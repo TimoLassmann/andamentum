@@ -13,7 +13,7 @@ returns nothing). False negatives are what cost LLM dollars
 
 from __future__ import annotations
 
-from andamentum.epistemic.operations.identifier_extraction import (
+from andamentum.references.identifiers import (
     Identifiers,
     extract_identifiers,
 )
@@ -177,3 +177,56 @@ def test_identifiers_is_immutable() -> None:
         raise AssertionError("Identifiers should be frozen")
     except (dataclasses.FrozenInstanceError, AttributeError):
         pass  # expected
+
+
+# ── PMCID, ISBN, URLs ────────────────────────────────────────────────
+
+
+def test_pmcid_extracted() -> None:
+    ids = extract_identifiers("Full text at https://example.org/articles/PMC1234567/")
+    assert ids.pmcid == "PMC1234567"
+
+
+def test_pmcid_absent() -> None:
+    assert extract_identifiers("no such id, PMCX or PMC").pmcid is None
+
+
+def test_isbn13_with_cue_and_hyphens() -> None:
+    assert extract_identifiers("ISBN 978-0-306-40615-7.").isbn == "9780306406157"
+
+
+def test_isbn10_with_check_digit_x() -> None:
+    assert extract_identifiers("ISBN-10: 0-8044-2957-X").isbn == "080442957X"
+
+
+def test_isbn_bad_checksum_rejected() -> None:
+    assert extract_identifiers("ISBN 978-0-306-40615-8").isbn is None
+
+
+def test_isbn_needs_cue() -> None:
+    assert extract_identifiers("see 9780306406157").isbn is None
+
+
+def test_urls_trailing_punctuation_stripped_and_deduplicated() -> None:
+    ids = extract_identifiers(
+        "See https://example.org/a. Also (https://example.org/b), and "
+        "https://example.org/a; https://example.org/wiki/Foo_(bar)."
+    )
+    assert ids.urls == (
+        "https://example.org/a",
+        "https://example.org/b",
+        "https://example.org/wiki/Foo_(bar)",
+    )
+
+
+def test_urls_collected_across_inputs() -> None:
+    ids = extract_identifiers("http://a.example/x", None, "https://b.example/y")
+    assert ids.urls == ("http://a.example/x", "https://b.example/y")
+
+
+def test_has_any_ignores_new_fields() -> None:
+    """``has_any`` keeps epistemic's meaning: DOI / PMID / arXiv only."""
+    ids = extract_identifiers("PMC123 ISBN 978-0-306-40615-7 https://a.example/")
+    assert ids.pmcid and ids.isbn and ids.urls
+    assert ids.has_any is False
+    assert ids.has_bibliographic is True
