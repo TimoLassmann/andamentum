@@ -672,8 +672,7 @@ async def stand_in_write(
     works: Mapping[str, Work],
     asker: Asker,
 ) -> Report:
-    """One model call over every sub-question that has findings; a failed or
-    spent model lists the findings' own claims."""
+    """One model call over every sub-question that has findings."""
     lines: list[str] = []
     for subquestion in subquestions:
         own = [f for f in findings if f.subquestion_id == subquestion.id]
@@ -684,24 +683,20 @@ async def stand_in_write(
         if draft:
             lines.append(f"  draft answer: {draft}")
         lines += [f"{f.finding_id} claim: {f.claim}" for f in own]
-    degraded: list[str] = []
     sentences: dict[str, list[tuple[str, list[str]]]] = {}
     known = {f.finding_id for f in findings}
-    try:
-        if lines:
-            written = await asker.llm(
-                step="Write",
-                instructions=STAND_IN_WRITE,
-                output_type=WriteDraft,
-                user_message="\n".join(lines),
-            )
-            for section in written.sections:
-                sentences[section.subquestion] = [
-                    (s.text, [i for i in s.finding_ids if i in known])
-                    for s in section.sentences
-                ]
-    except (BudgetExhausted, *MODEL_ERRORS) as error:
-        degraded.append(f"the report could not be written ({error}); claims listed")
+    if lines:
+        written = await asker.llm(
+            step="Write",
+            instructions=STAND_IN_WRITE,
+            output_type=WriteDraft,
+            user_message="\n".join(lines),
+        )
+        for section in written.sections:
+            sentences[section.subquestion] = [
+                (s.text, [i for i in s.finding_ids if i in known])
+                for s in section.sentences
+            ]
     body = [f"# Report: {question}"]
     for subquestion in subquestions:
         own = [f for f in findings if f.subquestion_id == subquestion.id]
@@ -709,13 +704,10 @@ async def stand_in_write(
         if not own:
             body.append(NO_EVIDENCE_LINE)
             continue
-        written_here = sentences.get(subquestion.id) or [
-            (f.claim, [f.finding_id]) for f in own
-        ]
-        for text, ids in written_here:
+        for text, ids in sentences[subquestion.id]:
             body.append(f"{text} [{', '.join(ids)}]")
     body += ["", SOURCES_HEADING]
-    return Report(markdown="\n".join(body) + "\n", degraded=degraded)
+    return Report(markdown="\n".join(body) + "\n")
 
 
 async def stand_in_verify(

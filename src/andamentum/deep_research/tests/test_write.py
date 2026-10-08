@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
+import pytest
+
 from andamentum.references import Work
 
 from ..ask import UNTRUSTED
@@ -12,7 +16,9 @@ from ..write import (
     NO_EVIDENCE_LINE,
     SOURCES_HEADING,
     WRITE_INSTRUCTIONS,
+    ReportWriterError,
     write_report,
+    write_reserve,
 )
 from .llm_stub import ScriptedLLM, make_asker
 
@@ -134,7 +140,6 @@ async def test_one_call_over_all_sections_with_cited_sentences() -> None:
     assert "Statement for Q1 [F1]." in md
     assert "Statement for Q2 [F3]." in md
     assert report.cited_finding_ids == ["F1", "F3"]
-    assert report.degraded == []
     assert report.excluded_finding_ids == []
 
 
@@ -284,53 +289,172 @@ async def test_the_validator_rejects_unknown_ids_no_ids_and_a_missing_section() 
     assert queue == []
     assert "A. [F1]." not in report.markdown  # the sentence ends "A [F1]."
     assert "A [F1]." in report.markdown and "B [F3]." in report.markdown
-    assert report.degraded == []
 
 
-async def test_a_failing_model_lists_the_claims() -> None:
-    def respond(instructions: str, prompt: str) -> dict[str, object]:
-        return {"sections": []}  # always rejected: the sections are missing
+def _sections(*pairs: tuple[str, list[str]]) -> dict[str, object]:
+    """A model answer: (sub-question id, sentence texts) per section; each
+    sentence cites the first finding of the sub-question's block."""
+    return {
+        "sections": [
+            {
+                "subquestion": sub_id,
+                "sentences": [
+                    {"text": text, "finding_ids": [_first_id(sub_id)]} for text in texts
+                ],
+            }
+            for sub_id, texts in pairs
+        ]
+    }
 
-    llm = ScriptedLLM(respond)
-    report = await write_report(
+
+_FIRST = {"Q1": "F1", "Q2": "F3"}
+
+
+def _first_id(sub_id: str) -> str:
+    return _FIRST[sub_id]
+
+
+def _asker(llm: ScriptedLLM, *, calls: int = 100):
+    return make_asker(model=llm, budget=Budget(max_llm_calls=calls))
+
+
+async def _write(llm: ScriptedLLM, *, asker=None):
+    return await write_report(
         "q",
         subquestions=[Q1, Q2],
         answers={},
         findings=[F1, F2, F3],
         works=WORKS,
-        asker=make_asker(model=llm),
+        asker=asker or _asker(llm),
     )
-    assert "Apollo cut median latency. [F1]." not in report.markdown
-    assert "Apollo cut median latency [F1]." in report.markdown
-    assert "Apollo raised median latency [F2]." in report.markdown
-    assert "SaltLog adds 3 ms per request [F3]." in report.markdown
-    assert [d.split(":")[0] for d in report.degraded] == [
-        "section Q1 lists its findings' claims",
-        "section Q2 lists its findings' claims",
-    ]
-    assert all("the writer failed" in d for d in report.degraded)
-    assert report.cited_finding_ids == ["F1", "F2", "F3"]
 
 
-async def test_a_spent_budget_lists_the_claims_without_a_call() -> None:
+def _alone(prompt: str) -> bool:
+    return "SUB-QUESTION Q1:" not in prompt or "SUB-QUESTION Q2:" not in prompt
+
+
+async def test_an_empty_section_is_rejected_and_repaired_without_a_degraded_note() -> (
+    None
+):
+    answers = iter(
+        [
+            _sections(("Q1", []), ("Q2", ["SaltLog is cheap."])),
+            _sections(("Q1", ["Apollo cuts latency."]), ("Q2", ["SaltLog is cheap."])),
+        ]
+    )
+    llm = ScriptedLLM(lambda _i, _p: next(answers))
+    report = await _write(llm)
+    assert len(llm.calls) == 2  # the same joint call, repaired once
+    assert "Apollo cuts latency [F1]." in report.markdown
+    assert "SaltLog is cheap [F3]." in report.markdown
+    assert not hasattr(report, "degraded")
+
+
+async def test_a_section_of_only_citations_or_blanks_is_retried_by_name() -> None:
+    answers = iter(
+        [
+            _sections(("Q1", ["[F1]"]), ("Q2", ["SaltLog is cheap."])),
+            _sections(("Q1", ["  "]), ("Q2", ["SaltLog is cheap."])),
+            _sections(("Q1", ["Apollo cuts latency."]), ("Q2", ["SaltLog is cheap."])),
+        ]
+    )
+    prompts: list[str] = []
+    llm = ScriptedLLM(lambda _i, p: (prompts.append(p), next(answers))[1])
+    report = await _write(llm)
+    assert len(llm.calls) == 3
+    assert "Apollo cuts latency [F1]." in report.markdown
+    assert "[F1]." not in report.markdown.split("Apollo cuts latency")[0].split("##")[1]
+
+
+async def test_the_schema_requires_a_non_empty_sentence_list() -> None:
+    import pytest
+    from pydantic import ValidationError
+
+    from ..write import ReportDraft, SectionDraft
+
+    with pytest.raises(ValidationError):
+        SectionDraft(subquestion="Q1")  # type: ignore[call-arg]
+    with pytest.raises(ValidationError):
+        SectionDraft(subquestion="Q1", sentences=[])
+    with pytest.raises(ValidationError):
+        ReportDraft(sections=[])
+
+
+async def test_a_joint_call_that_stays_empty_is_replaced_by_one_call_per_section() -> (
+    None
+):
+    def respond(_instructions: str, prompt: str) -> dict[str, object]:
+        if _alone(prompt):
+            sub_id = "Q1" if "SUB-QUESTION Q1:" in prompt else "Q2"
+            return _sections((sub_id, [f"Written alone for {sub_id}."]))
+        return _sections(("Q1", []), ("Q2", []))  # every joint attempt is empty
+
+    llm = ScriptedLLM(respond)
+    asker = _asker(llm)
+    report = await _write(llm, asker=asker)
+    assert "Written alone for Q1 [F1]." in report.markdown
+    assert "Written alone for Q2 [F3]." in report.markdown
+    alone = [p for _, p in llm.calls if _alone(p)]
+    assert len(alone) == 2
+    assert all(
+        ("SUB-QUESTION Q2:" not in p) or ("SUB-QUESTION Q1:" not in p) for p in alone
+    )
+    # one counted joint call, one counted call per section
+    assert asker.stats.step_llm_calls["Write"] == 3
+
+
+async def test_a_section_the_model_cannot_write_raises_naming_the_subquestion() -> None:
+    def respond(_instructions: str, prompt: str) -> dict[str, object]:
+        if _alone(prompt) and "SUB-QUESTION Q2:" in prompt:
+            return _sections(("Q2", []))  # never writes Q2
+        if _alone(prompt):
+            return _sections(("Q1", ["Fine."]))
+        return _sections(("Q1", []), ("Q2", []))
+
+    with pytest.raises(ReportWriterError) as caught:
+        await _write(ScriptedLLM(respond))
+    assert caught.value.subquestion_id == "Q2"
+    assert "Q2" in str(caught.value) and "What does SaltLog cost?" in str(caught.value)
+    assert caught.value.reason
+
+
+async def test_a_failing_model_raises_instead_of_listing_claims() -> None:
+    def respond(_instructions: str, _prompt: str) -> dict[str, object]:
+        return {"sections": []}  # always rejected
+
+    with pytest.raises(ReportWriterError) as caught:
+        await _write(ScriptedLLM(respond))
+    assert caught.value.subquestion_id == "Q1"
+    assert "the model failed" in caught.value.reason
+
+
+async def test_a_spent_budget_raises_instead_of_listing_claims() -> None:
     llm = ScriptedLLM(_writer())
     asker = make_asker(model=llm, budget=Budget(max_llm_calls=1))
     asker.stats.llm_calls = 1
-    report = await write_report(
-        "q",
-        subquestions=[Q1, Q2],
-        answers={},
-        findings=[F1, F3],
-        works=WORKS,
-        asker=asker,
-    )
+    with pytest.raises(ReportWriterError) as caught:
+        await write_report(
+            "q",
+            subquestions=[Q1, Q2],
+            answers={},
+            findings=[F1, F3],
+            works=WORKS,
+            asker=asker,
+        )
     assert llm.calls == []
-    assert "Apollo cut median latency [F1]." in report.markdown
-    assert "SaltLog adds 3 ms per request [F3]." in report.markdown
-    assert report.degraded == [
-        "section Q1 lists its findings' claims: budget:max_llm_calls",
-        "section Q2 lists its findings' claims: budget:max_llm_calls",
-    ]
+    assert "budget:max_llm_calls" in caught.value.reason
+
+
+def test_the_reserve_covers_the_joint_call_and_one_call_per_subquestion() -> None:
+    assert write_reserve(1) == 2
+    assert write_reserve(4) == 5
+
+
+def test_there_is_no_plain_claims_fallback() -> None:
+    import andamentum.deep_research.write as module
+
+    assert not hasattr(module, "_claims")
+    assert "lists its findings' claims" not in Path(module.__file__).read_text()
 
 
 async def test_a_question_without_findings_gets_the_fixed_line_and_no_call() -> None:
@@ -364,7 +488,7 @@ async def test_no_findings_at_all_means_no_model_call() -> None:
     assert llm.calls == [] and asker.stats.llm_calls == 0
     assert report.markdown.count(NO_EVIDENCE_LINE) == 2
     assert SOURCES_HEADING not in report.markdown
-    assert report.degraded == [] and report.cited_finding_ids == []
+    assert report.cited_finding_ids == []
 
 
 async def test_findings_of_a_retracted_work_are_never_offered() -> None:

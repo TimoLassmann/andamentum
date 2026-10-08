@@ -15,10 +15,15 @@ for repair. Everything else is built in code from the run's records:
 - a "Sources" section listing the works behind the cited findings, with the
   link or DOI that ``verify`` later checks.
 
-Findings of a retracted work are never offered to the model. When the writer
-cannot run (the language-model budget is spent, or the model fails), each
-section lists its findings' own claims, each with its id, and
-``Report.degraded`` says so: plainer, never invented, never empty.
+Findings of a retracted work are never offered to the model.
+
+There is no plainer fallback: the report is model-written or the run fails. A
+section must hold at least one sentence that is not only citations; the output
+validator rejects an empty section by name and the model repairs it. A section
+still empty after the repairs is written by its own model call, for that
+sub-question only. If that fails too (or the budget is spent), ``write_report``
+raises ``ReportWriterError`` naming the sub-question and the reason. The engine
+reserves ``1 + number of sub-questions`` language-model calls for this step.
 """
 
 from __future__ import annotations
@@ -45,13 +50,25 @@ MAX_FINDINGS_PER_SECTION = 30
 _CITATION = re.compile(r"\[\s*F\d+(?:\s*[,;]\s*F\d+)*\s*\]")
 
 
+class ReportWriterError(RuntimeError):
+    """The report could not be written: a section has no model-written sentence
+    after the repairs and its own call. Names the sub-question and the reason."""
+
+    def __init__(self, subquestion: SubQuestion, reason: str) -> None:
+        super().__init__(
+            f"the report writer could not write the section for sub-question "
+            f"{subquestion.id} ({subquestion.text.strip()!r}): {reason}"
+        )
+        self.subquestion_id = subquestion.id
+        self.reason = reason
+
+
 class Report(BaseModel):
     """The report and what went into it."""
 
     markdown: str
     cited_finding_ids: list[str] = Field(default_factory=list)
     excluded_finding_ids: list[str] = Field(default_factory=list)
-    degraded: list[str] = Field(default_factory=list)
 
 
 class DraftSentence(BaseModel):
@@ -61,11 +78,19 @@ class DraftSentence(BaseModel):
 
 class SectionDraft(BaseModel):
     subquestion: str
-    sentences: list[DraftSentence] = Field(default_factory=list)
+    # Required and non-empty: with a default of [] the model's first (flattened)
+    # answer was "repaired" by adding an empty list, so no repair ever wrote prose.
+    sentences: list[DraftSentence] = Field(min_length=1)
 
 
 class ReportDraft(BaseModel):
-    sections: list[SectionDraft]
+    sections: list[SectionDraft] = Field(min_length=1)
+
+
+def write_reserve(subquestions: int) -> int:
+    """Language-model calls kept for the report: the joint call, and one call
+    per sub-question for a section that is still empty after the repairs."""
+    return 1 + subquestions
 
 
 WRITE_INSTRUCTIONS = (
@@ -75,7 +100,12 @@ WRITE_INSTRUCTIONS = (
     "Each section is a list of short, plain sentences. Each sentence states one "
     "thing the findings say and lists in finding_ids the ids of every finding "
     "that says it (for example F3 or F3, F7). Do not write ids or brackets "
-    "inside the sentence text.\n"
+    "inside the sentence text. Every section holds at least one sentence, and "
+    "a section is a list of sentences, never a single text. The answer has "
+    "this shape: "
+    '{"sections": [{"subquestion": "Q1", "sentences": [{"text": "First '
+    'sentence.", "finding_ids": ["F1", "F2"]}, {"text": "Second sentence.", '
+    '"finding_ids": ["F3"]}]}]}\n'
     "How to weigh the findings:\n"
     "1. Give the best-supported answer first, in the first sentence of the "
     "section. Commit to one answer and say how sure the evidence makes you in "
@@ -146,11 +176,6 @@ def _sentence(text: str, finding_ids: Sequence[str]) -> str:
     clean = re.sub(r"\s+", " ", clean)
     clean = re.sub(r"\s+([,;:.])", r"\1", clean).rstrip(" .;,")
     return f"{clean} {citation(finding_ids)}."
-
-
-def _claims(findings: Sequence[Finding]) -> list[tuple[str, list[str]]]:
-    """Each finding's own claim as a sentence citing it: the writer's fallback."""
-    return [(_sentence(f.claim, [f.finding_id]), [f.finding_id]) for f in findings]
 
 
 def _link(work: Work) -> str:
@@ -254,8 +279,14 @@ async def _draft(
             if sub_id is None:
                 problems.append(f"section {section.subquestion!r} is not one of {ids}")
                 continue
-            seen.add(sub_id)
+            usable_sentences = 0
             for sentence in section.sentences:
+                if _CITATION.sub("", sentence.text).strip():
+                    usable_sentences += 1
+                else:
+                    problems.append(
+                        f"a sentence of {sub_id} has no text besides citations"
+                    )
                 if not sentence.finding_ids:
                     problems.append(
                         f"a sentence of {sub_id} lists no finding ids: "
@@ -266,6 +297,13 @@ async def _draft(
                     problems.append(
                         f"these ids are not findings you were given: {unknown}"
                     )
+            if usable_sentences:
+                seen.add(sub_id)
+            else:
+                problems.append(
+                    f"section {sub_id} has no sentence; write at least one "
+                    f"sentence for it from its findings"
+                )
         missing = [i for i in ids if i not in seen]
         if missing:
             problems.append(f"no section for {missing}; write one for each")
@@ -303,6 +341,39 @@ async def _draft(
     return by_section
 
 
+async def _write_alone(
+    question: str,
+    subquestion: SubQuestion,
+    findings: list[Finding],
+    *,
+    answers: Mapping[str, SubQuestionResult],
+    works: Mapping[str, Work],
+    asker: Asker,
+) -> list[tuple[str, list[str]]]:
+    """The sentences of one section, from a model call for that sub-question
+    only. Raises ``ReportWriterError`` when it cannot get them."""
+    try:
+        got = await _draft(
+            question,
+            [(subquestion, findings)],
+            answers=answers,
+            works=works,
+            asker=asker,
+        )
+    except BudgetExhausted as spent:
+        raise ReportWriterError(
+            subquestion, f"the language-model budget is spent ({spent})"
+        ) from spent
+    except MODEL_ERRORS as error:
+        raise ReportWriterError(
+            subquestion, f"the model failed ({type(error).__name__}: {error})"
+        ) from error
+    sentences = got.get(subquestion.id)
+    if not sentences:
+        raise ReportWriterError(subquestion, "the model returned no usable sentence")
+    return sentences
+
+
 async def write_report(
     question: str,
     *,
@@ -316,10 +387,10 @@ async def write_report(
 
     *answers* maps a sub-question id to the research's last judgement (the draft
     answer the writer may keep where findings support it). *works* maps work id
-    to work (titles, sites, retraction state, the Sources section). A section the
-    writer cannot write (spent budget, failed model) lists its findings' claims
-    instead, and ``degraded`` names it. Findings of retracted works are never
-    offered to the model."""
+    to work (titles, sites, retraction state, the Sources section). Every section
+    with findings is model-written; one the model cannot write raises
+    ``ReportWriterError``. Findings of retracted works are never offered to the
+    model."""
     usable = [f for f in findings if _usable(f, works)]
     excluded = [f.finding_id for f in findings if not _usable(f, works)]
     by_id = {f.finding_id: f for f in usable}
@@ -330,35 +401,37 @@ async def write_report(
         if own:
             sections.append((subquestion, _spread(own, works)))
 
-    degraded: list[str] = []
     written: dict[str, list[tuple[str, list[str]]]] = {}
-    reason = ""
     if sections:
         try:
             written = await _draft(
                 question, sections, answers=answers, works=works, asker=asker
             )
-        except BudgetExhausted as spent:
-            reason = str(spent)
-        except MODEL_ERRORS as error:
-            reason = f"the writer failed ({type(error).__name__}: {error})"
+        except (BudgetExhausted, *MODEL_ERRORS):
+            # The joint call failed (its error is in the run log); each section
+            # is then written by its own call below.
+            written = {}
+    for subquestion, own in sections:
+        if written.get(subquestion.id):
+            continue
+        written[subquestion.id] = await _write_alone(
+            question,
+            subquestion,
+            own,
+            answers=answers,
+            works=works,
+            asker=asker,
+        )
 
     out = [f"# {question.strip()}", ""]
     cited: list[str] = []
     chosen_by_id = {sq.id: fs for sq, fs in sections}
     for subquestion in subquestions:
         out += [f"## {subquestion.text.strip()}", ""]
-        shown = chosen_by_id.get(subquestion.id)
-        if shown is None:
+        if subquestion.id not in chosen_by_id:
             out += [NO_EVIDENCE_LINE, ""]
             continue
-        sentences = written.get(subquestion.id)
-        if not sentences:
-            sentences = _claims(shown)
-            degraded.append(
-                f"section {subquestion.id} lists its findings' claims: "
-                + (reason or "the writer returned no usable sentence")
-            )
+        sentences = written[subquestion.id]
         out += [" ".join(t for t, _ in sentences), ""]
         for _, ids in sentences:
             cited += ids
@@ -381,5 +454,4 @@ async def write_report(
         markdown="\n".join(out).rstrip() + "\n",
         cited_finding_ids=cited,
         excluded_finding_ids=excluded,
-        degraded=degraded,
     )

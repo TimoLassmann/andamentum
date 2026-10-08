@@ -29,7 +29,8 @@ from andamentum.core import fetch_gate, url_safety
 
 from .. import engine as engine_module
 from .. import fusion, read, verify, write
-from ..engine import WRITE_RESERVE, research
+from ..engine import research
+from ..write import write_reserve
 from ..sources import SourceConfig, SourceSet
 from ..sources.base import SourceError
 from ..store import ResearchStore
@@ -386,7 +387,7 @@ async def test_a_spent_call_budget_ends_the_search_and_the_report_is_still_writt
 async def test_the_search_leaves_the_write_reserve_of_calls() -> None:
     result, _, _, _ = await run("web", budget=Budget(max_llm_calls=12))
     non_write = sum(n for step, n in llm_steps(result).items() if step != "Write")
-    assert non_write <= 12 - WRITE_RESERVE
+    assert non_write <= 12 - write_reserve(len(result.subanswers))
     assert llm_steps(result).get("Write") == 1
 
 
@@ -560,7 +561,6 @@ BAD: dict[str, object] = {"unexpected": "shape"}
         ("Choose", CHOOSE, "choosing what to read failed"),
         ("Notes", NOTES, "notes for"),
         ("Reflect", REFLECT, "reflecting on"),
-        ("Write", engine_world.STAND_IN_WRITE[:20], "the report could not be written"),
     ],
 )
 async def test_a_failing_model_at_each_step_degrades_and_the_run_continues(
@@ -576,6 +576,27 @@ async def test_a_failing_model_at_each_step_degrades_and_the_run_continues(
     assert result.stop_reason in {"answered", "rounds"}
     if step != "Notes":
         assert result.findings
+
+
+async def test_a_writer_that_cannot_write_fails_the_run_with_a_clear_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from .. import engine as engine_module
+    from ..write import ReportWriterError, write_report
+
+    monkeypatch.setattr(engine_module, "write_report", write_report)
+
+    def empty_writer(instructions: str, prompt: str) -> dict[str, object]:
+        if instructions.startswith("You write a research report"):
+            return {"sections": []}
+        return respond(instructions, prompt)
+
+    store = ResearchStore.in_memory()
+    with pytest.raises(ReportWriterError) as failure:
+        await run("web", llm=empty_writer, store=store)
+    assert failure.value.subquestion_id in {"Q1", "Q2"}
+    (record,) = store.list_runs()
+    assert record.degraded[0].startswith("run failed: ReportWriterError")
 
 
 async def test_a_failing_plan_searches_the_question_as_one_subquestion() -> None:

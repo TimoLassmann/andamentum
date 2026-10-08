@@ -22,6 +22,7 @@ from .sources import (
     build_sources,
 )
 from .store import ResearchStore, StoreError
+from .write import ReportWriterError
 from .types import (
     Budget,
     Candidate,
@@ -49,6 +50,7 @@ __all__ = [
     "NoveltyResearch",
     "Passage",
     "ResearchResult",
+    "ReportWriterError",
     "ResearchStore",
     "RunLog",
     "RunStats",

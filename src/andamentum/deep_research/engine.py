@@ -60,10 +60,12 @@ from .types import (
     VerifyFlag,
 )
 from .verify import verify_report
-from .write import write_report
+from .write import write_report, write_reserve
 
-# Language-model calls the search leaves for writing the report.
-WRITE_RESERVE = 2
+# Language-model calls kept for the report before the plan is known: the joint
+# write call and one call for a section that stays empty (``write_reserve(1)``).
+# Once the sub-questions are planned the reserve is ``write_reserve(len(...))``.
+INITIAL_WRITE_RESERVE = write_reserve(1)
 
 
 def unique(items: Sequence[str]) -> list[str]:
@@ -136,7 +138,7 @@ class _Run(_Sink):
             return self.spent
         if self.clock() - self.started >= self.budget.max_wall_s:
             self.spend("max_wall_s")
-        elif self.budget.max_llm_calls - self.stats.llm_calls <= WRITE_RESERVE:
+        elif self.budget.max_llm_calls - self.stats.llm_calls <= self.asker.reserve:
             self.spend("max_llm_calls")
         elif self.fetched() >= self.budget.max_fetch_bytes:
             self.spend("max_fetch_bytes")
@@ -654,7 +656,7 @@ async def _run(
         budget=budget,
         stats=stats,
         log=log,
-        reserve=WRITE_RESERVE,
+        reserve=INITIAL_WRITE_RESERVE,
     )
     client = source_set.client
     hits, misses = store.cache_hits, store.cache_misses
@@ -750,6 +752,7 @@ async def _research(run: _Run, *, verify_http: ReferenceHttp) -> ResearchResult:
         run.progress("Plan: sub-questions")
         planned = await plan(run.question, asker=asker)
         _record(run, run, step="Plan", degraded=planned.degraded, spent=planned.spent)
+    asker.reserve = write_reserve(len(planned.subquestions))
     runlog.subquestions(run.logger, planned.subquestions)
     for subquestion in planned.subquestions:
         store.add_run_item(asker.run_id, "subquestion", subquestion.id, subquestion)
@@ -815,7 +818,6 @@ async def _research(run: _Run, *, verify_http: ReferenceHttp) -> ResearchResult:
             works=works,
             asker=asker,
         )
-        _record(run, run, step="Write", degraded=report.degraded)
     draft = ResearchResult(
         run_id=asker.run_id,
         question=run.question,
