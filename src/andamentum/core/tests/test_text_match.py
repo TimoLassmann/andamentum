@@ -3,7 +3,7 @@
 Covers the canonical contract (markdown stripping + smart-quote stripping +
 case folding + whitespace collapsing) plus each individual toggle, the
 fuzzy backends, and the within-window scoping. The remaining matchers
-across the codebase (whetstone/v3/locate.py, chunker/validation.py,
+across the codebase (whetstone/pipeline/locate.py, chunker/validation.py,
 epistemic/passage_extraction.py) all call this module — so its behaviour
 is the ground truth.
 """

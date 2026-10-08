@@ -7,6 +7,7 @@ traces to a Deps value), truncating loudly via the returned note rather than sil
 from __future__ import annotations
 
 from .agents import FRAME, AgentSink
+from .errors import DesignError
 from .schemas import ForgeAreas, ForgeWhy
 
 
@@ -28,7 +29,7 @@ async def frame(
     if not areas:
         # Fail loud: no fabricated default. An empty framing means the brief did not
         # yield distinct concerns — surface it, never invent a placeholder area.
-        raise ValueError(
+        raise DesignError(
             "frame produced no areas; the brief did not yield distinct concerns — design incomplete"
         )
     notes: list[str] = []

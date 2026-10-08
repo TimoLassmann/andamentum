@@ -39,6 +39,7 @@ from andamentum.core.agents import gather_llm
 from .agents import DECLARE_NODE, LIST_JOBS, SELECT_CONSUMES, AgentSink
 from .assemble import assemble
 from .diagnose import diagnose
+from .errors import DesignError
 from .naming import canonical_datum
 from .review import plan_coverage
 from .schemas import (
@@ -305,7 +306,7 @@ async def decompose(
             break
 
     if not drafts:
-        raise ValueError(
+        raise DesignError(
             "decompose produced no steps; the brief did not yield an actionable design"
         )
 

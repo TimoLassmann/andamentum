@@ -79,14 +79,9 @@ class TestResolveModelFromArgs:
         result = resolve_model_from_args("openai:gpt-4o")
         assert result == "openai:gpt-4o"
 
-    def test_falls_back_to_env_var(self, monkeypatch):
-        monkeypatch.setenv("ANDAMENTUM_MAIN_LLM_MODEL", "anthropic:claude-haiku-4-5")
-        result = resolve_model_from_args(None)
-        assert result == "anthropic:claude-haiku-4-5"
-
-    def test_exits_when_neither_provided(self, monkeypatch):
-        monkeypatch.delenv("ANDAMENTUM_MAIN_LLM_MODEL", raising=False)
+    def test_raises_when_missing_and_ignores_the_environment(self, monkeypatch):
         import pytest
 
-        with pytest.raises(SystemExit):
+        monkeypatch.setenv("ANDAMENTUM_MAIN_LLM_MODEL", "anthropic:claude-haiku-4-5")
+        with pytest.raises(ValueError, match="--model"):
             resolve_model_from_args(None)

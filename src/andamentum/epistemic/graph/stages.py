@@ -24,6 +24,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable
 
+from ..errors import EpistemicError
 from .nodes import (
     AbandonOrDemote,
     ClusterEvidence,
@@ -43,7 +44,7 @@ InvariantFn = Callable[[Any, Any], Awaitable[bool]]
 the run with ``StageInvariantError``."""
 
 
-class StageInvariantError(RuntimeError):
+class StageInvariantError(EpistemicError, RuntimeError):
     """Raised when a stage exits with its invariant unsatisfied. The
     failure mode is loud-by-design: a leaky boundary contaminates every
     downstream stage, so we crash here rather than silently passing

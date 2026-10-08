@@ -167,7 +167,7 @@ def _make_report_data(
     pipeline_git_ref: str | None = "deadbee",
     reproduction_command: str = (
         'andamentum-epistemic verify "Aspirin reduces colorectal cancer risk" '
-        "--model openai:gpt-5.4-nano --database test"
+        "--model openai:gpt-5.4-nano --out test"
     ),
     direct_answer: str = "The evidence supports the claim with caveats.",
 ) -> ReportData:

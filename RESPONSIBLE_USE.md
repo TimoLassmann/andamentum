@@ -165,10 +165,13 @@ policy restricts.
 andamentum ships a local audit-log facility
 (`andamentum.core.audit_log.log_cloud_call`) intended to record cloud
 LLM calls to a file as a paper trail for institutional questions. **It
-is off by default** and writes nothing unless you set:
+is off by default** and writes nothing unless the calling code passes
+`log_path`, a path you choose:
 
-```bash
-export ANDAMENTUM_AUDIT_LOG=/path/you/choose/andamentum-audit.log
+```python
+from andamentum.core.audit_log import log_cloud_call
+
+log_cloud_call(log_path="/path/you/choose/andamentum-audit.log", cli_name="mytool", operation="review", model="anthropic:claude-haiku-4-5", content=text)
 ```
 
 When invoked it appends one line per call:
@@ -183,7 +186,7 @@ home.
 
 > **Status: not yet wired into the pipelines.** The function above is a
 > building block; the sub-module LLM call sites do not call it yet, so
-> enabling the env var alone does **not** currently produce a complete
+> passing a path in your own code does **not** currently produce a complete
 > record of every cloud call. Automatic, pipeline-wide invocation is
 > planned for a future release, alongside the cloud-call gates. Until
 > then, treat it as an API your own code can call, not a guarantee.

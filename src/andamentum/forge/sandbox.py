@@ -36,6 +36,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Protocol
 
+from .errors import ForgeError
 from .schemas import SandboxResult
 
 #: Env vars a child needs to run Python; nothing else (no API keys, tokens, configs).
@@ -83,7 +84,7 @@ def _to_container_path(value: str, mount: str) -> str:
     return value
 
 
-class SandboxUnavailableError(RuntimeError):
+class SandboxUnavailableError(ForgeError, RuntimeError):
     """Network execution was requested but no host-isolating backend (container) exists.
 
     Raised instead of running network-capable code in a bare subprocess (not host-

@@ -9,22 +9,23 @@ The meta-pipeline is itself a dialect-conforming ``pydantic-graph`` system (see
 ``graph.py``): thin orchestrator steps over engine-free workers, agents as data, a
 single operator-trusted branch, bounded fan-out, a typed ``ForgeResult``.
 
-Public surface:
-
-- ``run_forge(brief, *, model, dest=None, ...)`` — design (and optionally render +
-  verify) a system from a brief; returns a ``ForgeResult``.
-- ``render(spec, dest)`` — deterministic ``SystemSpec`` → package (no LLM).
-- ``compile_spec(plan)`` — deterministic design board → validated ``SystemSpec``.
-- ``verify_package(spec, dest)`` — deterministic checks over a rendered package.
-- ``SystemSpec`` — the recipe made executable (validating it is checking the recipe).
+Public surface (``__all__``): ``run_forge(brief, *, model, dest=None, stop_after=...)``
+designs (and optionally renders, builds and audits) a small function package from a
+brief and returns a ``ForgeResult``; ``SystemSpec`` is the validated design; the errors
+derive from ``ForgeError``. The workers (``render``, ``compile_spec``, ``verify_package``,
+``build_system``, ``audit_system``, ``make_sandbox``, ...) stay importable from this
+package but are internals.
 """
+
+# ruff: noqa: F401  (Names imported here but not in __all__ stay importable from the package for older callers.)
 
 from __future__ import annotations
 
 from .audit import audit_system
 from .build import build_system
 from .compile_spec import compile_spec
-from .graph import ForgeDeps, ForgeState, graph, run_forge
+from .errors import BriefRefusedError, DesignError, ForgeError
+from .graph import ForgeDeps, ForgeState, StopAfter, graph, run_forge
 from .render import render
 from .sandbox import SandboxPort, SandboxUnavailableError, make_sandbox
 from .schemas import (
@@ -46,32 +47,19 @@ from .spec import SystemSpec
 from .verify import verify_package
 
 __all__ = [
+    # Entry point and what it takes / returns
     "run_forge",
-    "render",
-    "compile_spec",
-    "build_system",
-    "audit_system",
-    "verify_package",
-    "make_sandbox",
-    "SandboxPort",
-    "SandboxUnavailableError",
-    "SystemSpec",
+    "StopAfter",
     "ForgeResult",
     "BuildReport",
     "AuditReport",
     "VerificationReport",
     "CheckResult",
-    "DesignPlan",
-    "NodeDraft",
-    "ForgeDeps",
-    "ForgeState",
-    "graph",
-    # Types reachable from a returned ForgeResult — exported so a caller can annotate /
-    # isinstance-check the result tree without reaching into andamentum.forge.schemas.
-    "AuditIssue",
-    "CriticVerdict",
-    "NodeFinding",
     "Fitness",
-    "DesignReport",
-    "RequirementsVerdict",
+    "SystemSpec",
+    # Errors
+    "ForgeError",
+    "BriefRefusedError",
+    "DesignError",
+    "SandboxUnavailableError",
 ]

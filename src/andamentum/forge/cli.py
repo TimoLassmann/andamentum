@@ -1,12 +1,23 @@
-"""Command-line adapter for forge — design, build, and audit an agentic system.
+"""Command line for ``andamentum-forge``: build a small function package from a brief.
 
-    andamentum-forge build  "Manage my reading list."  --model anthropic:claude-haiku-4-5 --out ./out
+Forge builds small runnable function packages: a plain-language brief becomes a
+validated design, a rendered Python package, code written by a model for each
+step, and a test run of the package in a sandbox. It refuses briefs that ask
+for an app, an agent or a service (anything that keeps running and is driven
+from outside) and says how to reshape them.
+
+    andamentum-forge build  "Summarise a reading list." --model anthropic:claude-haiku-4-5 --out ./out
     andamentum-forge design "Triage support tickets."   --model anthropic:claude-haiku-4-5
 
-``build`` runs the full pipeline (design → render → author code → sandbox audit);
-``design`` stops at the validated spec. The model resolves via ``--model`` or
-``$ANDAMENTUM_MAIN_LLM_MODEL`` (no hidden default). Code execution during the audit runs
-in a Podman container by default; ``--sandbox subprocess`` opts out (no host isolation).
+``build`` runs the whole pipeline (design, render, write the code, sandbox test)
+into the ``--out`` folder; ``design`` stops at the validated design and writes
+nothing. The sandbox is a Podman container by default; ``--sandbox subprocess``
+runs the generated code on this machine without isolation.
+
+Exit codes: 0 success; 1 the pipeline ran and a check failed (the rendered package
+is incomplete, a step could not be written, the sandbox test failed); 2 usage
+error, including a brief forge refuses; 3 the brief could not be read; 4 the run
+failed (model or sandbox error, or a crash).
 """
 
 from __future__ import annotations
@@ -14,12 +25,25 @@ from __future__ import annotations
 import argparse
 import asyncio
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 
-from andamentum.core import resolve_model_from_args
-
-from .graph import run_forge
 from .schemas import ForgeResult
+
+_EXIT_CODES = """\
+exit codes:
+  0  success
+  1  the pipeline ran and a check failed (incomplete package, an unwritten step, a failed test)
+  2  usage error, including a brief forge refuses (not a small function)
+  3  the brief could not be read
+  4  the run failed: model or sandbox error, or a crash
+"""
+
+_ABOUT = (
+    "Build a small runnable function package from a plain-language brief. "
+    "Forge refuses apps, agents and services, which keep running and are "
+    "driven from outside."
+)
 
 
 def _print_summary(result: ForgeResult) -> None:
@@ -68,53 +92,111 @@ def _print_summary(result: ForgeResult) -> None:
         )
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(
-        prog="andamentum-forge", description="Build agentic systems from a brief."
-    )
+def _add_common(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
-        "command",
-        choices=["build", "design"],
-        help="build = full pipeline; design = spec only",
+        "brief",
+        help="What the function should do, in plain language ('-' reads it from standard input)",
     )
-    parser.add_argument("brief", help="the natural-language brief")
     parser.add_argument(
         "--model",
-        default=None,
-        help="pydantic-ai model id (or set ANDAMENTUM_MAIN_LLM_MODEL)",
-    )
-    parser.add_argument(
-        "--out", default="out", help="output directory for `build` (default: ./out)"
-    )
-    parser.add_argument(
-        "--stop-after",
-        choices=["render", "build", "audit"],
-        default="audit",
-        help="how far to run the build pipeline (default: audit — the full authoring + verification)",
-    )
-    parser.add_argument(
-        "--sandbox",
-        choices=["podman", "subprocess"],
-        default="podman",
-        help="code-execution backend for the audit (default: podman — host-isolated)",
+        required=True,
+        help="Model that designs and writes the code, for example anthropic:claude-haiku-4-5",
     )
     parser.add_argument(
         "--verbose",
         action="store_true",
-        help="show a live progress dashboard while the pipeline runs",
+        help="Show a live progress display while the pipeline runs (not with --json)",
     )
     parser.add_argument(
         "--json",
         action="store_true",
-        help="emit the full ForgeResult as JSON to stdout; disables the live dashboard",
+        help="Print the full result as JSON on stdout instead of the summary",
     )
-    args = parser.parse_args(argv)
 
-    model = resolve_model_from_args(args.model)
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="andamentum-forge",
+        description=_ABOUT,
+        epilog=_EXIT_CODES,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    from andamentum import __version__ as _ver
+
+    parser.add_argument("--version", action="version", version=f"%(prog)s {_ver}")
+    sub = parser.add_subparsers(dest="command", metavar="COMMAND", required=True)
+
+    build = sub.add_parser(
+        "build",
+        help="Design, render, write the code and test it in a sandbox",
+        description=_ABOUT,
+        epilog=_EXIT_CODES,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    _add_common(build)
+    build.add_argument(
+        "-o",
+        "--out",
+        required=True,
+        metavar="DIR",
+        help="Folder the rendered package is written into",
+    )
+    build.add_argument(
+        "--stop-after",
+        choices=["render", "build", "audit"],
+        default="audit",
+        help="How far to run: render the package, write its code, or also test it (default: audit)",
+    )
+    build.add_argument(
+        "--sandbox",
+        choices=["podman", "subprocess"],
+        default="podman",
+        help="Where the generated code is tested: a Podman container, or a plain process on this machine without isolation (default: podman)",
+    )
+
+    design = sub.add_parser(
+        "design",
+        help="Produce the validated design only; writes no files",
+        description=_ABOUT,
+        epilog=_EXIT_CODES,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    _add_common(design)
+    return parser
+
+
+def _exit_code(result: ForgeResult) -> int:
+    """1 when a stage that ran reported a problem, else 0.
+
+    Design-only runs run no check and return 0. A run that rendered but stopped
+    before the audit is judged on the checks it did run.
+    """
+    if result.report is not None and not result.report.works:
+        return 1
+    if result.build is not None and result.build.unfillable:
+        return 1
+    if result.audit is not None and not result.audit.works:
+        return 1
+    return 0
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+
+    brief = args.brief
+    if brief == "-":
+        brief = sys.stdin.read()
+    if not brief.strip():
+        print("error: the brief is empty; say what the function should do", file=sys.stderr)
+        return 2
+
     if args.command == "design":
-        dest, stop_after = None, "design"
+        dest, stop_after, sandbox = None, "design", "podman"
     else:
-        dest, stop_after = Path(args.out), args.stop_after
+        dest, stop_after, sandbox = Path(args.out), args.stop_after, args.sandbox
+
+    from .errors import BriefRefusedError
+    from .graph import run_forge
 
     reporter = None
     if args.verbose and not args.json:
@@ -125,45 +207,47 @@ def main(argv: list[str] | None = None) -> int:
 
         reporter = RichReporter(
             Console(),
-            brief=args.brief,
-            model=model,
+            brief=brief,
+            model=args.model,
             dest=str(dest) if dest is not None else None,
         )
 
-    err: Exception | None = None
+    code = 0
     result = None
     if reporter is not None:
         reporter.start()
     try:
         result = asyncio.run(
             run_forge(
-                args.brief,
-                model=model,
+                brief,
+                model=args.model,
                 dest=dest,
                 stop_after=stop_after,
-                sandbox_backend=args.sandbox,
+                sandbox_backend=sandbox,
                 reporter=reporter,
             )
         )
-    except ValueError as e:
-        err = e
+    except BriefRefusedError as e:
+        print(f"error: {e}", file=sys.stderr)
+        code = 2
+    except KeyboardInterrupt:
+        print("error: cancelled", file=sys.stderr)
+        code = 4
+    except Exception as e:
+        print(f"error: {e}", file=sys.stderr)
+        code = 4
     finally:
         if reporter is not None:
             reporter.stop()
 
-    if err is not None or result is None:
-        print(f"Error: {err}", file=sys.stderr)
-        return 1
+    if result is None:
+        return code
 
     if args.json:
         print(result.model_dump_json(indent=2))
     else:
         _print_summary(result)
-    if result.audit is not None:
-        return 0 if result.audit.works else 1
-    if result.report is not None:
-        return 0 if result.report.works else 1
-    return 0
+    return _exit_code(result)
 
 
 if __name__ == "__main__":

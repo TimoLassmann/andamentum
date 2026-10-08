@@ -10,8 +10,10 @@ Usage::
 
     result = await run_epistemic_graph(
         question="Does metformin reduce cancer risk?",
-        database_name="my_research",
+        database="results/epistemic.db",
         model="openai:gpt-5.4-nano",
+        embedding_model="embeddinggemma-2:latest",
+        searxng_url="http://127.0.0.1:4070",
     )
 """
 
@@ -24,13 +26,15 @@ import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Optional
 
+from ..errors import EpistemicError
+
 if TYPE_CHECKING:
     from ..operations_runner import PipelineResult
 
 logger = logging.getLogger(__name__)
 
 
-class DegenerateQuestionError(ValueError):
+class DegenerateQuestionError(EpistemicError, ValueError):
     """Raised when the question can't plausibly be a research question.
 
     K5 from the 2026-05-03 freeze sheet: ``--question Q`` was accepted
@@ -188,7 +192,7 @@ Mode = Literal["verify", "research"]
 
 async def run_epistemic_graph(
     question: str,
-    database_name: str = "epistemic_research",
+    database: str | Path,
     mode: Mode = "research",
     verbose: bool = False,
     skip_preplanning: bool = False,
@@ -198,7 +202,6 @@ async def run_epistemic_graph(
     provider: str = "all",
     providers: Optional[dict[str, Any]] = None,
     quality_scorer: Optional[Any] = None,
-    db_dir: Optional[str] = None,
     objective_id: Optional[str] = None,
     stop_after: Optional[type] = None,
     start_at: Optional[type] = None,
@@ -222,6 +225,8 @@ async def run_epistemic_graph(
       from the user-provided text via ``SeedClaim``.
 
     Args:
+        database: Path of the ``.db`` file the run reads and writes (created
+            if absent). There is no default location.
         objective_id: Target a specific existing objective (e.g. a
             sub-objective spawned by the decomposed runner). When None,
             falls back to resume-first-objective-or-create behaviour
@@ -257,7 +262,7 @@ async def run_epistemic_graph(
     from .state import EpistemicGraphState
 
     # Initialize database and repository
-    store = await open_store(database_name, db_dir)
+    store = await open_store(database)
     repo = EpistemicRepository(store)
     try:
         if objective_id is not None:
@@ -267,7 +272,7 @@ async def run_epistemic_graph(
             target = await repo.get("objective", objective_id)
             if target is None:
                 raise ValueError(
-                    f"Objective {objective_id} not found in {database_name}"
+                    f"Objective {objective_id} not found in {database}"
                 )
             if verbose:
                 phase = getattr(target, "phase", "unknown")
@@ -313,13 +318,14 @@ async def run_epistemic_graph(
         # Create agent runner and evidence gatherer
         if not model:
             raise ValueError(
-                "model is required for run_epistemic_graph. "
-                "Pass --model or set ANDAMENTUM_MAIN_LLM_MODEL."
+                "model is required for run_epistemic_graph: pass model= "
+                "(on the command line, --model)."
             )
         if not embedding_model:
-            from andamentum.core.models import resolve_embedding_model_from_args
-
-            embedding_model = resolve_embedding_model_from_args()
+            raise ValueError(
+                "embedding_model is required for run_epistemic_graph: pass "
+                "embedding_model= (on the command line, --embedding-model)."
+            )
         agent_runner = DefaultAgentRunner(model=model)
 
         # Auto-load providers. "all" includes web_search (general-domain) alongside

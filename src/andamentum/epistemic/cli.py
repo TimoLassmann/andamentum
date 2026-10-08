@@ -1,294 +1,271 @@
-"""CLI entry point for andamentum-epistemic.
+"""Command line for ``andamentum-epistemic``.
 
-Usage::
+Answer a question or check a claim by weighing evidence for and against it.
 
-    andamentum-epistemic run <agent_name> [key=value ...] [--model MODEL] [--verbose]
-    andamentum-epistemic agents
+Commands:
+
+* ``ask QUESTION`` and ``verify CLAIM`` run the pipeline.
+* ``stage NAME`` runs one named stage of it, resuming from the run folder.
+* ``inspect FOLDER`` and ``confidence FOLDER`` read a finished run.
+* ``preflight`` checks the model and the search address before a run.
+* ``run AGENT`` runs one agent; ``agents`` lists them.
+
+A run keeps its files only in the folder named by ``--out``. Without
+``--out``, ``ask`` and ``verify`` work in a temporary folder that is removed
+afterwards and print the result.
+
+Exit codes: 0 success; 1 the run finished and the result is negative (a check
+failed); 2 usage error; 3 the input could not be read (no run in the folder);
+4 the run failed (model or network error, or a crash).
 """
+
+from __future__ import annotations
 
 import argparse
 import asyncio
 import json
 import sys
 import traceback
+from collections.abc import Sequence
+from pathlib import Path
+
+_EXIT_CODES = """\
+exit codes:
+  0  success
+  1  the run finished and the result is negative (a check failed)
+  2  usage error: a wrong or missing argument
+  3  the input could not be read (no run in the folder)
+  4  the run failed: model or network error, or a crash
+"""
 
 
-def _build_parser() -> argparse.ArgumentParser:
+class _UsageError(Exception):
+    """A wrong or missing argument that argparse cannot see (exit 2)."""
+
+
+class _InputError(Exception):
+    """The input could not be read (exit 3)."""
+
+
+def _add_model(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--model",
+        required=True,
+        help="Model that does the reasoning, for example anthropic:claude-haiku-4-5 or ollama:gemma4:31b",
+    )
+
+
+def _add_embedding_model(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--embedding-model",
+        required=True,
+        help="Ollama model that embeds text for routing and passage extraction, for example embeddinggemma-2:latest",
+    )
+
+
+def _add_search(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--searxng-url",
+        default=None,
+        help="Address of a SearXNG instance for web search, for example http://127.0.0.1:4070",
+    )
+    parser.add_argument(
+        "--browser",
+        action="store_true",
+        help=(
+            "Search the web through an isolated Chrome in a podman container "
+            "(started and removed per run) instead of SearXNG. One of "
+            "--searxng-url and --browser is required"
+        ),
+    )
+
+
+def _add_run_options(parser: argparse.ArgumentParser, *, what: str) -> None:
+    _add_model(parser)
+    _add_embedding_model(parser)
+    _add_search(parser)
+    parser.add_argument(
+        "-o",
+        "--out",
+        default=None,
+        metavar="DIR",
+        help=(
+            f"Folder to keep the {what}'s database (epistemic.db) and HTML report "
+            "(report.html) in. Without it the run uses a temporary folder that is "
+            "removed afterwards"
+        ),
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print the result as JSON on stdout (progress goes to stderr)",
+    )
+    parser.add_argument(
+        "--provider",
+        default="all",
+        choices=["all", "web_search"],
+        help="Where evidence comes from: all providers, or the web only (default: all)",
+    )
+    parser.add_argument(
+        "--quick",
+        action="store_true",
+        help="Skip the clarification and conceptual analysis before the run",
+    )
+    parser.add_argument(
+        "--trace",
+        default="timeline",
+        choices=["timeline", "flow", "claims", "all", "none"],
+        help="How to show the reasoning trace (default: timeline)",
+    )
+    parser.add_argument(
+        "--verbose", action="store_true", help="Print progress messages"
+    )
+
+
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="andamentum-epistemic",
-        description="Formal epistemology for AI research — evidence-based claims with traceability.",
+        description=(
+            "Answer a question or check a claim by weighing evidence for and "
+            "against it. Experimental: output and flags may change."
+        ),
+        epilog=_EXIT_CODES,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     from andamentum import __version__ as _ver
 
     parser.add_argument(
-        "--version",
-        action="version",
-        version=f"%(prog)s (andamentum {_ver})",
+        "--version", action="version", version=f"%(prog)s {_ver}"
     )
-    sub = parser.add_subparsers(dest="command")
+    sub = parser.add_subparsers(dest="command", metavar="COMMAND")
 
-    # Subcommand: ask (primary interface)
     ask_parser = sub.add_parser(
-        "ask", help="Ask a research question and get validated findings"
+        "ask",
+        help="Answer a research question and show the verdict, claims and evidence",
+        epilog=_EXIT_CODES,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    ask_parser.add_argument("question", help="Research question to investigate")
-    ask_parser.add_argument(
-        "--model",
-        default=None,
-        help="LLM model (e.g. anthropic:claude-haiku-4-5, openai:gpt-4o) — or set $ANDAMENTUM_MAIN_LLM_MODEL",
-    )
-    ask_parser.add_argument(
-        "--embedding-model",
-        default=None,
-        help=(
-            "Ollama embedding model for semantic provider routing and passage "
-            "extraction (default: embeddinggemma-2:latest, or set "
-            "$ANDAMENTUM_EMBEDDING_MODEL)"
-        ),
-    )
-    ask_parser.add_argument(
-        "--keep", action="store_true", help="Keep project database after completion"
-    )
-    ask_parser.add_argument(
-        "--name", default=None, help="Project name (auto-generated if not specified)"
-    )
-    ask_parser.add_argument(
-        "--provider",
-        default="all",
-        choices=["all", "web_search"],
-        help="Evidence provider (default: all)",
-    )
-    ask_parser.add_argument(
-        "--searxng-url",
-        default=None,
-        help="A SearXNG instance for web search (e.g. http://127.0.0.1:4070)",
-    )
-    ask_parser.add_argument(
-        "--browser",
-        action="store_true",
-        help=(
-            "Search the web through an isolated Chrome in a podman container "
-            "(started and removed per search run) instead of SearXNG. One of "
-            "--searxng-url and --browser is required"
-        ),
-    )
-    ask_parser.add_argument(
-        "--quick",
-        action="store_true",
-        help="Skip preplanning (clarification + conceptual analysis)",
-    )
-    # ``ask`` always runs in research mode. Decomposition is attempted
-    # automatically; if the question doesn't decompose cleanly, the
-    # MultiSeedClaim → ProposeClaims fallback in CreateClaims routes to
-    # the open-research path. To verify a known single claim (SciFact-
-    # style), use the ``verify`` subcommand instead.
-    ask_parser.add_argument(
-        "--trace",
-        default="timeline",
-        choices=["timeline", "flow", "claims", "all", "none"],
-        help="Trace visualization mode",
-    )
-    ask_parser.add_argument("--output", default=None, help="Path to save HTML report")
-    ask_parser.add_argument(
-        "--verbose", action="store_true", help="Print progress messages"
-    )
+    ask_parser.add_argument("question", help="The research question to investigate")
+    _add_run_options(ask_parser, what="run")
 
-    # Subcommand: verify (claim-verification mode — SciFact-style)
     verify_parser = sub.add_parser(
         "verify",
-        help=(
-            "Verify a single claim. The system seeds exactly one Claim "
-            "from the provided text and skips decomposition (use this "
-            "for SciFact-style benchmarks where the claim text is "
-            "already known)."
-        ),
+        help="Check one claim: seed exactly one claim from the text and weigh the evidence",
+        epilog=_EXIT_CODES,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    verify_parser.add_argument("claim", help="Claim text to verify")
-    verify_parser.add_argument(
-        "--model",
-        default=None,
-        help="LLM model (e.g. anthropic:claude-haiku-4-5, openai:gpt-4o) — or set $ANDAMENTUM_MAIN_LLM_MODEL",
-    )
-    verify_parser.add_argument(
-        "--embedding-model",
-        default=None,
-        help=(
-            "Ollama embedding model for semantic provider routing and passage "
-            "extraction (default: embeddinggemma-2:latest, or set "
-            "$ANDAMENTUM_EMBEDDING_MODEL)"
-        ),
-    )
-    verify_parser.add_argument(
-        "--keep", action="store_true", help="Keep project database after completion"
-    )
-    verify_parser.add_argument(
-        "--name", default=None, help="Project name (auto-generated if not specified)"
-    )
-    verify_parser.add_argument(
-        "--provider",
-        default="all",
-        choices=["all", "web_search"],
-        help="Evidence provider (default: all)",
-    )
-    verify_parser.add_argument(
-        "--searxng-url",
-        default=None,
-        help="A SearXNG instance for web search (e.g. http://127.0.0.1:4070)",
-    )
-    verify_parser.add_argument(
-        "--browser",
-        action="store_true",
-        help=(
-            "Search the web through an isolated Chrome in a podman container "
-            "(started and removed per search run) instead of SearXNG. One of "
-            "--searxng-url and --browser is required"
-        ),
-    )
-    verify_parser.add_argument(
-        "--quick",
-        action="store_true",
-        help="Skip preplanning (clarification + conceptual analysis)",
-    )
-    verify_parser.add_argument(
-        "--trace",
-        default="timeline",
-        choices=["timeline", "flow", "claims", "all", "none"],
-        help="Trace visualization mode",
-    )
-    verify_parser.add_argument(
-        "--output", default=None, help="Path to save HTML report"
-    )
-    verify_parser.add_argument(
-        "--verbose", action="store_true", help="Print progress messages"
-    )
+    verify_parser.add_argument("claim", help="The claim to check")
+    _add_run_options(verify_parser, what="run")
 
-    # Subcommand: run
-    run_parser = sub.add_parser("run", help="Run an epistemic agent")
+    run_parser = sub.add_parser(
+        "run",
+        help="Run one agent and print its output as JSON",
+        epilog=_EXIT_CODES,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     run_parser.add_argument(
-        "agent", help="Agent name (e.g. epistemic_clarify_question)"
+        "agent", help="Agent name (list them with the agents command)"
     )
     run_parser.add_argument(
         "kwargs",
         nargs="*",
-        help="Key=value pairs for the agent (e.g. question='What is X?')",
+        help="Inputs for the agent as key=value pairs, for example question='What is X?'",
     )
-    run_parser.add_argument(
-        "--model",
-        default=None,
-        help="LLM model (e.g. anthropic:claude-haiku-4-5, openai:gpt-4o) — or set $ANDAMENTUM_MAIN_LLM_MODEL",
-    )
+    _add_model(run_parser)
     run_parser.add_argument(
         "--verbose", action="store_true", help="Print progress messages"
     )
 
-    # Subcommand: agents
-    sub.add_parser("agents", help="List registered agents and their output models")
+    sub.add_parser(
+        "agents",
+        help="List the agents and what each returns",
+        epilog=_EXIT_CODES,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
 
-    # Subcommand: preflight
     pf_parser = sub.add_parser(
-        "preflight", help="Check LLM, SearXNG, and provider connectivity before a run"
+        "preflight",
+        help="Check the model, the search address and the providers before a run",
+        epilog=_EXIT_CODES,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
+    _add_model(pf_parser)
     pf_parser.add_argument(
-        "--model",
+        "--providers",
         default=None,
-        help="LLM model (e.g. anthropic:claude-haiku-4-5, openai:gpt-4o) — or set $ANDAMENTUM_MAIN_LLM_MODEL",
-    )
-    pf_parser.add_argument(
-        "--providers", default=None, help="Provider set: 'biomedical' or omit for none"
+        help="Provider set to check: 'biomedical', or leave out for none",
     )
     pf_parser.add_argument(
         "--searxng-url",
         default=None,
-        help="A SearXNG instance to check for web search",
+        help="Address of a SearXNG instance to check for web search",
     )
     pf_parser.add_argument(
         "--browser",
         action="store_true",
-        help="Check podman (the isolated Chrome) instead of SearXNG",
+        help="Check podman (for the isolated Chrome) instead of SearXNG",
     )
-    pf_parser.add_argument("--verbose", action="store_true", help="Print extra details")
+    pf_parser.add_argument(
+        "--verbose", action="store_true", help="Print extra details"
+    )
 
-    # Subcommand: stage — run a single named pipeline stage
     from .graph.stages import stage_names
 
     stage_parser = sub.add_parser(
         "stage",
-        help="Run a single pipeline stage (preplanning, scrutiny_and_investigation, ...)",
+        help="Run one stage of the pipeline (preplanning, scrutiny_and_investigation, ...)",
+        epilog=_EXIT_CODES,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     stage_parser.add_argument("name", choices=stage_names(), help="Stage to run")
     stage_parser.add_argument(
-        "--question",
-        default=None,
-        help="Research question (required if --from-db has no Objective)",
-    )
-    stage_parser.add_argument(
-        "--from-db",
-        default=None,
-        help="Resume from a saved database (read by db_dir lookup)",
-    )
-    stage_parser.add_argument(
-        "--db",
-        default="stage_run",
-        help="Database name (default: 'stage_run')",
-    )
-    stage_parser.add_argument(
-        "--db-dir",
-        default=None,
-        help="Database directory (default: ~/.local/share/document-store/)",
-    )
-    stage_parser.add_argument(
-        "--model",
-        default=None,
-        help="LLM model — or set $ANDAMENTUM_MAIN_LLM_MODEL",
-    )
-    stage_parser.add_argument(
-        "--embedding-model",
-        default=None,
-        help="Ollama embedding model (default: embeddinggemma-2:latest)",
-    )
-    stage_parser.add_argument(
-        "--verify",
-        action="store_true",
+        "-o",
+        "--out",
+        required=True,
+        metavar="DIR",
         help=(
-            "Treat --question as a single claim (verify mode); skip "
-            "decomposition. Default is research mode."
+            "Run folder: the database (epistemic.db) and the stage's files "
+            "(run.jsonl, diff.json, timing.txt) go here. A folder with a database "
+            "from an earlier stage is resumed"
         ),
     )
     stage_parser.add_argument(
-        "--output-dir",
+        "--question",
         default=None,
-        help="Directory for run.jsonl / diff.json / timing.txt artifacts",
+        help="Research question (needed when the folder has no database yet)",
+    )
+    _add_model(stage_parser)
+    _add_embedding_model(stage_parser)
+    _add_search(stage_parser)
+    stage_parser.add_argument(
+        "--verify",
+        action="store_true",
+        help="Treat --question as a single claim and skip decomposition (default: research question)",
     )
 
-    # Subcommand: inspect — print structured state of a saved DB
     inspect_parser = sub.add_parser(
         "inspect",
-        help="Print structured state of a saved epistemic DB",
+        help="Print the objective, verdict, claims and evidence of a finished run",
+        epilog=_EXIT_CODES,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     inspect_parser.add_argument(
-        "db",
-        help="Database name (looked up under --db-dir or default location)",
-    )
-    inspect_parser.add_argument(
-        "--db-dir",
-        default=None,
-        help="Database directory (default: ~/.local/share/document-store/)",
+        "folder", help="Run folder (the --out folder of an earlier run)"
     )
 
-    # Subcommand: confidence
     conf_parser = sub.add_parser(
-        "confidence", help="Compute post-hoc confidence for a completed epistemic run"
+        "confidence",
+        help="Compute the posterior confidence of a finished run",
+        epilog=_EXIT_CODES,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    conf_parser.add_argument("--db", required=True, help="Database name")
     conf_parser.add_argument(
-        "--db-dir",
-        default=None,
-        help="Custom database directory (default: ~/.config/andamentum/databases/)",
+        "folder", help="Run folder (the --out folder of an earlier run)"
     )
     conf_parser.add_argument(
         "--objective",
         default=None,
-        help="Objective ID (auto-detected if only one exists)",
+        help="Objective id (found automatically when the run has only one)",
     )
     conf_parser.add_argument(
         "--verbose", action="store_true", help="Show per-claim detail"
@@ -297,24 +274,31 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _resolve_model(args: argparse.Namespace) -> str:
-    from andamentum.core.models import resolve_model_from_args
-
-    return resolve_model_from_args(args.model)
-
-
 def _parse_kwargs(raw: list[str]) -> dict[str, str]:
     result: dict[str, str] = {}
     for item in raw:
         if "=" not in item:
-            print(
-                f"Error: invalid argument '{item}' — expected key=value format",
-                file=sys.stderr,
-            )
-            sys.exit(1)
+            raise _UsageError(f"invalid argument '{item}': expected key=value")
         key, _, value = item.partition("=")
         result[key] = value
     return result
+
+
+def _require_search(args: argparse.Namespace) -> None:
+    if not (args.searxng_url or args.browser):
+        raise _UsageError(
+            "web search needs an address: pass --searxng-url (a SearXNG "
+            "instance) or --browser (the isolated Chrome)"
+        )
+
+
+def _existing_database(folder: str) -> Path:
+    from .databases import database_path
+
+    db = database_path(folder)
+    if not db.is_file():
+        raise _InputError(f"no run in {folder}: {db.name} not found")
+    return db
 
 
 def _list_agents() -> None:
@@ -329,10 +313,9 @@ def _list_agents() -> None:
         print(f"  {name:<40s}  output={model_name}")
 
 
-async def _preflight(args: argparse.Namespace) -> None:
+async def _preflight(args: argparse.Namespace) -> int:
     from .preflight import preflight
 
-    model = _resolve_model(args)
     providers = None
     if args.providers == "biomedical":
         from .providers import get_biomedical_providers
@@ -340,7 +323,7 @@ async def _preflight(args: argparse.Namespace) -> None:
         providers = get_biomedical_providers()
 
     result = await preflight(
-        model=model,
+        model=args.model,
         providers=providers,
         verbose=args.verbose,
         searxng_url=args.searxng_url,
@@ -356,30 +339,26 @@ async def _preflight(args: argparse.Namespace) -> None:
 
     if result.ok:
         print(f"\nAll {len(result.checks)} checks passed.")
-    else:
-        failed = [c for c in result.checks if c.status == "fail"]
-        print(f"\n{len(failed)} of {len(result.checks)} checks FAILED.")
-        sys.exit(1)
+        return 0
+    failed = [c for c in result.checks if c.status == "fail"]
+    print(f"\n{len(failed)} of {len(result.checks)} checks FAILED.")
+    return 1
 
 
-async def _confidence(args: argparse.Namespace) -> None:
-    from pathlib import Path
-
+async def _confidence(args: argparse.Namespace) -> int:
     from .confidence import compute_posterior
     from .repository import EpistemicRepository
 
-    db_dir = Path(args.db_dir) if args.db_dir else None
-    repo = await EpistemicRepository.for_database(args.db, db_dir=db_dir)
+    db = _existing_database(args.folder)
+    repo = await EpistemicRepository.for_database(db)
     try:
         objective_id = args.objective
         if objective_id is None:
             objectives = await repo.query("objective")
             if not objectives:
-                print("Error: no objectives found in database.", file=sys.stderr)
-                sys.exit(1)
+                raise _InputError(f"no objective in {args.folder}")
             objective_id = objectives[0].entity_id
 
-        # Posterior confidence (evidential direction)
         posterior = await compute_posterior(repo, objective_id)
         if posterior is not None:
             print(f"Posterior confidence: {posterior.posterior:.2%}")
@@ -397,133 +376,119 @@ async def _confidence(args: argparse.Namespace) -> None:
             print(f"Objective: {objective_id}")
     finally:
         await repo.close()
+    return 0
 
 
-async def _ask(args: argparse.Namespace) -> None:
-    """Run ``ask`` (research mode) or ``verify`` (verify mode).
+async def _ask(args: argparse.Namespace) -> int:
+    """Run ``ask`` (research mode) or ``verify`` (verify mode)."""
+    from .cli_handlers import handle_ask
 
-    Both subcommands share the same handler. Verify mode passes the
-    claim text via ``args.claim`` and signals ``mode="verify"``; ask
-    mode passes the question via ``args.question`` and defaults to
-    ``mode="research"``.
-    """
-    try:
-        from .cli_handlers import handle_ask
-    except ImportError:
-        print(
-            "Error: pydantic-ai and rich are required. Install with: pip install andamentum",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+    _require_search(args)
 
-    from andamentum.core.models import resolve_embedding_model_from_args
-
-    if not (args.searxng_url or args.browser):
-        print(
-            "Error: web search needs an address. Pass --searxng-url (a "
-            "SearXNG instance) or --browser (the isolated Chrome).",
-            file=sys.stderr,
-        )
-        sys.exit(2)
-
-    model = _resolve_model(args)
-    embedding_model = resolve_embedding_model_from_args(args.embedding_model)
-
-    # The verify subcommand uses ``args.claim``; ask uses ``args.question``.
+    # The verify command uses ``args.claim``; ask uses ``args.question``.
     text = getattr(args, "claim", None) or args.question
-    mode = "verify" if hasattr(args, "claim") else "research"
+    mode = "verify" if args.command == "verify" else "research"
+
+    out = Path(args.out) if args.out else None
+    database = report = None
+    if out is not None:
+        from .databases import database_path
+
+        out.mkdir(parents=True, exist_ok=True)
+        database = database_path(out)
+        report = out / "report.html"
+
+    if args.json:
+        # The result is the only thing on stdout; progress goes to stderr.
+        from . import cli_handlers
+
+        cli_handlers.console.file = sys.stderr
 
     result = await handle_ask(
-        question=text,
-        name=args.name,
-        model=model,
-        embedding_model=embedding_model,
-        keep=args.keep,
+        text,
+        model=args.model,
+        embedding_model=args.embedding_model,
+        database=database,
+        report=report,
         verbose=args.verbose,
         trace=args.trace,
         force_quick=args.quick,
         mode=mode,
         provider=args.provider,
-        output_path=args.output,
         searxng_url=args.searxng_url,
         browser=args.browser,
     )
 
-    if not result.success and result.error:
-        sys.exit(1)
+    if args.json:
+        print(result.model_dump_json(indent=2))
+    if not result.success:
+        print("error: no operation of the run completed", file=sys.stderr)
+        return 4
+    return 0
 
 
-async def _run(args: argparse.Namespace) -> None:
-    try:
-        from .runner import DefaultAgentRunner
-    except ImportError:
-        print(
-            "Error: pydantic-ai is required. Install with: pip install andamentum",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+async def _run(args: argparse.Namespace) -> int:
+    from .runner import DefaultAgentRunner
 
-    model = _resolve_model(args)
     kwargs = _parse_kwargs(args.kwargs)
 
     if args.verbose:
         print(f"Agent: {args.agent}")
-        print(f"Model: {model}  |  Args: {kwargs}")
+        print(f"Model: {args.model}  |  Args: {kwargs}")
 
-    runner = DefaultAgentRunner(model=model)
+    runner = DefaultAgentRunner(model=args.model)
     result = await runner.run(args.agent, **kwargs)
 
     if hasattr(result, "model_dump"):
         print(json.dumps(result.model_dump(), indent=2, default=str))
     else:
         print(result)
+    return 0
 
 
-async def _stage(args: argparse.Namespace) -> None:
-    """Run a single named pipeline stage. The DB is the checkpoint —
-    chain stages by re-running with the same --db on later
-    invocations."""
-    from pathlib import Path
-
+async def _stage(args: argparse.Namespace) -> int:
+    """Run a single named pipeline stage. The database is the checkpoint:
+    chain stages by running again with the same ``--out`` folder."""
+    from .databases import database_path
     from .graph import run_epistemic_graph
     from .graph.stages import get_stage
 
+    _require_search(args)
     stage = get_stage(args.name)
-    model = _resolve_model(args)
-    output_dir = Path(args.output_dir) if args.output_dir else None
+    out = Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
 
-    db_name = args.from_db or args.db
-    # Stage runners read mode from the saved DB's Objective on resume; on
-    # fresh stage runs the user can set --verify to mint the Objective in
-    # verify mode (matches the ask/verify subcommands).
-    mode = "verify" if getattr(args, "verify", False) else "research"
+    # Stage runners read the mode from the saved database's Objective on
+    # resume; on a fresh run --verify mints the Objective in verify mode.
+    mode = "verify" if args.verify else "research"
     result = await run_epistemic_graph(
         question=args.question or "(resumed)",
-        database_name=db_name,
-        db_dir=args.db_dir,
-        model=model,
+        database=database_path(out),
+        model=args.model,
         embedding_model=args.embedding_model,
         mode=mode,
         start_at=stage.entry,
         stop_after=stage.exit_after,
-        output_dir=output_dir,
+        output_dir=out,
+        searxng_url=args.searxng_url,
+        browser=args.browser,
     )
 
     print(f"Stage {stage.name!r} complete.")
     print(f"  status:       {result.status}")
     print(f"  objective_id: {result.objective_id}")
-    if output_dir is not None:
-        print(f"  artifacts:    {output_dir}/")
+    print(f"  files:        {out}/")
+    return 0
 
 
-async def _inspect(args: argparse.Namespace) -> None:
+async def _inspect(args: argparse.Namespace) -> int:
     """Print a structured snapshot of a saved DB. No LLM, no graph
     work — just read the entities and summarise."""
     from .databases import open_store
     from .repository import EpistemicRepository
 
-    db_dir = args.db_dir
-    store = await open_store(args.db, db_dir)
+    db = _existing_database(args.folder)
+    store = await open_store(db)
     try:
         repo = EpistemicRepository(store)
 
@@ -532,8 +497,8 @@ async def _inspect(args: argparse.Namespace) -> None:
         evidence = await repo.query("evidence")
 
         if not objs:
-            print(f"DB {args.db!r}: no objectives. Empty database.")
-            return
+            print(f"{args.folder}: no objectives. Empty database.")
+            return 0
 
         for obj in objs:
             print(f"Objective {obj.entity_id}")
@@ -617,108 +582,59 @@ async def _inspect(args: argparse.Namespace) -> None:
             print(f"  {prov}: {n}")
     finally:
         await store.close()
+    return 0
 
 
 _EXPERIMENTAL_BANNER = (
-    "\033[33m⚠ EXPERIMENTAL:\033[0m andamentum.epistemic is under active "
-    "development. Output shape, agent names, and CLI flags may change "
-    "without notice. Do not depend on this module in production "
-    "workflows yet. See README §'Pre-release / experimental'.\n"
+    "\033[33mEXPERIMENTAL:\033[0m andamentum.epistemic is under active "
+    "development. Output shape, agent names and flags may change "
+    "without notice. See README, Pre-release / experimental.\n"
 )
 
 
-def main() -> None:
-    # Always print the experimental banner to stderr — every invocation,
-    # before any work. Users running this from scripts will see it; users
-    # running interactively will too. The ANSI yellow only shows in TTYs.
-    print(_EXPERIMENTAL_BANNER, file=sys.stderr)
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
 
-    parser = _build_parser()
-    args = parser.parse_args()
+    if args.command is None:
+        parser.print_help(sys.stderr)
+        return 2
+
+    # Every invocation of a command, before any work, prints the banner to stderr.
+    print(_EXPERIMENTAL_BANNER, file=sys.stderr)
 
     if args.command == "agents":
         _list_agents()
-        return
+        return 0
 
-    if args.command in ("ask", "verify"):
-        try:
-            asyncio.run(_ask(args))
-        except KeyboardInterrupt:
-            print("\nCancelled.")
-            sys.exit(0)
-        except Exception as e:
-            print(f"Error: {e}", file=sys.stderr)
-            if "--verbose" in sys.argv:
-                traceback.print_exc()
-            sys.exit(1)
-        return
+    handlers = {
+        "ask": _ask,
+        "verify": _ask,
+        "run": _run,
+        "stage": _stage,
+        "inspect": _inspect,
+        "confidence": _confidence,
+        "preflight": _preflight,
+    }
+    try:
+        return asyncio.run(handlers[args.command](args))
+    except KeyboardInterrupt:
+        print("\nCancelled.", file=sys.stderr)
+        return 4
+    except _UsageError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+    except _InputError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 3
+    except Exception as e:
+        from .graph import DegenerateQuestionError
 
-    if args.command == "preflight":
-        try:
-            asyncio.run(_preflight(args))
-        except KeyboardInterrupt:
-            print("\nCancelled.")
-            sys.exit(0)
-        except Exception as e:
-            print(f"Error: {e}", file=sys.stderr)
-            if "--verbose" in sys.argv:
-                traceback.print_exc()
-            sys.exit(1)
-        return
-
-    if args.command == "confidence":
-        try:
-            asyncio.run(_confidence(args))
-        except KeyboardInterrupt:
-            print("\nCancelled.")
-            sys.exit(0)
-        except Exception as e:
-            print(f"Error: {e}", file=sys.stderr)
-            if "--verbose" in sys.argv:
-                traceback.print_exc()
-            sys.exit(1)
-        return
-
-    if args.command == "stage":
-        try:
-            asyncio.run(_stage(args))
-        except KeyboardInterrupt:
-            print("\nCancelled.")
-            sys.exit(0)
-        except Exception as e:
-            print(f"Error: {e}", file=sys.stderr)
-            if "--verbose" in sys.argv:
-                traceback.print_exc()
-            sys.exit(1)
-        return
-
-    if args.command == "inspect":
-        try:
-            asyncio.run(_inspect(args))
-        except KeyboardInterrupt:
-            print("\nCancelled.")
-            sys.exit(0)
-        except Exception as e:
-            print(f"Error: {e}", file=sys.stderr)
-            sys.exit(1)
-        return
-
-    if args.command == "run":
-        try:
-            asyncio.run(_run(args))
-        except KeyboardInterrupt:
-            print("\nQuery cancelled.")
-            sys.exit(0)
-        except Exception as e:
-            print(f"Error: {e}", file=sys.stderr)
-            if "--verbose" in sys.argv:
-                traceback.print_exc()
-            sys.exit(1)
-        return
-
-    parser.print_help()
-    sys.exit(1)
+        print(f"error: {e}", file=sys.stderr)
+        if getattr(args, "verbose", False):
+            traceback.print_exc()
+        return 2 if isinstance(e, DegenerateQuestionError) else 4
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

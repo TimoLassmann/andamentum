@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import ast
 import json
+import sys
 import tempfile
 from pathlib import Path
 
@@ -175,10 +176,9 @@ def test_cli_json_emits_parseable_forgeresult(monkeypatch, capsys) -> None:
     async def _fake_run(*_a, **_k):
         return _canned_result()
 
-    monkeypatch.setattr(forge_cli, "resolve_model_from_args", lambda _m: "stub")
-    monkeypatch.setattr(forge_cli, "run_forge", _fake_run)
+    monkeypatch.setattr(sys.modules["andamentum.forge.graph"], "run_forge", _fake_run)
 
-    rc = forge_cli.main(["design", "a reading list assistant", "--json"])
+    rc = forge_cli.main(["design", "a reading list assistant", "--model", "stub", "--json"])
     assert rc == 0
     payload = json.loads(capsys.readouterr().out)  # must be clean, parseable JSON
     assert "spec" in payload and payload["stage_reached"] == "design"
@@ -188,10 +188,9 @@ def test_cli_human_summary_path(monkeypatch, capsys) -> None:
     async def _fake_run(*_a, **_k):
         return _canned_result()
 
-    monkeypatch.setattr(forge_cli, "resolve_model_from_args", lambda _m: "stub")
-    monkeypatch.setattr(forge_cli, "run_forge", _fake_run)
+    monkeypatch.setattr(sys.modules["andamentum.forge.graph"], "run_forge", _fake_run)
 
-    rc = forge_cli.main(["design", "a reading list assistant"])
+    rc = forge_cli.main(["design", "a reading list assistant", "--model", "stub"])
     assert rc == 0
     assert "system:" in capsys.readouterr().out  # the human summary, not JSON
 
@@ -200,12 +199,11 @@ def test_cli_error_path_exits_nonzero_without_traceback(monkeypatch, capsys) -> 
     async def _boom(*_a, **_k):
         raise ValueError("Understand: the model failed to produce valid output")
 
-    monkeypatch.setattr(forge_cli, "resolve_model_from_args", lambda _m: "stub")
-    monkeypatch.setattr(forge_cli, "run_forge", _boom)
+    monkeypatch.setattr(sys.modules["andamentum.forge.graph"], "run_forge", _boom)
 
-    rc = forge_cli.main(["design", "a reading list assistant"])
-    assert rc == 1
-    assert "Error:" in capsys.readouterr().err
+    rc = forge_cli.main(["design", "a reading list assistant", "--model", "stub"])
+    assert rc == 4
+    assert capsys.readouterr().err.startswith("error:")
 
 
 # --- generated package: validate_input door (P1 ingestion) ------------------------

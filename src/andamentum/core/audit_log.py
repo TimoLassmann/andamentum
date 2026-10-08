@@ -1,8 +1,8 @@
 """Opt-in local audit log for cloud LLM calls.
 
-The audit log is OFF by default. It writes nothing unless the user
-explicitly sets ``ANDAMENTUM_AUDIT_LOG`` to a writable path of their
-choice. There is no XDG fallback and no hidden default directory.
+The audit log is OFF by default. It writes nothing unless the caller passes
+``log_path``, a writable path of the user's choice. There is no XDG fallback,
+no hidden default directory and no environment variable.
 
 Use case: an institutional question comes up six months later
 ("did you send patient data to OpenAI on the morning of 2026-05-16?")
@@ -26,48 +26,33 @@ return. They never block the calling operation.
 from __future__ import annotations
 
 import hashlib
-import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-_ENV_VAR = "ANDAMENTUM_AUDIT_LOG"
-
-
-def _resolve_log_path() -> Path | None:
-    """Return the user-chosen audit-log path, or None if opt-in is off.
-
-    Empty string and the literal ``"0"`` both count as off, so a user
-    can disable a previously-set env var via ``ANDAMENTUM_AUDIT_LOG=0``.
-    """
-    raw = os.environ.get(_ENV_VAR)
-    if raw is None or raw == "" or raw == "0":
-        return None
-    return Path(raw).expanduser()
-
-
-def is_enabled() -> bool:
+def is_enabled(log_path: str | Path | None) -> bool:
     """Cheap predicate callers can check before computing payload hashes."""
-    return _resolve_log_path() is not None
+    return log_path is not None and str(log_path) not in ("", "0")
 
 
 def log_cloud_call(
     *,
+    log_path: str | Path | None,
     cli_name: str,
     operation: str,
     model: str,
     content: bytes | str | None = None,
     byte_count: int | None = None,
 ) -> None:
-    """Append one audit entry. No-op when opt-in is off.
+    """Append one audit entry to ``log_path``. No-op when ``log_path`` is None.
 
     ``content`` is hashed (SHA-256) and discarded — it is not stored.
     Pass ``byte_count`` explicitly if you have it already; otherwise it
     is derived from ``content`` if given, else recorded as ``0``.
     """
-    path = _resolve_log_path()
-    if path is None:
+    if not is_enabled(log_path):
         return
+    path = Path(str(log_path)).expanduser()
 
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 

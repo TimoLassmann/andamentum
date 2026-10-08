@@ -5,7 +5,7 @@ Jev API). One request puts 1 to 64 named questions about one ``state``; a
 question is ``noul`` (probability a condition holds), ``choice`` (probabilities
 over described options) or ``score`` (weak, never a gate).
 
-- ``DecisionModel`` / ``make_decision_model``: a long-lived, checked handle
+- ``DecisionModel`` (opened with ``DecisionModel.open``): a long-lived, checked handle
   (server version, capability, digest); every request to one server is
   serialised by one lock, so local calls are never concurrent.
 - ``Question`` / ``Answer``, ``decide`` (one-shot), ``DecisionModel.decide``,
@@ -23,8 +23,8 @@ from .api import (
     MAX_BODY_BYTES,
     MAX_QUESTIONS,
     Answer,
-    DecisionAnswer,
-    DecisionQuestion,
+    DecisionAnswer,  # noqa: F401 - old name of Answer; importable, not in __all__
+    DecisionQuestion,  # noqa: F401 - old name of Question; importable, not in __all__
     Question,
     Usage,
     model_name,
@@ -42,18 +42,16 @@ from .model import (
     DecisionResult,
     decide,
     find_digest,
-    make_decision_model,
+    make_decision_model,  # noqa: F401 - old form of DecisionModel.open; importable, not in __all__
     model_digest,
     server_lock,
 )
 
 __all__ = [
     "Answer",
-    "DecisionAnswer",
     "DecisionError",
     "DecisionModel",
     "DecisionModelUnavailable",
-    "DecisionQuestion",
     "DecisionRequestRejected",
     "DecisionRequestTooLarge",
     "DecisionResponseError",
@@ -64,7 +62,6 @@ __all__ = [
     "Usage",
     "decide",
     "find_digest",
-    "make_decision_model",
     "model_digest",
     "model_name",
     "question_hash",

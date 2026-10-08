@@ -846,7 +846,7 @@ cap = 0.5 + (loveliness_gap / FRAMING_TIE_SATURATION_GAP) × 0.5
 <tr><td><code>demand.py</code></td><td>The <code>Demand</code> Pydantic model used everywhere lazy-escalation happens.</td></tr>
 <tr><td><code>repository.py</code></td><td><code>EpistemicRepository</code> wraps a <code>Store</code> (from <code>andamentum.document_store</code>).</td></tr>
 <tr><td><code>runner.py</code></td><td><code>DefaultAgentRunner</code> wrapping <code>core.AgentRunner</code> with the epistemic agent registry.</td></tr>
-<tr><td><code>cli.py</code></td><td><code>andamentum-epistemic</code> entry point. Primary modes: <code>ask</code> and <code>verify</code>; further subcommands <code>run</code>, <code>agents</code>, <code>preflight</code>, <code>stage</code>, <code>inspect</code>, <code>confidence</code>.</td></tr>
+<tr><td><code>cli.py</code></td><td><code>andamentum-epistemic</code> entry point. Primary modes: <code>ask</code> and <code>verify</code>; further subcommands <code>run</code>, <code>agents</code>, <code>preflight</code>, <code>stage</code>, <code>inspect</code>, <code>confidence</code> (the last two take the run folder).</td></tr>
 <tr><td><code>tests/</code></td><td>Tests live next to the code they test. <code>test_topology.py</code> asserts reachability properties on the 23-node graph.</td></tr>
 </tbody>
 </table>
@@ -911,7 +911,7 @@ result = await run_epistemic_graph(<br/>
 )
 </div>
 
-<p>The CLI <code>andamentum-epistemic ask "&lt;question&gt;"</code> wraps this. <code>verify "&lt;claim&gt;"</code> sets <code>Objective.claim_to_verify</code> and skips decomposition. Both resolve <code>--model</code> from the argument or <code>$ANDAMENTUM_MAIN_LLM_MODEL</code>, and exit with an error if neither is set.</p>
+<p>The CLI <code>andamentum-epistemic ask "&lt;question&gt;"</code> wraps this. <code>verify "&lt;claim&gt;"</code> sets <code>Objective.claim_to_verify</code> and skips decomposition. Both require <code>--model</code> and <code>--embedding-model</code> on the command line (no environment variable, no default). <code>--out DIR</code> keeps the run's database and <code>report.html</code> in that folder; without it the run uses a temporary folder that is removed afterwards.</p>
 
 <p class="meta-stamp">
 The 23-node graph and node contracts can be regenerated from <code>epistemic.graph.topology.topology()</code> and the <code>Node</code> subclass attributes.

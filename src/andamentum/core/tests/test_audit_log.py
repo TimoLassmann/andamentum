@@ -9,16 +9,27 @@ from pathlib import Path
 
 import pytest
 
-from andamentum.core.audit_log import is_enabled, log_cloud_call
+from andamentum.core import audit_log
+from andamentum.core.audit_log import is_enabled
+
+#: The path the current test logs to; set by ``_set_path``.
+_current: dict[str, str | None] = {"path": None}
+
+
+def _set_path(path: str) -> None:
+    _current["path"] = path
+
+
+def log_cloud_call(**kwargs) -> None:
+    kwargs.setdefault("log_path", _current["path"])
+    audit_log.log_cloud_call(**kwargs)
 
 
 class TestOptInBehaviour:
-    def test_no_env_var_means_no_io(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.delenv("ANDAMENTUM_AUDIT_LOG", raising=False)
-        assert is_enabled() is False
+    def test_no_path_means_no_io(self, tmp_path: Path) -> None:
+        assert is_enabled(None) is False
         log_cloud_call(
+            log_path=None,
             cli_name="whetstone",
             operation="--mode review",
             model="anthropic:claude-haiku-4-5",
@@ -27,25 +38,22 @@ class TestOptInBehaviour:
         # Nothing in tmp_path either — the function wrote nowhere.
         assert list(tmp_path.iterdir()) == []
 
-    def test_empty_env_var_means_no_io(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setenv("ANDAMENTUM_AUDIT_LOG", "")
-        assert is_enabled() is False
+    def test_empty_path_means_no_io(self, tmp_path: Path) -> None:
+        assert is_enabled("") is False
         log_cloud_call(
+            log_path="",
             cli_name="research", operation="ask", model="openai:gpt-5.4-nano"
         )
         assert list(tmp_path.iterdir()) == []
 
-    def test_zero_disables(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("ANDAMENTUM_AUDIT_LOG", "0")
-        assert is_enabled() is False
+    def test_zero_disables(self) -> None:
+        assert is_enabled("0") is False
 
 
 class TestWritingEntries:
     def _enable(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         log_path = tmp_path / "audit.log"
-        monkeypatch.setenv("ANDAMENTUM_AUDIT_LOG", str(log_path))
+        _set_path(str(log_path))
         return log_path
 
     def test_single_entry_format(
@@ -148,7 +156,7 @@ class TestWritingEntries:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         log_path = tmp_path / "nested" / "dir" / "audit.log"
-        monkeypatch.setenv("ANDAMENTUM_AUDIT_LOG", str(log_path))
+        _set_path(str(log_path))
         log_cloud_call(
             cli_name="x",
             operation="y",
@@ -161,7 +169,7 @@ class TestWritingEntries:
     ) -> None:
         # Point HOME at tmp_path so ~/audit.log goes there.
         monkeypatch.setenv("HOME", str(tmp_path))
-        monkeypatch.setenv("ANDAMENTUM_AUDIT_LOG", "~/audit.log")
+        _set_path("~/audit.log")
         log_cloud_call(
             cli_name="x",
             operation="y",
@@ -181,7 +189,7 @@ class TestFailureHandling:
         blocker = tmp_path / "blocker"
         blocker.write_text("I am a file, not a directory")
         bad_path = blocker / "audit.log"
-        monkeypatch.setenv("ANDAMENTUM_AUDIT_LOG", str(bad_path))
+        _set_path(str(bad_path))
 
         # Should NOT raise. Should print to stderr.
         log_cloud_call(

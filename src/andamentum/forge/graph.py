@@ -19,6 +19,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Literal
 
 from pydantic_graph import BaseNode, End, EndMarker, GraphBuilder, GraphRunContext
 
@@ -29,6 +30,7 @@ from .audit import audit_system
 from .build import build_system
 from .compile_spec import compile_spec
 from .decompose import decompose
+from .errors import BriefRefusedError, DesignError
 from .fitness import assess_fitness, is_buildable, refusal_message
 from .frame import frame
 from .render import render
@@ -58,6 +60,9 @@ ATTEMPT_CAP = 3
 #: How far the pipeline runs. Each is a superset of the previous.
 _STAGES = ("design", "render", "build", "audit")
 
+#: How far ``run_forge`` runs: the validated spec only, then render, build, audit.
+StopAfter = Literal["design", "render", "build", "audit"]
+
 
 @dataclass(frozen=True)
 class ForgeDeps:
@@ -68,7 +73,7 @@ class ForgeDeps:
     sink: AgentSink
     sandbox: SandboxPort
     dest: Path | None = None
-    stop_after: str = "audit"
+    stop_after: StopAfter = "audit"
     max_areas: int = MAX_AREAS
     max_jobs_per_area: int = MAX_JOBS_PER_AREA
     max_nodes: int = MAX_NODES
@@ -132,7 +137,7 @@ class Assess(BaseNode[ForgeState, ForgeDeps, ForgeResult]):
         fitness = await assess_fitness(why, sink=ctx.deps.sink)
         ctx.state.fitness = fitness
         if not is_buildable(fitness):
-            raise ValueError(refusal_message(fitness))
+            raise BriefRefusedError(refusal_message(fitness))
         return Frame()
 
 
@@ -326,7 +331,7 @@ async def run_forge(
     *,
     model: str,
     dest: Path | None = None,
-    stop_after: str = "audit",
+    stop_after: StopAfter = "audit",
     sandbox_backend: str = "podman",
     sink: AgentSink | None = None,
     sandbox: SandboxPort | None = None,
@@ -404,11 +409,11 @@ async def run_forge(
         resolved_reporter.stage_failed(name=current, error=str(exc))
         # A hard LLM-output failure in a load-bearing design stage (understand / assess /
         # frame / decompose / review) is terminal — the system genuinely can't be designed.
-        # Translate it into a clean, legible ValueError (forge's fail-loud convention, which
+        # Translate it into a clean, legible DesignError (forge's fail-loud convention, which
         # the CLI already presents) instead of leaking a pydantic-ai traceback. Build and the
         # advisory audit heads catch their own model failures and never reach here.
         if isinstance(exc, MODEL_OUTPUT_ERRORS):
-            raise ValueError(
+            raise DesignError(
                 f"{current or 'the pipeline'}: the model failed to produce valid output "
                 f"after retries — try a more capable model. Underlying error: {exc}"
             ) from exc

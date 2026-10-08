@@ -18,6 +18,7 @@ import logging
 from andamentum.document_store import KeyExists, Store
 
 from .databases import open_store
+from .errors import EpistemicError
 
 if TYPE_CHECKING:
     from .primitives import AdversarialEvidence, ConvergentEvidence
@@ -41,7 +42,7 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T", bound=EpistemicEntity)
 
 
-class EntityNotFoundError(Exception):
+class EntityNotFoundError(EpistemicError):
     """Raised when an entity is not found."""
 
     def __init__(self, entity_type: str, entity_id: str):
@@ -85,22 +86,16 @@ class EpistemicRepository:
         self._entity_classes = ENTITY_CLASSES
 
     @classmethod
-    async def for_database(
-        cls, name: str, db_dir: Path | None = None
-    ) -> "EpistemicRepository":
-        """Create a repository backed by a persistent named database.
+    async def for_database(cls, database: str | Path) -> "EpistemicRepository":
+        """Create a repository backed by the database file at ``database``.
 
         Args:
-            name: Database name (e.g., "benchmark_q1_brca1").
-                  Creates file at db_dir/{name}.db
-            db_dir: Custom directory for the database file.
-                    Defaults to the directory chosen by
-                    ``epistemic.databases.get_databases_dir``.
+            database: Path of the ``.db`` file; created if absent.
 
         Returns:
             Repository ready for use.
         """
-        store = await open_store(name, db_dir)
+        store = await open_store(database)
         return cls(store)
 
     async def close(self) -> None:

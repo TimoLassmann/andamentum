@@ -43,6 +43,8 @@ from urllib.robotparser import RobotFileParser
 
 import httpx
 
+from .errors import CoreError
+
 logger = logging.getLogger("andamentum.fetch_gate")
 
 
@@ -51,7 +53,7 @@ logger = logging.getLogger("andamentum.fetch_gate")
 # ---------------------------------------------------------------------------
 
 
-class FetchGateError(Exception):
+class FetchGateError(CoreError):
     """Base class for fetch-gate refusals."""
 
 

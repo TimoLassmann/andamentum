@@ -10,7 +10,6 @@ Environment variables:
 - OLLAMA_BASE_URL: Ollama API endpoint (default http://localhost:11434/v1)
 - AWS_PROFILE: boto3 session profile for Bedrock
 - AWS_DEFAULT_REGION / AWS_REGION: Bedrock region
-- ANDAMENTUM_MAIN_LLM_MODEL: fallback model when --model not provided
 """
 
 from __future__ import annotations
@@ -91,39 +90,13 @@ def resolve_model(model: str) -> Any:
     return model
 
 
-DEFAULT_EMBEDDING_MODEL = "embeddinggemma-2:latest"
-EMBEDDING_MODEL_ENV_VAR = "ANDAMENTUM_EMBEDDING_MODEL"
-
-
-def resolve_embedding_model_from_args(arg: str | None = None) -> str:
-    """Resolve embedding model from explicit arg, env var, or default."""
-    if arg:
-        return arg
-    env_value = os.environ.get(EMBEDDING_MODEL_ENV_VAR)
-    if env_value:
-        return env_value
-    return DEFAULT_EMBEDDING_MODEL
-
-
 def resolve_model_from_args(model_arg: str | None) -> str:
-    """Resolve model from CLI arg or ANDAMENTUM_MAIN_LLM_MODEL env var.
+    """Return ``model_arg``, or raise ``ValueError`` when it is missing.
 
-    Args:
-        model_arg: Value from --model CLI flag, or None
-
-    Returns:
-        Model string
-
-    Raises:
-        SystemExit: If no model is available
+    There is no environment fallback and no default model: a command takes
+    ``--model`` on the command line (argparse ``required=True``), and library
+    code passes ``model=`` explicitly.
     """
-    import sys
-
-    model = model_arg or os.environ.get("ANDAMENTUM_MAIN_LLM_MODEL")
-    if not model:
-        print(
-            "Error: --model is required (or set ANDAMENTUM_MAIN_LLM_MODEL).",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-    return model
+    if not model_arg:
+        raise ValueError("a model is required: pass --model (for example ollama:gemma4:31b)")
+    return model_arg

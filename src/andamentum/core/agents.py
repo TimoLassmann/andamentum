@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Iterable, TypeVar, cast
@@ -38,14 +37,10 @@ T = TypeVar("T")
 # concurrent requests just queues them upstream and risks timeout
 # cascades; the conservative default of 1 forces strict serial execution
 # matching the upstream behaviour. Cloud models can sustain real
-# concurrency, so the default is higher; tune via the env var below for
-# specific tier limits or testing.
-#
-# Override with ``ANDAMENTUM_LLM_CONCURRENCY`` (integer). Applies to all
-# AgentRunner instances created after the env var is set.
+# concurrency, so the default is higher. A caller that needs another width
+# passes ``concurrency=`` to ``AgentRunner`` or ``gather_llm``.
 _DEFAULT_LOCAL_CONCURRENCY = 1
 _DEFAULT_CLOUD_CONCURRENCY = 8
-_CONCURRENCY_ENV_VAR = "ANDAMENTUM_LLM_CONCURRENCY"
 
 
 def is_local_model(model: Any) -> bool:
@@ -66,26 +61,13 @@ def llm_concurrency(model: Any) -> int:
 
     The one place the rule lives. ``AgentRunner`` sizes its semaphore with it,
     and code that fans out over LLM calls itself (``deep_research``, ``forge``)
-    bounds its fan-out with it via :func:`gather_llm`. ``$ANDAMENTUM_LLM_CONCURRENCY``
-    overrides it.
+    bounds its fan-out with it via :func:`gather_llm`.
     """
-    default = (
+    return (
         _DEFAULT_LOCAL_CONCURRENCY
         if is_local_model(model)
         else _DEFAULT_CLOUD_CONCURRENCY
     )
-    env_override = os.environ.get(_CONCURRENCY_ENV_VAR)
-    if env_override is None:
-        return default
-    try:
-        return max(1, int(env_override))
-    except ValueError:
-        logger.warning(
-            "Invalid %s=%r; falling back to auto-detected default",
-            _CONCURRENCY_ENV_VAR,
-            env_override,
-        )
-        return default
 
 
 async def gather_llm(calls: Iterable[Awaitable[T]], *, concurrency: int) -> list[T]:
@@ -132,7 +114,7 @@ class AgentRunner:
         result = await runner.run(defn, key="value")
     """
 
-    def __init__(self, *, model: Any):
+    def __init__(self, *, model: Any, concurrency: int | None = None):
         from .models import resolve_model
 
         self._model_input = model  # original spec, kept for introspection
@@ -140,8 +122,8 @@ class AgentRunner:
         self._cache: dict[str, Any] = {}
 
         # Global semaphore bounding in-flight LLM calls, sized by
-        # ``llm_concurrency`` (local 1, cloud 8, env override).
-        concurrency = llm_concurrency(model)
+        # ``llm_concurrency`` (local 1, cloud 8) unless the caller passes ``concurrency``.
+        concurrency = max(1, concurrency) if concurrency is not None else llm_concurrency(model)
         self._concurrency = concurrency
         self._semaphore = asyncio.Semaphore(concurrency)
         logger.info(
@@ -377,6 +359,7 @@ async def run_agent_with_fallback(
     retries: int = 3,
     output_retries: int = 5,
     validators: list[Callable[..., Any]] | None = None,
+    model_settings: Mapping[str, Any] | None = None,
 ) -> Any:
     """One-shot agent execution with PromptedOutput fallback.
 
@@ -391,5 +374,6 @@ async def run_agent_with_fallback(
         retries=retries,
         output_retries=output_retries,
         validators=validators,
+        model_settings=model_settings,
     )
     return output

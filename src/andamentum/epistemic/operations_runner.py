@@ -8,6 +8,7 @@ Architecture: Layer 2 (pydantic-graph)
 """
 
 import logging
+from pathlib import Path
 from typing import Any, Callable, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -75,7 +76,7 @@ class PipelineResult(BaseModel):
 
 async def run_research_question(
     question: str,
-    database_name: str = "epistemic_research",
+    database: str | Path,
     mode: Literal["verify", "research"] = "research",
     verbose: bool = False,
     skip_preplanning: bool = False,
@@ -85,7 +86,6 @@ async def run_research_question(
     provider: str = "all",
     providers: Optional[dict[str, Any]] = None,
     quality_scorer: Optional[Any] = None,
-    db_dir: Optional[str] = None,
     searxng_url: Optional[str] = None,
     browser: bool = False,
 ) -> PipelineResult:
@@ -112,7 +112,7 @@ async def run_research_question(
 
     Args:
         question: The research question or (in verify mode) the claim text
-        database_name: Name of the database to use
+        database: Path of the ``.db`` file to read and write (created if absent)
         mode: "research" attempts decomposition; "verify" treats `question`
             as a single claim and skips decomposition.
         verbose: Print detailed output
@@ -124,8 +124,6 @@ async def run_research_question(
         providers: Optional dict of named EvidenceProvider instances to inject.
             Overrides the default provider setup when given.
         quality_scorer: Optional QualityScorer instance for evidence quality scoring.
-        db_dir: Custom directory for database files. When provided, the database
-            is written here instead of ~/.config/andamentum/databases/.
         searxng_url: The SearXNG instance web search goes to.
         browser: Search the web through the isolated Chrome (a podman
             container) instead of SearXNG. One of the two is required.
@@ -137,7 +135,7 @@ async def run_research_question(
 
     return await run_epistemic_graph(
         question=question,
-        database_name=database_name,
+        database=database,
         mode=mode,
         verbose=verbose,
         skip_preplanning=skip_preplanning,
@@ -147,7 +145,6 @@ async def run_research_question(
         provider=provider,
         providers=providers,
         quality_scorer=quality_scorer,
-        db_dir=db_dir,
         searxng_url=searxng_url,
         browser=browser,
     )

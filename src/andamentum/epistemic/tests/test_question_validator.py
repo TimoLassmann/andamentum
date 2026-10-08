@@ -85,8 +85,7 @@ async def test_run_graph_rejects_q_single_letter(tmp_path: Path, monkeypatch) ->
     with pytest.raises(DegenerateQuestionError) as excinfo:
         await run_epistemic_graph(
             question="Q",
-            database_name="k5_q",
-            db_dir=str(tmp_path),
+            database=tmp_path / "k5_q.db",
             model="fake:test-model",
             embedding_model="fake-embeddings",
             searxng_url="http://searx.invalid",
@@ -117,8 +116,7 @@ async def test_run_graph_accepts_real_question_then_resumes_without_check(
     # First call creates the objective from a real question.
     r1 = await run_epistemic_graph(
         question="Is exercise good for cardiovascular health?",
-        database_name="k5_resume",
-        db_dir=str(tmp_path),
+        database=tmp_path / "k5_resume.db",
         model="fake:test-model",
         embedding_model="fake-embeddings",
         searxng_url="http://searx.invalid",
@@ -130,8 +128,7 @@ async def test_run_graph_accepts_real_question_then_resumes_without_check(
     # because the DB already has an objective.
     r2 = await run_epistemic_graph(
         question="(resumed)",  # placeholder — would fail the validator
-        database_name="k5_resume",
-        db_dir=str(tmp_path),
+        database=tmp_path / "k5_resume.db",
         model="fake:test-model",
         embedding_model="fake-embeddings",
         searxng_url="http://searx.invalid",

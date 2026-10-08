@@ -714,7 +714,7 @@ Top-level layout under `src/andamentum/epistemic/`:
 | `demand.py` | The `Demand` Pydantic model used everywhere lazy-escalation happens. |
 | `repository.py` | `EpistemicRepository` wraps a `Store` (from `andamentum.document_store`). |
 | `runner.py` | `DefaultAgentRunner` wrapping `core.AgentRunner` with the epistemic agent registry. |
-| `cli.py` | `andamentum-epistemic` entry point. Primary modes: `ask` (research) and `verify` (seed-claim); further subcommands `run`, `agents`, `preflight`, `stage`, `inspect`, `confidence`. |
+| `cli.py` | `andamentum-epistemic` entry point. Primary modes: `ask` (research) and `verify` (seed-claim); further subcommands `run`, `agents`, `preflight`, `stage`, `inspect` and `confidence` (the last two take the run folder). |
 | `tests/` | Tests live next to the code they test. `test_topology.py` asserts reachability properties. |
 
 ### Entry point
@@ -724,14 +724,16 @@ from andamentum.epistemic.graph import run_epistemic_graph
 
 result = await run_epistemic_graph(
     question="...",
+    database="results/epistemic.db",  # the file the run reads and writes
     mode="research",  # or "verify"
+    searxng_url="http://127.0.0.1:4070",  # or browser=True
     model="anthropic:claude-haiku-4-5",
     embedding_model="ollama:embeddinggemma-2:latest",
     ibe_agreement_k=2,  # default; raise for stricter agreement
 )
 ```
 
-The CLI `andamentum-epistemic ask "<question>"` wraps this. `verify "<claim>"` sets `Objective.claim_to_verify` and skips decomposition. Both resolve `--model` from the argument or `$ANDAMENTUM_MAIN_LLM_MODEL`, and exit with an error if neither is set.
+The CLI `andamentum-epistemic ask "<question>"` wraps this. `verify "<claim>"` sets `Objective.claim_to_verify` and skips decomposition. Both require `--model` and `--embedding-model` on the command line (no environment variable, no default). `--out DIR` keeps the run's database (`epistemic.db`) and `report.html` in that folder; without it the run uses a temporary folder that is removed afterwards. `--json` prints the typed `AskResult`. In Python, `await andamentum.epistemic.ask(question, model=..., embedding_model=..., searxng_url=...)` and `verify(claim, ...)` return it.
 
 ### Stage runners
 

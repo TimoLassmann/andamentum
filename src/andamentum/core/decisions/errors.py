@@ -6,8 +6,10 @@ One base class, so a caller that can fall back catches
 
 from __future__ import annotations
 
+from ..errors import CoreError
 
-class DecisionError(Exception):
+
+class DecisionError(CoreError):
     """Any failure to get a decision from a local decision model."""
 
 

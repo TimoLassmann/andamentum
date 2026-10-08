@@ -20,14 +20,11 @@ from .agents import (
 )
 from .decisions import (
     Answer,
-    DecisionAnswer,
     DecisionError,
     DecisionModel,
     DecisionModelUnavailable,
-    DecisionQuestion,
     Question,
     decide,
-    make_decision_model,
     model_digest,
 )
 from .embeddings import (
@@ -45,9 +42,19 @@ from .embeddings import (
     infer_input_budget_chars,
     make_ollama_embedder,
 )
+from .errors import CoreError
+from .fetch_gate import FetchGateError, PaywallBlocked, RobotsBlocked
 from .models import resolve_model, resolve_model_from_args
+from .url_safety import ResponseTooLarge, SsrfBlocked
 
 __all__ = [
+    # Errors
+    "CoreError",
+    "FetchGateError",
+    "PaywallBlocked",
+    "ResponseTooLarge",
+    "RobotsBlocked",
+    "SsrfBlocked",
     # Agents
     "AgentDefinition",
     "AgentRunner",
@@ -56,14 +63,11 @@ __all__ = [
     "run_agent_with_usage",
     # Decision models
     "Answer",
-    "DecisionAnswer",
     "DecisionError",
     "DecisionModel",
     "DecisionModelUnavailable",
-    "DecisionQuestion",
     "Question",
     "decide",
-    "make_decision_model",
     "model_digest",
     # Models
     "resolve_model",

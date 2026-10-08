@@ -21,6 +21,8 @@ from urllib.parse import urlparse
 
 import httpx
 
+from .errors import CoreError
+
 # Cloud-provider metadata endpoints — never safe to fetch from a server-side
 # fetcher; they expose IAM tokens, instance secrets, etc.
 CLOUD_METADATA_HOSTS = frozenset(
@@ -146,12 +148,12 @@ def is_safe_url(url: str) -> tuple[bool, str]:
 # a hard size cap so a malicious host can't exhaust memory.
 
 
-class SsrfBlocked(Exception):
+class SsrfBlocked(CoreError):
     """Raised when a URL — or any redirect target it leads to — fails the
     SSRF safety check."""
 
 
-class ResponseTooLarge(Exception):
+class ResponseTooLarge(CoreError):
     """Raised when a fetched response body exceeds the allowed size cap."""
 
 

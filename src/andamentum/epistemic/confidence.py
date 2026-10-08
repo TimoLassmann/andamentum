@@ -29,7 +29,7 @@ Architecture: Layer 1 (framework-agnostic, pure computation)
 
 Usage::
 
-    repo = await EpistemicRepository.for_database("my_run", db_dir=Path("./results"))
+    repo = await EpistemicRepository.for_database(Path("./results/epistemic.db"))
     posterior = await compute_posterior(repo, objective_id="...")
     if posterior:
         print(f"Posterior confidence: {posterior.posterior:.2%}")

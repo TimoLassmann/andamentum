@@ -475,7 +475,8 @@ def _build_reproduction_command(
     return (
         f"andamentum-epistemic {mode_args} "
         f"--model {model_name} "
-        f"--database {database_name}"
+        f"--embedding-model EMBEDDING_MODEL --searxng-url ADDRESS "
+        "--out DIR"
     )
 
 
@@ -1332,15 +1333,15 @@ class ReportGenerator:
 
 
 async def generate_report_from_database(
-    database_name: str,
+    database: Path,
     output_path: Path,
     objective_id: Optional[str] = None,
     model_name: str = "unknown",
 ) -> bool:
-    """Convenience function to generate report from a named database.
+    """Convenience function to generate a report from a database file.
 
     Args:
-        database_name: Name of the epistemic database
+        database: Path of the epistemic database file
         output_path: Path to save the HTML file
         objective_id: Optional specific objective to report on
         model_name: Model used for the investigation
@@ -1348,9 +1349,9 @@ async def generate_report_from_database(
     Returns:
         True if saved successfully, False otherwise
     """
-    store = await open_store(database_name)
+    store = await open_store(database)
     try:
-        generator = ReportGenerator(store, database_name)
+        generator = ReportGenerator(store, Path(database).stem)
         return await generator.save_html(
             output_path=output_path,
             objective_id=objective_id,

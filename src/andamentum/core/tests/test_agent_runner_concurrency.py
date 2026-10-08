@@ -9,7 +9,7 @@ These tests pin:
 
   1. The auto-detection rule: local (Ollama) defaults to concurrency=1,
      cloud defaults to concurrency=8.
-  2. ``ANDAMENTUM_LLM_CONCURRENCY`` env var override behaviour.
+  2. The explicit ``concurrency=`` argument.
   3. The semaphore actually fires under concurrent ``run()`` invocations.
 
 The semaphore is *the* control surface for "how many concurrent LLM
@@ -21,7 +21,6 @@ tests fail loud.
 from __future__ import annotations
 
 import asyncio
-import os
 import time
 from typing import Any
 from unittest.mock import patch
@@ -49,10 +48,7 @@ def _make_runner_with_model_input(model_input: str) -> Any:
 def test_local_model_defaults_to_concurrency_one() -> None:
     """Ollama models should default to concurrency=1 — Ollama serialises
     inference per-process anyway, so concurrent requests just queue."""
-    # Clear env var so we test the auto-detection default.
-    with patch.dict(os.environ, {}, clear=False):
-        os.environ.pop("ANDAMENTUM_LLM_CONCURRENCY", None)
-        runner = _make_runner_with_model_input("ollama:gemma2:2b")
+    runner = _make_runner_with_model_input("ollama:gemma2:2b")
     assert runner.is_local is True
     assert runner.concurrency == 1
 
@@ -60,40 +56,25 @@ def test_local_model_defaults_to_concurrency_one() -> None:
 def test_cloud_model_defaults_to_concurrency_eight() -> None:
     """Cloud models default to concurrency=8 — sustainable on most
     paid tiers without hitting rate limits."""
-    with patch.dict(os.environ, {}, clear=False):
-        os.environ.pop("ANDAMENTUM_LLM_CONCURRENCY", None)
-        runner = _make_runner_with_model_input("openai:gpt-5.4-nano")
+    runner = _make_runner_with_model_input("openai:gpt-5.4-nano")
     assert runner.is_local is False
     assert runner.concurrency == 8
 
 
-def test_env_override_applies_to_local() -> None:
-    """ANDAMENTUM_LLM_CONCURRENCY overrides the auto-detected default
-    for both local and cloud models."""
-    with patch.dict(os.environ, {"ANDAMENTUM_LLM_CONCURRENCY": "4"}):
-        runner = _make_runner_with_model_input("ollama:gemma2:2b")
-    assert runner.concurrency == 4
+def test_explicit_concurrency_applies_to_local_and_cloud() -> None:
+    from andamentum.core.agents import AgentRunner
+
+    with patch("andamentum.core.models.resolve_model", lambda m: m):
+        assert AgentRunner(model="ollama:gemma2:2b", concurrency=4).concurrency == 4
+        assert AgentRunner(model="openai:gpt-5.4-nano", concurrency=20).concurrency == 20
 
 
-def test_env_override_applies_to_cloud() -> None:
-    with patch.dict(os.environ, {"ANDAMENTUM_LLM_CONCURRENCY": "20"}):
-        runner = _make_runner_with_model_input("openai:gpt-5.4-nano")
-    assert runner.concurrency == 20
+def test_explicit_concurrency_is_clamped_to_at_least_one() -> None:
+    """Concurrency=0 would deadlock; the argument is clamped to >=1."""
+    from andamentum.core.agents import AgentRunner
 
-
-def test_env_override_invalid_falls_back_to_default() -> None:
-    """Garbage values in the env var don't crash — fall back to the
-    auto-detected default with a warning logged."""
-    with patch.dict(os.environ, {"ANDAMENTUM_LLM_CONCURRENCY": "not-an-int"}):
-        runner = _make_runner_with_model_input("openai:gpt-5.4-nano")
-    assert runner.concurrency == 8
-
-
-def test_env_override_clamped_to_at_least_one() -> None:
-    """Concurrency=0 would deadlock; the override is clamped to >=1."""
-    with patch.dict(os.environ, {"ANDAMENTUM_LLM_CONCURRENCY": "0"}):
-        runner = _make_runner_with_model_input("openai:gpt-5.4-nano")
-    assert runner.concurrency == 1
+    with patch("andamentum.core.models.resolve_model", lambda m: m):
+        assert AgentRunner(model="openai:gpt-5.4-nano", concurrency=0).concurrency == 1
 
 
 # ── Semaphore actually bounds in-flight calls ────────────────────────
@@ -113,12 +94,11 @@ async def test_semaphore_serialises_calls_when_concurrency_one() -> None:
     # Stub model resolver and patch the agent runner's behaviour so we
     # don't need a real LLM. The semaphore is acquired in run() before
     # the actual agent.run call, so faking the latter is fine.
-    with patch.dict(os.environ, {"ANDAMENTUM_LLM_CONCURRENCY": "1"}):
-        with patch(
-            "andamentum.core.models.resolve_model",
-            lambda m: f"resolved::{m}",
-        ):
-            runner = AgentRunner(model="openai:gpt-5.4-nano")
+    with patch(
+        "andamentum.core.models.resolve_model",
+        lambda m: f"resolved::{m}",
+    ):
+        runner = AgentRunner(model="openai:gpt-5.4-nano", concurrency=1)
 
     defn = AgentDefinition(
         name="_test",
@@ -174,12 +154,11 @@ async def test_semaphore_allows_concurrency_when_above_one() -> None:
     class _Out(BaseModel):
         value: str
 
-    with patch.dict(os.environ, {"ANDAMENTUM_LLM_CONCURRENCY": "4"}):
-        with patch(
-            "andamentum.core.models.resolve_model",
-            lambda m: f"resolved::{m}",
-        ):
-            runner = AgentRunner(model="openai:gpt-5.4-nano")
+    with patch(
+        "andamentum.core.models.resolve_model",
+        lambda m: f"resolved::{m}",
+    ):
+        runner = AgentRunner(model="openai:gpt-5.4-nano", concurrency=4)
 
     defn = AgentDefinition(
         name="_test_par",
@@ -218,13 +197,9 @@ async def test_semaphore_allows_concurrency_when_above_one() -> None:
 def test_llm_concurrency_follows_the_runner_rule() -> None:
     from andamentum.core.agents import is_local_model, llm_concurrency
 
-    with patch.dict(os.environ, {}, clear=False):
-        os.environ.pop("ANDAMENTUM_LLM_CONCURRENCY", None)
-        assert llm_concurrency("ollama:gemma2:2b") == 1
-        assert llm_concurrency("openai:gpt-5.4-nano") == 8
+    assert llm_concurrency("ollama:gemma2:2b") == 1
+    assert llm_concurrency("openai:gpt-5.4-nano") == 8
     assert is_local_model("ollama:x") and not is_local_model("openai:x")
-    with patch.dict(os.environ, {"ANDAMENTUM_LLM_CONCURRENCY": "3"}):
-        assert llm_concurrency("ollama:x") == 3
 
 
 async def test_gather_llm_bounds_in_flight_and_keeps_order() -> None:

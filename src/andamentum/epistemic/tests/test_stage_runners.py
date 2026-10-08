@@ -51,8 +51,7 @@ async def test_stop_after_prepare_objective_writes_question_type(
 
     result = await run_epistemic_graph(
         question="Is exercise good for cardiovascular health?",
-        database_name="stage_stop_after",
-        db_dir=str(tmp_path),
+        database=tmp_path / "stage_stop_after.db",
         model="fake:test-model",
         embedding_model="fake-embeddings",
         searxng_url="http://searx.invalid",
@@ -101,8 +100,7 @@ async def test_start_at_skips_to_named_node(tmp_path: Path, monkeypatch) -> None
     # question_type set, but no decomposition.
     r1 = await run_epistemic_graph(
         question="Is exercise good for cardiovascular health?",
-        database_name="stage_resume",
-        db_dir=str(tmp_path),
+        database=tmp_path / "stage_resume.db",
         model="fake:test-model",
         embedding_model="fake-embeddings",
         searxng_url="http://searx.invalid",
@@ -114,8 +112,7 @@ async def test_start_at_skips_to_named_node(tmp_path: Path, monkeypatch) -> None
     # from the DB (existing_objectives path).
     r2 = await run_epistemic_graph(
         question="(ignored — DB has objective)",
-        database_name="stage_resume",
-        db_dir=str(tmp_path),
+        database=tmp_path / "stage_resume.db",
         model="fake:test-model",
         embedding_model="fake-embeddings",
         searxng_url="http://searx.invalid",
@@ -157,8 +154,7 @@ async def test_output_dir_emits_three_artifacts(tmp_path: Path, monkeypatch) -> 
     artifacts = tmp_path / "artifacts"
     result = await run_epistemic_graph(
         question="Is exercise good?",
-        database_name="stage_artifacts",
-        db_dir=str(tmp_path),
+        database=tmp_path / "stage_artifacts.db",
         model="fake:test-model",
         embedding_model="fake-embeddings",
         searxng_url="http://searx.invalid",
@@ -203,8 +199,7 @@ async def test_stage_invariant_satisfied_no_crash(tmp_path: Path, monkeypatch) -
 
     result = await run_epistemic_graph(
         question="Is exercise good for cardiovascular health?",
-        database_name="stage_invariant_ok",
-        db_dir=str(tmp_path),
+        database=tmp_path / "stage_invariant_ok.db",
         model="fake:test-model",
         embedding_model="fake-embeddings",
         searxng_url="http://searx.invalid",
@@ -246,8 +241,7 @@ async def test_stage_invariant_violation_crashes_loudly(
     with pytest.raises(StageInvariantError) as excinfo:
         await run_epistemic_graph(
             question="any question",
-            database_name="stage_invariant_fail",
-            db_dir=str(tmp_path),
+            database=tmp_path / "stage_invariant_fail.db",
             model="fake:test-model",
             embedding_model="fake-embeddings",
             searxng_url="http://searx.invalid",
@@ -278,8 +272,7 @@ async def test_stop_after_unknown_node_skips_invariant_check(
     # initial_evidence.
     result = await run_epistemic_graph(
         question="any question",
-        database_name="stage_unknown_stop",
-        db_dir=str(tmp_path),
+        database=tmp_path / "stage_unknown_stop.db",
         model="fake:test-model",
         embedding_model="fake-embeddings",
         searxng_url="http://searx.invalid",
@@ -317,8 +310,7 @@ async def test_chain_preplanning_then_resume_from_decompose(
     artifacts = tmp_path / "stage1"
     r1 = await run_epistemic_graph(
         question="Is exercise good for cardiovascular health?",
-        database_name="chain",
-        db_dir=str(tmp_path),
+        database=tmp_path / "chain.db",
         model="fake:test-model",
         embedding_model="fake-embeddings",
         searxng_url="http://searx.invalid",
@@ -337,8 +329,7 @@ async def test_chain_preplanning_then_resume_from_decompose(
     # on the same DB does NOT duplicate the objective.
     r2 = await run_epistemic_graph(
         question="(ignored)",
-        database_name="chain",
-        db_dir=str(tmp_path),
+        database=tmp_path / "chain.db",
         model="fake:test-model",
         embedding_model="fake-embeddings",
         searxng_url="http://searx.invalid",

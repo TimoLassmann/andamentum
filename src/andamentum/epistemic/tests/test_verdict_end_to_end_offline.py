@@ -71,9 +71,8 @@ async def _run_insufficient(tmp_path: Path, monkeypatch, db_name: str):
 
     result = await run_epistemic_graph(
         question="Aspirin reduces colorectal cancer risk in adults.",
-        database_name=db_name,
+        database=tmp_path / f"{db_name}.db",
         mode="verify",
-        db_dir=str(tmp_path),
         model="fake:test-model",
         embedding_model="fake-embeddings",
         searxng_url="http://searx.invalid",
@@ -136,9 +135,8 @@ async def _run_directional(tmp_path: Path, monkeypatch, db_name: str):
 
     result = await run_epistemic_graph(
         question=question,
-        database_name=db_name,
+        database=tmp_path / f"{db_name}.db",
         mode="verify",
-        db_dir=str(tmp_path),
         objective_id=obj.entity_id,
         start_at=CombineClaimVerdicts,
         model="fake:test-model",

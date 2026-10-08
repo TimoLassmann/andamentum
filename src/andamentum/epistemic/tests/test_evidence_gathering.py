@@ -320,8 +320,7 @@ class TestWebSearchAddressIsRequiredAtTheStart:
         with pytest.raises(ValueError, match="searxng_url"):
             await run_epistemic_graph(
                 question="Is exercise good for cardiovascular health?",
-                database_name="no_address",
-                db_dir=str(tmp_path),
+                database=tmp_path / "no_address.db",
                 model="fake:test-model",
                 embedding_model="fake-embeddings",
             )
@@ -336,9 +335,18 @@ class TestWebSearchAddressIsRequiredAtTheStart:
         assert [c.status for c in web] == ["skip"]
 
     def test_the_commands_take_the_address(self):
-        from ..cli import _build_parser as build_parser
+        from ..cli import build_parser
 
         parser = build_parser()
-        for command in (["ask", "q"], ["verify", "c"], ["preflight"]):
-            args = parser.parse_args([*command, "--searxng-url", "http://searx.test"])
+        for command in (["ask", "q"], ["verify", "c"], ["preflight"], ["stage", "preplanning", "-o", "d"]):
+            args = parser.parse_args(
+                [
+                    *command,
+                    "--model",
+                    "m",
+                    *(["--embedding-model", "e"] if command[0] != "preflight" else []),
+                    "--searxng-url",
+                    "http://searx.test",
+                ]
+            )
             assert args.searxng_url == "http://searx.test"

@@ -262,9 +262,7 @@ async def print_diagnostics(db_path: str, tradition: str) -> None:
             from andamentum.epistemic.confidence import compute_posterior
             from andamentum.epistemic.repository import EpistemicRepository
 
-            db_dir = str(Path(db_path).parent)
-            db_name = Path(db_path).stem
-            repo = await EpistemicRepository.for_database(db_name, db_dir=Path(db_dir))
+            repo = await EpistemicRepository.for_database(Path(db_path))
 
             try:
                 posterior = await compute_posterior(repo, obj_id)
@@ -432,6 +430,8 @@ VERIFIERS = {
 async def run_single_test(
     test: PathwayTest,
     model: str,
+    embedding_model: str,
+    searxng_url: str,
     keep: bool = False,
     db_dir: str | None = None,
 ) -> tuple[bool, list[str], str]:
@@ -443,13 +443,13 @@ async def run_single_test(
 
     try:
         await handle_ask(
-            question=test.question,
-            name=project_name,
+            test.question,
             model=model,
-            keep=True,  # Always keep during test — we need to inspect
+            embedding_model=embedding_model,
+            searxng_url=searxng_url,
+            database=Path(actual_db_dir) / f"{project_name}.db",
             verbose=False,
             trace="none",
-            db_dir=actual_db_dir,
         )
     except Exception as e:
         return False, [f"Pipeline crashed: {e}"], ""
@@ -502,6 +502,8 @@ async def main() -> None:
         description="Run epistemic integration tests (full pipeline, real LLM calls)"
     )
     parser.add_argument("--model", help="LLM model (e.g., openai:gpt-5.4-mini)")
+    parser.add_argument("--embedding-model", help="Ollama embedding model")
+    parser.add_argument("--searxng-url", help="Address of a SearXNG instance")
     parser.add_argument(
         "--tradition", help="Run only this tradition (e.g., doyle, peirce)"
     )
@@ -522,8 +524,10 @@ async def main() -> None:
         print()
         return
 
-    if not args.model:
-        parser.error("--model is required when running tests")
+    if not (args.model and args.embedding_model and args.searxng_url):
+        parser.error(
+            "--model, --embedding-model and --searxng-url are required when running tests"
+        )
 
     tests = PATHWAY_TESTS
     if args.tradition:
@@ -546,7 +550,12 @@ async def main() -> None:
         print(f"{'=' * 60}")
 
         passed, failures, db_path = await run_single_test(
-            test, args.model, keep=args.keep, db_dir=args.db_dir
+            test,
+            args.model,
+            args.embedding_model,
+            args.searxng_url,
+            keep=args.keep,
+            db_dir=args.db_dir,
         )
         results.append((test.tradition, passed, failures, db_path))
 
