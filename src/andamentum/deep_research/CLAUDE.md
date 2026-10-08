@@ -134,7 +134,7 @@ Model-calling tools hold one lock. `tests/test_mcp_server.py` drives the real mo
 
 ## Citation finder (`finder.py`)
 
-`await find_works(sentence, *, model, paragraph=None, follow_citations=True, sources=FINDER_SOURCES, store=None, http_cache=None, source_client=None, clock=time.monotonic) -> FinderResult`: the works one sentence of a draft could cite, best first, from titles, abstracts and identifiers only (no text is read, no quote, no store of findings). Exported from `deep_research` with `FinderResult` and `FINDER_SOURCES` (Semantic Scholar, OpenAlex and Europe PMC searched; Semantic Scholar's citation links followed, one call per list).
+`await find_works(sentence, *, model, paragraph=None, follow_citations=True, sources=FINDER_SOURCES, store=None, http_cache=None, source_client=None, clock=time.monotonic) -> FinderResult`: the works one sentence of a draft could cite, best first, from titles, abstracts and identifiers only (no text is read, no quote, no store of findings). Exported from `deep_research` with `FinderResult`, `FinderModelError` and `FINDER_SOURCES` (Semantic Scholar, OpenAlex and Europe PMC searched; Semantic Scholar's citation links followed, one call per list).
 
 ```
 queries   1 call: 2 or 3 keyword queries from the sentence (the paragraph is context); repeats dropped (queries.fresh_queries)
@@ -146,7 +146,7 @@ rank      code order (fusion.rrf_scores of BM25 of title+abstract against the se
 ```
 
 - Every candidate is returned (`works`); `searched`, `seeds`, `followed`, `shown` and `chosen` are work ids of `works`, so a lost gold work can be traced to its step. Two calls without citation following, three with.
-- Failures: a source error is recorded in `degraded` in `search.search`'s words (`... search failed for ...`) or as `citation following failed: ...`; the bench reads both as an outage. A failed model call falls back (the sentence itself is searched; the code's top results are the seeds; the code order is the ranking) and is recorded in `degraded`.
+- Failures: a source error is recorded in `degraded` in `search.search`'s words (`... search failed for ...`) or as `citation following failed: ...`; the bench reads both as an outage. A model call with no usable answer after its retries (no query left after repeats are dropped, no seed, a number that does not exist), a failed call or a spent call budget raises `FinderModelError` (exported; `step` names the call, `run_log` is the log so far): the finder has no fallback, so every result comes from the steps it names, and the bench records such a cell as failed (its outcomes zero, as any crashed cell), never as a result. An empty ranking is an answer: the code order follows. This differs from the engine's rule above on purpose: a finder result is a measurement of its own steps.
 - Candidate text reaches the seed and rank prompts only through `fence` with `UNTRUSTED`. A Semantic Scholar abstract is shown to the model (as `choose` shows snippets) and never exported (`Work`'s serialiser).
 - `find_with` is the same over given adapters (the tests pass stand-ins). Tests: `tests/test_finder.py` (stand-in sources, a scripted model, one run over Semantic Scholar's wire format on a mock transport).
 

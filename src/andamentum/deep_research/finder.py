@@ -18,9 +18,12 @@ rank      code orders every candidate (BM25 of title and abstract against the
 The result is every candidate: the model's order first, then the rest in the
 code's order. No text is read: titles, abstracts and identifiers only. A failed
 source is recorded in ``degraded`` (in the words ``search.search`` uses, so the
-bench sees an outage) and the others go on; a failed model call falls back (the
-sentence itself is searched; the code's top results are the seeds; the code's
-order is the ranking) and is recorded in ``degraded``. Anything else raises.
+bench sees an outage) and the others go on. A model call that gives no usable
+answer after its retries (no query, no seed, numbers that do not exist), fails
+or meets the call budget raises ``FinderModelError`` with the log so far as its
+``run_log``: there is no fallback, so a result always comes from the steps it
+names. The ranking call may leave candidates out (an empty order is an answer).
+Anything else raises.
 
 The stage lists of ``FinderResult`` (``searched``, ``seeds``, ``followed``,
 ``shown``, ``chosen``) hold work ids of ``works``, so a lost gold work can be
@@ -74,6 +77,16 @@ FINDER_TAG = "finder"
 # Model calls the finder may make: queries, seeds, rank and their retries are
 # one call each; the bound is generous and only stops a runaway.
 FINDER_BUDGET = Budget(max_llm_calls=10)
+
+
+class FinderModelError(RuntimeError):
+    """A finder model call gave no usable answer (``step`` names it); the
+    finder has no fallback. ``run_log`` is the log up to the failure."""
+
+    def __init__(self, step: str, error: Exception) -> None:
+        super().__init__(f"{step} failed: {type(error).__name__}: {error}")
+        self.step = step
+        self.run_log: RunLog | None = None
 
 
 class FinderQueries(BaseModel):
@@ -191,6 +204,22 @@ def code_order(candidates: Mapping[str, Candidate], *, sentence: str) -> list[st
     return sorted(ids, key=lambda w: -fused[w])
 
 
+async def _some_query(draft: FinderQueries) -> FinderQueries:
+    # async on purpose: pydantic-ai runs a sync validator in a worker thread
+    if not fresh_queries(draft.queries, done=[], count=MAX_QUERIES):
+        raise ModelRetry(
+            f"write {MIN_QUERIES} or {MAX_QUERIES} queries of plain keywords; "
+            "none was given"
+        )
+    return draft
+
+
+async def _some_seed(draft: SeedChoice) -> SeedChoice:
+    if not draft.seeds:
+        raise ModelRetry(f"name 1 to {MAX_SEEDS} result numbers; none was given")
+    return draft
+
+
 def _numbers_exist(count: int) -> Callable[..., object]:
     # async on purpose: pydantic-ai runs a sync validator in a worker thread
     async def check(draft: BaseModel) -> BaseModel:
@@ -205,6 +234,18 @@ def _numbers_exist(count: int) -> Callable[..., object]:
 
 def _picked(numbers: Sequence[int], shown: Sequence[str], *, most: int) -> list[str]:
     return [shown[n - 1] for n in dict.fromkeys(numbers) if 1 <= n <= len(shown)][:most]
+
+
+def _failed(step: str, error: Exception, *, log: RunLogger) -> FinderModelError:
+    log.event(
+        "failed",
+        f"{step} failed: {type(error).__name__}: {error}",
+        step="Finish",
+        error=f"{type(error).__name__}: {error}",
+    )
+    failure = FinderModelError(step, error)
+    failure.run_log = log.snapshot()
+    return failure
 
 
 async def find_works(
@@ -303,18 +344,13 @@ async def find_with(
             instructions=QUERY_INSTRUCTIONS,
             output_type=FinderQueries,
             user_message="\n".join(context),
+            validators=[_some_query],
         )
-        written = draft.queries
     except (BudgetExhausted, *MODEL_ERRORS) as error:
-        result.degraded.append(
-            f"query writing failed ({type(error).__name__}: {error}); the sentence "
-            "itself is searched"
-        )
-        written = []
-    # repeats (case and spacing folded) dropped, at most MAX_QUERIES
-    queries = fresh_queries(written, done=[], count=MAX_QUERIES) or [
-        " ".join(sentence.split())
-    ]
+        raise _failed("query writing", error, log=log) from error
+    # repeats (case and spacing folded) dropped, at most MAX_QUERIES; the
+    # validator made sure one is left
+    queries = fresh_queries(draft.queries, done=[], count=MAX_QUERIES)
     result.queries = queries
     log.event("queries", f"{len(queries)} queries", step="Search", queries=queries)
 
@@ -353,16 +389,11 @@ async def find_with(
                         fence(_listing([candidates[w] for w in shown])),
                     ]
                 ),
-                validators=[_numbers_exist(len(shown))],
+                validators=[_some_seed, _numbers_exist(len(shown))],
             )
-            seeds = _picked(choice.seeds, shown, most=MAX_SEEDS)
         except (BudgetExhausted, *MODEL_ERRORS) as error:
-            result.degraded.append(
-                f"choosing the seeds failed ({type(error).__name__}: {error}); the "
-                "top results by rank are followed"
-            )
-            seeds = []
-        result.seeds = seeds or shown[:MAX_SEEDS]
+            raise _failed("choosing the seeds", error, log=log) from error
+        result.seeds = _picked(choice.seeds, shown, most=MAX_SEEDS)
         hop = await expand(
             [candidates[w].work for w in result.seeds],
             subquestion_id=FINDER_TAG,
@@ -403,12 +434,9 @@ async def find_with(
                 ),
                 validators=[_numbers_exist(len(shown))],
             )
-            chosen = _picked(ranking.ranked, shown, most=RANK_PICKS)
         except (BudgetExhausted, *MODEL_ERRORS) as error:
-            result.degraded.append(
-                f"ranking failed ({type(error).__name__}: {error}); the works are "
-                "in the code's order"
-            )
+            raise _failed("ranking", error, log=log) from error
+        chosen = _picked(ranking.ranked, shown, most=RANK_PICKS)
     result.chosen = chosen
     final = [*chosen, *(w for w in order if w not in set(chosen))]
     result.works = [candidates[w].work for w in final]

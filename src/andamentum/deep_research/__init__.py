@@ -15,7 +15,7 @@ from .ask import MODEL_ERRORS, Asker, BudgetExhausted  # noqa: F401  (importable
 from .engine import research
 from .errors import ResearchError
 from .identity import merge  # noqa: F401  (importable, not exported)
-from .finder import FINDER_SOURCES, FinderResult, find_works
+from .finder import FINDER_SOURCES, FinderModelError, FinderResult, find_works
 from .novelty import NoveltyResearch, run_novelty_check
 from .read import locate_quote
 from .sources import (
@@ -48,6 +48,7 @@ __all__ = [
     "Budget",
     "Candidate",
     "Depth",
+    "FinderModelError",
     "FinderResult",
     "Finding",
     "LogEvent",

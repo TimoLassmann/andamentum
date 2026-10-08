@@ -27,7 +27,7 @@ from ..bench.experiment_run import (
 )
 from ..bench.metrics import Cost
 from ..bench.verdicts import judge_rule
-from ..finder import FINDER_SOURCES, FinderResult
+from ..finder import FINDER_SOURCES, FinderModelError, FinderResult
 from ..sources.base import SourceClient, SourceConfig
 from ..store import ResearchStore
 from .test_bench_experiment_run import ScriptedArm, write_litsearch
@@ -258,6 +258,46 @@ async def test_litsearch_cells_carry_the_query_set_and_the_report_splits_by_it(
     assert "| inline_acl | F1 | 3 |" in text
     assert "finder (follow_citations: true)" in text
     assert "F1-over-B2" in text and "accepted" in text
+
+
+async def test_a_finder_cell_whose_model_failed_is_a_failed_cell_not_a_result(
+    tmp_path: Path,
+) -> None:
+    """The finder has no fallback: a failed model call is recorded as the cell's
+    error (outcomes zero, as any crashed cell), never as an F1 result."""
+    dirs = DataDirs(litsearch_local=write_litsearch(tmp_path / "ls"))
+    exp = Experiment.model_validate(
+        {
+            "name": "finder-fails",
+            "registered": "2026-10-08",
+            "sets": [{"name": "litsearch-web", "n": 1, "seed": 0}],
+            "arms": [
+                {
+                    "name": "F1",
+                    "system": "finder",
+                    "model": "ollama:m",
+                    "follow_citations": True,
+                }
+            ],
+            "baselines": {"litsearch-web": "F1"},
+        }
+    )
+
+    def fail(_question: str, _call: int) -> ArmOutput:
+        raise FinderModelError("ranking", ValueError("no usable answer"))
+
+    written = await run_experiment(
+        exp,
+        out_dir=tmp_path / "out",
+        dirs=dirs,
+        services=Services(answer_arm=lambda _spec, _mode: ScriptedArm("F1", fail)),
+    )
+    [record] = written
+    assert record.error == (
+        "FinderModelError: ranking failed: ValueError: no usable answer"
+    )
+    assert record.output is None
+    assert record.metrics["recall_at_20"] == 0.0
 
 
 # -- loss attribution of a finder cell ---------------------------------------------------

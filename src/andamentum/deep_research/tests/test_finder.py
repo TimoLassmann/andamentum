@@ -16,8 +16,8 @@ from ..bench.experiment_run import infrastructure_failure
 from ..bench.arms import map_finder
 from ..finder import (
     MAX_QUERIES,
-    MAX_SEEDS,
     RANK_PICKS,
+    FinderModelError,
     code_order,
     find_with,
     find_works,
@@ -225,27 +225,38 @@ async def test_queries_are_capped_and_deduplicated() -> None:
     assert source.searched == result.queries
 
 
-async def test_a_failed_query_call_searches_the_sentence_itself() -> None:
+@pytest.mark.parametrize(
+    ("llm", "follow", "step"),
+    [
+        (lambda: scripted(fail="queries"), False, "query writing"),
+        (lambda: scripted(queries=["  ", ""], ranked=[]), False, "query writing"),
+        (lambda: scripted(seeds=[], ranked=[]), True, "choosing the seeds"),
+        (lambda: scripted(fail="rank"), False, "ranking"),
+    ],
+)
+async def test_a_model_call_without_a_usable_answer_raises_with_no_fallback(
+    llm: Callable[[], ScriptedLLM], follow: bool, step: str
+) -> None:
     source = StubSource("semantic_scholar")
-    result = await run(scripted(fail="queries", ranked=[]), follow=False, source=source)
-    assert source.searched == [SENTENCE]
-    assert any("query writing failed" in d for d in result.degraded)
+    with pytest.raises(FinderModelError) as raised:
+        await run(llm(), follow=follow, source=source)
+    assert raised.value.step == step
+    assert str(raised.value).startswith(f"{step} failed:")
+    # nothing ran in place of the failed step
+    if step == "query writing":
+        assert source.searched == []
+    if step == "choosing the seeds":
+        assert source.followed == []
+    # the log so far rides on the error, ending with the failure
+    assert raised.value.run_log is not None
+    assert raised.value.run_log.events[-1].event == "failed"
 
 
-async def test_a_failed_ranking_call_falls_back_to_the_code_order() -> None:
-    result = await run(scripted(fail="rank"), follow=False)
+async def test_an_empty_ranking_is_an_answer_the_code_order_follows() -> None:
+    result = await run(scripted(ranked=[]), follow=False)
     assert result.chosen == []
     assert [w.work_id for w in result.works] == result.shown
-    assert any("ranking failed" in d for d in result.degraded)
-
-
-async def test_the_seeds_fall_back_to_the_top_results_when_the_model_names_none() -> (
-    None
-):
-    source = StubSource("semantic_scholar")
-    result = await run(scripted(seeds=[], ranked=[]), follow=True, source=source)
-    assert len(result.seeds) == min(MAX_SEEDS, len(result.searched)) == 3
-    assert len(source.followed) == 2 * len(result.seeds)
+    assert result.degraded == []
 
 
 async def test_a_failed_search_is_recorded_as_an_outage_the_bench_sees() -> None:
