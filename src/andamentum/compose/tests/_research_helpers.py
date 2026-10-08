@@ -47,7 +47,10 @@ def blog() -> Work:
 
 
 def make_result(
-    *, degraded: list[str] | None = None, with_blog: bool = True
+    *,
+    degraded: list[str] | None = None,
+    with_blog: bool = True,
+    blog_verified: bool = True,
 ) -> ResearchResult:
     study_passage = Passage.make(work_id=STUDY_ID, start=40, text=STUDY_TEXT)
     blog_passage = Passage.make(work_id=BLOG_ID, start=0, text=BLOG_TEXT)
@@ -57,6 +60,7 @@ def make_result(
             subquestion_id="Q1",
             claim="Structured logging improves delivery fidelity.",
             quote=STUDY_QUOTE,
+            quote_verified=True,
             passage_id=study_passage.passage_id,
             work_id=STUDY_ID,
         )
@@ -70,6 +74,7 @@ def make_result(
                 subquestion_id="Q1",
                 claim="The Apollo cache halves median latency.",
                 quote=BLOG_QUOTE,
+                quote_verified=blog_verified,
                 passage_id=blog_passage.passage_id,
                 work_id=BLOG_ID,
             )
@@ -84,7 +89,7 @@ def make_result(
         works=works,
         passages=passages,
         findings=findings,
-        stop_reason="covered",
+        stop_reason="answered",
         degraded=degraded or [],
         stats=RunStats(llm_calls=3, input_tokens=1000, output_tokens=200),
     )

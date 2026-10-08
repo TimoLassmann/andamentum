@@ -255,7 +255,6 @@ class Research(BaseNode[ComposeState, ComposeDeps, ComposeResult]):
                 findings=len(result.findings),
                 stop_reason=result.stop_reason,
                 degraded=len(result.degraded),
-                decision_calls=result.stats.decision_calls,
             )
         state.research = result
         for note in degraded_notes(result):

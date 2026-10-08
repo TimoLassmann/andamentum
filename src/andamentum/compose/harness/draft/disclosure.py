@@ -80,9 +80,6 @@ def ai_use_statement(events: Sequence[dict[str, object]]) -> str:
         ]
     )
     researched = [e for e in steps if e.get("step") == "research"]
-    screened = [
-        _text(e.get("model")) for e in steps if e.get("step") == "research_screen"
-    ]
     checks = _check_ids(events)
     runs = [e for e in events if e.get("type") == "draft_run"]
     citations = sum(_count(e.get("citations")) for e in runs)
@@ -106,11 +103,6 @@ def ai_use_statement(events: Sequence[dict[str, object]]) -> str:
             "the search and read the works it found, and only passages quoted "
             "word for word from those works were used."
         )
-        if screened:
-            sentences.append(
-                f"{_listing(screened)} screened the works found and judged the "
-                "passages."
-            )
     for model, titles in drafted.items():
         sentences.append(
             f"{_sections(titles)} {'was' if len(titles) == 1 else 'were'} drafted by {model}."

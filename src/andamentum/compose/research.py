@@ -32,12 +32,7 @@ from .genres import Genre, ResearchMode
 from .schemas import Fact, Source
 
 if TYPE_CHECKING:
-    from andamentum.deep_research.v2 import (
-        Budget,
-        ResearchConfig,
-        ResearchResult,
-        SourceConfig,
-    )
+    from andamentum.deep_research.v2 import Budget, ResearchResult, SourceConfig
     from andamentum.references import Work
 
 RESEARCH_DB = "research.db"
@@ -53,20 +48,15 @@ class ResearchSetupError(ValueError):
 class ResearchSetup:
     """Everything ``--research`` needs besides the language model, explicit.
 
-    ``sources`` carries the SearxNG address (web and both) and the contact
-    mail or keys of the scholarly sources. ``decision_model`` is a local
-    decision model that screens and checks (``None``: the language model
-    answers those questions). ``mode`` overrides the genre's mode. ``budget``
-    bounds the run (``None``: the engine's default). ``config`` is the
-    engine's configuration (``None``: the ``baseline`` preset, one generic
-    relevance question per candidate and no LLM-written criteria).
+    ``sources`` carries the web search address (a SearxNG instance or a Chrome
+    over CDP, for web and both) and the contact mail or keys of the scholarly
+    sources. ``mode`` overrides the genre's mode. ``budget`` bounds the run
+    (``None``: the engine's default).
     """
 
     sources: SourceConfig
-    decision_model: str | None = None
     mode: ResearchMode | None = None
     budget: Budget | None = None
-    config: ResearchConfig | None = None
 
 
 def research_mode(genre: Genre, setup: ResearchSetup) -> ResearchMode:
@@ -88,24 +78,25 @@ async def run_research_v2(
     The question is the user's own task text, as it was when research was
     plain web search: nothing derived from a source file is ever sent out.
     """
-    from andamentum.deep_research.v2 import PRESETS, Budget, research
+    from andamentum.deep_research.v2 import Budget, research
 
     mode = research_mode(genre, setup)
-    if mode != "scholarly" and not setup.sources.searxng_url:
+    if mode != "scholarly" and not (
+        setup.sources.searxng_url or setup.sources.browser_cdp_url
+    ):
         raise ResearchSetupError(
             f"research mode {mode!r} (genre {genre.name!r}) searches the web and "
-            "needs a SearxNG address; pass one, or choose the scholarly mode"
+            "needs a SearxNG address or a Chrome address (browser_cdp_url); pass "
+            "one, or choose the scholarly mode"
         )
     progress(f"Research: {mode} search")
     return await research(
         task,
         mode=mode,
         model=model,
-        decision_model=setup.decision_model,
         store=database,
         budget=setup.budget or Budget(),
         sources=setup.sources,
-        config=setup.config or PRESETS["baseline"],
         progress=progress,
     )
 
@@ -196,15 +187,21 @@ def research_facts(
 ) -> tuple[list[Fact], list[str]]:
     """The facts of one research source: its findings, quotes located in *text*.
 
-    Returns the facts (ids ``f<first_number>`` onwards) and a note for every
-    finding whose quote could not be placed in the source text (the engine
+    Returns the facts (ids ``f<first_number>`` onwards) and the notes: one for
+    every finding whose quote could not be placed in the source text (the engine
     checked it against the passage, so this signals a bug, and the fact is
-    dropped rather than kept without its words).
+    dropped rather than kept without its words), and one line counting the
+    findings the engine could not verify (their quote was not found in the page),
+    which are not used.
     """
     facts: list[Fact] = []
     dropped: list[str] = []
+    unverified = 0
     for finding in result.findings:
         if finding.work_id != source.work_id:
+            continue
+        if not finding.quote_verified:
+            unverified += 1
             continue
         span = find_quote(text, finding.quote)
         if span is None:
@@ -223,6 +220,8 @@ def research_facts(
                 end=span[1],
             )
         )
+    if unverified:
+        dropped.append(f"{unverified} unverified quotes not used")
     return facts, dropped
 
 

@@ -7,6 +7,7 @@ The compose side runs for real: the graph, the evidence worker, the store.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -118,6 +119,73 @@ def test_a_finding_whose_quote_is_not_in_the_text_is_dropped_and_said(
     source = research_sources(result, bundle_dir=tmp_path, first_number=1)[1]
     facts, dropped = research_facts(result, source, "an unrelated text", first_number=1)
     assert facts == [] and "not found" in dropped[0]
+
+
+def test_a_finding_whose_quote_the_engine_could_not_verify_is_not_a_fact(
+    tmp_path: Path,
+) -> None:
+    result = make_result(blog_verified=False)
+    source = research_sources(result, bundle_dir=tmp_path, first_number=1)[1]
+    text = stored_source_path(tmp_path, source).read_text(encoding="utf-8")
+    facts, notes = research_facts(result, source, text, first_number=1)
+    assert facts == []
+    assert notes == ["1 unverified quotes not used"]
+    study_source = research_sources(result, bundle_dir=tmp_path, first_number=1)[0]
+    study_text = stored_source_path(tmp_path, study_source).read_text(encoding="utf-8")
+    study_facts, study_notes = research_facts(
+        result, study_source, study_text, first_number=1
+    )
+    assert [f.quote for f in study_facts] == [STUDY_QUOTE] and study_notes == []
+
+
+def test_a_research_result_saved_by_the_staged_engine_still_loads(
+    tmp_path: Path,
+) -> None:
+    """Keys the engine no longer has (criteria, coverage, conflicts, screening,
+    the run configuration) are ignored; the evidence table is read as it was."""
+    saved = json.loads(make_result().model_dump_json())
+    saved["findings"][0]["criterion_ids"] = ["Q1-C1"]
+    del saved["findings"][1]["quote_verified"]
+    saved |= {
+        "criteria": [{"id": "Q1-C1", "text": "Is it measured?", "kind": "must"}],
+        "coverage": [{"subquestion_id": "Q1", "covered": True}],
+        "conflicts": [],
+        "screening": [{"work_id": "w1", "subquestion_id": "Q1", "kept": True}],
+        "config_name": "baseline",
+        "config_hash": "0" * 64,
+        "log": {
+            "run_id": "r_test",
+            "events": [
+                {
+                    "seq": 0,
+                    "t": 0.1,
+                    "step": "Screen",
+                    "event": "screened",
+                    "message": "a step the engine no longer has",
+                    "data": {},
+                }
+            ],
+        },
+    }
+    bundle_store.save_research(tmp_path, make_result())  # makes the folder
+    (tmp_path / bundle_store.RESEARCH).write_text(json.dumps(saved), encoding="utf-8")
+    loaded = bundle_store.load_research(tmp_path)
+    assert [f.finding_id for f in loaded.findings] == ["F1", "F2"]
+    assert all(f.quote_verified for f in loaded.findings)
+    assert [w.work_id for w in loaded.works] == ["w1", "w2"]
+
+
+def test_the_saved_research_result_leaves_out_the_run_log(tmp_path: Path) -> None:
+    from andamentum.deep_research.v2 import LogEvent
+
+    result = make_result()
+    result.log.events.append(
+        LogEvent(seq=0, t=0.0, step="Read", event="fetched", message="m", data={})
+    )
+    bundle_store.save_research(tmp_path, result)
+    saved = json.loads((tmp_path / bundle_store.RESEARCH).read_text(encoding="utf-8"))
+    assert "log" not in saved
+    assert bundle_store.load_research(tmp_path).findings == result.findings
 
 
 def test_the_label_is_a_citation_a_reader_can_use() -> None:
@@ -287,14 +355,27 @@ async def test_a_failed_research_run_cannot_be_resumed_without_its_settings(
     assert done.stop_reason == "goal_met"
 
 
-async def test_web_research_without_a_searxng_address_is_refused(
+async def test_web_research_without_a_search_address_is_refused(
     tmp_path: Path, script, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     fake = FakeResearch()
     monkeypatch.setattr("andamentum.deep_research.v2.research", fake)
-    with pytest.raises(ResearchSetupError, match="SearxNG"):
+    with pytest.raises(ResearchSetupError, match="SearxNG.*browser_cdp_url"):
         await _write(tmp_path, research=ResearchSetup(sources=SourceConfig()))
     assert fake.calls == []
+
+
+async def test_a_chrome_address_is_enough_for_web_research(
+    tmp_path: Path, script, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake = FakeResearch()
+    monkeypatch.setattr("andamentum.deep_research.v2.research", fake)
+    chrome = ResearchSetup(
+        sources=SourceConfig(browser_cdp_url="http://127.0.0.1:9222")
+    )
+    await _write(tmp_path, research=chrome)
+    assert fake.calls[0]["mode"] == "web"
+    assert fake.calls[0]["sources"] == chrome.sources
 
 
 async def test_the_mode_can_be_overridden_and_scholarly_needs_no_searxng(
@@ -306,10 +387,17 @@ async def test_the_mode_can_be_overridden_and_scholarly_needs_no_searxng(
         tmp_path, research=ResearchSetup(sources=SourceConfig(), mode="scholarly")
     )
     assert fake.calls[0]["mode"] == "scholarly"
-    # compose runs the engine's baseline: no LLM-written screening criteria
-    from andamentum.deep_research.v2 import PRESETS
-
-    assert fake.calls[0]["config"] is PRESETS["baseline"]
+    # the engine has one configuration: nothing but the question, the mode, the
+    # model, the store, the budget, the sources and the progress callback goes in
+    assert set(fake.calls[0]) == {
+        "question",
+        "mode",
+        "model",
+        "store",
+        "budget",
+        "sources",
+        "progress",
+    }
 
 
 async def test_a_degraded_run_is_reported_not_hidden(
@@ -341,11 +429,7 @@ async def test_the_real_engine_over_an_invented_world_feeds_real_findings(
     from andamentum.core import fetch_gate, url_safety
     from andamentum.deep_research.v2 import ResearchStore
     from andamentum.deep_research.v2 import research as real_research
-    from andamentum.deep_research.v2.tests.engine_world import (
-        World,
-        world_decisions,
-        world_llm,
-    )
+    from andamentum.deep_research.v2.tests.engine_world import World, world_llm
 
     monkeypatch.setattr(url_safety, "is_safe_url", lambda url, **_kw: (True, ""))
     monkeypatch.setattr(
@@ -356,14 +440,10 @@ async def test_the_real_engine_over_an_invented_world_feeds_real_findings(
     async def in_the_world(question: str, *, store: Path, **kwargs: object):
         opened = ResearchStore(store)
         try:
-            kwargs.pop("model")
-            kwargs.pop(
-                "decision_model"
-            )  # compose passes a name; the world's stub stands in
+            kwargs.pop("model")  # compose passes a name; the world's stub stands in
             return await real_research(
                 question,
                 model=world_llm().model,
-                decision_model=world_decisions()[0],
                 store=opened,
                 source_client=World().client(opened),
                 **kwargs,  # type: ignore[arg-type]

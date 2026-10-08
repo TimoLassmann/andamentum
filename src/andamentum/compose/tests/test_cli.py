@@ -131,7 +131,7 @@ def test_research_flags_need_research(tmp_path, capsys):
     base = ["write", "t", "--out", str(tmp_path / "d"), "--model", "m"]
     for flag, value in (
         ("--research-mode", "web"),
-        ("--decision-model", "nimble:9b"),
+        ("--browser-cdp-url", "http://127.0.0.1:9222"),
         ("--searxng-url", "http://searx.test"),
     ):
         assert run([*base, flag, value]) == 2

@@ -83,7 +83,6 @@ class ResearchFinding:
     works: dict[str, CitableWork] = field(default_factory=dict)
     unverified: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
-    decision_model: str | None = None  # the model that screened, for the AI statement
 
 
 class ResearchRun(Protocol):

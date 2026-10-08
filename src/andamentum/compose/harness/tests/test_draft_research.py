@@ -50,7 +50,6 @@ def _finding(*, with_blog: bool = True, unverified: list[str] | None = None):
         works=verified,
         unverified=unverified or [],
         notes=notes,
-        decision_model="nimble:9b",
     )
 
 
@@ -115,7 +114,7 @@ async def test_an_unverified_research_work_is_an_author_question(
     assert result.exit_code == 4
 
 
-async def test_the_statement_says_what_searched_and_what_screened(
+async def test_the_statement_says_what_searched(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     install_script(monkeypatch)
@@ -125,7 +124,7 @@ async def test_the_statement_says_what_searched_and_what_screened(
         in result.statement
     )
     assert "stub:drafter planned the search" in result.statement
-    assert "nimble:9b screened the works found" in result.statement
+    assert "screened" not in result.statement
 
 
 async def test_without_research_the_statement_is_silent_about_it(
@@ -169,9 +168,7 @@ async def _research_literature(doi_known: bool, monkeypatch: pytest.MonkeyPatch)
     fake = FakeResearch()
     monkeypatch.setattr("andamentum.deep_research.v2.research", fake)
     run = research_literature(
-        setup=ResearchSetup(
-            sources=SourceConfig(), mode="scholarly", decision_model="nimble:9b"
-        ),
+        setup=ResearchSetup(sources=SourceConfig(), mode="scholarly"),
         model="stub:drafter",
         http=_http(doi_known),
         progress=lambda _line: None,
@@ -186,14 +183,13 @@ async def test_research_literature_verifies_each_work_with_a_finding(
 ) -> None:
     finding, fake = await _research_literature(True, monkeypatch)
     assert fake.calls[0]["mode"] == "scholarly"
-    assert fake.calls[0]["decision_model"] == "nimble:9b"
+    assert "decision_model" not in fake.calls[0]
     assert list(finding.works) == ["w1"]  # the blog post has no DOI
     assert finding.works["w1"].csl["DOI"] == "10.5555/saltlog.2020.1"
     assert finding.unverified == []
     assert any(
         "Apollo cache latency guide" in n and "no DOI" in n for n in finding.notes
     )
-    assert finding.decision_model == "nimble:9b"
 
 
 async def test_research_literature_never_cites_a_work_crossref_does_not_know(

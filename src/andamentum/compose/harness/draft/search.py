@@ -88,7 +88,7 @@ def research_literature(
             database=database,
             progress=progress,
         )
-        finding = ResearchFinding(result=result, decision_model=setup.decision_model)
+        finding = ResearchFinding(result=result)
         with_findings = {f.work_id for f in result.findings}
         for work in result.works:
             if work.work_id not in with_findings:

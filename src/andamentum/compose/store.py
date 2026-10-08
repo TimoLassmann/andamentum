@@ -7,6 +7,7 @@ inspected from the folder alone. Writes are atomic and idempotent.
 
 from __future__ import annotations
 
+import json
 import os
 import tempfile
 from pathlib import Path
@@ -94,11 +95,19 @@ def load_rounds(bundle_dir: str | Path) -> list[RoundRecord]:
 
 
 def save_research(bundle_dir: str | Path, result: ResearchResult) -> None:
-    """The whole research result, so a resumed run never searches again."""
-    _write(Path(bundle_dir) / RESEARCH, result.model_dump_json(indent=2))
+    """The research result without its run log, so a resumed run never searches
+    again. The log (it holds every page's text) stays in the project's
+    ``research.db`` as the run item ``log/run``; compose reads the evidence
+    table only."""
+    _write(
+        Path(bundle_dir) / RESEARCH,
+        result.model_dump_json(indent=2, exclude={"log"}),
+    )
 
 
 def load_research(bundle_dir: str | Path) -> ResearchResult:
     from andamentum.deep_research.v2 import ResearchResult
 
-    return ResearchResult.model_validate_json(_read(bundle_dir, RESEARCH))
+    saved = json.loads(_read(bundle_dir, RESEARCH))
+    saved.pop("log", None)  # a file written before the log was left out
+    return ResearchResult.model_validate(saved)

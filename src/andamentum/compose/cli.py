@@ -88,8 +88,8 @@ def build_parser() -> argparse.ArgumentParser:
         "finish; a finished research result is reused",
     )
     research.add_argument("--research-mode", choices=["web", "scholarly", "both"])
-    research.add_argument("--decision-model", metavar="NAME")
     research.add_argument("--searxng-url")
+    research.add_argument("--browser-cdp-url")
     research.add_argument("--mailto")
     _add_models(run)
     _add_output(run)
@@ -244,7 +244,7 @@ async def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int
         research=research_setup(
             mailto=args.mailto,
             searxng_url=args.searxng_url,
-            decision_model=args.decision_model,
+            browser_cdp_url=args.browser_cdp_url,
             mode=args.research_mode,
         )
         if started_with_research

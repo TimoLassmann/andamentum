@@ -102,14 +102,16 @@ class WriteParams(BaseModel):
         description="with --research: search the web, scholarly databases or "
         "both, instead of the genre's choice",
     )
-    decision_model: str | None = Field(
-        default=None,
-        description="with --research: a local Ollama decision model (for "
-        "example nimble:9b) that screens the works and judges the passages",
-    )
     searxng_url: str | None = Field(
         default=None,
-        description="with --research: your SearxNG address (web search needs one)",
+        description="with --research: your SearxNG address (web search needs "
+        "this or --browser-cdp-url)",
+    )
+    browser_cdp_url: str | None = Field(
+        default=None,
+        description="with --research: a Chrome's debugging address (for example "
+        "http://127.0.0.1:9222) to search the web and read pages through "
+        "instead of SearxNG",
     )
     format: list[str] = Field(
         default=[], description="bundle only: output format (repeatable)"
@@ -153,7 +155,7 @@ def research_setup(
     *,
     mailto: str | None,
     searxng_url: str | None,
-    decision_model: str | None,
+    browser_cdp_url: str | None,
     mode: Literal["web", "scholarly", "both"] | None,
 ) -> ResearchSetup:
     """The research settings from CLI flags; credentials come from the
@@ -166,8 +168,8 @@ def research_setup(
             openalex_api_key=os.environ.get("OPENALEX_API_KEY") or None,
             semantic_scholar_api_key=os.environ.get("SEMANTIC_SCHOLAR_API_KEY") or None,
             searxng_url=searxng_url,
+            browser_cdp_url=browser_cdp_url,
         ),
-        decision_model=decision_model,
         mode=mode,
     )
 
@@ -178,7 +180,7 @@ def _research_setup(params: WriteParams) -> ResearchSetup | None:
     return research_setup(
         mailto=params.mailto,
         searxng_url=params.searxng_url,
-        decision_model=params.decision_model,
+        browser_cdp_url=params.browser_cdp_url,
         mode=params.research_mode,
     )
 
@@ -189,8 +191,8 @@ def _refuse_foreign_flags(params: WriteParams, *, word: bool) -> None:
             flag
             for flag, on in (
                 ("--research-mode", params.research_mode is not None),
-                ("--decision-model", params.decision_model is not None),
                 ("--searxng-url", params.searxng_url is not None),
+                ("--browser-cdp-url", params.browser_cdp_url is not None),
             )
             if on
         ]

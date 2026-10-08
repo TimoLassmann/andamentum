@@ -400,13 +400,6 @@ async def _add_research(
     found = await research(run.task, genre=genre, database=run.research_db)
     result = found.result
     run.step("research", role="drafter", model=run.roles.drafter, detail=result.mode)
-    if found.decision_model:
-        run.step(
-            "research_screen",
-            role="decision",
-            model=found.decision_model,
-            detail=result.mode,
-        )
     evidence.unverified += [u for u in found.unverified if u not in evidence.unverified]
     evidence.notes += found.notes + degraded_notes(result)
     added = research_sources(
