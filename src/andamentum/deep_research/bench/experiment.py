@@ -23,17 +23,29 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 SetName = Literal["simpleqa", "litsearch-web"]
-System = Literal["research"]
+System = Literal["research", "finder", "s2_search"]
 Test = Literal[
-    "noninferior", "superior", "no_harm", "reduced_by", "at_least", "at_most"
+    "noninferior",
+    "superior",
+    "exceeds_by",
+    "no_harm",
+    "reduced_by",
+    "at_least",
+    "at_most",
 ]
+# The paired tests that read a shift of the mean difference against a margin.
+SHIFT_TESTS = ("noninferior", "superior", "exceeds_by", "no_harm")
 Aggregate = Literal["mean", "median", "max"]
 Outage = Literal["stop", "record"]
 
 # The sets an arm of each system can be run on.
 SYSTEM_SETS: dict[str, frozenset[str]] = {
     "research": frozenset({"litsearch-web", "simpleqa"}),
+    "finder": frozenset({"litsearch-web"}),
+    "s2_search": frozenset({"litsearch-web"}),
 }
+# The systems that call a language model (and so need the arm's ``model``).
+MODEL_SYSTEMS = frozenset({"research", "finder"})
 DEFAULT_RESAMPLES = 10_000
 DEFAULT_BOOTSTRAP_SEED = 0
 
@@ -67,13 +79,19 @@ class SetSpec(BaseModel):
 
 
 class ArmSpec(BaseModel):
-    """One system under test: a system, its model, how it is run."""
+    """One system under test: a system, its model, how it is run.
+
+    ``model`` is required for a system that calls a language model (``research``,
+    ``finder``) and refused for one that does not (``s2_search``).
+    ``follow_citations`` is the finder's switch, required for a ``finder`` arm
+    and refused for the others."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     name: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._+-]*$")
     system: System
-    model: str
+    model: str | None = None
+    follow_citations: bool | None = None
     repeats: int | None = Field(default=None, ge=1)
     sets: list[SetName] | None = Field(
         default=None, description="Restrict the arm to these sets."
@@ -98,6 +116,17 @@ class ArmSpec(BaseModel):
 
     @model_validator(mode="after")
     def _consistent(self) -> ArmSpec:
+        if self.system in MODEL_SYSTEMS and not self.model:
+            raise ValueError(f"arm {self.name}: a {self.system} arm needs a model")
+        if self.system not in MODEL_SYSTEMS and self.model is not None:
+            raise ValueError(
+                f"arm {self.name}: a {self.system} arm calls no model; remove model"
+            )
+        if (self.system == "finder") != (self.follow_citations is not None):
+            raise ValueError(
+                f"arm {self.name}: follow_citations is required for a finder arm "
+                "and refused for any other"
+            )
         allowed = SYSTEM_SETS[self.system]
         if self.sets is not None:
             bad = [s for s in self.sets if s not in allowed]
@@ -129,7 +158,9 @@ class Rule(BaseModel):
     ``noninferior``: *arm* is accepted when its paired difference from
     *reference* (arm minus reference, per item) is above ``-margin`` with the
     whole interval; ``superior``: above ``margin``. Both read the sign through
-    ``higher_is_better``. ``at_least`` / ``at_most``: the aggregate of *arm*'s
+    ``higher_is_better``. ``exceeds_by``: the mean paired difference itself is
+    at least ``margin`` (accepted) or not (not accepted); the interval is
+    reported beside it, not tested. ``at_least`` / ``at_most``: the aggregate of *arm*'s
     own item values against ``threshold``; no reference. The verdict is
     ``accepted`` when the whole interval is on the right side, ``not accepted``
     when the whole interval is on the wrong side, else ``inconclusive``.
@@ -163,7 +194,7 @@ class Rule(BaseModel):
 
     @model_validator(mode="after")
     def _consistent(self) -> Rule:
-        shift = self.test in ("noninferior", "superior", "no_harm")
+        shift = self.test in SHIFT_TESTS
         paired = shift or self.test == "reduced_by"
         if paired and not self.reference:
             raise ValueError(f"rule {self.id}: {self.test} needs a reference arm")
@@ -367,6 +398,8 @@ def load_experiment(path: Path) -> Experiment:
 
 
 __all__ = [
+    "MODEL_SYSTEMS",
+    "SHIFT_TESTS",
     "ArmSpec",
     "Experiment",
     "ExperimentDecision",

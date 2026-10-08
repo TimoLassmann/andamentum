@@ -56,6 +56,7 @@ def test_an_arm_spec_has_only_the_final_fields() -> None:
         "name",
         "system",
         "model",
+        "follow_citations",
         "repeats",
         "sets",
         "solo",

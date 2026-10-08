@@ -168,8 +168,13 @@ def _arms_section(exp: Experiment) -> str:
         rows.append(
             [
                 arm.name,
-                arm.system,
-                arm.model,
+                arm.system
+                + (
+                    ""
+                    if arm.follow_citations is None
+                    else f" (follow_citations: {str(arm.follow_citations).lower()})"
+                ),
+                arm.model or "-",
                 ("solo: first %d items of each set" % arm.solo if arm.is_solo else "-")
                 + (", failed outage cells recorded" if arm.outage == "record" else ""),
                 str(exp.repeats_of(arm)),
@@ -190,6 +195,34 @@ def _means_section(exp: Experiment, cells: Cells, set_name: str) -> str:
         ]
         rows.append(row)
     return table(["arm", "items", "errors", *metrics], rows)
+
+
+def item_groups(cells: Cells, set_name: str) -> dict[str, str]:
+    """Each item's subgroup as its run records state it (LitSearch: query_set)."""
+    return {r.item_id: r.group for r in cells.runs if r.set == set_name and r.group}
+
+
+def _groups_section(exp: Experiment, cells: Cells, set_name: str) -> str | None:
+    """The means of the set's metrics per subgroup and arm; None when the
+    records carry no subgroup."""
+    groups = item_groups(cells, set_name)
+    if not groups:
+        return None
+    metrics = _metrics_for(exp, set_name)
+    rows = []
+    for group in sorted(set(groups.values())):
+        for arm in exp.main_arms_on(set_name):
+            items = [
+                i for i in cells.items(arm.name, set_name) if groups.get(i) == group
+            ]
+            if not items:
+                continue
+            row = [group, arm.name, str(len(items))]
+            for m in metrics:
+                values = item_values(cells, arm.name, set_name, m)
+                row.append(fmt(_mean([values[i] for i in items])))
+            rows.append(row)
+    return "Means by subgroup:\n\n" + table(["group", "arm", "items", *metrics], rows)
 
 
 def _paired_section(exp: Experiment, cells: Cells, set_name: str) -> str:
@@ -605,6 +638,9 @@ def build_report(exp: Experiment, records: Sequence[StartRecord | RunRecord]) ->
             "",
             _paired_section(exp, cells, name),
         ]
+        by_group = _groups_section(exp, cells, name)
+        if by_group:
+            lines += ["", by_group]
     lines += ["", "## Cost", "", _cost_section(exp, cells)]
     steps = _step_tables(exp, cells, solo=False)
     if steps:
@@ -636,6 +672,7 @@ def report_from_registry(exp: Experiment, out_dir: Path) -> str:
 __all__ = [
     "build_report",
     "canonicalise",
+    "item_groups",
     "item_values",
     "judge_rules",
     "overall",

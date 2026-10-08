@@ -231,9 +231,11 @@ async def expand(
     subquestion_id: str,
     sources: Sequence[ExpandingSource],
     limit: int,
+    per_call: int = EXPAND_PER_CALL,
 ) -> ExpandOutcome:
     """One hop back (references) and forward (citations) from each seed, until
-    *limit* candidates are collected; each new candidate is tagged with
+    *limit* candidates are collected, at most *per_call* from one references or
+    citations call; each new candidate is tagged with
     *subquestion_id* and its position in the hop's list (``source_ranks``). A
     source that cannot place a work is a note; a hop an offline run does not
     hold is ``skipped``; any other failure is degraded."""
@@ -248,7 +250,7 @@ async def expand(
                     source.references if direction == "references" else source.citations
                 )
                 try:
-                    found = await follow(work, limit=min(room, EXPAND_PER_CALL))
+                    found = await follow(work, limit=min(room, per_call))
                 except SourceError as error:
                     message = (
                         f"{source.name} {direction} of "

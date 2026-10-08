@@ -1,0 +1,42 @@
+# The citation finder on LitSearch, dev set: picks F0 or F1 and takes the one round of
+# changes. 30 queries, seed 0, positions 201-230 of the seeded order; disjoint from
+# the test set (cite-finder-test.yaml, positions 231-290) and from every LitSearch item
+# used before (positions 1-168: {n: 17, skip: 150, seed: 0} and the earlier rounds);
+# tests/test_cite_finder_sets.py checks both by code. Fixed 2026-10-08, before any run.
+# Run (LS the litsearch-local download, OUT a folder under data/benchmarks/cite-finder/):
+#   B="uv run python -m andamentum.deep_research.bench"
+#   F=src/andamentum/deep_research/bench/experiments/cite-finder-dev.yaml
+#   $B experiment run $F --out-dir $OUT --litsearch-local-dir $LS --concurrency 4
+#   $B experiment report $F --out-dir $OUT
+# A source outage (a failed search or citation call, a 429) stops the run without
+# recording the cell; the same command resumes.
+name: cite-finder-dev
+registered: "2026-10-08"
+description: >-
+  Recall of the gold papers of LitSearch queries by the finder (a sentence in, ranked
+  works out), without (F0) and with (F1) one step of citation following, on the dev set.
+repeats: 1
+
+sets:
+  - {name: litsearch-web, n: 30, skip: 200, seed: 0}
+
+arms:
+  - name: F0
+    system: finder
+    model: "ollama:gemma4:31b-cloud"
+    follow_citations: false
+  - name: F1
+    system: finder
+    model: "ollama:gemma4:31b-cloud"
+    follow_citations: true
+
+baselines:
+  litsearch-web: F0
+
+notes:
+  - >-
+    The pick for the test set, fixed before any run: the arm with the higher mean
+    recall_at_20 on this set after the round of changes; a tie picks F0 (fewer calls).
+  - >-
+    Changes made on this set are general (a better prompt, a better general step),
+    never tuned to one of its queries. At most one round of changes.

@@ -1,0 +1,110 @@
+# The citation finder on LitSearch, test set: run once per arm. 60 queries, seed 0,
+# positions 231-290 of the seeded order; disjoint from the dev set
+# (cite-finder-dev.yaml, positions 201-230) and from every LitSearch item used before
+# (positions 1-168: {n: 17, skip: 150, seed: 0} and the earlier rounds);
+# tests/test_cite_finder_sets.py checks both by code. Fixed 2026-10-08, before any run.
+# Run (LS the litsearch-local download, OUT a folder under data/benchmarks/cite-finder/):
+#   B="uv run python -m andamentum.deep_research.bench"
+#   F=src/andamentum/deep_research/bench/experiments/cite-finder-test.yaml
+#   $B experiment run $F --out-dir $OUT --litsearch-local-dir $LS
+#   (concurrency 1: a B1 cell alone has up to 4 model calls in flight, the cloud cap)
+#   $B experiment report $F --out-dir $OUT
+# A source outage (a failed search or citation call, a 429) stops the run without
+# recording the cell; the same command resumes.
+name: cite-finder-test
+registered: "2026-10-08"
+description: >-
+  Recall of the gold papers of LitSearch queries: the finder without (F0) and with (F1)
+  citation following against the research engine's ranked works (B1) and a plain
+  Semantic Scholar search with the query text (B2), on the test set.
+repeats: 1
+
+sets:
+  - {name: litsearch-web, n: 60, skip: 230, seed: 0}
+
+arms:
+  - name: B1
+    system: research
+    model: "ollama:gemma4:31b-cloud"
+  - name: B2
+    system: s2_search
+  - name: F0
+    system: finder
+    model: "ollama:gemma4:31b-cloud"
+    follow_citations: false
+  - name: F1
+    system: finder
+    model: "ollama:gemma4:31b-cloud"
+    follow_citations: true
+
+baselines:
+  litsearch-web: B1
+
+rules:
+  - id: F0-over-B1
+    question: Does F0 reach a mean recall@20 at least 0.10 above the research engine's?
+    set: litsearch-web
+    metric: recall_at_20
+    arm: F0
+    reference: B1
+    test: exceeds_by
+    margin: 0.10
+    group: gate-F0
+  - id: F0-over-B2
+    question: Does F0 reach a mean recall@20 at least 0.10 above plain Semantic Scholar's?
+    set: litsearch-web
+    metric: recall_at_20
+    arm: F0
+    reference: B2
+    test: exceeds_by
+    margin: 0.10
+    group: gate-F0
+  - id: F1-over-B1
+    question: Does F1 reach a mean recall@20 at least 0.10 above the research engine's?
+    set: litsearch-web
+    metric: recall_at_20
+    arm: F1
+    reference: B1
+    test: exceeds_by
+    margin: 0.10
+    group: gate-F1
+  - id: F1-over-B2
+    question: Does F1 reach a mean recall@20 at least 0.10 above plain Semantic Scholar's?
+    set: litsearch-web
+    metric: recall_at_20
+    arm: F1
+    reference: B2
+    test: exceeds_by
+    margin: 0.10
+    group: gate-F1
+
+decisions:
+  - id: finder-F0
+    requires: [gate-F0]
+    if_accepted: >-
+      If F0 was picked on dev: the finder passes; compose uses it without citation
+      following.
+    otherwise: >-
+      If F0 was picked on dev: the finder misses the gate; stop and report the loss
+      attribution.
+  - id: finder-F1
+    requires: [gate-F1]
+    if_accepted: >-
+      If F1 was picked on dev: the finder passes; compose uses it with citation
+      following.
+    otherwise: >-
+      If F1 was picked on dev: the finder misses the gate; stop and report the loss
+      attribution.
+
+notes:
+  - >-
+    The gate, fixed before any run: the arm picked on dev (cite-finder-dev.yaml: the
+    higher mean recall_at_20 there, a tie picks F0) has a mean recall_at_20 at least
+    0.10 above both B1 and B2 (above the better of the two), each difference paired
+    over items with its 95% bootstrap interval reported. Only that arm's decision
+    counts; the other arm's rules are reported.
+  - >-
+    B1 is the research engine as it is (research(mode="scholarly"), its ranked works).
+    B2 is one Semantic Scholar search with the query text, its top 20. F0 and F1 are
+    find_works on the query as the sentence, without and with one step of citation
+    following. Results are also reported by LitSearch query_set.

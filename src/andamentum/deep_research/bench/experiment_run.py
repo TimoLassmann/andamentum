@@ -36,7 +36,13 @@ from ..runlog import write_log
 from ..sources.base import SourceConfig
 from ..store import ResearchStore
 from ..types import Mode, RunLog
-from .arms import AnswerArm, ArmOutput, ResearchArm
+from .arms import (
+    AnswerArm,
+    ArmOutput,
+    FinderArm,
+    ResearchArm,
+    SemanticScholarArm,
+)
 from .concurrency import resolve_concurrency, run_bounded
 from .experiment import ArmSpec, Experiment, SetSpec
 from .health import SearxDown, SearxHealth
@@ -83,6 +89,11 @@ class Item:
     question: str
     litsearch: LitSearchItem | None = None
     simpleqa: SimpleQAItem | None = None
+
+    @property
+    def group(self) -> str | None:
+        """The item's subgroup, reported beside the set (LitSearch: query_set)."""
+        return self.litsearch.query.query_set if self.litsearch is not None else None
 
 
 @dataclass
@@ -161,7 +172,11 @@ class InfrastructureDown(RuntimeError):
     about the system, so the run stops without recording it."""
 
 
-SEARCH_FAILURE_MARKERS = ("search failed for", "searches failed")
+SEARCH_FAILURE_MARKERS = (
+    "search failed for",
+    "searches failed",
+    "citation following failed",
+)
 
 
 def infrastructure_failure(output: ArmOutput) -> str | None:
@@ -192,6 +207,22 @@ class Services:
 def build_answer_arm(spec: ArmSpec, mode: Mode, services: Services) -> AnswerArm:
     if services.answer_arm is not None:
         return services.answer_arm(spec, mode)
+    if spec.system == "s2_search":
+        return SemanticScholarArm(
+            sources=services.source_config,
+            http_cache=services.http_cache,
+            name=spec.name,
+        )
+    if spec.model is None:  # the arm validator requires one for these systems
+        raise ValueError(f"arm {spec.name}: a {spec.system} arm needs a model")
+    if spec.system == "finder":
+        return FinderArm(
+            model=spec.model,
+            follow_citations=bool(spec.follow_citations),
+            sources=services.source_config,
+            http_cache=services.http_cache,
+            name=spec.name,
+        )
     return ResearchArm(
         mode=mode,
         model=spec.model,
@@ -424,6 +455,7 @@ async def _run_cell(
         arm=spec.name,
         set=item.set_name,
         item_id=item.item_id,
+        group=item.group,
         repeat=repeat,
         started_at=clock(),
         model=info.model,
