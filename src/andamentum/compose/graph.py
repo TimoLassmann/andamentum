@@ -13,7 +13,7 @@ disk is the durable store (L1): every node saves what it produced, and a node
 whose output is already there is skipped, so a resumed run continues where the
 last one stopped. Nodes only route and assign state; the work is in workers.
 
-The goal rule is the whetstone goal loop's: a round that meets the goal counts
+The goal rule is the one whetstone's revise loop uses: a round that meets the goal counts
 only when the next check pass over the same text meets it too. Grounding is
 cached by section hash, so the second pass pays only for the reader and critic
 calls, which are sampled and can disagree with themselves.

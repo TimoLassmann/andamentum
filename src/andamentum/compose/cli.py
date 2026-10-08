@@ -26,7 +26,7 @@ import traceback
 from collections.abc import Sequence
 from pathlib import Path
 
-from .schemas import ROLE_NAMES, Roles
+from .schemas import Roles
 
 EXIT_OK, EXIT_NOT_MET, EXIT_USAGE, EXIT_INPUT, EXIT_FAILED = 0, 1, 2, 3, 4
 
@@ -47,13 +47,12 @@ def _version() -> str:
     return f"andamentum-compose {__version__}"
 
 
-def _models(parser: argparse.ArgumentParser) -> None:
-    group = parser.add_argument_group(
-        "models", "--model fills every role not named; every role needs a model"
-    )
-    group.add_argument("--model", help="model id for every role not set below")
-    for role in ROLE_NAMES:
-        group.add_argument(f"--{role}", metavar="MODEL", help=f"model for the {role}")
+def _model(
+    parser: argparse.ArgumentParser,
+    *,
+    jobs: str = "it drafts, reviews, checks the evidence and reads the result",
+) -> None:
+    parser.add_argument("--model", required=True, help=f"model id; {jobs}")
 
 
 def _output_options(parser: argparse.ArgumentParser) -> None:
@@ -71,6 +70,9 @@ def _output_options(parser: argparse.ArgumentParser) -> None:
     )
 
 
+RESEARCH_MODES = ["web", "scholarly", "both"]
+
+
 def _research_options(parser: argparse.ArgumentParser, *, enable: bool) -> None:
     group = parser.add_argument_group(
         "research",
@@ -82,15 +84,13 @@ def _research_options(parser: argparse.ArgumentParser, *, enable: bool) -> None:
     if enable:
         group.add_argument(
             "--research",
-            action="store_true",
-            help="search scholarly sources or the web for the task and cite "
-            "what is found (needs the network)",
+            choices=["auto", *RESEARCH_MODES],
+            metavar="WHERE",
+            help="search for the task and cite what is found (needs the network): "
+            "web, scholarly or both, or auto to let the genre choose (scholarly "
+            "for article, grant, report; web for memo, email, howto; both for "
+            "proposal)",
         )
-    group.add_argument(
-        "--research-mode",
-        choices=["web", "scholarly", "both"],
-        help="where to search; default: the genre's choice",
-    )
     group.add_argument(
         "--searxng-url",
         help="your SearxNG address (web search needs this or --browser)",
@@ -165,41 +165,29 @@ def build_parser() -> argparse.ArgumentParser:
         help="a file or URL to draw on (repeatable)",
     )
     write.add_argument(
-        "--max-rounds",
-        type=int,
-        default=4,
-        help="most check-and-revise rounds (default 4)",
-    )
-    write.add_argument(
         "--confirm-own-sources",
         action="store_true",
         help="proceed although a source looks confidential",
     )
     _research_options(write, enable=True)
-    _models(write)
+    _model(write)
     _output_options(write)
     _json(write)
 
     cont = add(
         "continue",
-        "Continue a document folder: finished steps are skipped, checks resume.",
+        "Continue a document folder with the settings 'write' recorded in it: "
+        "finished steps are skipped, checks resume.",
         "andamentum-compose continue memo --model anthropic:claude-haiku-4-5",
     )
     _folder(cont)
-    cont.add_argument(
-        "--max-rounds",
-        type=int,
-        default=4,
-        help="most check-and-revise rounds of this run (default 4)",
-    )
     cont.add_argument(
         "--confirm-own-sources",
         action="store_true",
         help="proceed although a source looks confidential",
     )
     _research_options(cont, enable=False)
-    _models(cont)
-    _output_options(cont)
+    _model(cont)
     _json(cont)
 
     status = add(
@@ -215,7 +203,7 @@ def build_parser() -> argparse.ArgumentParser:
         "andamentum-compose check memo --model anthropic:claude-haiku-4-5",
     )
     _folder(check)
-    _models(check)
+    _model(check, jobs="it reviews, checks the evidence and reads the text")
     _json(check)
 
     render = add(
@@ -260,13 +248,7 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="DIR",
         help="folder to write the documents and eval.json / eval.md into",
     )
-    ev.add_argument(
-        "--max-rounds",
-        type=int,
-        default=4,
-        help="most check-and-revise rounds (default 4)",
-    )
-    _models(ev)
+    _model(ev)
 
     new = add(
         "new",
@@ -340,28 +322,6 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def resolve_roles(args: argparse.Namespace, *, fallback: Roles | None = None) -> Roles:
-    """Roles from the flags; a role with no model is a usage error (exit 2)."""
-    chosen: dict[str, str] = {}
-    missing: list[str] = []
-    for role in ROLE_NAMES:
-        value = getattr(args, role, None) or args.model
-        if not value and fallback is not None:
-            value = getattr(fallback, role)
-        if value:
-            chosen[role] = value
-        else:
-            missing.append(role)
-    if missing:
-        from .errors import ComposeUsageError
-
-        raise ComposeUsageError(
-            f"no model for: {', '.join(missing)}. Pass --model MODEL to use one "
-            "model for every role, or --" + ", --".join(missing) + " individually."
-        )
-    return Roles(**chosen)
-
-
 def _open_folder(path: Path):  # noqa: ANN202
     """The document folder at *path*, or ``ComposeInputError`` (exit 3)."""
     from .bundle import Bundle, BundleError
@@ -375,15 +335,17 @@ def _open_folder(path: Path):  # noqa: ANN202
         raise ComposeInputError(str(exc)) from exc
 
 
-def _research(args: argparse.Namespace, *, wanted: bool):  # noqa: ANN202
-    """The research settings, or None when research is not wanted."""
+def _research(args: argparse.Namespace, *, wanted: bool, mode: str | None):  # noqa: ANN202
+    """The research settings, or None when research is not wanted.
+
+    *mode* is where to search (``None``: the genre's choice).
+    """
     from .errors import ComposeUsageError
     from .research import research_setup
 
     idle = [
         flag
         for flag, on in (
-            ("--research-mode", args.research_mode is not None),
             ("--searxng-url", args.searxng_url is not None),
             ("--browser", args.browser),
             ("--mailto", args.mailto is not None),
@@ -398,7 +360,7 @@ def _research(args: argparse.Namespace, *, wanted: bool):  # noqa: ANN202
         mailto=args.mailto,
         searxng_url=args.searxng_url,
         browser=args.browser,
-        mode=args.research_mode,
+        mode=mode,  # type: ignore[arg-type]  # argparse choices / the record
     )
 
 
@@ -422,7 +384,7 @@ def _print_result(result, *, as_json: bool) -> int:  # noqa: ANN001
 async def _write(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     from .api import write_document
 
-    roles = resolve_roles(args)
+    roles = Roles.all(args.model)
     _check_sources(args.source)
     if args.genre and args.genre.lower().endswith((".yaml", ".yml")):
         from .errors import ComposeInputError
@@ -435,8 +397,11 @@ async def _write(args: argparse.Namespace, parser: argparse.ArgumentParser) -> i
         roles=roles,
         genre=args.genre,
         sources=args.source,
-        max_rounds=args.max_rounds,
-        research=_research(args, wanted=args.research),
+        research=_research(
+            args,
+            wanted=args.research is not None,
+            mode=None if args.research == "auto" else args.research,
+        ),
         confirm_own_sources=args.confirm_own_sources,
         provenance=not args.no_provenance,
         formats=args.formats,
@@ -446,30 +411,31 @@ async def _write(args: argparse.Namespace, parser: argparse.ArgumentParser) -> i
 
 
 async def _continue(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
-    from .api import continue_document, recorded_roles
+    from .api import continue_document, recorded_settings
 
-    folder = _open_folder(args.folder)
-    roles = resolve_roles(args, fallback=recorded_roles(args.folder))
-    started_with_research = bool(folder.metadata.get("research"))
+    _open_folder(args.folder)
+    settings = recorded_settings(args.folder)
     result = await continue_document(
         args.folder,
-        roles=roles,
-        research=_research(args, wanted=True) if started_with_research else None,
-        max_rounds=args.max_rounds,
-        confirm_own_sources=args.confirm_own_sources,
-        provenance=not args.no_provenance,
-        formats=args.formats,
+        roles=Roles.all(args.model),
+        research=_research(args, wanted=True, mode=settings.research_mode)
+        if settings.research
+        else _research(args, wanted=False, mode=None),
+        confirm_own_sources=settings.confirm_own_sources or args.confirm_own_sources,
+        provenance=settings.provenance,
+        formats=settings.formats,
         progress=_progress,
     )
     return _print_result(result, as_json=args.json)
 
 
 async def _check(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
-    from .api import check_folder, recorded_roles
+    from .api import check_folder
 
     _open_folder(args.folder)
-    roles = resolve_roles(args, fallback=recorded_roles(args.folder))
-    result = await check_folder(args.folder, roles=roles, progress=_progress)
+    result = await check_folder(
+        args.folder, roles=Roles.all(args.model), progress=_progress
+    )
     if args.json:
         print(result.model_dump_json(indent=2))
     else:
@@ -486,13 +452,11 @@ async def _check(args: argparse.Namespace, parser: argparse.ArgumentParser) -> i
 async def _eval(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     from .evals.runner import run_eval
 
-    roles = resolve_roles(args)
     genres = None if not args.genres or "all" in args.genres else args.genres
     report = await run_eval(
         genres=genres,
-        roles=roles,
+        roles=Roles.all(args.model),
         out=args.out,
-        max_rounds=args.max_rounds,
         progress=_progress,
     )
     print(report.markdown())

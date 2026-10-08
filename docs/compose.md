@@ -13,7 +13,7 @@ uv tool install andamentum          # or: uv add andamentum
 andamentum-compose --help
 ```
 
-Every command that calls a model takes `--model` (any pydantic-ai model id, for example `anthropic:claude-haiku-4-5` or an Ollama model); there is no hidden default. Four jobs are done by a model: the `drafter` writes, the `critic` reviews, the `judge` checks that claims rest on the evidence, and the `reader` answers questions about the finished text. `--model M` serves all four; `--drafter`, `--critic`, `--judge` and `--reader` override it for one job. Using one model for all four works but weakens the independence of the checks.
+Every command that calls a model takes `--model` (any pydantic-ai model id, for example `anthropic:claude-haiku-4-5` or an Ollama model); there is no hidden default. Four jobs are done by a model: the `drafter` writes, the `critic` reviews, the `judge` checks that claims rest on the evidence, and the `reader` answers questions about the finished text. On the command line `--model M` does all four. One model for all four works but weakens the independence of the checks; to give each job its own model, call `write_document` from Python with `Roles(drafter=..., critic=..., judge=..., reader=...)`.
 
 ## Write a document
 
@@ -43,11 +43,11 @@ Exit 0 when the goal was met, 1 when the run finished but the goal was not (the 
 
 ### The goal and when a run stops
 
-A round meets the goal when no error-level check failed, the reader got every question right and the critic reported no major finding. It is accepted only when the next check pass over the same text meets it too. The run stops at `goal_met`, at `no_progress` (a revision changed nothing), at `cap_reached` (`--max-rounds`, default 4) or at `unresolvable` (no section got any text).
+A round meets the goal when no error-level check failed, the reader got every question right and the critic reported no major finding. It is accepted only when the next check pass over the same text meets it too. The run stops at `goal_met`, at `no_progress` (a revision changed nothing), at `cap_reached` (4 check-and-revise rounds per run; `max_rounds=` in Python) or at `unresolvable` (no section got any text).
 
 ### Research
 
-`--research` runs a literature or web search for the task and lets the document cite what it finds. The genre picks where it looks: scholarly databases for `article`, `grant` and `report`; the web for `memo`, `email` and `howto`; both for `proposal`. `--research-mode web|scholarly|both` overrides that. Web search needs `--searxng-url ADDRESS` or `--browser` (an isolated Chrome in a podman container that the run starts and removes). Every finding is a claim with a quote copied word for word from a real passage and checked by code; the findings become sources. The search sends your task text (never text from your sources) to the sources and keeps what it learns in `research.db` in the document folder. Contact addresses and keys come from the environment (`OPENALEX_EMAIL`, `OPENALEX_API_KEY`, `SEMANTIC_SCHOLAR_API_KEY`, read from `.env`); `--mailto` sets the address.
+`--research WHERE` runs a literature or web search for the task and lets the document cite what it finds. `--research auto` lets the genre pick where it looks: scholarly databases for `article`, `grant` and `report`; the web for `memo`, `email` and `howto`; both for `proposal`. `--research web`, `--research scholarly` or `--research both` names the place instead. Web search needs `--searxng-url ADDRESS` or `--browser` (an isolated Chrome in a podman container that the run starts and removes). Every finding is a claim with a quote copied word for word from a real passage and checked by code; the findings become sources. The search sends your task text (never text from your sources) to the sources and keeps what it learns in `research.db` in the document folder. Contact addresses and keys come from the environment (`OPENALEX_EMAIL`, `OPENALEX_API_KEY`, `SEMANTIC_SCHOLAR_API_KEY`, read from `.env`); `--mailto` sets the address.
 
 ## Continue, check, render
 
@@ -58,7 +58,7 @@ andamentum-compose check memo --model anthropic:claude-haiku-4-5        # the ch
 andamentum-compose render memo --format docx                            # render the sections again into memo/out/
 ```
 
-`continue` skips finished steps and resumes the checks; it takes the models recorded in the folder unless you name others. `--max-rounds` counts the rounds of this run. `check` prints each check as pass or FAIL and exits 1 when the goal is not met. `render` needs no model call; it names the model in the provenance from the folder (or `--model`). `render --plain --format docx -o notes.docx` renders the bare text, with no citations, Sources list or provenance, to one file.
+`continue` repeats the run as `write` started it: the task, genre, sources, research, formats, provenance and `--confirm-own-sources` are recorded in the folder (`bundle.yaml`, under `metadata`) and read back, so it takes only the folder and `--model`. It skips finished steps and resumes the checks, with up to 4 rounds of its own. `--searxng-url`, `--browser` and `--mailto` are machine-specific and not recorded; give them again only when the folder was started with web research that did not finish. `--confirm-own-sources` on `continue` lets a source that was refused at `write` through. A folder that holds no recorded settings (made by `new`, or by an older version) cannot be continued: exit 3. `check` prints each check as pass or FAIL and exits 1 when the goal is not met. `render` needs no model call; it names the model in the provenance from the folder (or `--model`). `render --plain --format docx -o notes.docx` renders the bare text, with no citations, Sources list or provenance, to one file.
 
 ## Read and edit a folder without a model
 
@@ -106,7 +106,7 @@ print(result.goal_met, result.outputs)
 
 ## Limits
 
-- The checks are only as independent as the models behind them; use different models for `--drafter` and `--critic` when it matters.
+- The checks are only as independent as the models behind them; when it matters, give the drafter and the critic different models through `Roles` in Python.
 - A citation in the finished document says the fact has a verbatim quote in the source. It does not say the source is right.
 - Judge and critic calls do not report their tokens, so the usage figures in the report are a lower bound for those roles.
 - The `grant` genre is generic: funder specifics enter only through the call text you pass as a source.

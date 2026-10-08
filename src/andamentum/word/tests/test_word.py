@@ -59,6 +59,43 @@ def test_no_command_has_a_project_or_report_location_flag():
         assert not flags & {"--project", "--report", "--cache", "--output"}, name
 
 
+def test_draft_offers_exactly_these_flags():
+    """Mutation: add back a role model (--drafter, --judge), --max-rounds or
+    --research-mode and this fails."""
+    sub = _subparsers(cli.build_parser())["draft"]
+    flags = {o for a in sub._actions for o in a.option_strings if o.startswith("--")}
+    assert flags == {
+        "--help", "--out", "--model", "--into", "--genre", "--source",
+        "--results", "--library", "--zotero", "--template", "--offline",
+        "--confirm-own-sources", "--mailto", "--research", "--searxng-url",
+        "--browser", "--json",
+    }  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("extra", "research", "mode"),
+    [
+        ([], False, None),
+        (["--research", "auto"], True, None),  # the genre chooses where to search
+        (["--research", "both"], True, "both"),
+    ],
+)
+def test_draft_research_is_one_flag(tmp_path, monkeypatch, extra, research, mode):
+    from andamentum import word
+
+    seen: dict[str, object] = {}
+
+    async def fake_draft(task, **kwargs):
+        seen.update(kwargs)
+        raise RuntimeError("stop here")
+
+    monkeypatch.setattr(word, "draft_document", fake_draft)
+    argv = ["draft", "t", "-o", str(tmp_path / "d"), "--model", "m", *extra]
+    assert cli.main(argv) == 4
+    assert seen["research"] is research and seen["research_mode"] == mode
+    assert "max_rounds" not in seen and "drafter" not in seen
+
+
 def test_parsing_a_check_command():
     args = cli.build_parser().parse_args(
         ["check", "paper.docx", "-o", "checked", "--results", "r", "--offline"]
@@ -161,7 +198,10 @@ def test_the_writers_create_files_only_inside_out(tmp_path, monkeypatch, capsys)
 #: A statistics error the offline checks find: t(20) = 2.10 cannot give p = .90.
 _PLANTED = [
     ("Pilot", "Heading1"),
-    ("The group difference was large (t(20) = 2.10, p = .90) in the pilot sample.", None),
+    (
+        "The group difference was large (t(20) = 2.10, p = .90) in the pilot sample.",
+        None,
+    ),
 ]
 
 
@@ -174,12 +214,15 @@ def test_a_planted_error_exits_1_and_still_writes_the_report(tmp_path, capsys):
     capsys.readouterr()
     report = json.loads((out / "paper.checked.json").read_text())
     assert report["counts"]["error"] >= 1
-    assert (out / "paper.checked.md").is_file() and (out / "paper.checked.docx").is_file()
+    assert (out / "paper.checked.md").is_file() and (
+        out / "paper.checked.docx"
+    ).is_file()
 
 
 def test_a_clean_document_exits_0(tmp_path, capsys):
     paper = make_manuscript(
-        tmp_path / "paper.docx", [("Pilot", "Heading1"), ("Nothing numeric here.", None)]
+        tmp_path / "paper.docx",
+        [("Pilot", "Heading1"), ("Nothing numeric here.", None)],
     )
     assert cli.main(["check", str(paper), "-o", str(tmp_path / "o"), "--offline"]) == 0
     capsys.readouterr()

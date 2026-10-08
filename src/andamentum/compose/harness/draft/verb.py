@@ -152,7 +152,7 @@ def _refuse_idle_flags(params: DraftParams) -> None:
         idle = [
             flag
             for flag, on in (
-                ("--research-mode", params.research_mode is not None),
+                ("research_mode", params.research_mode is not None),
                 ("--searxng-url", params.searxng_url is not None),
                 ("--browser", params.browser),
             )

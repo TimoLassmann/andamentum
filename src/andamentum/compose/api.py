@@ -8,12 +8,15 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from pathlib import Path
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from andamentum.compose.bundle import Bundle
 
 from . import store
 from .assess import Assessment, assess
-from .errors import ComposeUsageError
+from .errors import ComposeInputError, ComposeUsageError
 from .genres import genre_for
 from .graph import (
     DEFAULT_MAX_ROUNDS,
@@ -32,6 +35,22 @@ TITLE_CHARS = 60
 
 def _quiet(_line: str) -> None:
     return None
+
+
+class RunSettings(BaseModel):
+    """The settings ``write_document`` records in the folder (metadata key
+    ``settings``), so that ``andamentum-compose continue FOLDER --model M``
+    repeats the run as it was started. The task, genre and sources are recorded
+    beside it (metadata ``task``, ``genre``, ``sources``); the machine-specific
+    research settings (SearxNG address, browser, contact email) are not."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    research: bool
+    research_mode: Literal["web", "scholarly", "both"] | None
+    formats: list[str] | None
+    provenance: bool
+    confirm_own_sources: bool
 
 
 def _check_formats(formats: Sequence[str] | None) -> tuple[str, ...] | None:
@@ -135,6 +154,13 @@ async def write_document(
             "sources": [_source_ref(s) for s in sources],
             "research": research is not None,
             "models": roles.model_dump(),
+            "settings": RunSettings(
+                research=research is not None,
+                research_mode=research.mode if research is not None else None,
+                formats=list(wanted) if wanted is not None else None,
+                provenance=provenance,
+                confirm_own_sources=confirm_own_sources,
+            ).model_dump(),
         },
     )
     return await run_graph(
@@ -183,6 +209,27 @@ async def continue_document(
             research=research,
         )
     )
+
+
+def recorded_settings(folder: str | Path) -> RunSettings:
+    """The settings ``write_document`` recorded in *folder*.
+
+    Raises ``ComposeInputError`` (exit 3) for a folder without the record: one
+    made by ``new``, or by a version that did not record its settings.
+    """
+    raw = Bundle.open(folder).metadata.get("settings")
+    if raw is None:
+        raise ComposeInputError(
+            f"{folder} records no settings of a 'write' run; it was not started "
+            "by 'andamentum-compose write' (or by an older version), so it cannot "
+            "be continued"
+        )
+    try:
+        return RunSettings.model_validate(raw)
+    except ValidationError as exc:
+        raise ComposeInputError(
+            f"{folder}: the recorded settings do not read: {exc}"
+        ) from exc
 
 
 def recorded_roles(folder: str | Path) -> Roles | None:

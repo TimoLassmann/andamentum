@@ -28,6 +28,7 @@ from ..api import check_folder, write_document
 from ..assess import Assessment
 from ..evidence import is_tabular, stored_source_path
 from ..genres import GENRES, genre_for
+from ..graph import DEFAULT_MAX_ROUNDS
 from ..log import ActionLog
 from ..render import plain_text
 from ..schemas import Roles
@@ -209,8 +210,8 @@ async def run_eval(
     genres: list[str] | None,
     roles: Roles,
     out: str | Path,
-    max_rounds: int,
     progress: Callable[[str], None],
+    max_rounds: int = DEFAULT_MAX_ROUNDS,
     briefs_dir: Path | None = None,
 ) -> EvalReport:
     """Run both arms over the tasks, write ``eval.json`` and ``eval.md``."""

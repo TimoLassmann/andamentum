@@ -75,7 +75,7 @@ def _library(parser: argparse.ArgumentParser) -> None:
 
 def _mailto(parser: argparse.ArgumentParser, *, what: str = "Crossref") -> None:
     parser.add_argument(
-        "--mailto", metavar="EMAIL", help=f"your email, for {what}'s polite pool"
+        "--mailto", metavar="EMAIL", help=f"your email, for the polite pool of {what}"
     )
 
 
@@ -211,10 +211,10 @@ def build_parser() -> argparse.ArgumentParser:
     draft.add_argument("task", help="what to write, in your own words")
     _out(draft, what="draft.docx")
     draft.add_argument(
-        "--model", required=True, help="model for every job not set below"
+        "--model",
+        required=True,
+        help="model id; it drafts, labels the claims and checks the numbers",
     )
-    draft.add_argument("--drafter", metavar="MODEL", help="model for the drafter")
-    draft.add_argument("--judge", metavar="MODEL", help="model for the judge")
     draft.add_argument(
         "--into",
         type=Path,
@@ -238,23 +238,20 @@ def build_parser() -> argparse.ArgumentParser:
     draft.add_argument(
         "--template", type=Path, help="a .docx or .dotx whose styles the document uses"
     )
-    draft.add_argument("--max-rounds", type=int, help="most revise rounds (default 2)")
     _offline(draft)
     draft.add_argument(
         "--confirm-own-sources",
         action="store_true",
         help="proceed although a source looks confidential",
     )
-    _mailto(draft, what="Crossref's and OpenAlex's")
+    _mailto(draft, what="Crossref and OpenAlex")
     draft.add_argument(
         "--research",
-        action="store_true",
-        help="research the task once and cite what it finds (needs the network)",
-    )
-    draft.add_argument(
-        "--research-mode",
-        choices=["web", "scholarly", "both"],
-        help="with --research: where to search; default: the genre's choice",
+        choices=["auto", "web", "scholarly", "both"],
+        metavar="WHERE",
+        help="research the task once and cite what it finds (needs the network): "
+        "web, scholarly or both, or auto to let the genre choose (scholarly for "
+        "article, grant, report; web for memo, email, howto; both for proposal)",
     )
     draft.add_argument(
         "--searxng-url",
@@ -449,8 +446,6 @@ async def _dispatch(args: argparse.Namespace) -> int:
             args.task,
             out=args.out,
             model=args.model,
-            drafter=args.drafter,
-            judge=args.judge,
             into=args.into,
             genre=args.genre,
             sources=args.source,
@@ -458,12 +453,11 @@ async def _dispatch(args: argparse.Namespace) -> int:
             library=args.library,
             zotero=args.zotero,
             template=args.template,
-            max_rounds=args.max_rounds,
             offline=args.offline,
             confirm_own_sources=args.confirm_own_sources,
             mailto=args.mailto,
-            research=args.research,
-            research_mode=args.research_mode,
+            research=args.research is not None,
+            research_mode=None if args.research == "auto" else args.research,
             searxng_url=args.searxng_url,
             browser=args.browser,
             progress=lambda line: print(line, file=sys.stderr, flush=True),
