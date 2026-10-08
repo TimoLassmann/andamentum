@@ -47,6 +47,10 @@ class StartRecord(BaseModel):
     keyless: bool = Field(
         default=False, description="No API key was read or used (the file says so)."
     )
+    patient: list[str] = Field(
+        default_factory=list,
+        description="The sources every arm asked on the patient retry schedule.",
+    )
 
 
 class RunRecord(BaseModel):

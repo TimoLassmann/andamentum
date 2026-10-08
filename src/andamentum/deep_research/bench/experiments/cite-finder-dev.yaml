@@ -6,21 +6,31 @@
 # Run (LS the litsearch-local download, OUT a folder under data/benchmarks/cite-finder/):
 #   B="uv run python -m andamentum.deep_research.bench"
 #   F=src/andamentum/deep_research/bench/experiments/cite-finder-dev.yaml
-#   $B experiment run $F --out-dir $OUT --litsearch-local-dir $LS --concurrency 4
+#   $B experiment run $F --out-dir $OUT --litsearch-local-dir $LS \
+#     --patient semantic_scholar --cache $OUT/http-cache.db
+#   (concurrency 1: a B1 cell alone has up to 4 model calls in flight, the cloud cap)
 #   $B experiment report $F --out-dir $OUT
-# A source outage (a failed search or citation call, a 429) stops the run without
+# A source outage (a failed search or citation call, a 429 after the patient
+# retries, Semantic Scholar given up for the process) stops the run without
 # recording the cell; the same command resumes.
 name: cite-finder-dev
 registered: "2026-10-08"
 description: >-
   Recall of the gold papers of LitSearch queries by the finder (a sentence in, ranked
-  works out), without (F0) and with (F1) one step of citation following, on the dev set.
+  works out), without (F0) and with (F1) one step of citation following, beside the
+  research engine's ranked works (B1) and a plain Semantic Scholar search with the
+  query text (B2), on the dev set.
 repeats: 1
 
 sets:
   - {name: litsearch-web, n: 30, skip: 200, seed: 0}
 
 arms:
+  - name: B1
+    system: research
+    model: "ollama:gemma4:31b-cloud"
+  - name: B2
+    system: s2_search
   - name: F0
     system: finder
     model: "ollama:gemma4:31b-cloud"
@@ -37,6 +47,9 @@ notes:
   - >-
     The pick for the test set, fixed before any run: the arm with the higher mean
     recall_at_20 on this set after the round of changes; a tie picks F0 (fewer calls).
+  - >-
+    B1 and B2 run here only to see where the finder stands before the test set;
+    they pick nothing.
   - >-
     Changes made on this set are general (a better prompt, a better general step),
     never tuned to one of its queries. At most one round of changes.

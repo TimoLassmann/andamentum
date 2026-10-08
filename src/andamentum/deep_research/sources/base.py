@@ -338,8 +338,12 @@ class SharedPacing:
     # sources that are no longer asked in this process
     patient_failures: dict[str, int] = field(default_factory=dict)
     gave_up: set[str] = field(default_factory=set)
-    # seconds spent waiting on each patient source in this process
+    # seconds spent waiting on each patient source in this process, and how
+    # many waits that was
     patient_waited: dict[str, float] = field(default_factory=dict)
+    patient_waits: Counter[str] = field(default_factory=Counter)
+    # 429 answers by source (a bench reports a run's traffic from these)
+    rate_limited: Counter[str] = field(default_factory=Counter)
 
 
 _PROCESS_PACING: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, SharedPacing] = (
@@ -458,6 +462,8 @@ class SourceClient:
         self._patient_failures = shared.patient_failures
         self._gave_up = shared.gave_up
         self._patient_waited = shared.patient_waited
+        self._patient_waits = shared.patient_waits
+        self._rate_limited = shared.rate_limited
         self.rate_info: dict[str, RateInfo] = {}
         self.requests: Counter[str] = Counter()
         self.spent_usd: defaultdict[str, float] = defaultdict(float)
@@ -647,6 +653,8 @@ class SourceClient:
                     self._patient_exhausted(source)
                 raise SourceError(source, reason, kind="transport", url=url) from exc
             info = self._read_rate_headers(source, response)
+            if response.status_code == 429:
+                self._rate_limited[source] += 1
             if response.status_code == 200:
                 self.fetched_bytes += len(response.content)
                 if patient:
@@ -696,6 +704,7 @@ class SourceClient:
 
     async def _patient_sleep(self, source: str, wait_s: float) -> None:
         self._patient_waited[source] = self._patient_waited.get(source, 0.0) + wait_s
+        self._patient_waits[source] += 1
         await self._sleep(wait_s)
 
     def _patient_exhausted(self, source: str) -> None:

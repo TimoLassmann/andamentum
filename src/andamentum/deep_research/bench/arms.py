@@ -11,14 +11,19 @@ metric is computed by one piece of code from the same fields:
 - ``s2_search``: one plain Semantic Scholar search with the question's text,
   its top results in the order the service gave (``SemanticScholarArm``).
 
-Every arm runs with a fresh in-memory store (``store=None``), so nothing
-persists between questions and every question pays for its own searches.
+Every arm runs with a fresh in-memory store, so nothing persists between
+questions and every question pays for its own searches (``http_cache``, when
+given, answers a request another cell already made). Each arm opens its own
+HTTP client with ``patient`` naming the sources asked on the patient retry
+schedule (``sources.base.PATIENT_RETRY_WAITS_S``); the bench gives every arm
+the same ones.
 """
 
 from __future__ import annotations
 
 import re
 import time
+from collections.abc import Collection
 from typing import Protocol
 
 from pydantic import BaseModel, Field
@@ -163,8 +168,9 @@ def map_research(result: ResearchResult) -> ArmOutput:
 class ResearchArm:
     """The engine's ``research()`` in one mode.
 
-    The run keeps nothing between questions (``store=None``). ``http_cache`` is
-    a shared read-through HTTP cache for the runs.
+    The run keeps nothing between questions (a fresh in-memory store each).
+    ``http_cache`` is a shared read-through HTTP cache for the runs; ``patient``
+    names the sources asked on the patient retry schedule.
     """
 
     def __init__(
@@ -175,6 +181,7 @@ class ResearchArm:
         sources: SourceConfig,
         budget: Budget | None = None,
         http_cache: ResearchStore | None = None,
+        patient: Collection[str] = (),
         name: str | None = None,
     ) -> None:
         self.name = name or f"research-{mode}"
@@ -183,17 +190,26 @@ class ResearchArm:
         self.sources = sources
         self.budget = budget or Budget()
         self.http_cache = http_cache
+        self.patient = tuple(patient)
 
     async def run(self, question: str) -> ArmOutput:
-        result = await research(
-            question,
-            mode=self.mode,
-            model=self.model,
-            store=None,
-            budget=self.budget,
-            sources=self.sources,
-            http_cache=self.http_cache,
+        store = ResearchStore.in_memory(shared_cache=self.http_cache)
+        client = SourceClient(
+            store, pdf_extraction=self.sources.pdf_extraction, patient=self.patient
         )
+        try:
+            result = await research(
+                question,
+                mode=self.mode,
+                model=self.model,
+                store=store,
+                budget=self.budget,
+                sources=self.sources,
+                source_client=client,
+            )
+        finally:
+            await client.aclose()
+            store.close()
         return map_research(result)
 
 
@@ -223,7 +239,8 @@ class FinderArm:
 
     The finder's own sources (``finder.FINDER_SOURCES``: Semantic Scholar,
     OpenAlex and Europe PMC searched, Semantic Scholar's citation links) with
-    the keys and address of *sources*.
+    the keys and address of *sources*; ``patient`` names the sources asked on
+    the patient retry schedule.
     """
 
     def __init__(
@@ -233,6 +250,7 @@ class FinderArm:
         follow_citations: bool,
         sources: SourceConfig,
         http_cache: ResearchStore | None = None,
+        patient: Collection[str] = (),
         name: str | None = None,
     ) -> None:
         self.name = name or ("finder" if follow_citations else "finder-no-follow")
@@ -245,15 +263,23 @@ class FinderArm:
             }
         )
         self.http_cache = http_cache
+        self.patient = tuple(patient)
 
     async def run(self, question: str) -> ArmOutput:
-        result = await find_works(
-            question,
-            model=self.model,
-            follow_citations=self.follow_citations,
-            sources=self.sources,
-            http_cache=self.http_cache,
-        )
+        store = ResearchStore.in_memory(shared_cache=self.http_cache)
+        client = SourceClient(store, patient=self.patient)
+        try:
+            result = await find_works(
+                question,
+                model=self.model,
+                follow_citations=self.follow_citations,
+                sources=self.sources,
+                store=store,
+                source_client=client,
+            )
+        finally:
+            await client.aclose()
+            store.close()
         return map_finder(result)
 
 
@@ -265,7 +291,8 @@ S2_TOP = 20
 class SemanticScholarArm:
     """One Semantic Scholar search with the question's text, the top ``S2_TOP``
     in the service's order. No model. A failed search is recorded in
-    ``degraded`` in ``search.search``'s words (the bench reads it as an outage)."""
+    ``degraded`` in ``search.search``'s words (the bench reads it as an outage).
+    ``patient`` names the sources asked on the patient retry schedule."""
 
     def __init__(
         self,
@@ -273,17 +300,19 @@ class SemanticScholarArm:
         sources: SourceConfig,
         http_cache: ResearchStore | None = None,
         top: int = S2_TOP,
+        patient: Collection[str] = (),
         name: str | None = None,
     ) -> None:
         self.name = name or "s2-search"
         self.sources = sources
         self.http_cache = http_cache
         self.top = top
+        self.patient = tuple(patient)
 
     async def run(self, question: str) -> ArmOutput:
         started = time.monotonic()
         store = ResearchStore.in_memory(shared_cache=self.http_cache)
-        client = SourceClient(store)
+        client = SourceClient(store, patient=self.patient)
         try:
             source = SemanticScholarSource(
                 client=client, api_key=self.sources.semantic_scholar_api_key

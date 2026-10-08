@@ -94,7 +94,7 @@ def s2_item(number: int) -> dict[str, object]:
 
 
 def mock_client_factory(handler: httpx.MockTransport, sent: list[httpx.Request]):  # noqa: ANN201
-    def build(store: ResearchStore) -> SourceClient:
+    def build(store: ResearchStore, *, patient: tuple[str, ...] = ()) -> SourceClient:
         return SourceClient(
             store,
             client=httpx.AsyncClient(transport=handler),
@@ -102,6 +102,7 @@ def mock_client_factory(handler: httpx.MockTransport, sent: list[httpx.Request])
             clock=lambda: 0.0,
             sleep=_no_sleep,
             retries=0,
+            patient=patient,
         )
 
     return build

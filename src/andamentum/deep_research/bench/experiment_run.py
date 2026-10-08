@@ -14,7 +14,8 @@ nothing else of the experiment shares their wall time.
 
 Every cell is live. The web is probed before each cell that searches it (a
 web set), and a cell whose search reports failed
-searches is not a result. By default the run stops with an ``InfrastructureDown``
+searches is not a result (a patient source that ran out of retries or was
+refused for the rest of the process is such a failed search). By default the run stops with an ``InfrastructureDown``
 error before that cell is recorded, so a resume runs it again once the outage
 is over. An arm registered with ``outage: record`` goes on instead: the cell is
 recorded as failed (``outage`` set, error text, no metric values at all, so it
@@ -196,6 +197,9 @@ class Services:
     grader: AnswerGrader | None = None
     # a shared read-through HTTP cache for the arms
     http_cache: ResearchStore | None = None
+    # the sources every arm asks on the patient retry schedule (a shared,
+    # rate-limited pool such as keyless Semantic Scholar); recorded in the registry
+    patient: tuple[str, ...] = ()
     # no API key is read or used (the experiment file says so); recorded in the registry
     keyless: bool = False
     # probes the web search before each cell that uses it (the CLI sets it; None: no probe)
@@ -211,6 +215,7 @@ def build_answer_arm(spec: ArmSpec, mode: Mode, services: Services) -> AnswerArm
         return SemanticScholarArm(
             sources=services.source_config,
             http_cache=services.http_cache,
+            patient=services.patient,
             name=spec.name,
         )
     if spec.model is None:  # the arm validator requires one for these systems
@@ -221,6 +226,7 @@ def build_answer_arm(spec: ArmSpec, mode: Mode, services: Services) -> AnswerArm
             follow_citations=bool(spec.follow_citations),
             sources=services.source_config,
             http_cache=services.http_cache,
+            patient=services.patient,
             name=spec.name,
         )
     return ResearchArm(
@@ -228,6 +234,7 @@ def build_answer_arm(spec: ArmSpec, mode: Mode, services: Services) -> AnswerArm
         model=spec.model,
         sources=services.source_config,
         http_cache=services.http_cache,
+        patient=services.patient,
         name=spec.name,
     )
 
@@ -351,6 +358,7 @@ async def run_experiment(
             notes=exp.notes,
             concurrency=concurrency,
             keyless=exp.keyless,
+            patient=list(services.patient),
         ),
     )
     done = {r.cell for r in runs_of(path, experiment_hash=exp.config_hash())}
