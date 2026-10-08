@@ -1,4 +1,4 @@
-"""Layer-1 tools for v3 criterion-review agents.
+"""Layer-1 tools for criterion-review agents.
 
 Two pure-Python tools, universally available to every criterion (no
 opt-in via ``Criterion.tools`` needed — those are reserved for layer 2
@@ -62,7 +62,7 @@ _REGEX_TIMEOUT_S = 2.0
 
 @dataclass
 class DocDeps:
-    """Typed dependency object handed to v3 review tools through
+    """Typed dependency object handed to review tools through
     pydantic-ai's ``RunContext``.
 
     Layer 2 will extend this with novelty-search counters and a

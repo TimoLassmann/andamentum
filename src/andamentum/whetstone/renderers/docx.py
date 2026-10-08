@@ -29,8 +29,8 @@ docx markup. What is no longer on that list is "the anchor missed".
 
 Panel mode (``mode="panel"``) is ALSO rendered: expert biosketches, scored
 expert reviews, and the panel synthesis are folded into the prepended review
-report. v2's ExpertProfile / ExpertReview pydantic schemas are field-compatible
-with the v1 reader (which uses ``model_dump()`` then categorises by ``_score``
+report. The ExpertProfile / ExpertReview pydantic schemas are field-compatible
+with the report reader (which uses ``model_dump()`` then categorises by ``_score``
 / ``_justification`` suffix).
 
 Novelty findings (category="novelty") are pulled out and passed as
@@ -382,7 +382,7 @@ def _strip_leading_exec_heading(summary: str) -> str:
     """Drop a leading ``## Executive Summary`` heading from the summary.
 
     The docx report header (``_build_report_header``) supplies its own
-    ``## Executive Summary`` heading; v2's synthesised summary leads with the
+    ``## Executive Summary`` heading; the synthesised summary leads with the
     same heading, which produced "Executive Summary" twice in the rendered
     .docx. Stripped only here — the markdown/HTML renderers have no report
     header and keep the heading.
@@ -487,7 +487,7 @@ def _collect_novelty_claims(result: ReviewResult) -> str:
 def _collect_novelty_findings(result: ReviewResult) -> str:
     """Concatenate novelty-category findings into a markdown block.
 
-    The v1 finalize_reviewed_document accepts a ``novelty_findings``
+    The report finaliser accepts a ``novelty_findings``
     string and renders it as its own report subsection. Pulling the
     novelty findings out of the lens-finding pool prevents them from
     becoming anchored comments against fictional text spans (they are

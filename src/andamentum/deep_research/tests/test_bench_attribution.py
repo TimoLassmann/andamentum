@@ -507,14 +507,14 @@ def test_the_command_prints_markdown_or_json_and_writes_a_file(
         "experiment",
         "losses",
         str(path),
-        "--out-dir",
+        "--runs",
         str(out),
         "--simpleqa-dir",
         str(dirs.simpleqa),
     ]
     assert cli.main(argv) == 0
     assert "| search_miss | 1 |" in capsys.readouterr().out
-    assert cli.main([*argv, "--format", "json", "--arm", "new-engine"]) == 0
+    assert cli.main([*argv, "--json", "--arm", "new-engine"]) == 0
     data = json.loads(capsys.readouterr().out)
     assert data["experiment"] == "tiny" and data["arms"][0]["arm"] == "new-engine"
     assert {r["diagnosis"] for r in data["arms"][0]["simpleqa"]} == {

@@ -13,7 +13,7 @@ Quick start::
         title="Comparison",
         y_label="Value (units)",
         style="npg",
-        output="fig.pdf",  # required: the file to write
+        out="fig.pdf",  # required: the file to write
     )
 
 Low-level API for custom multi-panel figures::

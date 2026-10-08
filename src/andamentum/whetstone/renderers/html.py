@@ -1,6 +1,6 @@
 """HTML renderer for ``ReviewResult`` — builds andamentum.typeset atoms.
 
-Same approach as v1's ``whetstone/renderers/html.py``: walk the result
+Walk the result
 once, turn it into typeset atoms (heading, prose, callout, items, card),
 hand the list to ``typeset.render`` for styling. No bespoke CSS — every
 visual concern lives in ``andamentum.typeset``.

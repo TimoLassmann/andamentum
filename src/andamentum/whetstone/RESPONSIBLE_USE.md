@@ -175,7 +175,7 @@ invisible metadata and customXml provenance part are still written.
 ### Novelty-check network surface
 
 `--check-novelty` extracts your unpublished novelty claims and
-issues search queries derived from them. The v3 novelty pipeline
+issues search queries derived from them. The novelty pipeline
 deliberately does NOT persist a per-claim cache to disk — hashed
 digests of unpublished claims should not sit on your filesystem
 between runs unless you pass `--novelty-store PATH`, which keeps the works and

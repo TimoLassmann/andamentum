@@ -12,13 +12,13 @@ rung-1/2 function hiding inside them.
 
 ## The three tiers
 
-- **Tier 1 (default)** — *design-only*. `run_forge(brief, model=..., dest=None)` runs
+- **Tier 1 (default)** — *design-only*. `run_forge(brief, model=..., out=None)` runs
   understand → frame → decompose → compile → review and returns a `ForgeResult` whose
   `.spec` is inspected (`shape.detect_features`, purely structural — no model). A
   `ValueError` is forge refusing at the fitness gate (or failing the coherence loop), which
   the benchmark scores as a refusal. Fast, no sandbox, no generated-code execution.
 - **Tier 2 (`--full`)** — *end-to-end build + sandbox audit*. `run_forge(brief, model=...,
-  dest=<tmp>, stop_after="audit")` renders, agent-authors every node body, and
+  out=<tmp>, stop_after="audit")` renders, agent-authors every node body, and
   sandbox-audits the package; scored on `audit.works` (holes filled, generated tests pass,
   dialect-clean). A reliability signal Tier 1 cannot see — but still a **smoke** bar, not a
   correctness bar.
@@ -43,9 +43,9 @@ Forge requires an explicit model — there is **no default and no env-var fallba
 # The `benchmark` marker is deselected by default; pass --forge-bench-model to run live.
 uv run pytest benchmarks/forge -m benchmark --forge-bench-model <model-id> -v
 
-# Standalone CLI — prints a markdown report (and writes one with --output).
+# Standalone CLI — prints a markdown report (and writes one with -o).
 uv run python -m benchmarks.forge.cli --model <model-id>
-uv run python -m benchmarks.forge.cli --model <model-id> --runs 5 --output report.md
+uv run python -m benchmarks.forge.cli --model <model-id> --runs 5 -o report.md
 
 # One subset of cases (substring match on the brief).
 uv run python -m benchmarks.forge.cli --model <model-id> --case loop --case branch
@@ -57,7 +57,7 @@ uv run python -m benchmarks.forge.cli --model <model-id> --full
 # builds are expensive). --case filters on the golden key or brief substring.
 uv run python -m benchmarks.forge.cli --model <model-id> --golden
 uv run python -m benchmarks.forge.cli --model <model-id> --golden --case branch
-uv run python -m benchmarks.forge.cli --model <model-id> --golden --sandbox podman --output golden.md
+uv run python -m benchmarks.forge.cli --model <model-id> --golden --sandbox podman -o golden.md
 ```
 
 ### Offline self-tests (no model, no network)
@@ -99,5 +99,5 @@ are picked up automatically by both the CLI and the live pytest run.
 
 ## Results are gitignored
 
-Generated reports (`*.md` written by `--output`, anything under `results/`) are ignored —
+Generated reports (`*.md` written by `-o`, anything under `results/`) are ignored —
 see `.gitignore`. This `README.md` is tracked.

@@ -1,4 +1,4 @@
-"""Editor phase for v3.
+"""Editor phase.
 
 One LLM call per section (≤5 concurrent). Each call returns 0–8
 ``EditProposal`` records — verbatim original + proposed rewrite +
@@ -12,9 +12,8 @@ Public API:
 
     DEFAULT_EDITOR_CRITERIA          — module-level default list
     EditProposal, EditorOutput       — LLM I/O schemas
-    EDITOR_PROMPT                    — agent prompt (copied verbatim
-                                       from v2's editor agent — already
-                                       calibrated on small Ollama models)
+    EDITOR_PROMPT                    — agent prompt (calibrated on
+                                       small Ollama models)
     run_editor(sections, *, criteria, agent_model) -> list[Edit]
     edit_findings(sections, findings, *, model, criteria) — one pass over
                                        several reviewers' findings

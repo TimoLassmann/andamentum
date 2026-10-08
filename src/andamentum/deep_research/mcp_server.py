@@ -650,7 +650,7 @@ def run(args: argparse.Namespace) -> int:
     load_dotenv()  # secrets only (API keys, contact mail); configuration is flags
     store = ResearchStore(Path(args.store)) if args.store else ResearchStore.in_memory()
     sources = SourceConfig(
-        mailto=os.environ.get("OPENALEX_EMAIL") or None,
+        mailto=args.mailto or os.environ.get("OPENALEX_EMAIL") or None,
         openalex_api_key=os.environ.get("OPENALEX_API_KEY") or None,
         semantic_scholar_api_key=os.environ.get("SEMANTIC_SCHOLAR_API_KEY") or None,
         searxng_url=args.searxng_url,

@@ -26,7 +26,7 @@ async def test_render_stage_verifies(
     result = await run_forge(
         "Manage my reading list.",
         model="test",
-        dest=tmp_path,
+        out=tmp_path,
         stop_after="render",
         sink=reading_list_sink,
     )

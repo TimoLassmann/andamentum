@@ -13,12 +13,13 @@ the named Ollama model); ``search`` syncs first, then searches.
     andamentum-docstore get notes.db DOC_ID_OR_KEY
     andamentum-docstore enrich notes.db identifiers
     andamentum-docstore enrich notes.db classify --decision-model tev1:4b \\
-        --labels '{"trial": "a clinical trial report", "review": "a review"}' --max-chars 8000
+        --labels '{"trial": "a clinical trial report", "review": "a review"}' \\
+        --max-text-chars 8000
 
 ``sync`` can be stopped with Ctrl-C at any time; running it again continues,
 and documents already embedded are not embedded again. The index settings
-(``--embedding-model``, ``--max-chars``) must stay the same between runs: a
-change rebuilds the index from scratch.
+(``--embedding-model``, ``--max-chars``) must stay the same on every ``sync``
+and ``search`` of one store: a change rebuilds the index from scratch.
 
 Every command that prints a result takes ``--json``.
 
@@ -64,7 +65,7 @@ what each enricher needs:
   bibliographic   network; --mailto is optional (looks the references up);
                   NCBI_API_KEY from the environment is used when set
   extract         --model
-  classify        --decision-model, --labels and --max-chars (all three)
+  classify        --decision-model, --labels and --max-text-chars (all three)
   --multi applies to classify only.
 """
 
@@ -142,14 +143,25 @@ def build_parser() -> argparse.ArgumentParser:
             "--max-chars",
             type=int,
             default=2000,
-            help="chunk size limit (default: %(default)s)",
+            help="chunk size limit in characters (default: %(default)s); must be the "
+            "same value on every sync and search of one store: a change "
+            "rebuilds the index",
         )
 
-    sy = add("sync", "bring the index up to date (embeds new documents)")
+    sy = add(
+        "sync",
+        "bring the index up to date (embeds new documents; --max-chars must be "
+        "the same on every sync and search of one store)",
+    )
     index_args(sy)
     json_flag(sy)
 
-    se = add("search", "search passages (syncs first)")
+    se = add(
+        "search",
+        "search passages; syncs the index first (which embeds any new "
+        "documents), so --embedding-model and --max-chars must match your "
+        "earlier syncs",
+    )
     se.add_argument("query", help="what to look for")
     index_args(se)
     se.add_argument(
@@ -176,7 +188,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     json_flag(ls)
 
-    de = add("delete", "delete a document (it can be restored from Python)")
+    de = add(
+        "delete",
+        "delete a document (it can be restored from Python); --json prints "
+        '{"deleted": DOC_ID}',
+    )
     de.add_argument("doc", help="document id or key")
     json_flag(de)
 
@@ -197,7 +213,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--multi", action="store_true", help="classify: allow any number of labels"
     )
     en.add_argument(
-        "--max-chars", type=int, help="classify: characters of each document sent"
+        "--max-text-chars",
+        type=int,
+        help="classify: how many characters of each document are sent to the "
+        "decision model",
     )
     json_flag(en)
     return p
@@ -231,9 +250,9 @@ def _check_arguments(args: argparse.Namespace) -> None:
         if args.enricher == "extract" and not args.model:
             raise _Usage("enrich extract needs --model")
         if args.enricher == "classify":
-            if not (args.decision_model and args.labels and args.max_chars):
+            if not (args.decision_model and args.labels and args.max_text_chars):
                 raise _Usage(
-                    "enrich classify needs --decision-model, --labels and --max-chars"
+                    "enrich classify needs --decision-model, --labels and --max-text-chars"
                 )
             _json_arg(args.labels, name="--labels")
 
@@ -442,7 +461,7 @@ async def _enrich(store: Store, args: argparse.Namespace) -> int:
                 decision_model=dm,
                 labels=labels,
                 multi=args.multi,
-                max_chars=args.max_chars,
+                max_chars=args.max_text_chars,
             )
     done = sum(r.skipped is None for r in results)
     if args.json:

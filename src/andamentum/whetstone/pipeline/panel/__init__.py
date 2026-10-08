@@ -1,4 +1,4 @@
-"""Panel mode for v3 — multi-expert simulated peer review.
+"""Panel mode — multi-expert simulated peer review.
 
 A different review *shape* from the criterion cascade (`run_review`):
 N fictional expert biosketches × N independent reviews + 1 synthesis.

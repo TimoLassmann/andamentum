@@ -124,6 +124,22 @@ def test_enrich_without_a_model_writes_json(
 
 def test_the_parser_names_every_enricher_requirement() -> None:
     sub = build_parser()._subparsers._group_actions[0].choices["enrich"]  # type: ignore[union-attr]
-    assert "classify        --decision-model, --labels and --max-chars" in (
+    assert "classify        --decision-model, --labels and --max-text-chars" in (
         sub.epilog or ""
     )
+
+
+def test_max_chars_means_one_thing_and_the_help_says_it_must_stay_the_same() -> None:
+    import argparse
+
+    action = next(
+        a for a in build_parser()._actions if isinstance(a, argparse._SubParsersAction)
+    )
+    subs = action.choices
+    for name in ("sync", "search"):
+        flags = {o for a in subs[name]._actions for o in a.option_strings}
+        assert "--max-chars" in flags
+        assert "same value on every sync and search" in subs[name].format_help().replace("\n", " ").replace("  ", " ")
+    enrich_flags = {o for a in subs["enrich"]._actions for o in a.option_strings}
+    assert "--max-text-chars" in enrich_flags and "--max-chars" not in enrich_flags
+    assert "syncs the index first" in subs["search"].format_help().replace("\n", " ").replace("  ", " ")

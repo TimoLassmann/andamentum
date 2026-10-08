@@ -129,3 +129,25 @@ def test_star_import_always_works_and_pdf_names_the_extra(monkeypatch) -> None:
 
     with pytest.raises(PdfUnavailableError, match=r"andamentum\[pdf\]"):
         namespace["render_pdf"]("# x", "x.pdf")
+
+
+def test_title_defaults_to_the_first_heading(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    src = tmp_path / "doc.md"
+    src.write_text(
+        "Intro line.\n\n```\n# not a heading\n```\n\n# SaltLog notes\n\nBody.\n"
+    )
+    assert main([str(src)]) == 0
+    assert "<title>SaltLog notes</title>" in capsys.readouterr().out
+    assert main([str(src), "--title", "Mine"]) == 0
+    assert "<title>Mine</title>" in capsys.readouterr().out
+
+
+def test_title_is_document_without_a_heading(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    src = tmp_path / "doc.md"
+    src.write_text("Just a paragraph.\n\n## Only a second-level heading\n")
+    assert main([str(src)]) == 0
+    assert "<title>Document</title>" in capsys.readouterr().out

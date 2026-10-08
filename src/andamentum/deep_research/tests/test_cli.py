@@ -278,3 +278,49 @@ def test_the_cache_subcommands_run_the_cache_job(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     assert cli.main(["cache", "info", "--cache", str(tmp_path / "none.db")]) == 3
+
+
+def test_ask_is_the_default_command(calls: list[dict[str, Any]]) -> None:
+    code = cli.main(["Why Apollo?", "--mode", "scholarly", "--model", "m", "--quiet"])
+    assert code == 0
+    assert [c["question"] for c in calls] == ["Why Apollo?"]
+
+
+def test_the_default_command_leaves_flags_and_other_commands_alone(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit) as stop:
+        cli.main(["--version"])
+    assert stop.value.code == 0
+    assert capsys.readouterr().out.startswith("andamentum-research ")
+    assert cli.main([]) == cli.EXIT_USAGE
+
+
+def test_the_help_says_web_mode_needs_an_address(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    for argv in (["--help"], ["ask", "--help"]):
+        with pytest.raises(SystemExit):
+            cli.main(argv)
+        text = " ".join(capsys.readouterr().out.split())
+        assert "--searxng-url URL or --browser" in text or (
+            "--searxng-url" in text and "--browser" in text and "web" in text
+        )
+    with pytest.raises(SystemExit) as stop:
+        cli.main(["q", "--mode", "web", "--model", "m"])
+    assert stop.value.code == 2
+
+
+def test_mailto_wins_over_the_environment(
+    calls: list[dict[str, Any]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("OPENALEX_EMAIL", "env@example.org")
+    cli.main(["q", "--mode", "scholarly", "--model", "m", "--quiet"])
+    cli.main(
+        ["q", "--mode", "scholarly", "--model", "m", "--quiet",
+         "--mailto", "flag@example.org"]
+    )  # fmt: skip
+    assert [c["sources"].mailto for c in calls] == [
+        "env@example.org",
+        "flag@example.org",
+    ]

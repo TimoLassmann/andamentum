@@ -1,8 +1,7 @@
 """Markdown renderer for ``ReviewResult``.
 
-Ports the SECTION STRUCTURE of v1's ``whetstone/renderers/diff.py``,
-adapted to v2's data shape (Findings, Edits, AuthorQuestions, summary,
-document_map). Output is a single markdown string ready to write to a
+Renders the result's findings, edits, author questions, summary and
+document map. Output is a single markdown string ready to write to a
 ``.md`` file or paste into any markdown-capable surface.
 
 Section order (each separated by ``---``):

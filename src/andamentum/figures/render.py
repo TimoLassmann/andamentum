@@ -91,7 +91,7 @@ def figure(
     log_scale: str | None = None,
     sort: str | None = None,
     horizontal: bool | None = None,
-    output: str | Path,
+    out: str | Path,
     group_order: list[str] | None = None,
     normalize: bool = False,
     series_colors: dict[str, str] | None = None,
@@ -133,7 +133,7 @@ def figure(
             on label count and length. Many bars with long labels become
             illegible mush in vertical orientation; the auto-decider
             picks horizontal for those cases and emits an advisor note.
-        output: Output file path (required; the format follows the extension:
+        out: Output file path (required; the format follows the extension:
             .pdf, .png, .svg). Nothing is written anywhere else.
         group_order: Series order for ``stacked`` and grouped ``bar``.
             Must name every series exactly once. Default is the order of
@@ -179,8 +179,8 @@ def figure(
         raise FiguresError(
             f"Unknown kind '{kind}'. Available: {', '.join(sorted(known))}"
         )
-    if svg_inline and Path(output).suffix.lower() != ".svg":
-        raise FiguresError(f"svg_inline needs a .svg output path, got '{output}'")
+    if svg_inline and Path(out).suffix.lower() != ".svg":
+        raise FiguresError(f"svg_inline needs a .svg output path, got '{out}'")
 
     # ── 2. Normalize data ────────────────────────────────────────────────
     table = DataTable.normalize(data)
@@ -383,7 +383,7 @@ def figure(
         # Pack tick labels, axis labels and an above-axes legend inside the
         # figure box, so the crop is never wider than the preset width.
         fig.tight_layout()
-    output_path = savefig(fig, output, dpi=dpi, pad=preset.pad_inches)
+    output_path = savefig(fig, out, dpi=dpi, pad=preset.pad_inches)
     if svg_inline:
         trimmed = inline_svg(output_path)
         Path(output_path).write_text(trimmed, encoding="utf-8")

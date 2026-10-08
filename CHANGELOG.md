@@ -2,6 +2,53 @@
 
 ## Unreleased
 
+### Interface (every tool)
+
+Breaking: command lines and some Python names changed so that every tool has
+the same shape (`docs/interface.md`).
+
+  - **`andamentum list`** (`--json`) lists every tool from `andamentum.TOOLS`;
+    `andamentum <tool> ...` runs one. Each tool keeps its own
+    `andamentum-<tool>` command.
+  - **The same flags everywhere:** `-o/--out` (a folder when a command writes
+    several files; nothing is written anywhere else: no files in the current
+    folder or the home folder), `--json`, `-` for stdin, `--version`, and one
+    set of exit codes: 0 success, 1 negative result (problems found, goal not
+    met), 2 usage, 3 input unreadable, 4 run failed. Errors are one
+    `error:` line.
+  - **Models:** every command that calls a model needs `--model`. The
+    environment variables `ANDAMENTUM_MAIN_LLM_MODEL`,
+    `ANDAMENTUM_EMBEDDING_MODEL`, `ANDAMENTUM_LLM_CONCURRENCY`,
+    `ANDAMENTUM_AUDIT_LOG`, `ANDAMENTUM_PANEL_OWN_AUTHOR`,
+    `DOCUMENT_STORE_DIR` and `ANDAMENTUM_DATABASES_DIR` are gone. Second
+    models have no default (`harvest --figure-model`).
+  - **compose is two commands:** `andamentum-compose` writes a new document
+    from a task into `-o DIR` (`write`, `continue`, `check`, `render`, ...;
+    `run` is `continue`, `check-bundle` is `check`, `render --raw` is
+    `render --plain`); `andamentum-word` works on a Word file you already
+    have (`check`, `respond`, `refresh`, `bind-numbers`, `draft`,
+    `find-citation`, `insert-citation`, `paragraphs`, `mcp`), always into
+    `-o DIR`.
+  - **New commands:** `andamentum-references` (the reference check, was
+    `andamentum-whetstone references`); `andamentum-whetstone proofread` is
+    gone (use `andamentum-proofread`).
+  - **whetstone:** real subcommands, each with its own flags; `review` stays
+    the default; `--list-reviewers` is `reviewers`; the `--apply-patches`
+    flag is the `apply-patches` command; `--goal-figure-model` is
+    `--figure-model`; `_v3` names and the `v3/` folder are plain
+    (`review_document`, `pipeline/`).
+  - **research:** `ask` (the default), `mcp`, `cache info|prune`; the report
+    goes to stdout or into `-o DIR` with its log; nothing in the current
+    folder.
+  - **epistemic:** `ask`/`verify` keep the database and report only in
+    `-o DIR` (no home-folder databases); `inspect DIR`, `confidence DIR`;
+    Python `andamentum.epistemic.ask()` / `verify()`.
+  - **Python:** one main function per tool (`andamentum.TOOLS[...].main`),
+    one base error per module, smaller `__all__` lists; renamed:
+    `vision_critique` `extra_context` → `context`, `llm_judge` `output` →
+    `text`, `figures.figure(output=)` and `forge.run_forge(dest=)` → `out=`,
+    `compose_bundle` → `continue_document`.
+
 ### document_store
 
   - **One store, rebuilt.** The v1 store (`DocumentStore`, `search`,
@@ -17,7 +64,7 @@
   - **Enrichers** (`document_store.enrich`) write identifiers, bibliographic
     records, basic facts, LLM-extracted fields or decision-model labels into
     a document's metadata.
-  - CLI: `andamentum-docstore ingest | sync | search | get | list | delete`.
+  - CLI: `andamentum-docstore ingest | sync | search | get | list | delete | enrich`.
 
 ### chunker
 
@@ -63,9 +110,9 @@
     a new `.goal` file. The goal loop stays opt-in: only the user can state
     the goal, it rewrites the draft several times, and each round costs a
     full review.
-  - New subcommand `andamentum-whetstone references` — the reference check
-    alone; no model needed (`--model` settles only what the text leaves
-    open).
+  - The reference check alone is the separate command `andamentum-references`
+    (see Interface below); no model needed (`--model` settles only what the
+    text leaves open).
   - `--goal-check citations` now uses the reference checker (every citation
     style), and its problems reach the round's editor, so the loop can fix a
     wrong citation, not only report it. The simpler marker scan it used

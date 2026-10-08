@@ -1,7 +1,7 @@
 """The front fitness gate (dialect L9): a brief is built only if it is a function forge
 can build *today*; everything else is refused at the door with a concrete reshape.
 
-The whole forge graph runs design-only (dest=None) through a scripted sink whose fitness
+The whole forge graph runs design-only (out=None) through a scripted sink whose fitness
 head returns the scenario's rung — no live model, no container.
 
 The corpus (``scenario_corpus.CORPUS``) is the *end-state* acceptance spec: rung-1 and
@@ -81,7 +81,7 @@ async def test_corpus_fitness_gate(scn) -> None:
     if scn.rung in BUILDABLE_RUNGS:  # buildable in THIS phase → proceeds
         result = await run_forge(
             scn.brief, model="test", sink=sink
-        )  # dest=None → design-only
+        )  # out=None → design-only
         assert result.fitness is not None
         assert result.fitness.rung == scn.rung
         assert result.design_only

@@ -145,7 +145,7 @@ async def carry_forward_edits(
 
     *author* names this round's edits in Word's reviewing pane. Two rounds
     sharing one name are valid but indistinguishable there, so give each round
-    its own (see :func:`~.v3.reviewers.author_for`). *output_path* is working
+    its own (see :func:`~.pipeline.reviewers.author_for`). *output_path* is working
     state the caller owns: only the last round's file is meant for a reader.
     """
     from .renderers.docx import render_docx
@@ -287,7 +287,7 @@ async def _harvest_or_treat_as_markdown(source: str) -> str:
     """Resolve ``source`` to markdown content. If it points to an existing
     file, harvest it. If it looks like a file path but doesn't exist,
     raise FileNotFoundError loudly — silently treating a missing path as
-    raw markdown content (the v3 bug fixed in 2026-05-26) made the LLM
+    raw markdown content made the LLM
     review the string ``"/tmp/missing.md"`` as if it were the manuscript.
     Only fall back to "treat source as raw markdown" when the string
     clearly is not a path attempt.

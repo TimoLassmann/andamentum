@@ -55,3 +55,14 @@ def test_stdin_and_text_only():
     )
     assert result.returncode == 0
     assert result.stdout.strip() == "# A\n\nfirst\n\n---\n\n# B\n\nsecond"
+
+
+def test_help_says_what_the_output_holds(capsys) -> None:
+    import pytest
+
+    from andamentum.chunker.cli import main
+
+    with pytest.raises(SystemExit):
+        main(["--help"])
+    text = " ".join(capsys.readouterr().out.split())
+    assert '{"chunks":' in text and "--text-only" in text and "plain" in text

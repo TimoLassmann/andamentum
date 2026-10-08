@@ -1,16 +1,12 @@
-"""Decompose free-text guidelines / reviewer briefs into v3 Criteria.
+"""Decompose free-text guidelines / reviewer briefs into Criteria.
 
 Single async API: ``extract_criteria_from_guidelines(prose, *, model) ->
-list[Criterion]``. One LLM call. Replaces v2's
-``extract_checkable_items`` agent + ``custom_reviewer`` runtime-schema
-mechanism with the simpler ``Criterion`` model already used by the
-v3 cascade.
+list[Criterion]``. One LLM call, producing the same ``Criterion`` model
+the built-in criterion sets use.
 
 The cost shape: 1 extraction call + N criterion-review calls (one per
-extracted criterion). This is more expensive than v2's custom mode
-(which fired one combined-schema call for all criteria) but matches the
-v3 cascade shape — every other v3 criterion set already runs sequentially
-with each criterion getting its own call.
+extracted criterion). This matches the cascade shape — every other criterion set runs
+sequentially with each criterion getting its own call.
 """
 
 from __future__ import annotations
@@ -85,7 +81,7 @@ async def extract_criteria_from_guidelines(
     """Decompose ``prose`` into a ``list[Criterion]`` via one LLM call.
 
     Each extracted criterion becomes a ``Criterion(name=..., questions=...,
-    facets=["claims", "gists"])`` ready to feed the v3 criterion cascade.
+    facets=["claims", "gists"])`` ready to feed the criterion cascade.
 
     Raises
     ------

@@ -62,7 +62,7 @@ def _stacked(tmp_path: Path, **kwargs: Any):
         style="andamentum",
         journal="report",
         y_label="Claims (n = 153 per arm)",
-        output=str(tmp_path / "arms.svg"),
+        out=str(tmp_path / "arms.svg"),
     )
     defaults.update(kwargs)
     return figure(ARMS_CSV, **defaults)
@@ -173,11 +173,11 @@ class TestReportSvg:
 
     def test_journal_path_untouched(self, tmp_path):
         result = _stacked(
-            tmp_path, style="npg", journal="nature", output=str(tmp_path / "arms.pdf")
+            tmp_path, style="npg", journal="nature", out=str(tmp_path / "arms.pdf")
         )
         assert Path(result.path).exists()
         png = _stacked(
-            tmp_path, style="npg", journal="nature", output=str(tmp_path / "arms.png")
+            tmp_path, style="npg", journal="nature", out=str(tmp_path / "arms.png")
         )
         assert Path(png.path).exists()
 
@@ -209,7 +209,7 @@ class TestInlineSvg:
 
     def test_svg_inline_needs_svg_output(self, tmp_path):
         with pytest.raises(ValueError, match="svg_inline"):
-            _stacked(tmp_path, svg_inline=True, output=str(tmp_path / "a.png"))
+            _stacked(tmp_path, svg_inline=True, out=str(tmp_path / "a.png"))
 
 
 # ── 5–7. Stacked kind ───────────────────────────────────────────────────
@@ -240,7 +240,7 @@ class TestStackedKind:
             kind="stacked",
             x="Arm",
             y=["wrong", "right"],
-            output=str(tmp_path / "w.svg"),
+            out=str(tmp_path / "w.svg"),
         )
         assert result.series_names == ["wrong", "right"]
         assert "segmented by series (wrong, right)" in result.legend
@@ -258,7 +258,7 @@ class TestStackedKind:
             x="Arm",
             y="n",
             group="Outcome",
-            output=str(tmp_path / "u.svg"),
+            out=str(tmp_path / "u.svg"),
         )
         assert any(
             "Category totals differ (min 3, max 7)" in n for n in result.advisor_notes
@@ -270,7 +270,7 @@ class TestStackedKind:
             y="n",
             group="Outcome",
             normalize=True,
-            output=str(tmp_path / "n.svg"),
+            out=str(tmp_path / "n.svg"),
         )
         assert not any("totals differ" in n for n in normalized.advisor_notes)
         assert "n = 3 to 7" in normalized.legend
@@ -284,7 +284,7 @@ class TestStackedKind:
                 x="Arm",
                 y="n",
                 group="Outcome",
-                output=str(tmp_path / "neg.svg"),
+                out=str(tmp_path / "neg.svg"),
             )
 
     def test_duplicate_pair_raises(self, tmp_path):
@@ -296,7 +296,7 @@ class TestStackedKind:
                 x="Arm",
                 y="n",
                 group="Outcome",
-                output=str(tmp_path / "dup.svg"),
+                out=str(tmp_path / "dup.svg"),
             )
 
     def test_missing_pair_drawn_as_zero_with_note(self, tmp_path):
@@ -307,7 +307,7 @@ class TestStackedKind:
             x="Arm",
             y="n",
             group="Outcome",
-            output=str(tmp_path / "m.svg"),
+            out=str(tmp_path / "m.svg"),
         )
         assert any("No row for (B, y)" in n for n in result.advisor_notes)
 
@@ -324,12 +324,12 @@ class TestStackedKind:
                 kind="stacked",
                 x="A",
                 y="n",
-                output=str(tmp_path / "s.svg"),
+                out=str(tmp_path / "s.svg"),
             )
 
     def test_horizontal_honoured_both_ways(self, tmp_path):
-        h = _stacked(tmp_path, horizontal=True, output=str(tmp_path / "h.svg"))
-        v = _stacked(tmp_path, horizontal=False, output=str(tmp_path / "v.svg"))
+        h = _stacked(tmp_path, horizontal=True, out=str(tmp_path / "h.svg"))
+        v = _stacked(tmp_path, horizontal=False, out=str(tmp_path / "v.svg"))
         assert not any("auto-selected" in n.lower() for n in h.advisor_notes)
         assert any("Consider horizontal=True" in n for n in v.advisor_notes)
 
@@ -346,7 +346,7 @@ class TestStackedKind:
             y="n",
             group="Outcome",
             sort="value",
-            output=str(tmp_path / "s.svg"),
+            out=str(tmp_path / "s.svg"),
         )
         svg = Path(result.path).read_text()
         texts = re.findall(r"<text[^>]*>([^<]*)</text>", svg)
@@ -375,7 +375,7 @@ class TestStackedKind:
             y="n",
             group="Outcome",
             style="andamentum",
-            output=str(tmp_path / "5.svg"),
+            out=str(tmp_path / "5.svg"),
         )
         assert any("carries 4 tones" in n for n in result.advisor_notes)
         data7 = {"Arm": ["A"] * 7, "Outcome": list("abcdefg"), "n": [1] * 7}
@@ -387,7 +387,7 @@ class TestStackedKind:
                 y="n",
                 group="Outcome",
                 style="andamentum",
-                output=str(tmp_path / "7.svg"),
+                out=str(tmp_path / "7.svg"),
             )
 
 
@@ -453,7 +453,7 @@ class TestBarWithGroup:
             y="Claims",
             group="Outcome",
             style="okabe_ito",
-            output=str(tmp_path / "g.svg"),
+            out=str(tmp_path / "g.svg"),
         )
         assert result.series_names == ["wrong", "refused", "right"]
         assert result.aggregation is None
@@ -468,7 +468,7 @@ class TestBarWithGroup:
 
     def test_no_group_still_averages_and_says_so(self, tmp_path):
         result = figure(
-            ARMS_CSV, kind="bar", x="Arm", y="Claims", output=str(tmp_path / "avg.svg")
+            ARMS_CSV, kind="bar", x="Arm", y="Claims", out=str(tmp_path / "avg.svg")
         )
         assert result.aggregation == "mean ± SEM"
         assert any(
@@ -485,7 +485,7 @@ class TestBarWithGroup:
             y="Claims",
             group="Outcome",
             group_order=["right", "refused", "wrong"],
-            output=str(tmp_path / "go.svg"),
+            out=str(tmp_path / "go.svg"),
         )
         assert result.series_names == ["right", "refused", "wrong"]
 
@@ -497,7 +497,7 @@ class TestBarWithGroup:
                 x="A",
                 y="n",
                 group_order=["x", "y"],
-                output=str(tmp_path / "x.svg"),
+                out=str(tmp_path / "x.svg"),
             )
 
     def test_bar_series_colors_map_categories(self, tmp_path):
@@ -508,7 +508,7 @@ class TestBarWithGroup:
             y="n",
             sort="value",
             series_colors={"trt": "rust"},
-            output=str(tmp_path / "c.svg"),
+            out=str(tmp_path / "c.svg"),
         )
         assert result.series_names is None
         svg = Path(result.path).read_text()
@@ -571,3 +571,14 @@ class TestCliCommand:
         assert out.exists()
         assert main(["plot", str(tmp_path / "missing.csv"), "-o", str(out)]) == 3
         assert main(["plot", str(self._data(tmp_path)), "-o", str(out), "--kind", "pie"]) == 2
+
+    def test_plot_is_the_default_command(self, tmp_path, capsys):
+        from andamentum.figures.cli import main
+
+        out = tmp_path / "default.svg"
+        rc = main(
+            [str(self._data(tmp_path)), "--x", "group", "--y", "value", "-o", str(out)]
+        )
+        assert rc == 0 and out.exists()
+        assert main(["palettes"]) == 0
+        assert main(["journals"]) == 0

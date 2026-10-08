@@ -153,7 +153,7 @@ async def test_audit_skips_advisory_heads_on_model_failure(tmp_path: Path) -> No
     result = await run_forge(
         "Help the user manage a personal reading list.",
         model="stub",
-        dest=tmp_path,
+        out=tmp_path,
         sink=_AuditHeadsFailSink(**_run_forge_kwargs()),  # type: ignore[arg-type]
         sandbox=FakeSandbox(),
     )
@@ -175,7 +175,7 @@ async def test_design_stage_model_failure_raises_a_clean_valueerror(
         await run_forge(
             "manage my reading list",
             model="stub",
-            dest=tmp_path,
+            out=tmp_path,
             sink=sink,
             sandbox=FakeSandbox(),
         )

@@ -1,18 +1,23 @@
 """``andamentum-research``: research a question over the web and scholarly sources.
 
-    andamentum-research ask "QUESTION" --mode {web,scholarly,both} --model M
+    andamentum-research [ask] "QUESTION" --mode {web,scholarly,both} --model M
         [-o DIR] [--json] [--store PATH] [--cache PATH]
         [--searxng-url URL | --browser] [--sources openalex,europepmc,arxiv]
-        [--local-corpus PATH] [--openalex-search keyword] [--tdm-host HOST ...]
+        [--mailto EMAIL] [--local-corpus PATH] [--openalex-search keyword] [--tdm-host HOST ...]
         [--results-per-query N] [--max-rounds N ... every Budget field] [--quiet]
     andamentum-research mcp [--store PATH] [--model M] [--searxng-url URL | --browser]
     andamentum-research cache info --cache PATH
     andamentum-research cache prune --cache PATH [--max-bytes N]
 
+``ask`` is the default: when the first argument is not a command or a flag it
+is taken to be the question. ``--mode web`` and ``--mode both`` need a search
+address, ``--searxng-url URL`` or ``--browser``.
+
 Every model and address is a flag; nothing has a hidden default. Without
-``--store`` nothing persists. Secrets are read here only, from the environment
-after ``load_dotenv()``: ``OPENALEX_API_KEY``, ``OPENALEX_EMAIL`` (the polite
-contact address for OpenAlex and Crossref) and ``SEMANTIC_SCHOLAR_API_KEY``.
+``--store`` nothing persists. The contact address for the OpenAlex and Crossref
+polite pools is ``--mailto``. Secrets are read here only, from the environment
+after ``load_dotenv()``: ``OPENALEX_API_KEY``, ``SEMANTIC_SCHOLAR_API_KEY`` and,
+as a fallback when ``--mailto`` is not given, ``OPENALEX_EMAIL``.
 
 Output of ``ask``: without ``-o`` the report (Markdown, or the whole result as
 JSON with ``--json``) goes to stdout and no file is written. With ``-o DIR`` the
@@ -57,7 +62,12 @@ ScholarlyName = Literal[
 _SCHOLARLY: tuple[ScholarlyName, ...] = get_args(ScholarlyName)
 _DEFAULT_SOURCES = ("openalex", "europepmc", "arxiv")
 
+_COMMANDS = ("ask", "mcp", "cache")
+
 _EPILOG = """\
+web search needs an address:
+  --mode web and --mode both need --searxng-url URL or --browser.
+
 exit status:
   0  the run finished clean
   1  the run finished degraded (a source or model failed); the result is still written
@@ -81,7 +91,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="andamentum-research",
         description="Research a question over the web and scholarly sources; "
-        "the report cites verified findings by id.",
+        "the report cites verified findings by id. `ask` is the default command: "
+        "andamentum-research QUESTION --mode M --model M. Modes web and both "
+        "need --searxng-url URL or --browser.",
         epilog=_EPILOG,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -109,8 +121,9 @@ def _add_ask(sub: argparse._SubParsersAction) -> None:  # type: ignore[type-arg]
         "--mode",
         required=True,
         choices=get_args(Mode),
-        help="where to search: web (Chrome or SearxNG), scholarly (OpenAlex, "
-        "Europe PMC, arXiv) or both",
+        help="where to search: web (needs --searxng-url or --browser), scholarly "
+        "(OpenAlex, Europe PMC, arXiv) or both (also needs --searxng-url or "
+        "--browser)",
     )
     ask.add_argument(
         "--model",
@@ -148,14 +161,23 @@ def _add_ask(sub: argparse._SubParsersAction) -> None:  # type: ignore[type-arg]
     ask.add_argument(
         "--searxng-url",
         default=None,
-        help="address of the SearxNG instance used for web search (web and both modes)",
+        help="address of the SearxNG instance used for web search; --mode web "
+        "and --mode both need this or --browser",
     )
     ask.add_argument(
         "--browser",
         action="store_true",
         help="search the web and read pages through an isolated Chrome in a podman "
         "container the run starts and removes, instead of SearxNG (needs podman; "
-        "the image is built on first use)",
+        "the image is built on first use); --mode web and --mode both need "
+        "this or --searxng-url",
+    )
+    ask.add_argument(
+        "--mailto",
+        default=None,
+        metavar="EMAIL",
+        help="your contact address, sent to OpenAlex and Crossref with each "
+        "request (their faster 'polite pool'); optional",
     )
     ask.add_argument(
         "--sources",
@@ -241,6 +263,13 @@ def _add_mcp(sub: argparse._SubParsersAction) -> None:  # type: ignore[type-arg]
         "isolated Chrome in a podman container the server starts and removes, "
         "instead of SearxNG",
     )
+    mcp.add_argument(
+        "--mailto",
+        default=None,
+        metavar="EMAIL",
+        help="your contact address, sent to OpenAlex and Crossref with each "
+        "request (their faster 'polite pool'); optional",
+    )
 
 
 def _add_cache(sub: argparse._SubParsersAction) -> None:  # type: ignore[type-arg]
@@ -292,7 +321,7 @@ def _source_config(args: argparse.Namespace) -> SourceConfig:
     if args.results_per_query is not None:
         extra["results_per_query"] = args.results_per_query
     return SourceConfig(
-        mailto=os.environ.get("OPENALEX_EMAIL") or None,
+        mailto=args.mailto or os.environ.get("OPENALEX_EMAIL") or None,
         openalex_api_key=os.environ.get("OPENALEX_API_KEY") or None,
         semantic_scholar_api_key=os.environ.get("SEMANTIC_SCHOLAR_API_KEY") or None,
         searxng_url=args.searxng_url,
@@ -407,7 +436,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Run the command named by *argv* (default: the process arguments); return
     the exit status."""
     parser = build_parser()
-    args = parser.parse_args(sys.argv[1:] if argv is None else list(argv))
+    raw = list(sys.argv[1:] if argv is None else argv)
+    if raw and raw[0] not in _COMMANDS and not raw[0].startswith("-"):
+        raw = ["ask", *raw]
+    args = parser.parse_args(raw)
     if args.command is None:
         parser.print_help(sys.stderr)
         return EXIT_USAGE

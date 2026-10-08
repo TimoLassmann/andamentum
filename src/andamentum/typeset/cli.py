@@ -74,7 +74,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--title",
         default=None,
-        help="page title (default: the first heading in the document)",
+        help='page title (default: the first # heading in the document, else "Document")',
     )
     parser.add_argument(
         "--footer",

@@ -22,7 +22,7 @@ class TestFigureBar:
             y="Response",
             y_label="Response Rate (%)",
             style="npg",
-            output=tmp_path / "bar.pdf",
+            out=tmp_path / "bar.pdf",
         )
         assert isinstance(result, FigureResult)
         assert (tmp_path / "bar.pdf").exists()
@@ -38,7 +38,7 @@ class TestFigureBar:
             y="Value",
             error="Error",
             error_type="sem",
-            output=tmp_path / "bar_err.pdf",
+            out=tmp_path / "bar_err.pdf",
         )
         assert (tmp_path / "bar_err.pdf").exists()
 
@@ -51,7 +51,7 @@ class TestFigureBar:
             kind="bar",
             x="Group",
             y="Value",
-            output=tmp_path / "bar_agg.pdf",
+            out=tmp_path / "bar_agg.pdf",
         )
         assert (tmp_path / "bar_agg.pdf").exists()
         # Should warn about hiding distribution
@@ -71,7 +71,7 @@ class TestFigureLine:
             y=["Drug A", "Drug B"],
             y_label="Cell Viability (%)",
             style="nejm",
-            output=tmp_path / "line.pdf",
+            out=tmp_path / "line.pdf",
         )
         assert (tmp_path / "line.pdf").exists()
         assert result.kind == "line"
@@ -92,7 +92,7 @@ class TestFigureScatter:
             x="X",
             y="Y",
             style="aaas",
-            output=tmp_path / "scatter.png",
+            out=tmp_path / "scatter.png",
         )
         assert (tmp_path / "scatter.png").exists()
         assert result.kind == "scatter"
@@ -115,7 +115,7 @@ class TestFigureBox:
             y="Score",
             y_label="F1 Score",
             style="lancet",
-            output=tmp_path / "box.pdf",
+            out=tmp_path / "box.pdf",
         )
         assert (tmp_path / "box.pdf").exists()
         assert "Box plot" in result.legend
@@ -135,7 +135,7 @@ class TestFigureViolinStripSwarm:
             kind="violin",
             x="Group",
             y="Val",
-            output=tmp_path / "violin.pdf",
+            out=tmp_path / "violin.pdf",
         )
         assert (tmp_path / "violin.pdf").exists()
 
@@ -145,7 +145,7 @@ class TestFigureViolinStripSwarm:
             kind="strip",
             x="Group",
             y="Val",
-            output=tmp_path / "strip.pdf",
+            out=tmp_path / "strip.pdf",
         )
         assert (tmp_path / "strip.pdf").exists()
 
@@ -161,7 +161,7 @@ class TestFigureViolinStripSwarm:
             kind="swarm",
             x="Group",
             y="Val",
-            output=tmp_path / "swarm.pdf",
+            out=tmp_path / "swarm.pdf",
         )
         assert (tmp_path / "swarm.pdf").exists()
 
@@ -176,7 +176,7 @@ class TestFigureHistogram:
             kind="histogram",
             y="Expression",
             y_label="Expression Level",
-            output=tmp_path / "hist.pdf",
+            out=tmp_path / "hist.pdf",
         )
         assert (tmp_path / "hist.pdf").exists()
         assert "Histogram" in result.legend
@@ -187,7 +187,7 @@ class TestFigureHeatmap:
         figure(
             data={"A": [1.0, 0.5, 0.3], "B": [0.5, 1.0, 0.7], "C": [0.3, 0.7, 1.0]},
             kind="heatmap",
-            output=tmp_path / "heatmap.pdf",
+            out=tmp_path / "heatmap.pdf",
         )
         assert (tmp_path / "heatmap.pdf").exists()
 
@@ -196,14 +196,14 @@ class TestAutoDetection:
     def test_auto_bar_preaggregated(self, tmp_path):
         result = figure(
             data={"Category": ["A", "B", "C"], "Count": [10, 20, 30]},
-            output=tmp_path / "auto_bar.pdf",
+            out=tmp_path / "auto_bar.pdf",
         )
         assert result.kind == "bar"
 
     def test_auto_strip_small_n(self, tmp_path):
         result = figure(
             data={"Group": ["A", "A", "A", "B", "B", "B"], "Val": [1, 2, 3, 4, 5, 6]},
-            output=tmp_path / "auto_strip.pdf",
+            out=tmp_path / "auto_strip.pdf",
         )
         assert result.kind == "strip"
 
@@ -216,7 +216,7 @@ class TestAutoDetection:
                 "Group": ["A"] * 20 + ["B"] * 20,
                 "Val": [rng.gauss(5, 1) for _ in range(40)],
             },
-            output=tmp_path / "auto_box.pdf",
+            out=tmp_path / "auto_box.pdf",
         )
         assert result.kind == "box"
 
@@ -227,7 +227,7 @@ class TestAutoDetection:
         result = figure(
             data={"values": [rng.gauss(0, 1) for _ in range(100)]},
             y="values",
-            output=tmp_path / "auto_hist.pdf",
+            out=tmp_path / "auto_hist.pdf",
         )
         assert result.kind == "histogram"
 
@@ -235,11 +235,11 @@ class TestAutoDetection:
 class TestBannedKinds:
     def test_pie_raises(self, tmp_path):
         with pytest.raises(ValueError, match="Refused"):
-            figure(data={"A": [1, 2, 3]}, kind="pie", output=tmp_path / "x.pdf")
+            figure(data={"A": [1, 2, 3]}, kind="pie", out=tmp_path / "x.pdf")
 
     def test_donut_raises(self, tmp_path):
         with pytest.raises(ValueError, match="Refused"):
-            figure(data={"A": [1, 2, 3]}, kind="donut", output=tmp_path / "x.pdf")
+            figure(data={"A": [1, 2, 3]}, kind="donut", out=tmp_path / "x.pdf")
 
 
 class TestModes:
@@ -250,7 +250,7 @@ class TestModes:
             x="Group",
             y="Value",
             mode="showcase",
-            output=tmp_path / "showcase.png",
+            out=tmp_path / "showcase.png",
         )
         assert (tmp_path / "showcase.png").exists()
         # Showcase should be wider than default single-column
@@ -264,7 +264,7 @@ class TestDataFormats:
             kind="bar",
             x="Group",
             y="Value",
-            output=tmp_path / "csv.pdf",
+            out=tmp_path / "csv.pdf",
         )
         assert (tmp_path / "csv.pdf").exists()
 
@@ -274,7 +274,7 @@ class TestDataFormats:
             kind="bar",
             x="Group",
             y="Value",
-            output=tmp_path / "records.pdf",
+            out=tmp_path / "records.pdf",
         )
         assert (tmp_path / "records.pdf").exists()
 
@@ -290,7 +290,7 @@ class TestLogScale:
             x="Concentration",
             y="Response",
             y_label="IC50 (nM)",
-            output=tmp_path / "log.pdf",
+            out=tmp_path / "log.pdf",
         )
         # Should auto-detect log scale from label hint and data range
         assert result.log_scale == "y"
@@ -305,7 +305,7 @@ class TestPalettes:
                 x="X",
                 y="Y",
                 style=palette,
-                output=tmp_path / f"{palette}.pdf",
+                out=tmp_path / f"{palette}.pdf",
             )
             assert (tmp_path / f"{palette}.pdf").exists()
             assert result.palette == palette

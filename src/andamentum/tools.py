@@ -37,7 +37,7 @@ class Tool:
 TOOLS: tuple[Tool, ...] = (
     Tool(
         "harvest",
-        "Convert a PDF, Word, PowerPoint, HTML page, URL or text file to markdown.",
+        "Convert a PDF, Word, PowerPoint, HTML page, URL or text file to markdown (a model only for --mode accurate).",
         "andamentum.harvest",
         "andamentum.harvest.extract",
         "some",
@@ -51,9 +51,9 @@ TOOLS: tuple[Tool, ...] = (
     ),
     Tool(
         "docstore",
-        "Store documents in one SQLite file, index them and search them.",
+        "Store documents in one SQLite file, index them and search them (search needs an embedding model and a reranker).",
         "andamentum.document_store",
-        "andamentum.document_store.Store",
+        "andamentum.document_store.Store.open_with_search",
         "some",
     ),
     Tool(
@@ -72,7 +72,7 @@ TOOLS: tuple[Tool, ...] = (
     ),
     Tool(
         "references",
-        "Check the citations and reference list of a draft, and look the references up.",
+        "Check the citations and reference list of a draft, and look the references up (a model only for unclear cases).",
         "andamentum.references",
         "andamentum.references.check_references",
         "some",
@@ -93,14 +93,14 @@ TOOLS: tuple[Tool, ...] = (
     ),
     Tool(
         "compose",
-        "Write a document (email, memo, report, article, proposal, grant) from a task into a folder.",
+        "Write a new document (email, memo, report, article, proposal, grant) from a task into a folder.",
         "andamentum.compose",
         "andamentum.compose.write_document",
         "yes",
     ),
     Tool(
         "word",
-        "Work on an existing Word file: check it, answer reviewer comments, refresh numbers, insert citations.",
+        "Work on a Word file you already have: check it, answer reviewer comments, refresh numbers, insert citations.",
         "andamentum.word",
         "andamentum.word.check_document",
         "some",

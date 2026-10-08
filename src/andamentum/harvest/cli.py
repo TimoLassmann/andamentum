@@ -58,9 +58,11 @@ def build_parser() -> argparse.ArgumentParser:
         prog="andamentum-harvest",
         description=(
             "Convert a URL or document file to clean markdown. "
-            "Auto-detects PDF / HTML / DOCX / PPTX / Markdown / plain text; "
-            "for HTML, races trafilatura and Docling when the page metadata "
-            "is ambiguous and picks the better-structured output."
+            "Reads PDF, HTML, Word, PowerPoint, Markdown and plain text, "
+            "detecting the kind itself, and prints the markdown (or writes it "
+            "to -o FILE). --mode accurate is for PDFs only: it describes the "
+            "figures and needs --figure-model and the optional vlm extra "
+            "(uv sync --extra vlm)."
         ),
         epilog=_EPILOG,
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -84,11 +86,11 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("fast", "accurate"),
         default="fast",
         help=(
-            "fast (default) runs docling's standard pipeline on its stock "
-            "settings. accurate runs the VLM pipeline: one model reads the page "
-            "layout, and figures get a written description. PDF only; roughly "
-            "an order of magnitude slower per page; needs 'uv sync --extra vlm' "
-            "and --figure-model."
+            "fast (default) converts the text and layout quickly. accurate is "
+            "for PDFs only: a vision model reads each page and writes a "
+            "description of every figure; roughly an order of magnitude slower "
+            "per page; needs --figure-model and the vlm extra "
+            "('uv sync --extra vlm')."
         ),
     )
     parser.add_argument(
@@ -96,12 +98,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="MODEL",
         help=(
-            "the model that writes the figure descriptions; required with "
-            "--mode accurate, ignored by --mode fast. A docling preset id "
-            "(smolvlm / granite_vision / qwen / pixtral) downloads weights and "
-            "runs them in-process. 'ollama:<model>' uses a vision model your "
-            "local Ollama already serves, downloading nothing, "
-            "e.g. --figure-model ollama:minicpm-v4.6:1b."
+            "the vision model that writes the figure descriptions; required "
+            "with --mode accurate, ignored by --mode fast. 'ollama:<model>' "
+            "uses a vision model your local Ollama already serves, downloading "
+            "nothing, e.g. --figure-model ollama:minicpm-v4.6:1b. The names "
+            "smolvlm, granite_vision, qwen and pixtral download that model's "
+            "weights and run it on this machine."
         ),
     )
     parser.add_argument(
@@ -163,7 +165,8 @@ async def _run(args: argparse.Namespace) -> int:
         _error(str(exc))
         return EXIT_USAGE
     except FetchError as exc:
-        _error(f"could not fetch {args.source!r}: {exc}")
+        is_url = args.source.lower().startswith(("http://", "https://"))
+        _error(f"could not {'fetch' if is_url else 'read'} {args.source!r}: {exc}")
         return EXIT_INPUT
     except UnsupportedFormatError as exc:
         _error(f"unsupported format for {args.source!r}: {exc}")

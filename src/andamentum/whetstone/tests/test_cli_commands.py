@@ -165,3 +165,42 @@ def test_verify_provenance_of_an_unreadable_file_exits_three(
     path.write_bytes(b"not a zip")
     assert cli_mod.main(["verify-provenance", str(path)]) == 3
     assert "error:" in capsys.readouterr().err
+
+
+def test_verify_provenance_on_an_unreadable_file_prints_only_the_error(tmp_path, capsys):
+    from andamentum.whetstone import cli
+
+    bad = tmp_path / "bad.docx"
+    bad.write_bytes(b"not a zip")
+    assert cli.main(["verify-provenance", str(bad)]) == 3
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err.startswith("error:")
+
+
+def test_reviewers_json_lists_every_reviewer(capsys):
+    import json
+
+    from andamentum.whetstone import cli
+
+    assert cli.main(["reviewers", "--json"]) == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data and {"name", "default", "description"} <= set(data[0])
+    assert sum(1 for item in data if item["default"]) == 1
+
+
+def test_the_scope_note_is_not_printed_before_a_usage_error(tmp_path, capsys):
+    from andamentum.whetstone import cli
+
+    code = cli.main(["review", str(tmp_path / "missing.md"), "-o", str(tmp_path / "o.md"), "--model", "m"])
+    assert code != 0
+    assert "whetstone is for your own drafts" not in capsys.readouterr().err
+
+
+def test_review_help_is_grouped(capsys):
+    from andamentum.whetstone import cli
+
+    assert cli.main(["review", "--help"]) == 0
+    out = capsys.readouterr().out
+    for title in ("input and output:", "model:", "what to check:", "editing:", "goal loop:", "advanced:"):
+        assert out.count("\n" + title + "\n") == 1, title

@@ -184,3 +184,21 @@ def test_harvest_cli_preserve_superscripts_reaches_extract(
 def test_harvest_cli_unreadable_source_exits_3(tmp_path: Path, capsys) -> None:
     assert main([str(tmp_path / "missing.pdf")]) == 3
     assert capsys.readouterr().err.startswith("error:")
+
+
+def test_harvest_cli_missing_local_file_says_could_not_read(capsys, tmp_path) -> None:
+    missing = tmp_path / "nope.pdf"
+    assert main([str(missing)]) == 3
+    err = capsys.readouterr().err
+    assert err.startswith("error: could not read ")
+    assert "could not fetch" not in err
+
+
+def test_harvest_cli_help_is_plain(capsys) -> None:
+    import pytest
+
+    with pytest.raises(SystemExit):
+        main(["--help"])
+    text = " ".join(capsys.readouterr().out.split())
+    assert "trafilatura" not in text and "Docling" not in text
+    assert "PDFs only" in text and "--figure-model" in text and "vlm extra" in text

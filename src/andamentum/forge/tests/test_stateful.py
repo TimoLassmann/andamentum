@@ -101,7 +101,7 @@ async def test_stateful_function_remembers_across_runs(tmp_path: Path) -> None:
     result = await run_forge(
         "Remember and update a value across runs.",
         model="test",
-        dest=out_dir,
+        out=out_dir,
         stop_after="build",
         sink=_stateful_sink(),
         sandbox=FakeSandbox(),

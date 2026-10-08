@@ -6,12 +6,12 @@
 # Run (SQA the folder of simple_qa_test_set.csv, OUT a folder under data/):
 #   B="uv run python -m andamentum.deep_research.bench"
 #   $B experiment run src/andamentum/deep_research/bench/experiments/dev-check.yaml \
-#     --out-dir $OUT --simpleqa-dir $SQA --browser
+#     -o $OUT --simpleqa-dir $SQA --browser
 #   (needs podman; the isolated Chrome is started and removed by the run)
 #   $B experiment report src/andamentum/deep_research/bench/experiments/dev-check.yaml \
-#     --out-dir $OUT
+#     --runs $OUT
 #   $B experiment losses src/andamentum/deep_research/bench/experiments/dev-check.yaml \
-#     --out-dir $OUT --simpleqa-dir $SQA
+#     --runs $OUT --simpleqa-dir $SQA
 # A search outage stops the run without recording the cell; the same command resumes.
 name: dev-check
 registered: "2026-10-08"

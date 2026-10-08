@@ -18,8 +18,7 @@ _MAX_CONCURRENT_GENERATIONS: int = 2
 
 
 async def generate_panel(disciplines: list[str], *, model: str) -> list[ExpertProfile]:
-    """One fictional biosketch per discipline (semaphore=2, matching v2's
-    calibration). A crashed generation leaves a hole that is filtered out
+    """One fictional biosketch per discipline (semaphore=2). A crashed generation leaves a hole that is filtered out
     — partial success is acceptable; the caller records how many were
     attempted so the aggregate-failure gate can judge the run."""
     sem = asyncio.Semaphore(_MAX_CONCURRENT_GENERATIONS)

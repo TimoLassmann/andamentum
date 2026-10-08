@@ -292,7 +292,7 @@ hr { border:0; border-top:var(--am-hair) solid var(--am-rule); margin:var(--am-s
 
 <div class="note info">
   <span class="lbl">Where control can leave early</span>
-  <code>run_forge(brief, *, model, dest=None, stop_after=...)</code> runs as far as you ask. With <code>dest=None</code> it is <strong>design-only</strong> — understand through review, returning the validated spec without writing a file. <code>stop_after</code> ∈ {design, render, build, audit} caps it at each superset. Those are the only branches; each is a clean stop, not a loop.
+  <code>run_forge(brief, *, model, out=None, stop_after=...)</code> runs as far as you ask. With <code>out=None</code> it is <strong>design-only</strong> — understand through review, returning the validated spec without writing a file. <code>stop_after</code> ∈ {design, render, build, audit} caps it at each superset. Those are the only branches; each is a clean stop, not a loop.
 </div>
 
 <h2><span class="n">3</span>The nine heads</h2>

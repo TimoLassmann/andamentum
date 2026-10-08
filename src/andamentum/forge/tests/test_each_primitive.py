@@ -459,7 +459,7 @@ async def test_map_brief_builds_end_to_end(tmp_path: Path) -> None:
     result = await run_forge(
         "Given a list of article texts, summarise each and combine the summaries.",
         model="test",
-        dest=out_dir,
+        out=out_dir,
         stop_after="build",
         sink=_map_sink(),
         sandbox=FakeSandbox(),

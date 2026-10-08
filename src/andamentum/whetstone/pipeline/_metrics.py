@@ -7,8 +7,8 @@ mutable counter object is shared across tasks).
 
 Used by ``run_review`` to populate ``ReviewMetrics.llm_calls`` and
 ``ReviewMetrics.reflection_rounds_used`` honestly — before this module
-existed those fields silently reported ``0`` in v3 because the v2
-manual-increment plumbing was never ported across the consolidation.
+existed those fields silently reported ``0`` because no code
+counted the calls.
 Panel-mode (``run_panel``) uses the same mechanism: its workers bump
 the shared counter after each agent run (a State counter cannot reach
 concurrently-gathered calls).

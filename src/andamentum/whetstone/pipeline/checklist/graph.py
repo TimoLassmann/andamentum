@@ -426,7 +426,7 @@ async def run_checklist(
             decision_model=decision_model,
         )
         # classify() is one LLM call and does not touch the metrics module
-        # itself (that would couple _document_type.py to v3 internals), so
+        # itself (that would couple _document_type.py to pipeline internals), so
         # it is counted here. A decision model makes no LLM call.
         if decision_model is None:
             increment_llm_calls(1)

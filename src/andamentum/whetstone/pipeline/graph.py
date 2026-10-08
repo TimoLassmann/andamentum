@@ -1,4 +1,4 @@
-"""The v3 review graph — clean pydantic-graph, one job per node.
+"""The review graph — clean pydantic-graph, one job per node.
 
 Linear flow with the gap loop encapsulated in its own node:
 
@@ -473,8 +473,9 @@ async def run_review(
     citation_hints: "list[Hint] | None" = None,
     decision_model: DecisionModel | None = None,
 ) -> ReviewResult:
-    """Run the v3 review over already-harvested markdown. Returns a
-    `ReviewResult` the existing renderers consume unchanged.
+    """Run the review over markdown text you already hold. Returns a
+    `ReviewResult` the renderers consume unchanged. :func:`review_document`
+    is the same review starting from a file, URL or open document.
 
     The active criterion set is resolved with the following precedence:
 
@@ -574,7 +575,7 @@ async def run_review(
         )
 
     # Per-run metric counters live in a contextvar; helpers throughout
-    # v3 bump them after each agent.run(). Read at Finalize time.
+    # the pipeline bump them after each agent.run(). Read at Finalize time.
     from ._metrics import increment_llm_calls, start_run
 
     start_run()
@@ -607,7 +608,7 @@ async def run_review(
         )
         # Classifier is one LLM call; count it (classify() doesn't
         # touch the metrics module itself to keep _document_type.py
-        # decoupled from v3 internals). A decision model makes no LLM call.
+        # decoupled from pipeline internals). A decision model makes no LLM call.
         if decision_model is None:
             increment_llm_calls(1)
 
@@ -681,19 +682,55 @@ async def review_document(
     extra_findings: list[PublicFinding] | None = None,
     decision_model: DecisionModel | None = None,
 ) -> ReviewResult:
-    """v3 entry from a source path / URL / markdown blob, or an open document.
+    """Review a draft: the main entry point of whetstone.
 
-    *source* is resolved by
-    :func:`~andamentum.whetstone.reviewed_document.open_source`, which returns
-    the text to review together with the ``.docx`` those offsets address. A
-    caller that also wants to RENDER a ``.docx`` — the CLI — opens the document
-    itself and passes it here, so one resolution serves both and the annotated
-    file is provably the one that was reviewed. A caller that just wants the
-    ``ReviewResult`` passes the string and this function cleans up after
-    itself.
+    Reads the draft, checks it criterion by criterion, verifies every finding
+    against the text and returns the findings, suggested edits and questions
+    for the author. The three renderers (``render_markdown``, ``render_html``,
+    ``render_docx``) turn the result into a report or a tracked-changes copy.
+    For markdown text you already hold, :func:`run_review` is the same review
+    without the file handling.
 
-    See :func:`run_review` for argument semantics (criterion-set resolution
-    precedence, confidentiality gate, classifier behaviour).
+    Args:
+        source: A file path, a URL, markdown text, or a document already
+            opened with ``open_source`` (the command line opens it itself so
+            the annotated file is provably the one that was reviewed).
+        model: The model that reads and reviews the draft. Required.
+        cap: Most findings kept per criterion.
+        document_type: ``"auto"`` lets a classifier pick one of six types
+            (academic, external_communication, essay, tutorial, creative,
+            general); name one to skip that call.
+        confirm_own_draft: Proceed although the text carries a peer-review
+            marker; only for a false positive in your own draft.
+        criteria: Your own criteria, used as given.
+        guidelines_text: Free-text reviewer guidelines, turned into criteria by
+            one model call. Not together with ``criteria``.
+        editor: Also propose edits for the findings.
+        editor_criteria: Restrict the editor to these criteria.
+        check_novelty: Also check the main claims against the literature.
+        flag_novelty: With ``check_novelty``, turn contradicted claims into
+            findings.
+        novelty_target_cap: Most claims the novelty check looks at.
+        novelty_search_depth: How deep the novelty search goes per claim.
+        novelty_research: Sources and store for the novelty check.
+        reviewer: A reviewer profile (stance, criteria, editor criteria).
+        patch_author: The author name the tracked changes will carry; recorded
+            in the report header.
+        extra_findings: Findings you already hold, answered by the editor
+            beside the review's own.
+        decision_model: An opened decision model that may answer the
+            document-type question instead of the classifier.
+
+    Returns:
+        A ``ReviewResult``.
+
+    Raises:
+        DocumentReviewError: The draft could not be read or reviewed.
+        ConfidentialityMarkerError: The text looks like peer-review material
+            (checked before any model call).
+
+    Argument details (criterion-set resolution, the confidentiality check) are
+    documented on :func:`run_review`.
     """
     from ..reviewed_document import ReviewedDocument as _Opened
     from ..docx.citation_hints import citation_hints as read_citation_hints

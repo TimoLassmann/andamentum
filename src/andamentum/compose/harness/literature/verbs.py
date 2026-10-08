@@ -86,7 +86,7 @@ class InsertParams(BaseModel):
         json_schema_extra={"positional": True}, description="the .docx to cite in"
     )
     paragraph_id: str = Field(
-        description="id of the paragraph (as open_document / the project view shows it)"
+        description="id of the paragraph (list them with 'andamentum-word paragraphs FILE.docx')"
     )
     at: int = Field(description="character offset in the paragraph text")
     doi: list[str] = Field(default=[], description="DOI of a work to cite (repeatable)")

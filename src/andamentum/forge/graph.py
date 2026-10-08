@@ -330,7 +330,7 @@ async def run_forge(
     brief: str,
     *,
     model: str,
-    dest: Path | None = None,
+    out: Path | None = None,
     stop_after: StopAfter = "audit",
     sandbox_backend: str = "podman",
     sink: AgentSink | None = None,
@@ -341,14 +341,18 @@ async def run_forge(
     attempt_cap: int = ATTEMPT_CAP,
     reporter: ForgeReporter | None = None,
 ) -> ForgeResult:
-    """Design, render, build, and audit an agentic system from a brief.
+    """Design, render, build, and audit a function package from a brief.
+
+    *out* is the folder the package is written into; with ``out=None`` nothing is
+    written and the run stops at the validated design.
 
     Validates the brief at the door (Input law), builds State + Deps, runs the graph to
     ``End``, and returns the ``ForgeResult``. ``sink`` (agents) and ``sandbox`` (code
     execution) are Deps Ports — left ``None`` they are built from ``model`` /
-    ``sandbox_backend``; tests pass stubs. ``stop_after`` ∈ {design, render, build,
-    audit} bounds how far the pipeline runs (default the full build). With ``dest=None``
-    the run is design-only. ``reporter`` (a Port, default silent) receives progress events
+    ``sandbox_backend``; tests pass stubs. ``stop_after`` is one of ``"design"``,
+    ``"render"``, ``"build"``, ``"audit"`` (the ``StopAfter`` values; the command line's
+    ``design`` command is ``"design"``, and ``--stop-after`` takes the other three) and
+    bounds how far the pipeline runs (default the full build). ``reporter`` (a Port, default silent) receives progress events
     as each stage runs — the CLI installs a live dashboard on ``--verbose``.
     """
     if not brief or not brief.strip():
@@ -367,7 +371,7 @@ async def run_forge(
         model=model,
         sink=resolved_sink,
         sandbox=resolved_sandbox,
-        dest=dest,
+        dest=out,
         stop_after=stop_after,
         max_areas=max_areas,
         max_jobs_per_area=max_jobs_per_area,
@@ -403,8 +407,8 @@ async def run_forge(
                 if current in planned_set:
                     resolved_reporter.stage_started(name=current)
                     prev_name = current
-        out = run.output
-        assert out is not None
+        result = run.output
+        assert result is not None
     except Exception as exc:  # surface which stage failed, then re-raise (fail loud)
         resolved_reporter.stage_failed(name=current, error=str(exc))
         # A hard LLM-output failure in a load-bearing design stage (understand / assess /
@@ -418,8 +422,10 @@ async def run_forge(
                 f"after retries — try a more capable model. Underlying error: {exc}"
             ) from exc
         raise
-    resolved_reporter.run_finished(works=out.works, stage_reached=out.stage_reached)
-    return out
+    resolved_reporter.run_finished(
+        works=result.works, stage_reached=result.stage_reached
+    )
+    return result
 
 
 def _planned_stages(deps: ForgeDeps) -> list[str]:

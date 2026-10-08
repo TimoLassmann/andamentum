@@ -190,7 +190,7 @@ async def run_golden(
         result = await run_forge(
             case.brief,
             model=model,
-            dest=dest,
+            out=dest,
             stop_after="audit",
             sandbox_backend=sandbox_backend,
             sink=sink,

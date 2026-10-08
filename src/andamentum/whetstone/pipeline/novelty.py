@@ -1,8 +1,8 @@
-"""Novelty check for v3 — 3-stage deterministic pipeline.
+"""Novelty check — 3-stage deterministic pipeline.
 
-Split from v2's single-node-with-tool shape into three explicit graph
-nodes (FlagNoveltyTargets → RunNoveltySearches → JudgeNovelty). The
-agent-with-tool shape v2 used worked but had three problems:
+Three explicit graph nodes (FlagNoveltyTargets → RunNoveltySearches →
+JudgeNovelty) rather than one agent with a search tool, which would have
+three problems:
 
   * variable per-run cost (agent decided how many tool calls to make)
   * opaque audit trail (agent's tool-use was not separately observable)
@@ -17,12 +17,10 @@ Findings flow into ``state.findings`` as regular ``Finding`` objects
 with ``category="novelty"`` and ``criterion="novelty"``. Renderers,
 Gate, and Synthesise need zero novelty-awareness.
 
-Only contradicted claims (is_novel=False) become findings; the v2
-"silence on confirmation" invariant is preserved.
+Only contradicted claims (is_novel=False) become findings; silence on
+confirmation is the rule.
 
-No on-disk cache. The v2 ``~/.cache/whetstone/novelty/`` cache is
-intentionally dropped — per the project rule against hidden home-dir
-state. Repeated runs re-query deep_research; users who want caching
+No on-disk cache (no hidden home-directory state). Repeated runs re-query deep_research; users who want caching
 should run novelty at a coarser cadence than the full review loop.
 """
 
@@ -355,12 +353,12 @@ def judge_novelty(evidence: list[NoveltyEvidence]) -> list[NoveltyVerdict]:
 
 
 def verdicts_to_findings(verdicts: list[NoveltyVerdict]) -> list[Finding]:
-    """Adapt to ``v3.review.Finding`` (the type the rest of the v3 graph
+    """Adapt to ``pipeline.review.Finding`` (the type the rest of the graph
     works in). The existing ``synth.py:_to_wfinding`` adapter then
     converts these into the public ``whetstone.schemas.Finding`` shape
     the renderers consume — no novelty-specific code needs to leak into
     Gate, Synthesise, or any renderer. Drops is_novel=True verdicts
-    (silence on confirmation — v2 invariant)."""
+    (silence on confirmation)."""
     findings: list[Finding] = []
     for v in verdicts:
         if v.is_novel or v.severity is None:

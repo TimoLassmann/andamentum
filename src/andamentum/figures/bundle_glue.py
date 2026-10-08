@@ -54,7 +54,7 @@ def insert_figure(
     revision = section.revision if expected_revision is None else expected_revision
     with tempfile.TemporaryDirectory(prefix="bundle-figure-") as tmp:
         rendered = Path(tmp) / "figure.png"
-        chart_kwargs["output"] = rendered
+        chart_kwargs["out"] = rendered
         render_figure(**chart_kwargs)
         return bundle.add_figure(
             section_id,

@@ -8,7 +8,8 @@ Commands:
 * ``stage NAME`` runs one named stage of it, resuming from the run folder.
 * ``inspect FOLDER`` and ``confidence FOLDER`` read a finished run.
 * ``preflight`` checks the model and the search address before a run.
-* ``run AGENT`` runs one agent; ``agents`` lists them.
+* ``run AGENT`` runs one agent and ``agents`` lists them; these two and
+  ``stage`` are for development.
 
 A run keeps its files only in the folder named by ``--out``. Without
 ``--out``, ``ask`` and ``verify`` work in a temporary folder that is removed
@@ -104,7 +105,11 @@ def _add_run_options(parser: argparse.ArgumentParser, *, what: str) -> None:
         "--provider",
         default="all",
         choices=["all", "web_search"],
-        help="Where evidence comes from: all providers, or the web only (default: all)",
+        help=(
+            "Which evidence sources the run may use: 'all' (the scholarly and "
+            "domain sources plus web search) or 'web_search' (web search only). "
+            "Default: all"
+        ),
     )
     parser.add_argument(
         "--quick",
@@ -142,6 +147,11 @@ def build_parser() -> argparse.ArgumentParser:
     ask_parser = sub.add_parser(
         "ask",
         help="Answer a research question and show the verdict, claims and evidence",
+        description=(
+            "Answer a research question by weighing evidence for and against it. "
+            "Prints the verdict, the claims behind it and their evidence; with "
+            "--out the database and an HTML report are kept in that folder."
+        ),
         epilog=_EXIT_CODES,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -151,6 +161,10 @@ def build_parser() -> argparse.ArgumentParser:
     verify_parser = sub.add_parser(
         "verify",
         help="Check one claim: seed exactly one claim from the text and weigh the evidence",
+        description=(
+            "Check one claim: the text is taken as a single claim (no "
+            "decomposition) and the evidence for and against it is weighed."
+        ),
         epilog=_EXIT_CODES,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -159,7 +173,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     run_parser = sub.add_parser(
         "run",
-        help="Run one agent and print its output as JSON",
+        help="(for development) Run one agent and print its output as JSON",
         epilog=_EXIT_CODES,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -178,7 +192,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser(
         "agents",
-        help="List the agents and what each returns",
+        help="(for development) List the agents and what each returns",
         epilog=_EXIT_CODES,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -193,7 +207,11 @@ def build_parser() -> argparse.ArgumentParser:
     pf_parser.add_argument(
         "--providers",
         default=None,
-        help="Provider set to check: 'biomedical', or leave out for none",
+        help=(
+            "Also check the evidence sources of this set: 'biomedical' (the "
+            "scholarly and biomedical sources, without web search). Leave out "
+            "to check only the model and the web search address"
+        ),
     )
     pf_parser.add_argument(
         "--searxng-url",
@@ -213,7 +231,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     stage_parser = sub.add_parser(
         "stage",
-        help="Run one stage of the pipeline (preplanning, scrutiny_and_investigation, ...)",
+        help="(for development) Run one stage of the pipeline (preplanning, scrutiny_and_investigation, ...)",
         epilog=_EXIT_CODES,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -585,11 +603,15 @@ async def _inspect(args: argparse.Namespace) -> int:
     return 0
 
 
-_EXPERIMENTAL_BANNER = (
-    "\033[33mEXPERIMENTAL:\033[0m andamentum.epistemic is under active "
-    "development. Output shape, agent names and flags may change "
-    "without notice. See README, Pre-release / experimental.\n"
-)
+def _experimental_banner() -> str:
+    """The experimental notice; coloured only when stderr is a terminal."""
+    label = "EXPERIMENTAL:"
+    if sys.stderr.isatty():
+        label = f"\033[33m{label}\033[0m"
+    return (
+        f"{label} andamentum.epistemic is under active development. Output "
+        "shape, agent names and flags may change without notice.\n"
+    )
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -600,8 +622,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.print_help(sys.stderr)
         return 2
 
-    # Every invocation of a command, before any work, prints the banner to stderr.
-    print(_EXPERIMENTAL_BANNER, file=sys.stderr)
+    # The notice goes to stderr for the commands that run the pipeline, after
+    # the arguments are accepted and before any work.
+    if args.command in ("ask", "verify", "stage"):
+        try:
+            _require_search(args)
+        except _UsageError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 2
+        print(_experimental_banner(), file=sys.stderr)
 
     if args.command == "agents":
         _list_agents()

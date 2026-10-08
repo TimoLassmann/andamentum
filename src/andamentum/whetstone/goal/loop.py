@@ -243,10 +243,10 @@ async def run_goal_loop(
 
     *decision_model* is handed to every round's review, where it may answer
     the document-type question instead of the LLM classifier
-    (see :func:`~..v3.graph.run_review`); ``None`` changes nothing.
+    (see :func:`~..pipeline.graph.run_review`); ``None`` changes nothing.
 
     *novelty_research* runs the first round's novelty check on deep_research
-    (see :func:`~..v3.graph.run_review`); it needs ``check_novelty=True``.
+    (see :func:`~..pipeline.graph.run_review`); it needs ``check_novelty=True``.
 
     See :mod:`.loop`'s module docstring for the stop conditions.
     """

@@ -1,4 +1,4 @@
-"""Panel-mode agents for v3 — verbatim copies of the v2 panel agents.
+"""Panel-mode agents.
 
 Four agents, in pipeline order:
 
@@ -7,13 +7,7 @@ Four agents, in pipeline order:
     expert_reviewer     — per-expert review (N parallel calls)
     panel_synthesise    — meta-reviewer aggregating the panel (one call)
 
-The prompts are lifted verbatim from v2 (``whetstone/agents/{extract_keywords,
-expert_generator, expert_reviewer, panel_synthesise}.py``) so the panel
-output shape and calibration are preserved bit-for-bit through the v2 →
-v3 cutover. The only edits are import paths (``..schemas`` →
-``...schemas`` because we live one directory deeper) and the use of
-``andamentum.core.agents.AgentDefinition`` instead of v2's private
-``._definition`` shim.
+The agents use ``andamentum.core.agents.AgentDefinition``.
 
 The output schemas (ExpertProfile / ExpertReview / PanelSynthesis) are
 re-exported from ``andamentum.whetstone.schemas`` — they remain the

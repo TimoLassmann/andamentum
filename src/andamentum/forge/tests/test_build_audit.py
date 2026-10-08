@@ -113,7 +113,7 @@ async def test_full_pipeline_with_fake_sandbox(
     result = await run_forge(
         "Manage my reading list.",
         model="test",
-        dest=tmp_path,
+        out=tmp_path,
         sink=reading_list_sink,
         sandbox=FakeSandbox(),
     )
@@ -133,7 +133,7 @@ async def test_audit_runs_the_built_system_out_of_process(
     result = await run_forge(
         "Manage my reading list.",
         model="test",
-        dest=tmp_path,
+        out=tmp_path,
         sink=reading_list_sink,
         sandbox=SubprocessSandbox(),
     )

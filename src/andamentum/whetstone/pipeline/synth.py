@@ -4,7 +4,7 @@ Synthesise turns the gated findings into one structured review (synopsis /
 strengths / weaknesses); critique-and-revise rereads that draft against the
 document model and removes anything the text doesn't support. The result is
 adapted into `whetstone.schemas.ReviewResult` so all three existing renderers
-consume it unchanged — v3's only job is to fill that contract.
+consume it unchanged — filling that contract is this module's only job.
 """
 
 from __future__ import annotations

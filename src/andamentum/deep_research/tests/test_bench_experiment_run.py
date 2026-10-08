@@ -804,7 +804,7 @@ def test_the_cli_keeps_the_run_flags_and_drops_the_old_ones() -> None:
             "experiment",
             "run",
             "f.yaml",
-            "--out-dir",
+            "--out",
             "o",
             "--browser",
             "--cache",
@@ -833,7 +833,7 @@ def test_the_cli_keeps_the_run_flags_and_drops_the_old_ones() -> None:
         ["--litsearch-dir", "x"],
     ):
         with pytest.raises(SystemExit):
-            parser.parse_args(["experiment", "run", "f.yaml", "--out-dir", "o", *old])
+            parser.parse_args(["experiment", "run", "f.yaml", "--out", "o", *old])
 
 
 def test_the_deleted_subcommands_are_gone() -> None:
@@ -862,19 +862,18 @@ def test_the_losses_subcommand_takes_the_documented_flags() -> None:
             "experiment",
             "losses",
             "f.yaml",
-            "--out-dir",
+            "--runs",
             "o",
             "--simpleqa-dir",
             "s",
             "--arm",
             "new-engine",
             "--only-failed",
-            "--format",
-            "json",
+            "--json",
         ]
     )
     assert args.experiment_command == "losses"
-    assert args.only_failed and args.format == "json" and args.arm == ["new-engine"]
+    assert args.only_failed and args.json and args.arm == ["new-engine"]
 
 
 def test_a_keyless_source_configuration_never_looks_a_key_up(

@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
 """Patch data models for the whetstone DOCX track-changes machinery.
 
-This module is the only surviving slice of the old whetstone v1 ``models``
-file. It contains the two types the preserved ``whetstone.docx`` subpackage
-operates on:
+It contains the two types the ``whetstone.docx`` subpackage operates on:
 
 * ``DocumentPatch`` — a single edit/comment/analysis instruction that the
   finalisation pipeline applies as a Word tracked change or comment. The
@@ -12,10 +10,6 @@ operates on:
   ``finalize_reviewed_document``.
 * ``PatchApplicationResult`` — the return type from
   ``finalize_reviewed_document`` (counts of applied / failed patches).
-
-Everything else from the v1 models module (``ChecklistItem``,
-``BaselineCheck``) was v1-only and has been removed alongside the rest of
-the v1 surface.
 """
 
 import uuid

@@ -241,13 +241,22 @@ _DOCUMENT_TYPE_CHOICES: tuple[str, ...] = (
     "general",
 )
 
-def _author_parent() -> argparse.ArgumentParser:
+def _group(parser: argparse.ArgumentParser, title: str) -> argparse._ArgumentGroup:
+    """The help group called *title* on *parser*, made on first use, so a flag
+    added by a shared helper lands beside the command's own flags."""
+    for existing in parser._action_groups:
+        if existing.title == title:
+            return existing
+    return parser.add_argument_group(title)
+
+
+def _add_author_flags(parser: argparse.ArgumentParser) -> None:
     """The tracked-change author flags, shared by every command that writes a
     .docx. A second review round over the first round's output is just another
     run with another name here — the input file already carries round one's
     changes, so there is no round number to pass and no sequential mode."""
-    parent = argparse.ArgumentParser(add_help=False)
-    parent.add_argument(
+    editing = _group(parser, "editing")
+    editing.add_argument(
         "--patch-author",
         default=None,
         metavar="NAME",
@@ -257,22 +266,26 @@ def _author_parent() -> argparse.ArgumentParser:
         "apart in Word's reviewing pane; the same name twice is valid "
         "but indistinguishable there.",
     )
-    parent.add_argument(
+    editing.add_argument(
         "--allow-author-override",
         action="store_true",
         help="Explicitly authorise a non-default --patch-author value. "
         "Misrepresenting AI-generated edits as a human reviewer's may "
         "constitute research misconduct.",
     )
-    return parent
 
 
-def _run_parent() -> argparse.ArgumentParser:
+def _add_run_flags(parser: argparse.ArgumentParser) -> None:
     """Input, model, outputs and watermark: what review, panel and checklist
     all take."""
-    parent = argparse.ArgumentParser(add_help=False, parents=[_author_parent()])
-    parent.add_argument("input", help="Path or URL to the document.")
-    parent.add_argument(
+    # Created in reading order; a group that stays empty is not printed.
+    io = _group(parser, "input and output")
+    model_group = _group(parser, "model")
+    for title in ("what to check", "editing", "goal loop", "advanced"):
+        _group(parser, title)
+    _add_author_flags(parser)
+    io.add_argument("input", help="Path or URL to the document.")
+    io.add_argument(
         "-o",
         "--out",
         action="append",
@@ -282,20 +295,20 @@ def _run_parent() -> argparse.ArgumentParser:
         help="Output file. Repeat for several formats. "
         "Format taken from the extension (.md / .html / .docx).",
     )
-    parent.add_argument(
+    model_group.add_argument(
         "--model",
         required=True,
         metavar="MODEL",
         help="Language model to use, for example openai:gpt-5.4-nano or "
         "ollama:gemma4:31b.",
     )
-    parent.add_argument(
+    io.add_argument(
         "-v",
         "--verbose",
         action="store_true",
         help="Print phase-by-phase progress to stderr.",
     )
-    visible_wm = parent.add_mutually_exclusive_group()
+    visible_wm = io.add_mutually_exclusive_group()
     visible_wm.add_argument(
         "--visible-watermark",
         dest="visible_watermark",
@@ -315,10 +328,9 @@ def _run_parent() -> argparse.ArgumentParser:
         "(docx core properties and customXml) is written regardless, and the "
         "HTML report keeps a short disclaimer callout.",
     )
-    return parent
 
 
-def _typed_parent() -> argparse.ArgumentParser:
+def _add_typed_flags(parser: argparse.ArgumentParser) -> None:
     """What review and checklist share: the same six document types route to a
     criterion set in one mode and to a probe bank in the other, and one
     reviewer selects a criterion set in one and a probe bank in the other.
@@ -326,8 +338,9 @@ def _typed_parent() -> argparse.ArgumentParser:
     make the same question look like two questions."""
     from .pipeline.reviewers import DEFAULT_PROFILE_NAME
 
-    parent = argparse.ArgumentParser(add_help=False)
-    parent.add_argument(
+    model_group = _group(parser, "model")
+    checks = _group(parser, "what to check")
+    checks.add_argument(
         "--document-type",
         choices=_DOCUMENT_TYPE_CHOICES,
         default="auto",
@@ -338,7 +351,7 @@ def _typed_parent() -> argparse.ArgumentParser:
             "value skips the classifier."
         ),
     )
-    parent.add_argument(
+    model_group.add_argument(
         "--decision-model",
         default=None,
         metavar="NAME",
@@ -348,7 +361,7 @@ def _typed_parent() -> argparse.ArgumentParser:
             "instead of the --model classifier. Off by default."
         ),
     )
-    parent.add_argument(
+    checks.add_argument(
         "--reviewer",
         # NOT argparse choices: the value may be a comma-separated list, which
         # choices cannot express. Validated by _parse_reviewers, which reports
@@ -370,7 +383,7 @@ def _typed_parent() -> argparse.ArgumentParser:
             "`andamentum-whetstone reviewers` to see them all."
         ),
     )
-    parent.add_argument(
+    checks.add_argument(
         "--confirm-own-draft",
         action="store_true",
         help=(
@@ -380,7 +393,6 @@ def _typed_parent() -> argparse.ArgumentParser:
             "when the matched marker is a false positive in your own draft."
         ),
     )
-    return parent
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -400,8 +412,6 @@ def build_parser() -> argparse.ArgumentParser:
         version=f"%(prog)s {__version__}",
     )
     commands = parser.add_subparsers(dest="command", metavar="COMMAND", required=True)
-    run_parent = _run_parent()
-    typed_parent = _typed_parent()
 
     def add(name: str, summary: str, **kwargs: Any) -> argparse.ArgumentParser:
         return commands.add_parser(
@@ -417,10 +427,15 @@ def build_parser() -> argparse.ArgumentParser:
         "review",
         "Review a draft: findings as comments, rewrites as tracked changes, "
         "the reference check (the default command).",
-        parents=[run_parent, typed_parent],
     )
     review.set_defaults(mode="review")
-    review.add_argument(
+    _add_run_flags(review)
+    _add_typed_flags(review)
+    checks = _group(review, "what to check")
+    editing = _group(review, "editing")
+    goal = _group(review, "goal loop")
+    advanced = _group(review, "advanced")
+    checks.add_argument(
         "--criteria",
         action="append",
         default=None,
@@ -428,7 +443,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Caller-supplied criteria. Semicolon-separated, or repeat the "
         "flag. Overrides the document-type default set.",
     )
-    review.add_argument(
+    checks.add_argument(
         "--guidelines",
         default="",
         metavar="TEXT",
@@ -436,7 +451,7 @@ def build_parser() -> argparse.ArgumentParser:
         "``@path/to/file`` to read from a file. One LLM call decomposes "
         "the prose into a criterion list. Mutually exclusive with --criteria.",
     )
-    review.add_argument(
+    editing.add_argument(
         "--editor",
         action=argparse.BooleanOptionalAction,
         default=True,
@@ -446,7 +461,7 @@ def build_parser() -> argparse.ArgumentParser:
         "pass AFTER the last reviewer, over all of their findings — not from "
         "each reviewer in turn.",
     )
-    review.add_argument(
+    checks.add_argument(
         "--references",
         action=argparse.BooleanOptionalAction,
         default=True,
@@ -455,7 +470,7 @@ def build_parser() -> argparse.ArgumentParser:
         "problems too. On by default; --no-references skips it. The same "
         "check as `andamentum-references`.",
     )
-    review.add_argument(
+    checks.add_argument(
         "--lookup",
         action=argparse.BooleanOptionalAction,
         default=True,
@@ -464,7 +479,7 @@ def build_parser() -> argparse.ArgumentParser:
         "never the draft. On by default; --no-lookup keeps the reference "
         "check offline.",
     )
-    review.add_argument(
+    editing.add_argument(
         "--editor-criteria",
         default=None,
         metavar="LIST",
@@ -472,7 +487,7 @@ def build_parser() -> argparse.ArgumentParser:
         "grammar — or the reviewer's own, when --reviewer names one that "
         "sets them.",
     )
-    review.add_argument(
+    checks.add_argument(
         "--check-novelty",
         action="store_true",
         help="VERIFY the novelty claims against the literature, by searching "
@@ -487,7 +502,7 @@ def build_parser() -> argparse.ArgumentParser:
         "claim found, over at most 8 claims. With a list of reviewers this runs once, before the "
         "second reviewer starts — never once per reviewer.",
     )
-    review.add_argument(
+    checks.add_argument(
         "--novelty-search-depth",
         type=int,
         default=_DEFAULT_NOVELTY_SEARCH_DEPTH,
@@ -495,7 +510,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Search depth for --check-novelty: the number of search "
         "rounds per claim (1=quick, 2=balanced, 3=thorough). Default: 2.",
     )
-    review.add_argument(
+    checks.add_argument(
         "--novelty-store",
         type=Path,
         default=None,
@@ -505,7 +520,7 @@ def build_parser() -> argparse.ArgumentParser:
         "review of the same draft re-reads nothing. Default: in memory, "
         "nothing is kept.",
     )
-    review.add_argument(
+    advanced.add_argument(
         "--rounds",
         type=int,
         default=_DEFAULT_ROUNDS,
@@ -513,7 +528,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Hard cap on the gap-loop re-examination rounds. Default: 3. "
         "The loop typically exits earlier when no demands remain.",
     )
-    review.add_argument(
+    goal.add_argument(
         "--goal",
         default=None,
         metavar="TEXT",
@@ -524,7 +539,7 @@ def build_parser() -> argparse.ArgumentParser:
         "with it. Takes one reviewer, not a list (see --goal-check). Exit "
         "code 1 when the goal was not met (the output is still written).",
     )
-    review.add_argument(
+    goal.add_argument(
         "--goal-check",
         choices=("judged", "structure", "citations", "figures"),
         default="judged",
@@ -543,7 +558,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--goal-figure's image is checked against its caption and the "
         "sentences that mention it. Has no effect without --goal.",
     )
-    review.add_argument(
+    goal.add_argument(
         "--max-rounds",
         type=int,
         default=_DEFAULT_GOAL_MAX_ROUNDS,
@@ -552,7 +567,7 @@ def build_parser() -> argparse.ArgumentParser:
         "Distinct from --rounds, which caps the gap-loop's re-examination "
         "WITHIN one review pass. Has no effect without --goal.",
     )
-    review.add_argument(
+    goal.add_argument(
         "--goal-figure",
         action="append",
         default=None,
@@ -565,7 +580,7 @@ def build_parser() -> argparse.ArgumentParser:
         "discover embedded images on its own — name each figure you want "
         "checked.",
     )
-    review.add_argument(
+    goal.add_argument(
         "--figure-model",
         default=None,
         metavar="MODEL",
@@ -587,17 +602,18 @@ def build_parser() -> argparse.ArgumentParser:
         "checklist",
         "Run the standard check: a fixed probe bank and a deterministic "
         "coverage table.",
-        parents=[run_parent, typed_parent],
     )
     checklist.set_defaults(mode="checklist")
+    _add_run_flags(checklist)
+    _add_typed_flags(checklist)
 
     # ── panel ──────────────────────────────────────────────────────────
     panel = add(
         "panel",
         "Simulated multi-expert peer review of your own draft.",
-        parents=[run_parent],
     )
     panel.set_defaults(mode="panel")
+    _add_run_flags(panel)
     panel.add_argument(
         "--n-experts",
         type=int,
@@ -632,15 +648,21 @@ def build_parser() -> argparse.ArgumentParser:
         default="auto",
         help="Show which reviewers suit this document type.",
     )
+    reviewers.add_argument(
+        "--json",
+        action="store_true",
+        help="Print the reviewers as JSON: name, default flag, description and, "
+        "with --document-type, whether each suits it.",
+    )
 
     # ── apply-patches ──────────────────────────────────────────────────
     patches = add(
         "apply-patches",
         "Apply a pre-built JSON patch list to a .docx as tracked changes and "
         "comments. No model.",
-        parents=[_author_parent()],
     )
     patches.set_defaults(mode="apply-patches")
+    _add_author_flags(patches)
     patches.add_argument("input", help="The .docx file to patch (never modified).")
     patches.add_argument(
         "--patches",
@@ -917,7 +939,7 @@ def _split_off_the_final_editor(args: argparse.Namespace) -> bool:
     A list of reviewers does not edit round by round. Each reviewer reads the
     draft and raises findings; when the last has finished, the line editor
     runs once over the unchanged text with all of them in front of it (see
-    :func:`~.v3.editor.edit_findings`). Per-round editing gave every reviewer
+    :func:`~.pipeline.editor.edit_findings`). Per-round editing gave every reviewer
     a style quota over the same abstract, and each re-edited the last one's
     insertions — five colours of tracked changes and no paper underneath.
 
@@ -1105,7 +1127,7 @@ Recommended sequence for a manuscript:
   Anything two reviewers raise independently goes to the top of the list."""
 
 
-def _print_reviewer_listing(*, document_type: str = "auto") -> None:
+def _print_reviewer_listing(*, document_type: str = "auto", as_json: bool = False) -> None:
     """Print every reviewer, one line each, and how to sequence them.
 
     The fit column appears only when the document type was actually stated.
@@ -1116,6 +1138,23 @@ def _print_reviewer_listing(*, document_type: str = "auto") -> None:
     from .pipeline.reviewers import DEFAULT_PROFILE_NAME, PROFILES, fits
 
     known_type = document_type != "auto"
+    if as_json:
+        import json
+
+        listing = []
+        for name, profile in PROFILES.items():
+            entry: dict[str, object] = {
+                "name": name,
+                "default": name == DEFAULT_PROFILE_NAME,
+                "description": profile.description,
+            }
+            if known_type:
+                entry["suits_document_type"] = fits(
+                    profile=profile, document_type=document_type
+                )
+            listing.append(entry)
+        print(json.dumps(listing, indent=2))
+        return
     labels = {
         name: name + (" (default)" if name == DEFAULT_PROFILE_NAME else "")
         for name in PROFILES
@@ -1300,7 +1339,7 @@ async def _edit_after_the_reviewers(
     """The single editor pass that ends a list of reviewers.
 
     *combined* is every round's result as one
-    (:func:`~.v3.reconcile.combine_reviews`), so its findings carry the reviewer
+    (:func:`~.pipeline.reconcile.combine_reviews`), so its findings carry the reviewer
     that raised each through ``perspective``, and a point several reviewers
     raised arrives as one finding — the editor answers it once. *document* is
     the document every round read — no round edits — so every finding's
@@ -1429,14 +1468,6 @@ async def _run(args: argparse.Namespace, console: Console) -> int:
     """
     editor_criteria = _editor_criteria(args)
 
-    # Always-on one-line scope banner — short, unmissable, not gated on
-    # --verbose. Goes to stderr so it doesn't pollute piped output.
-    print(
-        "Note: whetstone is for your own drafts. Not a peer-review tool. "
-        "See RESPONSIBLE_USE.md.",
-        file=sys.stderr,
-    )
-
     if args.verbose:
         _log_run_config(console, args, editor_criteria)
 
@@ -1452,6 +1483,14 @@ async def _run(args: argparse.Namespace, console: Console) -> int:
         document = await open_source(args.input)
     except Exception as exc:
         _die(_EXIT_INPUT, f"could not load input {args.input!r}: {exc}")
+    # One-line scope banner, shown once the arguments and the input have been
+    # accepted (never before a usage or input error). It goes to stderr so it
+    # doesn't pollute piped output.
+    print(
+        "Note: whetstone is for your own drafts. Not a peer-review tool. "
+        "See RESPONSIBLE_USE.md.",
+        file=sys.stderr,
+    )
     for warning in document.warnings:
         console.print(f"[yellow]note:[/yellow] {warning}")
 
@@ -1958,8 +1997,8 @@ def _print_summary(console: Console, result, written: list[Path]) -> None:
     )
     table.add_row("edits:", str(m.edits_count))
     table.add_row("author questions:", str(len(result.author_questions)))
-    # Gap-loop rounds are stored on the same metric field v2 used for
-    # the reflection loop — the underlying mechanism is similar
+    # Gap-loop rounds are stored on the metric field that counts
+    # reflection rounds — the underlying mechanism is similar
     # ("re-examine until no new demands or cap hit").
     if m.reflection_rounds_used:
         table.add_row("gap-loop rounds:", str(m.reflection_rounds_used))
@@ -2014,6 +2053,10 @@ def _run_verify_provenance(args: argparse.Namespace) -> int:
         or customxml
     )
 
+    if not markers.get("readable"):
+        print(f"error: {args.input} is not a readable .docx file", file=sys.stderr)
+        return _EXIT_INPUT
+
     if args.json:
         import json as _json
 
@@ -2021,10 +2064,6 @@ def _run_verify_provenance(args: argparse.Namespace) -> int:
     else:
         # Human-readable summary. Plain ASCII so it pipes cleanly.
         print(f"File: {args.input}")
-        if not markers.get("readable"):
-            print("  Readable: NO (not a valid .docx zip)")
-            print(f"error: {args.input} is not a readable .docx file", file=sys.stderr)
-            return _EXIT_INPUT
         print("  Readable: yes")
         print(
             "  Core-properties keywords/comments marker: "
@@ -2051,8 +2090,6 @@ def _run_verify_provenance(args: argparse.Namespace) -> int:
             )
         )
 
-    if not markers.get("readable"):
-        return _EXIT_INPUT
     return 0 if found_any else _EXIT_NEGATIVE
 
 
@@ -2072,7 +2109,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         args = build_parser().parse_args(raw)
         _validate_args(args)
         if args.command == "reviewers":
-            _print_reviewer_listing(document_type=args.document_type)
+            _print_reviewer_listing(
+                document_type=args.document_type, as_json=args.json
+            )
             return 0
         if args.command == "verify-provenance":
             return _run_verify_provenance(args)
@@ -2226,7 +2265,7 @@ def _print_apply_patches_summary(console: Console, result, output_path: Path) ->
 
 
 def _configure_logging(console: Console, verbose: bool) -> None:
-    """Install a RichHandler on the v2 logger.
+    """Install a RichHandler on the whetstone logger.
 
     INFO when --verbose, WARNING otherwise so warnings/errors still surface
     even on quiet runs. We attach to our own namespace logger (not root)

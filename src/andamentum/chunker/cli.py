@@ -5,7 +5,9 @@ Usage::
     andamentum-chunker INPUT --max-chars 4000 -o chunks.json
     andamentum-chunker - --max-chars 4000 --text-only < doc.md
 
-Prints JSON with {chunks: [{text, start, end, heading_path}], total_chars}.
+Standard output (or the -o file) holds JSON by default,
+{"chunks": [{text, start, end, heading_path}], "total_chars": n}; with
+--text-only it holds the plain chunk texts instead.
 
 Exit codes: 0 success; 2 usage error; 3 the input could not be read
 (missing file, not UTF-8 text). The chunker has no negative result, so 1 and
@@ -36,7 +38,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="andamentum-chunker",
         description="Split markdown into chunks at headings, paragraphs and sentences. "
-        "Code blocks, tables and front matter are never cut. No model is used.",
+        "Code blocks, tables and front matter are never cut. No model is used. "
+        'Output is JSON, {"chunks": [{text, start, end, heading_path}], '
+        '"total_chars": n}, on stdout or in the -o file; --text-only prints the '
+        "plain chunk texts instead.",
         epilog=_EXIT_CODES,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -55,12 +60,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--out",
         default="-",
         metavar="FILE",
-        help="write the result to FILE (default: print to stdout)",
+        help="write the result (JSON, or the plain texts with --text-only) to FILE; default: print to stdout",
     )
     parser.add_argument(
         "--text-only",
         action="store_true",
-        help="print only the chunk texts, separated by a blank line and ---",
+        help="print plain text instead of JSON: just the chunk texts, separated by a blank line and ---",
     )
     return parser
 

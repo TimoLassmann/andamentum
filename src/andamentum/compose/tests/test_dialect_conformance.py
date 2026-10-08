@@ -93,8 +93,8 @@ def test_nothing_else_in_the_package_imports_compose():
         if relative.parts[0] == "compose":
             continue
         # the tool list names the tool; the Word tool is the public face of
-        # compose.harness
-        if relative.parts[0] == "word" or relative.name == "tools.py":
+        # compose.harness; the package-level interface tests run every tool
+        if relative.parts[0] in ("word", "tests") or relative.name == "tools.py":
             continue
         text = path.read_text(encoding="utf-8")
         # figures.bundle_glue is the one sanctioned user of the model-free bundle

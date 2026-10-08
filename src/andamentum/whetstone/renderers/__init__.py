@@ -7,7 +7,7 @@ Three formats:
     (best for sharing in a browser).
   • ``render_docx``     — Word document with edits as tracked changes
     and findings as Word comments (best for the author's own
-    editing workflow). Reuses v1's ``whetstone.docx.finalization``
+    editing workflow). Reuses ``whetstone.docx.finalization``
     machinery via a small adapter.
 
 All three consume the same ``ReviewResult`` shape — agents that produce

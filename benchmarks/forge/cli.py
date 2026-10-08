@@ -4,7 +4,7 @@ Usage::
 
     uv run python -m benchmarks.forge.cli --model <id>
     uv run python -m benchmarks.forge.cli --model <id> --runs 5
-    uv run python -m benchmarks.forge.cli --model <id> --output report.md
+    uv run python -m benchmarks.forge.cli --model <id> -o report.md
     uv run python -m benchmarks.forge.cli --model <id> --case loop --case branch
     uv run python -m benchmarks.forge.cli --model <id> --full   # Tier-2: end-to-end
     uv run python -m benchmarks.forge.cli --model <id> --full --sandbox podman
@@ -51,8 +51,8 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Run only case(s) whose brief (or golden key) contains this substring; repeatable",
     )
     p.add_argument(
-        "--output",
         "-o",
+        "--out",
         default=None,
         help="Write the markdown report to this file (default: stdout only)",
     )
@@ -141,9 +141,9 @@ async def _main_async(args: argparse.Namespace) -> int:
         report = render(scores, model=args.model)
 
     print(report)
-    if args.output is not None:
-        Path(args.output).write_text(report)
-        print(f"wrote {args.output}", file=sys.stderr)
+    if args.out is not None:
+        Path(args.out).write_text(report)
+        print(f"wrote {args.out}", file=sys.stderr)
     return 0
 
 

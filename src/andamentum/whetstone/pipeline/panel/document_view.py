@@ -1,17 +1,15 @@
 """Deterministic document view shared by the panel's prompt-assembling workers.
 
-Section-title outline + truncated markdown body — matches v2's
-``_build_document_view`` shape so panel output stays bit-comparable
-across the v2 → v3 cutover for the same draft + same expert profiles.
+Section-title outline + truncated markdown body — the same view
+every expert receives.
 """
 
 from __future__ import annotations
 
 from ..model import Section
 
-# Cap on how much markdown reaches the per-expert review prompt. v2 uses
-# 30k chars; keep parity so panel output is bit-comparable across the
-# v2 → v3 cutover for the same draft + same expert profiles.
+# Cap on how much markdown reaches the per-expert review prompt. 30k chars,
+# the size the expert prompts were calibrated on.
 DOCUMENT_VIEW_MAX_CHARS: int = 30_000
 
 

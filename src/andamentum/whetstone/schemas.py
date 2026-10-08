@@ -1,4 +1,4 @@
-"""Public schemas for whetstone v2.
+"""Public schemas for whetstone.
 
 These are the types the API returns and that downstream consumers (other
 agents, CLIs, the user's tooling) read. Pydantic models because:
@@ -208,10 +208,9 @@ class ExpertProfile(BaseModel):
 class ExpertReview(BaseModel):
     """One discipline-matched expert's structured review.
 
-    Ports v1's ``ExpertReviewOutput``. Scores stay as integers 1–10
-    (rather than three-value enums) because that's what the downstream
-    panel synthesiser averages and because v1's calibration was tuned at
-    that resolution.
+    Scores stay as integers 1–10 (rather than three-value enums) because
+    that's what the downstream panel synthesiser averages and because the
+    calibration was tuned at that resolution.
     """
 
     expert_name: str = Field(description="Name of the expert providing the review.")
@@ -268,8 +267,7 @@ class ExpertReview(BaseModel):
 class PanelSynthesis(BaseModel):
     """Aggregated meta-review across the expert panel.
 
-    Ports v1's ``PanelSynthesisOutput`` with v2 hygiene: nullable
-    ``confidence_level`` is a 3-value Literal, ``overall_recommendation``
+    Nullable ``confidence_level`` is a 3-value Literal, ``overall_recommendation``
     is the same 4-value Literal as ``ExpertReview``.
     """
 

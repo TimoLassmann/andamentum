@@ -2,11 +2,12 @@
 
 Usage::
 
-    andamentum-figures plot data.csv --kind bar --x group --y value -o figure.pdf
+    andamentum-figures [plot] data.csv --kind bar --x group --y value -o figure.pdf
     andamentum-figures palettes
     andamentum-figures journals
 
-``plot`` writes the figure to the file named with ``-o/--out`` (the format
+``plot`` is the default: when the first argument is not a command or a flag it
+is taken to be the data file. It writes the figure to the file named with ``-o/--out`` (the format
 follows the extension: .pdf, .png, .svg) and prints a short summary, or the
 full result as JSON with ``--json``.
 
@@ -24,6 +25,8 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
+_COMMANDS = ("plot", "palettes", "journals")
+
 _EXIT_CODES = """\
 exit codes:
   0  success
@@ -39,7 +42,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="andamentum-figures",
         description="Publication-quality scientific figures. Plots only the numbers "
-        "in your data file; no generative AI. Journal-matched sizing.",
+        "in your data file; no generative AI. Journal-matched sizing. `plot` is "
+        "the default command: andamentum-figures DATA --x A --y B -o FILE.svg. "
+        "Also: palettes, journals (list the choices).",
         epilog=_EXIT_CODES,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -184,7 +189,10 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
-    args = parser.parse_args(argv)
+    raw = list(sys.argv[1:] if argv is None else argv)
+    if raw and raw[0] not in _COMMANDS and not raw[0].startswith("-"):
+        raw = ["plot", *raw]
+    args = parser.parse_args(raw)
 
     if args.command is None:
         parser.print_help()
@@ -271,7 +279,7 @@ def _run_plot(args: argparse.Namespace) -> int:
             width=width,
             dpi=args.dpi,
             horizontal=args.horizontal,
-            output=args.out,
+            out=args.out,
             group_order=group_order,
             normalize=args.normalize,
             series_colors=series_colors,

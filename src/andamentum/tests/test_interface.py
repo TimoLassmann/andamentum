@@ -179,3 +179,165 @@ def test_every_tool_is_documented(doc):
     text = (ROOT / doc).read_text()
     missing = [t.command for t in TOOLS if f"`{t.command}`" not in text]
     assert not missing, f"{doc} does not mention {missing}"
+
+
+# --- --model is required wherever a tool needs a model --------------------------------
+
+#: (tool, subcommand) pairs whose --model is legitimately optional although the
+#: tool needs a model. Anything not listed must have ``required=True``, so a new
+#: optional --model fails the test.
+OPTIONAL_MODEL_OK = {
+    # compose: --model fills all four roles at once; the per-role flags
+    # (--drafter/--critic/--judge/--reader) are the alternative.
+    ("compose", "write"),
+    ("compose", "eval"),
+    # compose continue/render/check take the models recorded in the folder, or
+    # the per-role flags; check needs a model only for the optional numbers pass.
+    ("compose", "continue"),
+    ("compose", "render"),
+    ("compose", "check"),
+    # research mcp serves the store; the model is for the optional research tool.
+    ("research", "mcp"),
+}
+
+
+def _subcommand(parser: argparse.ArgumentParser) -> str:
+    return parser.prog.split()[1] if len(parser.prog.split()) > 1 else ""
+
+
+@pytest.mark.parametrize("name", [t.name for t in TOOLS if t.needs_model == "yes"])
+def test_a_model_tool_requires_model_on_every_command(name):
+    """Mutation: change any ``--model`` of a "yes" tool to ``required=False`` (or give it a
+    default) and the parser listed here fails, unless it is in OPTIONAL_MODEL_OK."""
+    tool = next(t for t in TOOLS if t.name == name)
+    for p in _parsers(_build_parser(tool)):
+        for action in p._actions:
+            if "--model" not in action.option_strings:
+                continue
+            if (name, _subcommand(p)) in OPTIONAL_MODEL_OK:
+                continue
+            assert action.required, f"{p.prog}: --model must be required"
+            assert action.default is None
+
+
+def test_the_allow_list_names_real_commands():
+    """Mutation: rename a compose/research subcommand and a stale allow-list entry fails."""
+    seen = set()
+    for tool in TOOLS:
+        if tool.needs_model != "yes":
+            continue
+        for p in _parsers(_build_parser(tool)):
+            if any("--model" in a.option_strings for a in p._actions):
+                seen.add((tool.name, _subcommand(p)))
+    assert OPTIONAL_MODEL_OK <= seen
+
+
+# --- --version, help vocabulary, usage errors --------------------------------------
+
+@pytest.mark.parametrize("name", TOOL_IDS)
+def test_version_prints_the_package_version(name, capsys):
+    """Mutation: print a hard-coded or empty version and this fails."""
+    import andamentum
+
+    tool = next(t for t in TOOLS if t.name == name)
+    cli = importlib.import_module(tool.cli)
+    try:
+        code = cli.main(["--version"])
+    except SystemExit as exc:  # argparse exits; some mains return the code
+        code = exc.code
+    assert code in (0, None)
+    out = capsys.readouterr().out
+    assert tool.command in out and andamentum.__version__ in out
+
+
+_INTERNAL_WORDS = re.compile(r"\b(harness|kernel|v2|v3)\b", re.IGNORECASE)
+
+#: Tools whose help still shows internal words (tool name -> reason); fill in
+#: only to make a known gap visible, never to hide a new one.
+_HELP_WORDS_XFAIL: dict[str, str] = {}
+
+
+@pytest.mark.parametrize("name", TOOL_IDS)
+def test_help_uses_no_internal_words(name):
+    """Mutation: put "harness" in any flag help or description and this fails."""
+    if name in _HELP_WORDS_XFAIL:
+        pytest.xfail(_HELP_WORDS_XFAIL[name])
+    tool = next(t for t in TOOLS if t.name == name)
+    hits = []
+    for p in _parsers(_build_parser(tool)):
+        hits += [(p.prog, m.group(0)) for m in _INTERNAL_WORDS.finditer(p.format_help())]
+    assert not hits, hits
+
+
+@pytest.mark.parametrize("name", TOOL_IDS)
+def test_an_unknown_flag_is_a_usage_error(name):
+    """Mutation: make main() catch SystemExit and return 1 / 4 and this fails."""
+    tool = next(t for t in TOOLS if t.name == name)
+    cli = importlib.import_module(tool.cli)
+    try:
+        code = cli.main(["--definitely-not-a-flag"])
+    except SystemExit as exc:
+        code = exc.code
+    assert code == 2
+
+
+# --- nothing is written into the current folder -------------------------------------
+
+def test_no_model_free_tool_writes_into_the_current_folder(tmp_path, monkeypatch, capsys):
+    """Each case runs from an empty folder with its outputs pointed at another one.
+    Mutation: make a command write to a relative or default path (for example drop
+    ``-o`` handling and write ``out.json`` / ``.cache`` beside the cwd) and the
+    empty-folder assertion fails."""
+    from andamentum.agentic_dialect.cli import main as dialect
+    from andamentum.chunker.cli import main as chunker
+    from andamentum.compose.cli import main as compose
+    from andamentum.document_store.cli import main as docstore
+    from andamentum.proofread.cli import main as proofread
+    from andamentum.references.cli import main as references
+    from andamentum.typeset.cli import main as typeset
+
+    work = tmp_path / "work"
+    work.mkdir()
+    cwd = tmp_path / "cwd"
+    cwd.mkdir()
+    doc = work / "in.md"
+    doc.write_text("# Title\n\nA short synthetic paragraph about salt.\n\n## Part\n\nAnother sentence.\n")
+    db = work / "s.db"
+    monkeypatch.chdir(cwd)
+    cases = [
+        (chunker, ["--max-chars", "100", str(doc), "-o", str(work / "c.json")], {0}),
+        (proofread, [str(doc), "-o", str(work / "p.txt")], {0, 1}),
+        (proofread, [str(doc)], {0, 1}),
+        (typeset, [str(doc)], {0}),
+        (typeset, [str(doc), "-o", str(work / "t.html")], {0}),
+        (dialect, ["laws"], {0}),
+        (references, [str(doc), "--no-lookup", "-o", str(work / "r.md")], {0, 1}),
+        (docstore, ["ingest", str(db), str(doc)], {0}),
+        (docstore, ["list", str(db)], {0}),
+        (compose, ["new", "-o", str(work / "newdoc"), "--title", "Pilot"], {0}),
+    ]
+    for main, argv, ok in cases:
+        try:
+            code = main(argv)
+        except SystemExit as exc:
+            code = exc.code
+        capsys.readouterr()
+        assert code in ok, (main.__module__, argv, code)
+        assert list(cwd.iterdir()) == [], (main.__module__, argv)
+    assert (work / "c.json").is_file() and (work / "newdoc").is_dir() and db.is_file()
+
+
+@pytest.mark.parametrize("name", TOOL_IDS)
+def test_the_listed_main_function_exists(name):
+    """``andamentum list`` names each tool's Python entry point; it must resolve."""
+    tool = next(t for t in TOOLS if t.name == name)
+    module_name, _, rest = tool.main.partition(f"{tool.module}.")
+    assert module_name == "", f"{tool.main} is not inside {tool.module}"
+    obj = importlib.import_module(tool.module)
+    for part in rest.split("."):
+        obj = getattr(obj, part)
+    assert callable(obj), tool.main
+    top = rest.split(".")[0]
+    assert top in getattr(importlib.import_module(tool.module), "__all__", ()), (
+        f"{tool.main}: {top} is not exported in {tool.module}.__all__"
+    )

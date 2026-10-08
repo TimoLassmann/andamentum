@@ -4,9 +4,9 @@
 :class:`CaseScore`.
 
 - **Tier 1** (``full=False``, default) — design-only: ``run_forge(brief, model=...,
-  dest=None)`` runs understand→frame→decompose→compile→review and returns a ``ForgeResult``
+  out=None)`` runs understand→frame→decompose→compile→review and returns a ``ForgeResult``
   whose ``.spec`` is inspected for control-flow features. Scored on design *shape*.
-- **Tier 2** (``full=True``) — end-to-end: ``run_forge(brief, model=..., dest=<tmp>,
+- **Tier 2** (``full=True``) — end-to-end: ``run_forge(brief, model=..., out=<tmp>,
   stop_after="audit")`` renders, agent-authors every node body, and sandbox-audits the
   package. Scored on whether the generated system actually **works** (``audit.works`` —
   holes filled, tests pass, dialect-clean). This is the reliability signal Tier 1 cannot see.
@@ -94,7 +94,7 @@ async def _run_once_tier1(
 ) -> RunOutcome:
     """Design-only run: score the spec's control-flow shape."""
     try:
-        result = await run_forge(case.brief, model=model, dest=None, sink=sink)
+        result = await run_forge(case.brief, model=model, out=None, sink=sink)
     except ValueError as exc:
         return RunOutcome(kind="refused", error=str(exc))
     except Exception as exc:  # genuine design failure (a crash, not a refusal)
@@ -121,7 +121,7 @@ async def _run_once_tier2(
             result = await run_forge(
                 case.brief,
                 model=model,
-                dest=Path(tmp),
+                out=Path(tmp),
                 stop_after="audit",
                 sandbox_backend=sandbox_backend,
                 sink=sink,

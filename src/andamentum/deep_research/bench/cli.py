@@ -1,10 +1,14 @@
 """The benchmark runner: ``python -m andamentum.deep_research.bench``.
 
     download litsearch-local --dir DIR [--force]
-    experiment run FILE --out-dir DIR [--arm NAME ...] [--only-sets NAME ...] ...
-    experiment report FILE --out-dir DIR [--out FILE.md]
-    experiment losses FILE --out-dir DIR --simpleqa-dir DIR [--arm NAME]
-                           [--only-failed] [--format md|json]
+    experiment run FILE -o DIR [--arm NAME ...] [--only-sets NAME ...] ...
+    experiment report FILE --runs DIR [-o FILE.md]
+    experiment losses FILE --runs DIR --simpleqa-dir DIR [--arm NAME]
+                           [--only-failed] [--json] [-o FILE]
+
+``run`` writes into the folder ``-o/--out`` names (the registry and the run
+logs); ``report`` and ``losses`` read that folder back through ``--runs`` and
+write their text to stdout, or to the file ``-o/--out`` names.
 
 Every directory is named on the command line; nothing is read from or written to
 a default location. API keys and the OpenAlex contact address come from the
@@ -80,7 +84,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     run = actions.add_parser("run", help="run every arm of an experiment file")
     run.add_argument("file", type=Path)
-    run.add_argument("--out-dir", type=Path, required=True)
+    run.add_argument(
+        "-o",
+        "--out",
+        type=Path,
+        required=True,
+        metavar="DIR",
+        help="the folder the registry and the run logs are written into",
+    )
     run.add_argument(
         "--litsearch-local-dir",
         type=Path,
@@ -142,15 +153,34 @@ def build_parser() -> argparse.ArgumentParser:
 
     summary = actions.add_parser("report", help="the experiment's markdown report")
     summary.add_argument("file", type=Path)
-    summary.add_argument("--out-dir", type=Path, required=True)
-    summary.add_argument("--out", type=Path, default=None)
+    summary.add_argument(
+        "--runs",
+        type=Path,
+        required=True,
+        metavar="DIR",
+        help="the folder `experiment run -o` wrote into",
+    )
+    summary.add_argument(
+        "-o",
+        "--out",
+        type=Path,
+        default=None,
+        metavar="FILE",
+        help="write the report to this file instead of stdout",
+    )
 
     losses = actions.add_parser(
         "losses",
         help="where each lost answer was lost, from the run logs (no model, no network)",
     )
     losses.add_argument("file", type=Path)
-    losses.add_argument("--out-dir", type=Path, required=True)
+    losses.add_argument(
+        "--runs",
+        type=Path,
+        required=True,
+        metavar="DIR",
+        help="the folder `experiment run -o` wrote into",
+    )
     losses.add_argument(
         "--simpleqa-dir",
         type=Path,
@@ -177,8 +207,17 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="LitSearch: leave out the gold works that were found",
     )
-    losses.add_argument("--format", choices=("md", "json"), default="md")
-    losses.add_argument("--out", type=Path, default=None)
+    losses.add_argument(
+        "--json", action="store_true", help="give the result as JSON, not Markdown"
+    )
+    losses.add_argument(
+        "-o",
+        "--out",
+        type=Path,
+        default=None,
+        metavar="FILE",
+        help="write the result to this file instead of stdout",
+    )
     return parser
 
 
@@ -283,7 +322,7 @@ async def _experiment_run(args: argparse.Namespace, cache: ResearchStore | None)
     )
     written = await run_experiment(
         exp,
-        out_dir=args.out_dir,
+        out_dir=args.out,
         dirs=DataDirs(
             litsearch_local=args.litsearch_local_dir, simpleqa=args.simpleqa_dir
         ),
@@ -295,7 +334,7 @@ async def _experiment_run(args: argparse.Namespace, cache: ResearchStore | None)
     )
     failed = [r for r in written if r.error]
     print(
-        f"{len(written)} runs recorded in {args.out_dir / 'experiments.jsonl'}, "
+        f"{len(written)} runs recorded in {args.out / 'experiments.jsonl'}, "
         f"{len(failed)} failed (concurrency {args.concurrency})",
         file=sys.stderr,
     )
@@ -315,14 +354,14 @@ def _emit(text: str, out: Path | None) -> None:
 
 
 async def _cmd_experiment_report(args: argparse.Namespace) -> int:
-    _emit(report_from_registry(load_experiment(args.file), args.out_dir), args.out)
+    _emit(report_from_registry(load_experiment(args.file), args.runs), args.out)
     return 0
 
 
 async def _cmd_experiment_losses(args: argparse.Namespace) -> int:
     found = collect_losses(
         load_experiment(args.file),
-        out_dir=args.out_dir,
+        out_dir=args.runs,
         dirs=DataDirs(
             litsearch_local=args.litsearch_local_dir, simpleqa=args.simpleqa_dir
         ),
@@ -330,7 +369,7 @@ async def _cmd_experiment_losses(args: argparse.Namespace) -> int:
     )
     text = (
         found.model_dump_json(indent=2)
-        if args.format == "json"
+        if args.json
         else found.to_markdown(only_failed=args.only_failed)
     )
     _emit(text, args.out)

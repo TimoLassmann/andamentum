@@ -209,7 +209,7 @@ def test_the_cli_refuses_concurrency_for_a_local_model(
     }
     path = tmp_path / "exp.yaml"
     path.write_text(yaml.safe_dump(exp), encoding="utf-8")
-    argv = ["experiment", "run", str(path), "--out-dir", str(tmp_path / "out")]
+    argv = ["experiment", "run", str(path), "--out", str(tmp_path / "out")]
     assert cli.main([*argv, "--concurrency", "2"]) == 1
     assert "refused for local model" in capsys.readouterr().err
     assert cli.main([*argv, "--concurrency", "5"]) == 1
@@ -220,6 +220,6 @@ def test_the_cli_defaults_are_the_bench_settings() -> None:
     config = cli._source_config("http://x")  # noqa: SLF001
     assert config.pdf_extraction == "fast"
     run = cli.build_parser().parse_args(
-        ["experiment", "run", "f.yaml", "--out-dir", "o"]
+        ["experiment", "run", "f.yaml", "--out", "o"]
     )
     assert run.concurrency == 1 and run.pdf_extraction == "fast"

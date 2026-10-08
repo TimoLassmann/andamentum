@@ -31,12 +31,14 @@ __all__ = [
     "CitationInsertion",
     "CitationSearch",
     "FoundWork",
+    "ParagraphInfo",
     "UnverifiedWork",
     "bind_numbers",
     "check_document",
     "draft_document",
     "find_citation",
     "insert_citation",
+    "list_paragraphs",
     "refresh_numbers",
     "respond_to_reviews",
 ]
@@ -337,3 +339,30 @@ async def insert_citation(
     return CitationInsertion(
         cited=code == 0, output=output if code == 0 else None, message=message
     )
+
+
+class ParagraphInfo(BaseModel):
+    """One body paragraph of a .docx, as ``insert_citation`` addresses it."""
+
+    id: str
+    style: str | None
+    heading_level: int | None
+    text: str
+
+
+async def list_paragraphs(path: str | Path) -> list[ParagraphInfo]:
+    """The paragraphs of a .docx with the ids that ``insert_citation`` takes.
+
+    Reads the file and changes nothing; no model is called. Raises
+    ``WordInputError`` when the file is missing or not a readable .docx.
+    """
+    from andamentum.compose.harness.docx.writer import DocxAdapter
+
+    file = _require_docx(path)
+    view = DocxAdapter().open(file)
+    return [
+        ParagraphInfo(
+            id=p.id, style=p.style, heading_level=p.heading_level, text=p.text
+        )
+        for p in view.paragraphs
+    ]

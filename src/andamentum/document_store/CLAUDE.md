@@ -15,7 +15,7 @@ One SQLite file of documents, searchable. The design rule is **fixed data, flexi
 
 | Script | What it does | LLM? |
 |---|---|---|
-| `andamentum-docstore` | `ingest DB SOURCE...` (harvest → markdown, original bytes kept), `sync DB --embedding-model M`, `search DB QUERY --embedding-model M --reranker-model R`, `get`, `list`, `delete`, `enrich DB NAME` | `ingest`, `get`, `list`, `delete` and the identifiers/facts enrichers need none; `sync` embeds; `search` embeds and reranks; `enrich extract` needs `--model`, `enrich classify` a decision model, `--labels` and `--max-chars`. `--json` on every command that prints a result; exit 1 when `sync` leaves documents unindexed, 2 usage, 3 missing store/source/document, 4 model or network error. `ingest --mode accurate` needs `--figure-model` |
+| `andamentum-docstore` | `ingest DB SOURCE...` (harvest → markdown, original bytes kept), `sync DB --embedding-model M`, `search DB QUERY --embedding-model M --reranker-model R`, `get`, `list`, `delete`, `enrich DB NAME` | `ingest`, `get`, `list`, `delete` and the identifiers/facts enrichers need none; `sync` embeds; `search` embeds and reranks; `enrich extract` needs `--model`, `enrich classify` a decision model, `--labels` and `--max-text-chars`. `--json` on every command that prints a result; exit 1 when `sync` leaves documents unindexed, 2 usage, 3 missing store/source/document, 4 model or network error. `ingest --mode accurate` needs `--figure-model` |
 
 ## Rules the code relies on
 

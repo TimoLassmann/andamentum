@@ -26,8 +26,7 @@ async def review_experts(
     *,
     model: str,
 ) -> list[ExpertReview]:
-    """One independent review per expert profile (semaphore=2, matching
-    v2's calibration). A crashed review leaves a hole that is filtered
+    """One independent review per expert profile (semaphore=2). A crashed review leaves a hole that is filtered
     out — partial success is acceptable; the caller records how many
     were attempted so the aggregate-failure gate can judge the run."""
     sem = asyncio.Semaphore(_MAX_CONCURRENT_REVIEWS)

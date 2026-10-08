@@ -29,12 +29,17 @@ def test_a_model_and_an_embedding_model_are_required(command, capsys):
     capsys.readouterr()
 
 
-def test_the_environment_does_not_supply_the_model(monkeypatch, capsys):
+@pytest.mark.parametrize("command", ["ask", "verify"])
+def test_the_environment_does_not_supply_the_model(command, monkeypatch, capsys):
+    """Mutation: make `--model` fall back to ANDAMENTUM_MAIN_LLM_MODEL (required=False,
+    default from os.environ) and this fails, because exit 2 and the `--model` error vanish.
+    Everything else is given, so only the model can be the missing piece."""
     monkeypatch.setenv("ANDAMENTUM_MAIN_LLM_MODEL", "anthropic:claude-haiku-4-5")
     with pytest.raises(SystemExit) as raised:
-        cli.main(["ask", "a question about evidence", *_search()])
+        cli.main([command, "text", "--embedding-model", "e", *_search()])
     assert raised.value.code == 2
-    capsys.readouterr()
+    err = capsys.readouterr().err
+    assert "--model" in err and "--embedding-model" not in err.split("required:")[-1]
 
 
 def test_ask_without_a_search_address_is_a_usage_error(capsys):

@@ -59,7 +59,7 @@ def showcase_bar():
         x_label="Drug Concentration",
         style="npg",
         journal="nature",
-        output=OUTPUT / "01_bar_expression.pdf",
+        out=OUTPUT / "01_bar_expression.pdf",
     )
 
 
@@ -85,7 +85,7 @@ def showcase_line():
         y_label="Cell Viability (%)",
         style="nejm",
         journal="nature",
-        output=OUTPUT / "02_line_viability.pdf",
+        out=OUTPUT / "02_line_viability.pdf",
     )
 
 
@@ -105,7 +105,7 @@ def showcase_scatter():
         title="CD4+ T Cell Proportion vs IL-6 Levels",
         style="lancet",
         journal="nature",
-        output=OUTPUT / "03_scatter_biomarker.pdf",
+        out=OUTPUT / "03_scatter_biomarker.pdf",
     )
 
 
@@ -129,7 +129,7 @@ def showcase_box():
         y_label="F1 Score",
         style="aaas",
         journal="nature",
-        output=OUTPUT / "04_box_alignment.pdf",
+        out=OUTPUT / "04_box_alignment.pdf",
     )
 
 
@@ -155,7 +155,7 @@ def showcase_violin():
         y_label="log₂(TPM + 1)",
         style="d3",
         journal="nature",
-        output=OUTPUT / "05_violin_expression.pdf",
+        out=OUTPUT / "05_violin_expression.pdf",
     )
 
 
@@ -179,7 +179,7 @@ def showcase_strip():
         y_label="Change in Tumor Volume (%)",
         style="jama",
         journal="nature",
-        output=OUTPUT / "06_strip_clinical.pdf",
+        out=OUTPUT / "06_strip_clinical.pdf",
     )
 
 
@@ -203,7 +203,7 @@ def showcase_swarm():
         y_label="CD8+ T cells (cells/μL)",
         style="okabe_ito",
         journal="nature",
-        output=OUTPUT / "07_swarm_immune.pdf",
+        out=OUTPUT / "07_swarm_immune.pdf",
     )
 
 
@@ -223,7 +223,7 @@ def showcase_histogram():
         x_label="p-value",
         style="aaas",
         journal="nature",
-        output=OUTPUT / "08_histogram_pvalues.pdf",
+        out=OUTPUT / "08_histogram_pvalues.pdf",
     )
 
 
@@ -251,7 +251,7 @@ def showcase_heatmap():
         title="Drug Sensitivity Correlation",
         style="npg",
         journal="nature",
-        output=OUTPUT / "09_heatmap_correlation.pdf",
+        out=OUTPUT / "09_heatmap_correlation.pdf",
     )
 
 
@@ -272,7 +272,7 @@ def showcase_auto():
         y_label="Migration Rate (μm/h)",
         style="npg",
         journal="nature",
-        output=OUTPUT / "10_auto_migration.pdf",
+        out=OUTPUT / "10_auto_migration.pdf",
     )
 
 
@@ -292,7 +292,7 @@ def showcase_presentation():
         y_label="Revenue ($M)",
         style="d3",
         mode="showcase",
-        output=OUTPUT / "11_showcase_presentation.pdf",
+        out=OUTPUT / "11_showcase_presentation.pdf",
     )
 
 

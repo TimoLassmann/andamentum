@@ -8,7 +8,7 @@ quote each one") — a task the same model does reliably, returning the same
 shape every run.
 
 Reach for checklist mode when the question is *"run the standard check"*:
-pre-submission sweeps, comparing draft v2 against v3, anything on a schedule.
+pre-submission sweeps, comparing one draft version against the next, anything on a schedule.
 Reach for review mode when the question is *"help me improve this draft"* — the
 cascade threads findings forward, asks open questions, and notices defects no
 taxonomy names. Neither replaces the other; the cost of having both is one

@@ -1,8 +1,7 @@
-"""Panel-mode graph for v3.
+"""Panel-mode graph.
 
-Five-node pydantic-graph chain — same shape as v2's panel pipeline,
-minus the harvest/chunk substrate (run_panel receives already-
-harvested markdown the same way run_review does):
+Five-node pydantic-graph chain (run_panel receives already-harvested
+markdown the same way run_review does):
 
     Sectionize → ExtractKeywords → GenerateExpertPanel → ExpertReview
        (D)            (A)                    (A)               (A)
@@ -12,8 +11,7 @@ harvested markdown the same way run_review does):
 D = deterministic, A = agent. ExtractKeywords is skipped (no LLM call)
 when the caller supplies ``panel_disciplines`` explicitly. Each node is
 thin — read surfaces, call one engine-free worker, assign, return the
-successor; the fan-outs (2-concurrent semaphore, matching v2's
-calibration) live inside the workers (``generate_panel``,
+successor; the fan-outs (2-concurrent semaphore) live inside the workers (``generate_panel``,
 ``review_experts``) and the node's assignment is the sole State-write
 site for each gather join.
 
@@ -29,7 +27,7 @@ Cost shape: ``2N + 2`` LLM calls per run (default 10 at N=4):
   - N expert_generator (one per discipline, semaphore=2)
   - N expert_reviewer (one per expert, semaphore=2)
   - 1 panel_synthesise
-Call counting flows through the shared ``v3._metrics`` contextvar (the
+Call counting flows through the shared ``pipeline._metrics`` contextvar (the
 workers bump it after each agent run), same as the main review graph.
 
 Per-node failure isolation: profile / review generation crashes leave
@@ -263,7 +261,7 @@ async def run_panel(
     panel_disciplines: list[str] | None = None,
     confirm_own_draft: bool = False,
 ) -> ReviewResult:
-    """Run a v3 panel review over already-harvested markdown.
+    """Run a panel review over already-harvested markdown.
 
     Returns a `ReviewResult` whose panel-specific fields are populated;
     the criterion-cascade fields stay empty.
@@ -304,7 +302,7 @@ async def run_panel(
             markdown if confidentiality_text is None else confidentiality_text
         )
 
-    # Per-run metric counters live in the shared v3 contextvar; the
+    # Per-run metric counters live in the shared metrics contextvar; the
     # panel workers bump them after each agent run. Read at End time.
     from .._metrics import start_run
 

@@ -85,7 +85,7 @@ class TestFigureAutoHorizontal:
         result = figure(
             data=_long_label_data(),
             kind="bar",
-            output=str(tmp_path / "auto.png"),
+            out=str(tmp_path / "auto.png"),
         )
         assert (tmp_path / "auto.png").exists()
         assert any("horizontal" in note.lower() for note in result.advisor_notes), (
@@ -96,7 +96,7 @@ class TestFigureAutoHorizontal:
         result = figure(
             data=_short_label_data(),
             kind="bar",
-            output=str(tmp_path / "vert.png"),
+            out=str(tmp_path / "vert.png"),
         )
         assert (tmp_path / "vert.png").exists()
         assert not any(
@@ -109,7 +109,7 @@ class TestFigureAutoHorizontal:
             data=_short_label_data(),
             kind="bar",
             horizontal=True,
-            output=str(tmp_path / "h.png"),
+            out=str(tmp_path / "h.png"),
         )
         assert (tmp_path / "h.png").exists()
         # Explicit user choice → no auto-selected note.
@@ -120,7 +120,7 @@ class TestFigureAutoHorizontal:
             data=_long_label_data(),
             kind="bar",
             horizontal=False,
-            output=str(tmp_path / "forced_v.png"),
+            out=str(tmp_path / "forced_v.png"),
         )
         assert (tmp_path / "forced_v.png").exists()
         # User overrode auto-pick despite long labels — surface a warning note.
@@ -143,7 +143,7 @@ class TestFigureAxisLabels:
             data={"Group": ["alpha", "beta", "gamma"], "Score": [1.0, 2.0, 3.0]},
             kind="bar",
             horizontal=True,
-            output=str(tmp_path / "h_labels.png"),
+            out=str(tmp_path / "h_labels.png"),
         )
         assert Path(result.path).exists()
 
@@ -163,7 +163,7 @@ def test_orientation_by_data_shape(tmp_path, n_cats, label_len, expect_horizonta
     result = figure(
         data={"Cat": labels, "Count": counts},
         kind="bar",
-        output=str(tmp_path / "p.png"),
+        out=str(tmp_path / "p.png"),
     )
     auto_horizontal = any(
         "auto-selected horizontal" in n.lower() for n in result.advisor_notes

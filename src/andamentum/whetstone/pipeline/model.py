@@ -1,4 +1,4 @@
-"""The v3 document model — the compact, verified representation of a draft.
+"""The document model — the compact, verified representation of a draft.
 
 Built once per run. The ONLY thing an LLM extracts is claims (verbatim spans);
 everything else (gists, the citation summary) is deterministic. Support /

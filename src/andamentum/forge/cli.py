@@ -44,6 +44,11 @@ _ABOUT = (
     "Forge refuses apps, agents and services, which keep running and are "
     "driven from outside."
 )
+_ABOUT_DESIGN = (
+    "Validate a design for a function package from a plain-language brief; "
+    "writes nothing. Forge refuses apps, agents and services, which keep "
+    "running and are driven from outside."
+)
 
 
 def _print_summary(result: ForgeResult) -> None:
@@ -157,7 +162,7 @@ def build_parser() -> argparse.ArgumentParser:
     design = sub.add_parser(
         "design",
         help="Produce the validated design only; writes no files",
-        description=_ABOUT,
+        description=_ABOUT_DESIGN,
         epilog=_EXIT_CODES,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -221,7 +226,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             run_forge(
                 brief,
                 model=args.model,
-                dest=dest,
+                out=dest,
                 stop_after=stop_after,
                 sandbox_backend=sandbox,
                 reporter=reporter,

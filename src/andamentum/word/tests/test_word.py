@@ -18,7 +18,7 @@ from andamentum.compose.harness.tests.test_bindings_bind import PICKS, StubModel
 from andamentum.word import cli
 
 WRITERS = ("check", "respond", "refresh", "bind-numbers", "draft", "insert-citation")
-PRINTERS = ("find-citation", "mcp")
+PRINTERS = ("find-citation", "paragraphs", "mcp")
 
 
 def _subparsers(parser: argparse.ArgumentParser) -> dict[str, argparse.ArgumentParser]:
@@ -158,6 +158,52 @@ def test_the_writers_create_files_only_inside_out(tmp_path, monkeypatch, capsys)
     assert after_inputs == before_inputs  # nothing next to the input, input unchanged
 
 
+#: A statistics error the offline checks find: t(20) = 2.10 cannot give p = .90.
+_PLANTED = [
+    ("Pilot", "Heading1"),
+    ("The group difference was large (t(20) = 2.10, p = .90) in the pilot sample.", None),
+]
+
+
+def test_a_planted_error_exits_1_and_still_writes_the_report(tmp_path, capsys):
+    """Mutation: make `check` return 0 whatever the report holds (or write nothing
+    when errors are found) and this fails."""
+    paper = make_manuscript(tmp_path / "paper.docx", _PLANTED)
+    out = tmp_path / "o"
+    assert cli.main(["check", str(paper), "-o", str(out), "--offline"]) == 1
+    capsys.readouterr()
+    report = json.loads((out / "paper.checked.json").read_text())
+    assert report["counts"]["error"] >= 1
+    assert (out / "paper.checked.md").is_file() and (out / "paper.checked.docx").is_file()
+
+
+def test_a_clean_document_exits_0(tmp_path, capsys):
+    paper = make_manuscript(
+        tmp_path / "paper.docx", [("Pilot", "Heading1"), ("Nothing numeric here.", None)]
+    )
+    assert cli.main(["check", str(paper), "-o", str(tmp_path / "o"), "--offline"]) == 0
+    capsys.readouterr()
+
+
+def test_offline_makes_no_network_call(tmp_path, monkeypatch, capsys):
+    """Mutation: let an offline check open a socket (e.g. run the citation lookup
+    despite --offline) and the raising connect turns the exit code into 4."""
+    import socket
+
+    import httpx
+
+    def refuse(*_a, **_k):
+        raise AssertionError("network used under --offline")
+
+    monkeypatch.setattr(socket.socket, "connect", refuse)
+    monkeypatch.setattr(socket, "create_connection", refuse)
+    monkeypatch.setattr(httpx.HTTPTransport, "handle_request", refuse)
+    monkeypatch.setattr(httpx.AsyncHTTPTransport, "handle_async_request", refuse)
+    paper = make_manuscript(tmp_path / "paper.docx", _PLANTED)
+    assert cli.main(["check", str(paper), "-o", str(tmp_path / "o"), "--offline"]) == 1
+    capsys.readouterr()
+
+
 def test_json_prints_the_result_instead_of_text(tmp_path, capsys):
     paper = make_manuscript(tmp_path / "paper.docx")
     code = cli.main(
@@ -186,7 +232,7 @@ async def test_the_python_functions_write_only_into_out(tmp_path):
 def test_the_public_surface():
     import andamentum.word as word
 
-    assert set(word.__all__) >= {
+    assert set(word.__all__) == {
         "check_document",
         "respond_to_reviews",
         "refresh_numbers",
@@ -194,8 +240,22 @@ def test_the_public_surface():
         "draft_document",
         "find_citation",
         "insert_citation",
+        "CheckRun",
+        "RespondRun",
+        "RefreshRun",
+        "BindRun",
+        "DraftResult",
+        "CitationSearch",
+        "FoundWork",
+        "UnverifiedWork",
+        "CitationInsertion",
         "WordError",
+        "WordUsageError",
+        "WordInputError",
+        "list_paragraphs",
+        "ParagraphInfo",
     }
+    assert len(word.__all__) == len(set(word.__all__))
     for name in word.__all__:
         assert getattr(word, name) is not None
     assert EFFECT  # the synthetic helper text is shared with the harness tests

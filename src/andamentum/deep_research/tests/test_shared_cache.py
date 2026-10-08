@@ -149,7 +149,7 @@ def test_a_no_redistribute_entry_is_cached_locally_and_never_exported() -> None:
 
 def test_the_cache_option_is_wired_in_the_bench_and_the_command_line() -> None:
     run = bench_cli.build_parser().parse_args(
-        ["experiment", "run", "e.yaml", "--out-dir", "o", "--cache", "c.db"]
+        ["experiment", "run", "e.yaml", "--out", "o", "--cache", "c.db"]
     )
     assert run.cache == Path("c.db")
     one = research_cli.build_parser().parse_args(

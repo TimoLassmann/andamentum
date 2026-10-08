@@ -363,6 +363,23 @@ _HTML_TEMPLATE = """\
 # ---------------------------------------------------------------------------
 
 
+_FENCE = re.compile(r"^\s*(```|~~~)")
+_H1 = re.compile(r"^#[ \t]+(.+?)[ \t]*#*[ \t]*$")
+
+
+def _first_markdown_heading(markdown: str) -> str | None:
+    """The text of the first top-level (``#``) heading outside a fenced code block."""
+    fenced = False
+    for line in markdown.splitlines():
+        if _FENCE.match(line):
+            fenced = not fenced
+        elif not fenced:
+            match = _H1.match(line)
+            if match:
+                return match.group(1)
+    return None
+
+
 def render(
     document: list[dict[str, object]] | str,
     *,
@@ -400,6 +417,12 @@ def render(
         raw_atoms = document
 
     validated = validate_document(list(raw_atoms))
+
+    # A markdown string is one prose atom: its title is its first "# " heading.
+    if title is None and isinstance(document, str):
+        heading = _first_markdown_heading(document)
+        if heading is not None:
+            title = re.sub(r"<[^>]+>", "", _strip_p(_md(heading))).strip() or None
 
     # Auto-detect title from first heading atom.
     if title is None:

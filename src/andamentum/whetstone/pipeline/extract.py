@@ -170,5 +170,5 @@ async def build_claims(
         for quote, span in verified:
             n += 1
             claims.append(Claim(id=f"c{n}", quote=quote, span=span))
-    logger.info("[v3] %d verified claim(s)", len(claims))
+    logger.info("%d verified claim(s)", len(claims))
     return claims

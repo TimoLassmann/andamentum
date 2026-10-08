@@ -9,7 +9,7 @@ The meta-pipeline is itself a dialect-conforming ``pydantic-graph`` system (see
 ``graph.py``): thin orchestrator steps over engine-free workers, agents as data, a
 single operator-trusted branch, bounded fan-out, a typed ``ForgeResult``.
 
-Public surface (``__all__``): ``run_forge(brief, *, model, dest=None, stop_after=...)``
+Public surface (``__all__``): ``run_forge(brief, *, model, out=None, stop_after=...)``
 designs (and optionally renders, builds and audits) a small function package from a
 brief and returns a ``ForgeResult``; ``SystemSpec`` is the validated design; the errors
 derive from ``ForgeError``. The workers (``render``, ``compile_spec``, ``verify_package``,

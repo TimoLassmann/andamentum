@@ -1,11 +1,11 @@
 """``andamentum-word``: work on an existing Word file.
 
 Subcommands: ``check``, ``respond``, ``refresh``, ``bind-numbers``,
-``draft``, ``find-citation``, ``insert-citation`` and ``mcp``. The input file
+``draft``, ``find-citation``, ``paragraphs``, ``insert-citation`` and ``mcp``. The input file
 is never edited. A subcommand that writes puts an edited copy, a report and
 ``state/`` (what a later run into the same folder picks up) into the folder
-named by ``-o/--out``, and nothing anywhere else; ``find-citation`` only
-prints.
+named by ``-o/--out``, and nothing anywhere else; ``find-citation`` and
+``paragraphs`` only print.
 
 Exit codes: 0 success, 1 the run finished with a negative result (errors found
 in the document, something left for the authors, a work that did not verify;
@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import sys
 import traceback
 from collections.abc import Sequence
@@ -43,8 +44,9 @@ def _out(parser: argparse.ArgumentParser, *, what: str) -> None:
         type=Path,
         required=True,
         metavar="DIR",
-        help=f"folder to write into: {what}, the report and state/ "
-        "(nothing is written anywhere else)",
+        help=f"folder to write into: {what}, the report and a state/ subfolder "
+        "(the folder keeps state/ so a later run, for example refresh after "
+        "bind-numbers, finds the earlier results); nothing is written anywhere else",
     )
 
 
@@ -128,6 +130,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     check.add_argument(
         "--decision-model",
+        metavar="MODEL",
         help="local decision model for the citation pre-gate",
     )
     _mailto(check)
@@ -152,6 +155,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     respond.add_argument(
         "--decision-model",
+        metavar="MODEL",
         help="local decision model that triages instead of --model when it is sure",
     )
     respond.add_argument(
@@ -278,6 +282,15 @@ def build_parser() -> argparse.ArgumentParser:
     _mailto(find)
     _json(find)
 
+    paragraphs = add(
+        "paragraphs",
+        "List the paragraphs of a .docx with their ids (what insert-citation "
+        "needs); prints the list and writes nothing.",
+        "andamentum-word paragraphs paper.docx",
+    )
+    _file(paragraphs, what="list")
+    _json(paragraphs)
+
     insert = add(
         "insert-citation",
         "Cite verified works at a place in a .docx, as tracked changes in a copy.",
@@ -290,7 +303,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--paragraph-id",
         required=True,
         metavar="ID",
-        help="id of the paragraph to cite in (as 'mcp' open_document shows it)",
+        help="id of the paragraph to cite in; list the ids with "
+        "'andamentum-word paragraphs FILE.docx'",
     )
     insert.add_argument(
         "--at",
@@ -488,6 +502,22 @@ async def _dispatch(args: argparse.Namespace) -> int:
                 print(f"not verified: {work.title or work.doi}: {work.reason}")
             if not found.verified and not found.unverified:
                 print("no works found")
+        return EXIT_OK
+
+    if command == "paragraphs":
+        items = await word.list_paragraphs(args.file)
+        if args.json:
+            print(json.dumps([item.model_dump() for item in items], indent=2))
+        else:
+            for item in items:
+                if item.heading_level is not None:
+                    kind = f"heading {item.heading_level}"
+                else:
+                    kind = item.style or "body"
+                start = " ".join(item.text.split())
+                if len(start) > 60:
+                    start = start[:60] + "..."
+                print(f"{item.id}  [{kind}]  {start}")
         return EXIT_OK
 
     if command == "insert-citation":
