@@ -29,7 +29,7 @@ def _refused(argv: list[str], capsys: pytest.CaptureFixture[str]) -> str:
 
 def test_there_is_one_novelty_engine_and_no_flag_to_choose_it() -> None:
     with pytest.raises(SystemExit):
-        _args([*NOVELTY, "--novelty-engine", "v2"])
+        _args([*NOVELTY, "--novelty-engine", "research"])
     assert not hasattr(_args(NOVELTY), "novelty_engine")
 
 

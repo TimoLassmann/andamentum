@@ -14,7 +14,7 @@ import httpx
 import pytest
 
 from andamentum.core import fetch_gate, url_safety
-from andamentum.deep_research import cli as v2_cli
+from andamentum.deep_research import cli as research_cli
 from andamentum.deep_research.bench import cli as bench_cli
 from andamentum.deep_research.sources import SourceClient, SourceConfig, SourceError
 from andamentum.deep_research.sources.base import process_pacing
@@ -152,7 +152,7 @@ def test_the_cache_option_is_wired_in_the_bench_and_the_command_line() -> None:
         ["experiment", "run", "e.yaml", "--out-dir", "o", "--cache", "c.db"]
     )
     assert run.cache == Path("c.db")
-    one = v2_cli.build_parser().parse_args(
+    one = research_cli.build_parser().parse_args(
         ["q", "--mode", "web", "--model", "m", "--cache", "c.db"]
     )
     assert one.cache == "c.db"

@@ -1401,12 +1401,12 @@ def _web_candidate(url, title, snippet, domain):
 
 
 def _install_fake_source(monkeypatch, *, results, pages, search_error=None):
-    """Patch v2's WebSource with a canned async source.
+    """Patch the WebSource with a canned async source.
 
     ``pages`` maps url -> text or an Exception to raise on fetch. Returns the
     list of keyword arguments the provider built the source with.
     """
-    import andamentum.deep_research.sources as v2_sources
+    import andamentum.deep_research.sources as research_sources
     from andamentum.deep_research.sources import FetchedText
 
     built: list[dict] = []
@@ -1428,7 +1428,7 @@ def _install_fake_source(monkeypatch, *, results, pages, search_error=None):
                 return None
             return FetchedText(source="web", url=work.url, text=page)
 
-    monkeypatch.setattr(v2_sources, "WebSource", _FakeSource)
+    monkeypatch.setattr(research_sources, "WebSource", _FakeSource)
     return built
 
 

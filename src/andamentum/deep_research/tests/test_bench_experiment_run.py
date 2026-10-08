@@ -214,8 +214,8 @@ def small_experiment(*, repeats: int = 2, arms: list[dict] | None = None) -> Exp
             "sets": [{"name": "simpleqa", "n": 4, "seed": 0}],
             "arms": arms
             or [
-                {"name": "base", "system": "v2", "model": "ollama:m"},
-                {"name": "other", "system": "v2", "model": "ollama:m"},
+                {"name": "base", "system": "research", "model": "ollama:m"},
+                {"name": "other", "system": "research", "model": "ollama:m"},
             ],
             "baselines": {"simpleqa": "base"},
             "rules": [
@@ -281,7 +281,7 @@ def test_each_set_needs_its_directory() -> None:
             "registered": "2026-10-08",
             "grader": "g",
             "sets": [{"name": "simpleqa", "n": 2}, {"name": "litsearch-web", "n": 2}],
-            "arms": [{"name": "a", "system": "v2", "model": "m"}],
+            "arms": [{"name": "a", "system": "research", "model": "m"}],
             "baselines": {"simpleqa": "a"},
         }
     )
@@ -543,8 +543,13 @@ async def test_an_arm_that_records_outages_goes_on_and_has_no_metrics(
     exp = small_experiment(
         repeats=1,
         arms=[
-            {"name": "base", "system": "v2", "model": "ollama:m"},
-            {"name": "other", "system": "v2", "model": "ollama:m", "outage": "record"},
+            {"name": "base", "system": "research", "model": "ollama:m"},
+            {
+                "name": "other",
+                "system": "research",
+                "model": "ollama:m",
+                "outage": "record",
+            },
         ],
     )
     arms = {
@@ -631,8 +636,8 @@ def litsearch_experiment() -> Experiment:
             "resamples": 200,
             "sets": [{"name": "litsearch-web", "n": 3, "seed": 0}],
             "arms": [
-                {"name": "base", "system": "v2", "model": "ollama:m"},
-                {"name": "other", "system": "v2", "model": "ollama:m"},
+                {"name": "base", "system": "research", "model": "ollama:m"},
+                {"name": "other", "system": "research", "model": "ollama:m"},
             ],
             "baselines": {"litsearch-web": "base"},
         }
@@ -699,7 +704,9 @@ async def test_each_cell_writes_its_run_log_beside_the_registry(
     assert md.is_file() and md.with_name(f"{record.item_id}-r1.log.jsonl").is_file()
     jsonl = md.with_name(f"{record.item_id}-r1.log.jsonl").read_text(encoding="utf-8")
     assert RunLog.from_jsonl(jsonl).run_id == "r1"
-    assert not (out / "logs" / "base").exists()  # the legacy arm has no log
+    assert not (
+        out / "logs" / "base"
+    ).exists()  # an arm that writes no log leaves no folder
     # the registry itself holds no log
     assert "config" not in registry_path(out).read_text(encoding="utf-8")
 
@@ -728,8 +735,8 @@ async def test_a_failed_cell_writes_the_partial_log_its_error_carries(
 # -- building the arms ---------------------------------------------------------------
 
 
-def test_the_v2_arm_takes_the_mode_the_sources_and_the_arms_name() -> None:
-    spec = ArmSpec(name="new-engine", system="v2", model="ollama:m")
+def test_the_research_arm_takes_the_mode_the_sources_and_the_arms_name() -> None:
+    spec = ArmSpec(name="new-engine", system="research", model="ollama:m")
     sources = SourceConfig(browser_cdp_url="http://127.0.0.1:9222")
     arm = build_answer_arm(spec, "scholarly", Services(source_config=sources))
     assert arm.name == "new-engine"
@@ -741,7 +748,7 @@ def test_the_arm_record_names_the_system_and_the_model_only() -> None:
     record = arm_record(exp, exp.arm("other"))
     assert record.model_dump() == {
         "name": "other",
-        "system": "v2",
+        "system": "research",
         "model": "ollama:m",
         "repeats": 2,
         "solo": None,
@@ -813,12 +820,12 @@ def test_the_cli_keeps_the_run_flags_and_drops_the_old_ones() -> None:
             "--only-sets",
             "simpleqa",
             "--arm",
-            "legacy",
+            "research",
             "--pdf-extraction",
             "docling",
         ]
     )
-    assert args.concurrency == 3 and args.arm == ["legacy"]
+    assert args.concurrency == 3 and args.arm == ["research"]
     assert args.only_sets == ["simpleqa"] and args.pdf_extraction == "docling"
     for old in (
         ["--embedding-model", "x"],
@@ -894,7 +901,12 @@ def test_a_web_probe_is_needed_only_when_an_arm_that_stops_searches_the_web() ->
             **exp.model_dump(mode="json"),
             "rules": [],
             "arms": [
-                {"name": "other", "system": "v2", "model": "ollama:m", "outage": "record"}
+                {
+                    "name": "other",
+                    "system": "research",
+                    "model": "ollama:m",
+                    "outage": "record",
+                }
             ],
             "baselines": {"simpleqa": "other"},
         }

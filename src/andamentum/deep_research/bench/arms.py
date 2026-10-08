@@ -5,7 +5,7 @@ text, the claims with the evidence behind them, the links, the ranked works,
 and what the run cost. The arm is ``research()``, mapped onto this record, so
 every metric is computed by one piece of code from the same fields.
 
-The v2 arm calls ``research()`` with ``store=None``, so nothing persists
+The research arm calls ``research()`` with ``store=None``, so nothing persists
 between questions and every question pays for its own searches.
 """
 
@@ -50,14 +50,14 @@ class ArmOutput(BaseModel):
     result: ResearchResult | None = Field(
         default=None,
         description=(
-            "v2 only: the run's evidence table (passages and the log left out)."
+            "Research arms only: the run's evidence table (passages and the log left out)."
         ),
     )
     log: RunLog | None = Field(
         default=None,
         exclude=True,
         description=(
-            "v2 only: the run log, kept out of every dump (the registry would "
+            "Research arms only: the run log, kept out of every dump (the registry would "
             "grow by megabytes); an experiment writes it as files of its own."
         ),
     )
@@ -71,7 +71,7 @@ class AnswerArm(Protocol):
     async def run(self, question: str) -> ArmOutput: ...
 
 
-# -- v2 -----------------------------------------------------------------------------
+# -- the research arm ------------------------------------------------------------
 
 
 def report_claims(result: ResearchResult) -> tuple[list[ClaimEvidence], int]:
@@ -107,8 +107,8 @@ def report_claims(result: ResearchResult) -> tuple[list[ClaimEvidence], int]:
     return claims, unsourced
 
 
-def map_v2(result: ResearchResult) -> ArmOutput:
-    """The v2 result as an :class:`ArmOutput`."""
+def map_research(result: ResearchResult) -> ArmOutput:
+    """The research result as an :class:`ArmOutput`."""
     claims, unsourced = report_claims(result)
     by_id = {w.work_id: w for w in result.works}
     cited_links = [
@@ -144,8 +144,8 @@ def map_v2(result: ResearchResult) -> ArmOutput:
     )
 
 
-class V2Arm:
-    """v2's ``research()`` in one mode.
+class ResearchArm:
+    """The engine's ``research()`` in one mode.
 
     The run keeps nothing between questions (``store=None``). ``http_cache`` is
     a shared read-through HTTP cache for the runs.
@@ -161,7 +161,7 @@ class V2Arm:
         http_cache: ResearchStore | None = None,
         name: str | None = None,
     ) -> None:
-        self.name = name or f"v2-{mode}"
+        self.name = name or f"research-{mode}"
         self.mode: Mode = mode
         self.model = model
         self.sources = sources
@@ -178,4 +178,4 @@ class V2Arm:
             sources=self.sources,
             http_cache=self.http_cache,
         )
-        return map_v2(result)
+        return map_research(result)

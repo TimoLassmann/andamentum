@@ -240,7 +240,7 @@ class Research(BaseNode[ComposeState, ComposeDeps, ComposeResult]):
                 node="Research",
                 role="drafter",
                 model=deps.roles.drafter,
-                prompt="deep_research v2",
+                prompt="deep_research",
                 input_text=deps.task,
                 output_text=result.run_id,
                 input_tokens=result.stats.input_tokens,

@@ -1,4 +1,4 @@
-"""A novelty check on the v2 engine: prior work is what a finding says, not a guess.
+"""A novelty check on the research engine: prior work is what a finding says, not a guess.
 
 ``run_novelty_check(claim, ...)`` searches the scholarly sources for work that
 may already report *claim* (a ``research`` run in mode ``scholarly``), then asks
@@ -74,6 +74,7 @@ class NoveltyReport:
     sources: list[str] = field(default_factory=list)  # All URLs consulted
     search_queries_used: list[str] = field(default_factory=list)
 
+
 # A finding anticipates the claim from p >= 0.5; it is direct prior work from 0.8.
 ANTICIPATES_AT = 0.5
 DIRECT_AT = 0.8
@@ -102,7 +103,7 @@ class _Judgement(BaseModel):
 
 @dataclass(frozen=True)
 class NoveltyResearch:
-    """How a caller asks for the v2 novelty check: where the sources are and
+    """How a caller asks for the novelty check: where the sources are and
     where the research store lives (``None`` keeps it in memory)."""
 
     sources: SourceConfig = SourceConfig()

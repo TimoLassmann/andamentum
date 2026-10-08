@@ -94,7 +94,7 @@ class WriteParams(BaseModel):
     )
     research: bool = Field(
         default=False,
-        description="research the task once (deep_research v2) and cite what it "
+        description="research the task once (deep_research) and cite what it "
         "finds: claims quoted from real passages; the genre picks the sources",
     )
     research_mode: Literal["web", "scholarly", "both"] | None = Field(

@@ -6,8 +6,7 @@ answers HTTP 200 with no results and names the engines in
 ``unresponsive_engines``, a list of ``[engine, reason]`` pairs. That reply
 says nothing about the web, so it must never read as "no results".
 
-Every SearxNG query of the package goes through :func:`searxng_query`, the legacy
-``HttpxSearchBackend`` and the v2 web source alike:
+Every SearxNG query of the package goes through :func:`searxng_query`:
 
 - empty results with an unresponsive engine raise :class:`SearchEnginesBlocked`
   (never cached);
@@ -19,7 +18,7 @@ Every SearxNG query of the package goes through :func:`searxng_query`, the legac
 - queries are spaced ``SEARXNG_MIN_INTERVAL_S`` apart by the shared client's
   per-source limiter (``DEFAULT_INTERVAL_S["web"]``), a process-wide gate.
 
-This module imports no other part of the package at run time, so the v2 client
+This module imports no other part of the package at run time, so the source client
 can take its constants without a cycle.
 """
 

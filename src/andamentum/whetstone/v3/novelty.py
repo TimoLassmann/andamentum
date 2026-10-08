@@ -9,7 +9,7 @@ agent-with-tool shape v2 used worked but had three problems:
   * difficult to benchmark (no reproducible flag-set + budget)
 
 The three-node split gives reproducible flag-set, bounded search budget,
-and explicit cost shape: 1 LLM call (extract) + N deep_research v2 checks
+and explicit cost shape: 1 LLM call (extract) + N deep_research checks
 (one per target, max novelty_target_cap=8 by default) + 0 LLM calls in
 the pure adapter (judge_novelty).
 
@@ -22,7 +22,7 @@ Only contradicted claims (is_novel=False) become findings; the v2
 
 No on-disk cache. The v2 ``~/.cache/whetstone/novelty/`` cache is
 intentionally dropped — per the project rule against hidden home-dir
-state. Repeated runs re-query deep_research v2; users who want caching
+state. Repeated runs re-query deep_research; users who want caching
 should run novelty at a coarser cadence than the full review loop.
 """
 
@@ -245,7 +245,7 @@ async def run_novelty_searches(
     search_depth: int = _DEFAULT_SEARCH_DEPTH,
     research: "NoveltyResearch | None" = None,
 ) -> list[NoveltyEvidence]:
-    """The deep_research v2 novelty check over targets, with per-target failure
+    """The deep_research novelty check over targets, with per-target failure
     isolation. Order of results matches the order of ``targets``.
 
     The targets run one after another over one research store, so works and

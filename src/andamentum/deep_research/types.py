@@ -1,4 +1,4 @@
-"""The data a v2 research run reads and produces. Flat, JSON-serialisable.
+"""The data a research run reads and produces. Flat, JSON-serialisable.
 
 A run is a table of evidence, not a piece of prose: sub-questions, the works
 found, verbatim passages, findings that quote a passage (or say, honestly, that

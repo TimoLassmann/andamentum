@@ -8,8 +8,8 @@ No language model is involved and nothing is clicked: a search page has a
 fixed structure, so reading it is code.
 
 Every browser search of the package goes through :func:`browser_query`, which
-returns the same :class:`SearxPage` as ``searxng_query``, so the legacy
-``HttpxSearchBackend`` and the v2 web source read its results unchanged:
+returns the same :class:`SearxPage` as ``searxng_query``, so the web source
+reads the results of either unchanged:
 
 - DuckDuckGo's HTML page is asked first; when it shows a bot check instead of
   results, Bing is asked, and the page names DuckDuckGo as unresponsive (its

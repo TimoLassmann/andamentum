@@ -113,8 +113,8 @@ def cloud_experiment() -> Experiment:
     return small_experiment(
         repeats=2,
         arms=[
-            {"name": "base", "system": "v2", "model": CLOUD},
-            {"name": "other", "system": "v2", "model": CLOUD},
+            {"name": "base", "system": "research", "model": CLOUD},
+            {"name": "other", "system": "research", "model": CLOUD},
         ],
     ).model_copy(update={"grader": "ollama:invented-grader-cloud"})
 
@@ -202,7 +202,9 @@ def test_the_cli_refuses_concurrency_for_a_local_model(
         "name": "local",
         "registered": "2026-10-08",
         "sets": [{"name": "litsearch-web", "n": 2}],
-        "arms": [{"name": "a", "system": "v2", "model": "ollama:gemma4:31b-nvfp4"}],
+        "arms": [
+            {"name": "a", "system": "research", "model": "ollama:gemma4:31b-nvfp4"}
+        ],
         "baselines": {"litsearch-web": "a"},
     }
     path = tmp_path / "exp.yaml"

@@ -395,8 +395,8 @@ def small_experiment() -> Experiment:
             "grader": "ollama:invented-grader-cloud",
             "sets": [{"name": "simpleqa", "n": 4, "seed": 0}],
             "arms": [
-                {"name": "base", "system": "v2", "model": "ollama:m"},
-                {"name": "new-engine", "system": "v2", "model": "ollama:m"},
+                {"name": "base", "system": "research", "model": "ollama:m"},
+                {"name": "new-engine", "system": "research", "model": "ollama:m"},
             ],
             "baselines": {"simpleqa": "base"},
         }
@@ -539,7 +539,7 @@ async def test_litsearch_rows_name_the_stage_each_gold_work_was_lost_at(
             "registered": "2026-10-08",
             "resamples": 200,
             "sets": [{"name": "litsearch-web", "n": 4, "seed": 0}],
-            "arms": [{"name": "new-engine", "system": "v2", "model": "ollama:m"}],
+            "arms": [{"name": "new-engine", "system": "research", "model": "ollama:m"}],
             "baselines": {"litsearch-web": "new-engine"},
         }
     )

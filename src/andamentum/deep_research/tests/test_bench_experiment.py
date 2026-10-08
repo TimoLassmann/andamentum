@@ -38,8 +38,8 @@ def small(**changes: object) -> dict[str, object]:
         "grader": "grader-model",
         "sets": [{"name": "simpleqa", "n": 3}],
         "arms": [
-            {"name": "base", "system": "v2", "model": "m"},
-            {"name": "other", "system": "v2", "model": "m"},
+            {"name": "base", "system": "research", "model": "m"},
+            {"name": "other", "system": "research", "model": "m"},
         ],
         "baselines": {"simpleqa": "base"},
         "rules": [],
@@ -63,9 +63,9 @@ def test_an_arm_spec_has_only_the_final_fields() -> None:
     }
     with pytest.raises(ValueError, match="Extra inputs"):
         ArmSpec.model_validate(
-            {"name": "a", "system": "v2", "model": "m", "preset": "hybrid"}
+            {"name": "a", "system": "research", "model": "m", "preset": "hybrid"}
         )
-    with pytest.raises(ValueError, match="legacy|v2"):
+    with pytest.raises(ValueError, match="system"):
         ArmSpec.model_validate({"name": "a", "system": "bm25", "model": "m"})
 
 
@@ -92,7 +92,7 @@ def test_both_systems_run_on_both_sets() -> None:
         )
     )
     assert [a.name for a in exp.arms_on("litsearch-web")] == ["base", "other"]
-    restricted = ArmSpec(name="r", system="v2", model="m", sets=["simpleqa"])
+    restricted = ArmSpec(name="r", system="research", model="m", sets=["simpleqa"])
     assert restricted.runs_on("simpleqa") and not restricted.runs_on("litsearch-web")
 
 
@@ -119,8 +119,8 @@ def test_the_grader_must_not_be_an_arms_own_model() -> None:
         (
             {
                 "arms": [
-                    {"name": "a", "system": "v2", "model": "m"},
-                    {"name": "a", "system": "v2", "model": "m"},
+                    {"name": "a", "system": "research", "model": "m"},
+                    {"name": "a", "system": "research", "model": "m"},
                 ],
                 "baselines": {"simpleqa": "a"},
             },
@@ -128,7 +128,7 @@ def test_the_grader_must_not_be_an_arms_own_model() -> None:
         ),
         (
             {
-                "arms": [{"name": "a", "system": "v2"}],
+                "arms": [{"name": "a", "system": "research"}],
                 "baselines": {"simpleqa": "a"},
             },
             "model",
@@ -138,7 +138,7 @@ def test_the_grader_must_not_be_an_arms_own_model() -> None:
                 "arms": [
                     {
                         "name": "a",
-                        "system": "v2",
+                        "system": "research",
                         "model": "m",
                         "sets": ["litsearch"],
                     },

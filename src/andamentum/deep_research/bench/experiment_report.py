@@ -8,7 +8,7 @@ computes, and decides nothing the experiment file did not register:
 - paired differences against the set's baseline arm, 95% bootstrap intervals
   over items (``stats.paired_bootstrap_ci``);
 - cost, and where a run's time and model requests went, step by step
-  (``RunStats.step_*`` of every v2 run);
+  (``RunStats.step_*`` of every run);
 - how many runs failed, and how many of those met a search outage;
 - the clean-timing (solo) runs, reported apart from everything else;
 - the verdict of every pre-registered rule, the outcome of each rule group and
@@ -405,7 +405,7 @@ def _verdict_section(exp: Experiment, cells: Cells) -> str:
 
 
 def _stats(record: RunRecord) -> RunStats | None:
-    """The v2 run's stats, when the record holds a v2 result."""
+    """The run's stats, when the record holds a result."""
     if record.error or record.output is None or record.output.result is None:
         return None
     return record.output.result.stats
@@ -415,7 +415,7 @@ def _median(values: Sequence[float]) -> float | None:
     return statistics.median(values) if values else None
 
 
-def _v2_runs(
+def _research_runs(
     exp: Experiment, cells: Cells, arm: ArmSpec, set_name: str
 ) -> list[RunStats]:
     return [
@@ -426,17 +426,17 @@ def _v2_runs(
 
 
 def _step_tables(exp: Experiment, cells: Cells, *, solo: bool) -> str | None:
-    """Seconds and model requests per step of the v2 runs of the arms that are
+    """Seconds and model requests per step of the runs of the arms that are
     (or are not) clean-timing re-runs. A step a run never reached counts as 0."""
     seconds_rows: list[list[str]] = []
     calls_rows: list[list[str]] = []
     for arm in exp.arms:
-        if arm.system != "v2" or arm.is_solo != solo:
+        if arm.system != "research" or arm.is_solo != solo:
             continue
         for set_spec in exp.sets:
             if not arm.runs_on(set_spec.name):
                 continue
-            runs = _v2_runs(exp, cells, arm, set_spec.name)
+            runs = _research_runs(exp, cells, arm, set_spec.name)
             if not runs:
                 continue
             head = [arm.name, set_spec.name, str(len(runs))]

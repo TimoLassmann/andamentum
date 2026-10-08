@@ -245,7 +245,7 @@ async def run_goal_loop(
     the document-type question instead of the LLM classifier
     (see :func:`~..v3.graph.run_review_v3`); ``None`` changes nothing.
 
-    *novelty_research* runs the first round's novelty check on deep_research v2
+    *novelty_research* runs the first round's novelty check on deep_research
     (see :func:`~..v3.graph.run_review_v3`); it needs ``check_novelty=True``.
 
     See :mod:`.loop`'s module docstring for the stop conditions.

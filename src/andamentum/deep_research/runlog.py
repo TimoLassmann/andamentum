@@ -8,7 +8,7 @@ functions); ``RunLog`` / ``LogEvent`` (``types.py``) are the record, with
 Every event names its step explicitly (``event(..., step=...)``): the loop runs
 sub-questions and pages in parallel, so there is no ambient "current step".
 The event catalogue (names and data keys) is in the spec section 1.10 and in
-``v2/CLAUDE.md``. Text a later stage saw (snippets, fetched text, the window
+``CLAUDE.md``. Text a later stage saw (snippets, fetched text, the window
 given to the notes, the answer, the report) is logged whole, because the bench's
 loss attribution reads it; only a fetched page is clipped, at ``TEXT_CHARS``.
 """

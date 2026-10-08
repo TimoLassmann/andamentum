@@ -137,7 +137,7 @@ class WebSearchGatherer:
     one ``GatheredEvidence``: the content is the page text around the quote,
     the source is the work's URL. A finding whose quote could not be verified is
     not evidence and is left out; the count is logged. ``quality_score`` stays
-    ``None``: v2 gives no per-finding relevance score, and a number made up here
+    ``None``: the engine gives no per-finding relevance score, and a number made up here
     would be a hidden judgement, so the downstream scorer decides.
 
     Search goes through a Chrome (``browser_cdp_url``) when one is given, else

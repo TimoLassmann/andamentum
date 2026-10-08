@@ -11,8 +11,8 @@ import pytest
 
 from andamentum.deep_research.bench import arms
 from andamentum.deep_research.bench.arms import (
-    V2Arm,
-    map_v2,
+    ResearchArm,
+    map_research,
     report_claims,
 )
 from andamentum.deep_research.sources.base import SourceConfig
@@ -38,7 +38,7 @@ def finding(n: int, quote: str, work_id: str) -> Finding:
     )
 
 
-def v2_result(report: str) -> ResearchResult:
+def research_result(report: str) -> ResearchResult:
     return ResearchResult(
         run_id="r1",
         question="Does SaltLog work?",
@@ -80,7 +80,7 @@ More at https://kilns.example.org/two and 10.5555/trial.1.
 
 
 def test_report_sentences_are_paired_with_the_quotes_they_cite() -> None:
-    claims, unsourced = report_claims(v2_result(REPORT))
+    claims, unsourced = report_claims(research_result(REPORT))
     assert [c.claim for c in claims] == [
         "SaltLog cut brine loss in the Apollo trial.",
         "The small kiln saw no effect.",
@@ -96,8 +96,8 @@ def test_report_sentences_are_paired_with_the_quotes_they_cite() -> None:
     assert unsourced == 3
 
 
-def test_v2_result_maps_to_works_cost_and_links() -> None:
-    out = map_v2(v2_result(REPORT))
+def test_research_result_maps_to_works_cost_and_links() -> None:
+    out = map_research(research_result(REPORT))
     assert [w.work_id for w in out.works] == ["w1", "w2", "w3"]
     assert out.cost.llm_calls == 7 and out.cost.decision_calls == 0
     assert out.cost.input_tokens == 100 and out.cost.wall_s == 12.5
@@ -107,25 +107,25 @@ def test_v2_result_maps_to_works_cost_and_links() -> None:
     assert len(out.urls) == len(set(out.urls))
 
 
-async def test_the_v2_arm_calls_research_with_the_new_signature(
+async def test_the_research_arm_calls_research_with_the_new_signature(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     seen: dict[str, Any] = {}
 
     async def research(question: str, **kwargs: Any) -> ResearchResult:
         seen.update(question=question, **kwargs)
-        return v2_result(REPORT)
+        return research_result(REPORT)
 
     monkeypatch.setattr(arms, "research", research)
     sources = SourceConfig(searxng_url="http://127.0.0.1:4070")
-    arm = V2Arm(
+    arm = ResearchArm(
         mode="both",
         model="ollama:stub",
         sources=sources,
         budget=Budget(max_rounds=1),
     )
     out = await arm.run("Does SaltLog work?")
-    assert arm.name == "v2-both"
+    assert arm.name == "research-both"
     assert seen == {
         "question": "Does SaltLog work?",
         "mode": "both",
@@ -140,7 +140,7 @@ async def test_the_v2_arm_calls_research_with_the_new_signature(
     assert out.log is not None  # the run log travels to the cell log files
 
 
-async def test_the_v2_arm_takes_a_name_and_a_shared_http_cache(
+async def test_the_research_arm_takes_a_name_and_a_shared_http_cache(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from andamentum.deep_research.store import ResearchStore
@@ -149,11 +149,11 @@ async def test_the_v2_arm_takes_a_name_and_a_shared_http_cache(
 
     async def research(question: str, **kwargs: Any) -> ResearchResult:
         seen.update(kwargs)
-        return v2_result(REPORT)
+        return research_result(REPORT)
 
     monkeypatch.setattr(arms, "research", research)
     cache = ResearchStore.in_memory()
-    arm = V2Arm(
+    arm = ResearchArm(
         mode="web",
         model="ollama:stub",
         sources=SourceConfig(),
@@ -166,8 +166,8 @@ async def test_the_v2_arm_takes_a_name_and_a_shared_http_cache(
 
 
 def test_the_run_log_is_kept_out_of_the_registry_dump() -> None:
-    result = v2_result(REPORT).model_copy(update={"log": RunLog(run_id="r1")})
-    out = map_v2(result)
+    result = research_result(REPORT).model_copy(update={"log": RunLog(run_id="r1")})
+    out = map_research(result)
     assert out.log is not None
     assert "log" not in out.model_dump()
     assert out.result is not None and out.result.log.events == []

@@ -31,6 +31,6 @@ def test_dev_check_is_twenty_simpleqa_questions_at_positions_64_to_83() -> None:
 
 def test_dev_check_has_one_engine_arm_and_no_rules() -> None:
     exp = load_experiment(DEV_CHECK)
-    assert [(a.name, a.system) for a in exp.arms] == [("v2", "v2")]
-    assert exp.rules == [] and exp.baselines == {"simpleqa": "v2"}
+    assert [(a.name, a.system) for a in exp.arms] == [("research", "research")]
+    assert exp.rules == [] and exp.baselines == {"simpleqa": "research"}
     assert exp.grader is not None and exp.grader != exp.arms[0].model

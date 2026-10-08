@@ -1,4 +1,4 @@
-"""The benchmark harness for deep_research v2.
+"""The benchmark harness for deep_research.
 
 Run it with ``uv run python -m andamentum.deep_research.bench --help``. The
 datasets are downloaded into a directory the caller names and never committed;

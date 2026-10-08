@@ -1,4 +1,4 @@
-"""The novelty check on deep_research v2: ``run_novelty_searches``.
+"""The novelty check on deep_research: ``run_novelty_searches``.
 
 ``run_novelty_check`` is stubbed at the package boundary; its own behaviour
 is tested in ``deep_research/tests/test_novelty.py``.
@@ -49,7 +49,7 @@ def _setup(**kw) -> NoveltyResearch:
     return NoveltyResearch(**kw)
 
 
-async def test_the_v2_path_runs_every_target_in_order_over_one_store() -> None:
+async def test_the_research_path_runs_every_target_in_order_over_one_store() -> None:
     seen: list[tuple[str, object, object]] = []
 
     async def stub(claim, *, model, store, sources, budget, **_kw):

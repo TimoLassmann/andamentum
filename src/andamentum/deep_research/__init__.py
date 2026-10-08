@@ -1,4 +1,4 @@
-"""deep_research v2: an evidence-first research loop, web and scholarly.
+"""deep_research: an evidence-first research loop, web and scholarly.
 
 ``research(question, *, mode, model, ...)`` runs the engine and returns a
 ``ResearchResult``: sub-questions, the works found, verbatim passages, findings

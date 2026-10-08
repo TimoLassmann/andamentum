@@ -23,7 +23,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 SetName = Literal["simpleqa", "litsearch-web"]
-System = Literal["v2"]
+System = Literal["research"]
 Test = Literal[
     "noninferior", "superior", "no_harm", "reduced_by", "at_least", "at_most"
 ]
@@ -32,7 +32,7 @@ Outage = Literal["stop", "record"]
 
 # The sets an arm of each system can be run on.
 SYSTEM_SETS: dict[str, frozenset[str]] = {
-    "v2": frozenset({"litsearch-web", "simpleqa"}),
+    "research": frozenset({"litsearch-web", "simpleqa"}),
 }
 DEFAULT_RESAMPLES = 10_000
 DEFAULT_BOOTSTRAP_SEED = 0

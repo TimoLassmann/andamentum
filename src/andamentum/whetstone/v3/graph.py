@@ -85,7 +85,7 @@ class V3Deps:
     flag_novelty: bool = True
     novelty_target_cap: int = 8
     novelty_search_depth: int = 2
-    # Where the novelty check searches (deep_research v2, scholarly sources)
+    # Where the novelty check searches (deep_research, scholarly sources)
     # and where its research store lives; None takes the defaults. The review
     # model judges what the search finds; an undetermined target gives no
     # finding. Only read when ``check_novelty`` is on.
@@ -259,7 +259,7 @@ class FlagNoveltyTargets(BaseNode[V3State, V3Deps, ReviewResult]):
 
 @dataclass
 class RunNoveltySearches(BaseNode[V3State, V3Deps, ReviewResult]):
-    """deep_research v2 per target. Per-target failures are
+    """deep_research per target. Per-target failures are
     captured in NoveltyEvidence.error rather than aborting the loop."""
 
     async def run(self, ctx: GraphRunContext[V3State, V3Deps]) -> "JudgeNovelty":
@@ -519,7 +519,7 @@ async def run_review_v3(
 
     ``novelty_research`` (a ``deep_research.NoveltyResearch``: the scholarly
     sources and an optional store; ``None`` takes the defaults) configures the
-    novelty check, which runs on deep_research v2 and judges with the review
+    novelty check, which runs on deep_research and judges with the review
     model; it needs ``check_novelty=True``. A claim whose check cannot conclude (a failing
     source, a thin search, a spent budget) produces no finding: the verdict is
     never guessed.

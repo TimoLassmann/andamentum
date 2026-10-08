@@ -57,7 +57,7 @@ def _result(
 
 
 def _run_with(result: ResearchResult):
-    """Patch the v2 entry point the gatherer calls; return the mock."""
+    """Patch the entry point the gatherer calls; return the mock."""
     return patch(
         "andamentum.deep_research.research",
         new_callable=AsyncMock,
@@ -66,7 +66,7 @@ def _run_with(result: ResearchResult):
 
 
 class TestWebSearchGathererFindings:
-    """WebSearchGatherer turns verified v2 findings into evidence."""
+    """WebSearchGatherer turns verified findings into evidence."""
 
     @pytest.mark.asyncio
     async def test_finding_becomes_evidence_with_context(self):

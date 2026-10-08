@@ -25,12 +25,12 @@ sets:
   - {name: simpleqa, n: 20, skip: 63, seed: 1}
 
 arms:
-  - name: v2
-    system: v2
+  - name: research
+    system: research
     model: "ollama:gemma4:31b-cloud"
 
 baselines:
-  simpleqa: v2
+  simpleqa: research
 
 notes:
   - >-

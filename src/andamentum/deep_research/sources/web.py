@@ -9,10 +9,8 @@ Fetching a page goes through ``SourceClient.fetch_document``: the SSRF check
 on every hop, robots.txt and the paywalled-publisher list
 (``tdm_allowed_hosts`` is the caller's attestation of a licence), a size cap,
 and harvest's extractor (trafilatura or docling for HTML, docling for PDF),
-cached as text. ``backends.HttpxSearchBackend`` does the same fetch but caps
-the text at 50,000 characters and keeps no cache; v2 reads whole pages and
-passages, and a search that must raise and be cached, so it makes its calls
-through the shared client and reuses the gate, the SSRF layer and the extractor.
+cached as text. The engine reads whole pages and passages, and a search that
+must raise and be cached, so every call goes through the shared client.
 """
 
 from __future__ import annotations

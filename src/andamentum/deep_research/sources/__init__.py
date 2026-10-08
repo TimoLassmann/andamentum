@@ -1,4 +1,4 @@
-"""The sources a v2 run searches and reads: one protocol, six adapters.
+"""The sources a run searches and reads: one protocol, six adapters.
 
 ``build_sources`` turns a ``SourceConfig`` into the adapters for a mode. The
 adapters share one ``SourceClient`` (cache, spacing, retry), so the spacing

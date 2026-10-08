@@ -36,7 +36,7 @@ from ..runlog import write_log
 from ..sources.base import SourceConfig
 from ..store import ResearchStore
 from ..types import Mode, RunLog
-from .arms import AnswerArm, ArmOutput, V2Arm
+from .arms import AnswerArm, ArmOutput, ResearchArm
 from .concurrency import resolve_concurrency, run_bounded
 from .experiment import ArmSpec, Experiment, SetSpec
 from .health import SearxDown, SearxHealth
@@ -182,7 +182,7 @@ class Services:
     source_config: SourceConfig = field(default_factory=SourceConfig)
     # grades the simpleqa answers (the experiment file names its model)
     grader: AnswerGrader | None = None
-    # a shared read-through HTTP cache for the v2 arms
+    # a shared read-through HTTP cache for the arms
     http_cache: ResearchStore | None = None
     # no API key is read or used (the experiment file says so); recorded in the registry
     keyless: bool = False
@@ -195,7 +195,7 @@ class Services:
 def build_answer_arm(spec: ArmSpec, mode: Mode, services: Services) -> AnswerArm:
     if services.answer_arm is not None:
         return services.answer_arm(spec, mode)
-    return V2Arm(
+    return ResearchArm(
         mode=mode,
         model=spec.model,
         sources=services.source_config,

@@ -1,4 +1,4 @@
-"""The v2 engine: plan, then per sub-question a loop of queries, search, choose,
+"""The engine: plan, then per sub-question a loop of queries, search, choose,
 read (with notes) and reflect, then one write and a code-only verify.
 
 Plain async functions, no graph engine: this module routes and assigns state,

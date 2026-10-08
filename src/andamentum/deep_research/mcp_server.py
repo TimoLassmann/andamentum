@@ -1,4 +1,4 @@
-"""The MCP server: ``andamentum-research mcp --store PATH`` puts the v2 engine and its store in reach of an agent.
+"""The MCP server: ``andamentum-research mcp --store PATH`` puts the research engine and its store in reach of an agent.
 
 A stdio server over the ``mcp`` SDK. Every tool writes only to the store.
 
@@ -629,7 +629,7 @@ async def serve_stdio(tools: ResearchTools) -> None:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="andamentum-research mcp",
-        description="Serve the v2 research engine and its store over MCP (stdio); "
+        description="Serve the research engine and its store over MCP (stdio); "
         "example: claude mcp add research -- andamentum-research mcp --store research.db",
     )
     parser.add_argument(

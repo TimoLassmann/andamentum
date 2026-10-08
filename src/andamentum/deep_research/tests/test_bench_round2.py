@@ -92,8 +92,8 @@ def _two_arm_experiment(**extra: object) -> dict[str, object]:
         "grader": GRADER,
         "sets": [{"name": "simpleqa", "n": 2}],
         "arms": [
-            {"name": "a", "system": "v2", "model": CLOUD},
-            {"name": "b", "system": "v2", "model": CLOUD},
+            {"name": "a", "system": "research", "model": CLOUD},
+            {"name": "b", "system": "research", "model": CLOUD},
         ],
         "baselines": {"simpleqa": "b"},
         **extra,
@@ -194,7 +194,7 @@ def _experiment(arms: list[dict[str, object]], **extra: object) -> Experiment:
 
 
 def _arm(name: str, **kw: object) -> dict[str, object]:
-    return {"name": name, "system": "v2", "model": CLOUD, **kw}
+    return {"name": name, "system": "research", "model": CLOUD, **kw}
 
 
 @pytest.fixture
@@ -325,7 +325,7 @@ async def test_any_failed_cell_of_a_record_arm_has_no_metrics(
 ) -> None:
     def crash(question: str, call: int) -> ArmOutput:
         if call == 1:
-            raise RuntimeError("legacy pipeline crashed")
+            raise RuntimeError("the engine crashed")
         return correct_behaviour(question, call)
 
     exp = _experiment([_arm("a", outage="record")])
