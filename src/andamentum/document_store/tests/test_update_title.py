@@ -102,9 +102,10 @@ class TestReembedDocument:
             reembed_document,
         )
         from andamentum.document_store.public import search
+        from andamentum.document_store.reranking import SUGGESTED_RERANKER_MODEL
 
         model = "ollama:gpt-oss:20b"
-        embedding_model = "embeddinggemma:latest"
+        embedding_model = "embeddinggemma-2:latest"
 
         doc_id = await ingest(
             db,
@@ -123,7 +124,11 @@ class TestReembedDocument:
         assert ok is True
 
         results = await search(
-            db, "spacecraft in orbit", model=model, embedding_model=embedding_model
+            db,
+            "spacecraft in orbit",
+            model=model,
+            embedding_model=embedding_model,
+            reranker_model=SUGGESTED_RERANKER_MODEL,
         )
         assert any(r.doc_id == doc_id for r in results)
 
@@ -133,6 +138,6 @@ class TestReembedDocument:
         from andamentum.document_store import reembed_document
 
         ok = await reembed_document(
-            db, "missing-doc-id", embedding_model="embeddinggemma:latest"
+            db, "missing-doc-id", embedding_model="embeddinggemma-2:latest"
         )
         assert ok is False

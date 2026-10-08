@@ -77,7 +77,7 @@ async def extract_units(
         `target_max_chars` are split semantically.
     embedding_fn:
         Async function that returns one embedding per input string. If None,
-        defaults to a local Ollama call (``embeddinggemma:latest``). Embedders
+        defaults to a local Ollama call (``embeddinggemma-2:latest``). Embedders
         built by ``make_ollama_embedder`` advertise their input char budget via
         an ``input_budget_chars`` attribute; the chunker uses it to subdivide
         oversized paragraphs before embedding.

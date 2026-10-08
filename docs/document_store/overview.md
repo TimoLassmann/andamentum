@@ -186,7 +186,7 @@ andamentum-docstore ingest research notes.md --defer
 andamentum-docstore ingest-source research ~/papers/big.pdf
 andamentum-docstore status research
 andamentum-docstore process-pending research \
-    --embedding-model embeddinggemma:latest \
+    --embedding-model embeddinggemma-2:latest \
     --max-seconds 21600
 andamentum-docstore retry-failed research
 ```

@@ -11,7 +11,7 @@ citation styles. No Crossref lookup — this is about reading.
 2. Score them, from evidence alone or with a model for the open cases:
 
        uv run python benchmarks/references/evaluate.py OUT
-       uv run python benchmarks/references/evaluate.py OUT --model ollama:gemma4:26b-nvfp4
+       uv run python benchmarks/references/evaluate.py OUT --model ollama:gemma4:26b
 
    `--pdf` renders each document to PDF with LibreOffice and reads it the way
    a PDF submission is read (harvest with `preserve_superscripts`, then

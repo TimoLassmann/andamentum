@@ -138,6 +138,7 @@ dependencies = [
     { name = "rich" },
     { name = "scikit-learn" },
     { name = "scipy" },
+    { name = "sentence-transformers" },
     { name = "sqlite-vec" },
     { name = "textstat" },
     { name = "torch", version = "2.12.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform == 'darwin'" },
@@ -156,10 +157,7 @@ dev = [
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "ruff" },
-    { name = "sentence-transformers" },
     { name = "trafilatura" },
-    { name = "transformers", version = "5.8.1", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'darwin'" },
-    { name = "transformers", version = "5.12.1", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'darwin'" },
     { name = "uvicorn" },
 ]
 html-articles = [
@@ -167,10 +165,6 @@ html-articles = [
 ]
 pdf = [
     { name = "weasyprint" },
-]
-rerank = [
-    { name = "transformers", version = "5.8.1", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'darwin'" },
-    { name = "transformers", version = "5.12.1", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'darwin'" },
 ]
 vlm = [
     { name = "docling", extra = ["vlm"] },
@@ -209,7 +203,7 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.1.0,<1" },
     { name = "scikit-learn", specifier = ">=1.3,<2" },
     { name = "scipy", specifier = ">=1.10.0,<2" },
-    { name = "sentence-transformers", marker = "extra == 'dev'", specifier = ">=5.0,<7" },
+    { name = "sentence-transformers", specifier = ">=5.0,<7" },
     { name = "snakemake", marker = "extra == 'benchmark'", specifier = ">=8.0.0,<10" },
     { name = "sqlite-vec", specifier = ">=0.1.6,<0.2" },
     { name = "textstat", specifier = ">=0.7.4,<1" },
@@ -217,13 +211,11 @@ requires-dist = [
     { name = "torchvision", specifier = ">=0.17,<1", index = "https://download.pytorch.org/whl/cpu" },
     { name = "trafilatura", marker = "extra == 'dev'", specifier = ">=2.0.0,<3" },
     { name = "trafilatura", marker = "extra == 'html-articles'", specifier = ">=2.0.0,<3" },
-    { name = "transformers", marker = "extra == 'dev'", specifier = ">=4.45,<6" },
-    { name = "transformers", marker = "extra == 'rerank'", specifier = ">=4.45,<6" },
     { name = "transformers", marker = "extra == 'vlm'", specifier = ">=4.45,<6" },
     { name = "uvicorn", marker = "extra == 'dev'", specifier = ">=0.27,<1" },
     { name = "weasyprint", marker = "extra == 'pdf'", specifier = ">=60,<67" },
 ]
-provides-extras = ["html-articles", "pdf", "vlm", "rerank", "dev", "benchmark"]
+provides-extras = ["html-articles", "pdf", "vlm", "dev", "benchmark"]
 
 [[package]]
 name = "annotated-doc"

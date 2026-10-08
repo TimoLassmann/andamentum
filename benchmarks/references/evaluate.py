@@ -8,7 +8,7 @@ were reported (false alarms). No Crossref lookup — this measures reading.
     uv run python benchmarks/references/evaluate.py CORPUS_DIR [--model MODEL]
 
 With no --model the checker decides from evidence alone and reports what it
-cannot settle. With a model (e.g. openai:gpt-5.4-nano, ollama:gemma4:26b-nvfp4)
+cannot settle. With a model (e.g. openai:gpt-5.4-nano, ollama:gemma4:26b)
 the undecided cases go to it. Model calls are strictly sequential.
 """
 

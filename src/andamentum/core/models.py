@@ -91,7 +91,7 @@ def resolve_model(model: str) -> Any:
     return model
 
 
-DEFAULT_EMBEDDING_MODEL = "embeddinggemma:latest"
+DEFAULT_EMBEDDING_MODEL = "embeddinggemma-2:latest"
 EMBEDDING_MODEL_ENV_VAR = "ANDAMENTUM_EMBEDDING_MODEL"
 
 

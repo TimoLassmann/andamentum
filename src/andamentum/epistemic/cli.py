@@ -42,7 +42,7 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help=(
             "Ollama embedding model for semantic provider routing and passage "
-            "extraction (default: embeddinggemma:latest, or set "
+            "extraction (default: embeddinggemma-2:latest, or set "
             "$ANDAMENTUM_EMBEDDING_MODEL)"
         ),
     )
@@ -100,7 +100,7 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help=(
             "Ollama embedding model for semantic provider routing and passage "
-            "extraction (default: embeddinggemma:latest, or set "
+            "extraction (default: embeddinggemma-2:latest, or set "
             "$ANDAMENTUM_EMBEDDING_MODEL)"
         ),
     )
@@ -206,7 +206,7 @@ def _build_parser() -> argparse.ArgumentParser:
     stage_parser.add_argument(
         "--embedding-model",
         default=None,
-        help="Ollama embedding model (default: embeddinggemma:latest)",
+        help="Ollama embedding model (default: embeddinggemma-2:latest)",
     )
     stage_parser.add_argument(
         "--verify",

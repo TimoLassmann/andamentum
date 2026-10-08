@@ -66,6 +66,9 @@ dependencies = [
     "torch>=2.2,<3",
     "torchvision>=0.17,<1",
     "scikit-learn>=1.3,<2",          # epistemic
+    # document_store.search reranks with a cross-encoder. Adds only this wheel:
+    # torch and transformers are already here through docling.
+    "sentence-transformers>=5.0,<7",
     # v2 unbundled the bedrock provider; core.models imports it, hence the extra.
     "pydantic-ai[bedrock]>=2.22,<3",  # whetstone / epistemic / deep-research
     "pydantic-graph>=2.22,<3",       # graph state machines (whetstone, deep-research)
@@ -144,16 +147,6 @@ vlm = [
     # docling still resolves to its own floor above.
     "mlx-vlm>=0.6.4,<0.7; sys_platform == 'darwin' and platform_machine == 'arm64'",
 ]
-# Cross-encoder reranking in andamentum.document_store.rerank. The reranker
-# loads the model with transformers (Apache-2.0) directly, because it must
-# control the padding itself (fixed input shapes; see reranking.py); torch is
-# already a core dep (docling's backend). The range matches the `vlm` extra so
-# the two never pull transformers in different directions. Kept optional
-# because `search()` never calls the reranker and a caller that does not rerank
-# must not pay a 0.6B model's import, load time, or resident memory.
-rerank = [
-    "transformers>=4.45,<6",
-]
 dev = [
     "pytest>=8.0.0,<9",
     "pytest-asyncio>=0.24.0,<1",
@@ -162,10 +155,6 @@ dev = [
     "fastapi>=0.109,<1",
     "uvicorn>=0.27,<1",
     "trafilatura>=2.0.0,<3",   # dev install gets every backend for full-suite tests
-    # The dev install exercises the rerank path, and its real-model test checks
-    # the fixed-shape scores against sentence-transformers' CrossEncoder.
-    "transformers>=4.45,<6",
-    "sentence-transformers>=5.0,<7",
 ]
 # The SciFact calibration benchmark (paper/scifact/) is orchestrated by
 # Snakemake; everything else it needs (scipy, matplotlib, numpy, pyyaml, rich,
@@ -262,7 +251,7 @@ markers = [
     "cloud: test calls a real cloud LLM (costs tokens, needs API key)",
     "live_provider: test calls a live evidence provider API (PubMed, OpenAlex, etc.) — needs internet, no auth typically required",
     "vlm: harvest test that imports docling (~1 GB of torch) and/or runs a local vision-language model for mode='accurate'. Deselected so the default suite stays runnable while other models hold the machine's memory",
-    "rerank: document_store test that downloads and runs a real cross-encoder (~2 GB of weights, needs the `rerank` extra). Deselected for the same reason as `vlm`; every other rerank test stubs the model",
+    "rerank: document_store test that downloads and runs a real cross-encoder (~2 GB of weights). Deselected for the same reason as `vlm`; every other rerank test stubs the model",
     "compose_eval: compose test that calls real models (costs tokens or local compute). Deselected like `cloud`; run with `uv run pytest -m compose_eval`",
 ]
 # Exclude gated tests from default runs. Explicitly selecting a marker

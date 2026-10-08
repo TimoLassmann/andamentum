@@ -187,8 +187,8 @@ def test_repeated_and_comma_separated_models_combine(calls, capsys):
 
 def test_model_ids_containing_colons_survive_parsing(calls, capsys):
     """A model id is `provider:name[:tag]` — splitting must be on commas only."""
-    assert cli.main(["score", "text", "--model", "ollama:gemma4:31b-nvfp4"]) == 0
-    assert calls[0]["model"] == "ollama:gemma4:31b-nvfp4"
+    assert cli.main(["score", "text", "--model", "ollama:gemma4:31b"]) == 0
+    assert calls[0]["model"] == "ollama:gemma4:31b"
     capsys.readouterr()
 
 

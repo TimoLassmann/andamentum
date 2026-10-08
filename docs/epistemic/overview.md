@@ -726,7 +726,7 @@ result = await run_epistemic_graph(
     question="...",
     mode="research",  # or "verify"
     model="anthropic:claude-haiku-4-5",
-    embedding_model="ollama:embeddinggemma:latest",
+    embedding_model="ollama:embeddinggemma-2:latest",
     ibe_agreement_k=2,  # default; raise for stricter agreement
 )
 ```

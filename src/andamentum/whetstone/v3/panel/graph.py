@@ -275,7 +275,7 @@ async def run_panel_v3(
         from a PDF / DOCX / URL).
     model:
         pydantic-ai model id (e.g. "openai:gpt-5.4-nano",
-        "ollama:gemma4:31b-nvfp4").
+        "ollama:gemma4:31b").
     n_experts:
         Cap on parallel expert generations. Default 4. If
         `panel_disciplines` is supplied, this is the upper bound on

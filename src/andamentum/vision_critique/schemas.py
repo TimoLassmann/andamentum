@@ -3,7 +3,7 @@
 Critique schemas are deliberately tight: enums for any "what's wrong"
 field, fixed-set ``Literal`` lists for any "suggested fix" field. This
 serves two purposes — small local vision models reliably fill bounded
-schemas (validated against ``ollama:qwen3.8:27b-mlx`` on the
+schemas (validated against ``ollama:qwen3.8`` on the
 ``broken_bar.png`` calibration fixture), and downstream callers get a
 predictable action surface to map to render-parameter changes.
 

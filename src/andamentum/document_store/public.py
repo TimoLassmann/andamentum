@@ -26,7 +26,7 @@ losing at most the single in-flight document's work. Conversion is injected via
 ``document_store.pipeline`` for the harvest-backed wiring.
 
 Read side — three uniform functions for humans and agents alike:
-    search()             unstructured recall over content (NL + RRF ranking)
+    search()             unstructured recall over content (NL + RRF, then a cross-encoder rerank)
     find_by_metadata()   structured query — exact match or set-membership
     describe_metadata()  discover the schema-less metadata vocabulary
 
@@ -56,7 +56,7 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import Awaitable, Callable, Literal, Mapping, Optional
+from typing import TYPE_CHECKING, Awaitable, Callable, Literal, Mapping, Optional
 
 
 from andamentum.chunker import extract_units
@@ -66,6 +66,9 @@ from . import queue as _queue
 from .api import DocumentStore
 from .chunk_hits import ChunkHit, parse_chunk_id
 from .chunker_adapter import units_to_chunks
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from .search import UnifiedSearchResult
 
 logger = logging.getLogger(__name__)
 
@@ -192,11 +195,12 @@ async def _auto_repair(database: str, embedding_model: str) -> None:
 class SearchResult:
     """A search result from the knowledge base.
 
-    ``score`` is a Reciprocal Rank Fusion sum. It orders THIS query's results
-    and nothing else: it is built from ranks, so it has no absolute meaning and
-    two queries' scores are not comparable. Do not threshold on it. A number
-    that answers "is this actually relevant" is what
-    :func:`~.reranking.rerank` produces.
+    ``score`` is the cross-encoder relevance that :func:`search` reranks by: a
+    sigmoid in [0, 1] from ``reranker_model``, the document's best passage
+    against the query. Its scale belongs to that one model. Results still in
+    the ingestion queue are not reranked; their scores sit strictly below the
+    lowest reranked score, so the page stays sorted by score. A metadata-only
+    query, which ranks nothing, returns 1.0 for every match.
 
     ``chunks`` carries the passages the chunk signal matched, best first, each
     with an id that resolves again through :func:`get_chunk`. It is empty when
@@ -986,6 +990,75 @@ async def _is_incomplete(store: DocumentStore, doc_uuid: str) -> str:
 # search()
 # ---------------------------------------------------------------------------
 
+#: How many fused candidates the cross-encoder reorders. The benchmark that
+#: measured the rerank gain used 50. A larger pool costs cross-encoder time on
+#: candidates that fusion already ranked low.
+RERANK_POOL = 50
+
+#: At most this many matched passages are scored per document; the document
+#: takes the best of their scores.
+_PASSAGES_PER_DOCUMENT = 3
+
+#: When the chunk signal matched none of a document's passages, the
+#: cross-encoder scores a window of about one chunk around the first query term.
+_RERANK_WINDOW_CHARS = 4000
+
+#: Tiers of the queued tail that ``search_unified`` appends below the fusion.
+_QUEUE_TIERS = frozenset({_queue.PENDING_SOURCE, _queue.PENDING_ENRICH, _queue.FAILED})
+
+
+async def _rerank_page(
+    db_path: str,
+    *,
+    query: str,
+    results: list[UnifiedSearchResult],
+    limit: int,
+    reranker_model: str,
+) -> list[UnifiedSearchResult]:
+    """Reorder the fused top :data:`RERANK_POOL` by cross-encoder relevance.
+
+    Each document is scored by its best passage: the chunks the chunk signal
+    matched, or, when it matched none, a window of the document around the
+    query. A document's ``score`` becomes that relevance; ties keep the fused
+    order. The queued tail is not reranked: it goes back below the reranked
+    head with the same quota and score rule as in ``search_unified``.
+    """
+    from .database import get_documents_content
+    from .fts import extract_snippet
+    from .reranking import rerank
+    from .search import _append_pending_tail
+
+    fused = [r for r in results if r.tier not in _QUEUE_TIERS][:RERANK_POOL]
+    tail = [r for r in results if r.tier in _QUEUE_TIERS]
+    if not fused:
+        return results[:limit]
+
+    need_content = [r.doc_id for r in fused if not r.chunks]
+    contents = (
+        await get_documents_content(db_path, need_content) if need_content else {}
+    )
+
+    owners: list[int] = []
+    texts: list[str] = []
+    for position, result in enumerate(fused):
+        passages = [c.content for c in result.chunks[:_PASSAGES_PER_DOCUMENT]] or [
+            extract_snippet(
+                contents.get(result.doc_id, ""), query, max_length=_RERANK_WINDOW_CHARS
+            )
+        ]
+        owners.extend([position] * len(passages))
+        texts.extend(passages)
+
+    scores = await rerank(query, texts, reranker_model=reranker_model)
+    best = [float("-inf")] * len(fused)
+    for position, score in zip(owners, scores, strict=True):
+        best[position] = max(best[position], score)
+    for position, result in enumerate(fused):
+        result.score = best[position]
+
+    order = sorted(range(len(fused)), key=lambda i: (-best[i], i))
+    return _append_pending_tail([fused[i] for i in order], tail, limit)
+
 
 async def search(
     database: str,
@@ -994,11 +1067,21 @@ async def search(
     *,
     model: str,
     embedding_model: str,
+    reranker_model: str,
 ) -> list[SearchResult]:
     """Search the knowledge base with natural language.
 
     Parses the query into a search plan (semantic query + optional metadata filter)
     using the LLM, then executes against the database.
+
+    Retrieval is two-stage. Four-signal fusion ranks documents, and a
+    cross-encoder then reorders the fused top :data:`RERANK_POOL` by each
+    document's best passage against ``query``. Measured on the multi-hop
+    benchmark (MuSiQue dev, 200 questions, ``BAAI/bge-reranker-v2-m3``), the
+    rerank raised the share of questions with every supporting passage in the
+    top 10 from 0.395 to 0.505. The cost is the model: about 2 GB of weights,
+    resident in this process after the first search, and a few seconds per
+    search on a laptop.
 
     Documents still in the deferred ingestion queue are handled separately from
     the four-signal fusion, so that partial indexing never reads as low
@@ -1019,6 +1102,10 @@ async def search(
         limit: Max results
         model: LLM model for query planning.
         embedding_model: Embedding model.
+        reranker_model: Cross-encoder that reorders the fused candidates, any
+            ``sentence_transformers`` cross-encoder id (for example
+            :data:`~.reranking.SUGGESTED_RERANKER_MODEL`). No default: which
+            model produced a score is part of what the score means.
 
     Returns:
         List of SearchResult objects sorted by relevance.
@@ -1069,7 +1156,7 @@ async def search(
 
     from .search import search_unified
 
-    fetch_limit = limit * 3 if doc_uuids is not None else limit
+    fetch_limit = max(limit * 3 if doc_uuids is not None else limit, RERANK_POOL)
 
     raw_results = await search_unified(
         db_path=str(store.db_path),
@@ -1102,11 +1189,19 @@ async def search(
                 )
         return results
 
-    # 5. Enrich results with document metadata (batched — one query for titles/
+    # 5. Rerank the fused candidates; the queued tail stays below them.
+    top = await _rerank_page(
+        str(store.db_path),
+        query=query,
+        results=raw_results,
+        limit=limit,
+        reranker_model=reranker_model,
+    )
+
+    # 6. Enrich results with document metadata (batched — one query for titles/
     #    metadata, one more for the content fallback, instead of N per result).
     from .database import get_documents_content, get_documents_metadata
 
-    top = raw_results[:limit]
     metas = await get_documents_metadata(str(store.db_path), [r.doc_id for r in top])
 
     # Only results with no chunk snippet need the full-content fallback read.

@@ -22,17 +22,15 @@ Two functions, split on purpose:
 
 - :func:`rerank` needs the model. It is the only thing here that imports
   ``torch`` and ``transformers`` and it does so lazily, inside the call.
-- :func:`select_relevant` needs nothing but arithmetic. It is importable, and
-  testable, on an install with no ``rerank`` extra — which matters, because it
-  is the half that decides what a caller actually sees.
+- :func:`select_relevant` needs nothing but arithmetic, so it is testable
+  without loading a model.
 
-**Nothing in the store calls either of these.** :func:`~.public.search` does
-not rerank and must not start: it is called by CLIs and by pipelines that run
-it many times per task, and a default rerank would silently charge every one of
-them a 0.6B model's import, its multi-second load, and its resident memory —
-and would return different results depending on whether an optional extra
-happened to be installed. Reranking is a step a caller takes deliberately,
-after search, on the candidates it chose.
+**Where the store calls them.** :func:`~.public.search` calls :func:`rerank`
+on its fused top candidates, scoring each document by its best passage, so
+every search pays for the model. That was a measured choice: on a multi-hop
+benchmark the rerank gave the largest single gain of anything tried.
+:func:`select_relevant` is never called by the store; deciding how many
+results are relevant stays with the caller.
 
 Cost, stated plainly. The model is resident in this process for its lifetime,
 which is real memory on a unified-memory machine and is a separate budget from
@@ -63,11 +61,6 @@ import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol
-
-_EXTRA_HINT = (
-    "Cross-encoder reranking needs the 'rerank' extra. "
-    "Install it with: uv sync --extra rerank  (or: pip install 'andamentum[rerank]')"
-)
 
 #: Pair lengths are padded up to one of these token counts (each capped at the
 #: model's own maximum, which is always the last bucket). Powers of two, so a
@@ -173,11 +166,10 @@ class _CrossEncoder:
     """
 
     def __init__(self, model_name: str) -> None:
-        try:
-            import torch
-            from transformers import AutoModelForSequenceClassification, AutoTokenizer
-        except ImportError as exc:  # pragma: no cover - depends on install shape
-            raise ImportError(f"{_EXTRA_HINT} ({exc})") from exc
+        # Imported here, not at module level: torch and the model load only when
+        # a search first reranks, never on ``import andamentum.document_store``.
+        import torch
+        from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
         self._torch = torch
         self.device = "mps" if torch.backends.mps.is_available() else "cpu"
@@ -322,8 +314,6 @@ async def rerank(
     calibrated against one specific model. See :data:`SUGGESTED_RERANKER_MODEL`
     for a starting point that is a suggestion and not a fallback.
 
-    Raises:
-        ImportError: if the ``rerank`` extra is not installed.
     """
     if not texts:
         return []
@@ -415,8 +405,7 @@ def select_relevant[T](
     """Which of ``scored`` are relevant enough to act on, most relevant first.
 
     Generic over the item type: this is selection over precomputed
-    ``(item, score)`` pairs and knows nothing about chunks. It imports nothing
-    optional, so it works without the ``rerank`` extra.
+    ``(item, score)`` pairs and knows nothing about chunks or models.
 
     Two independent checks, and **both are required**:
 
