@@ -30,9 +30,8 @@ from .arms import (
     DEPTH,
     DRIVER_SETTINGS,
     ArmResult,
-    build_current_store,
     build_pool,
-    build_v2_store,
+    build_store,
 )
 from .data import load_corpus
 from .embedding_cache import EmbeddingCache
@@ -49,8 +48,7 @@ from .provenance import git_state, uv_lock_sha256
 _COMPARABLE = ("suite", "suite_version", "tier", "question_ids_sha256", "corpus_sha256")
 
 _BUILDERS = {
-    "current": build_current_store,
-    "v2": build_v2_store,
+    "store": build_store,
     "none": build_pool,
 }
 
@@ -144,8 +142,6 @@ async def run(
         "repeat": repeat,
         "store": arm.store_kind,
         "reranker": getattr(arm, "reranker", None),
-        "v2_exact": getattr(arm, "exact", None),
-        "v2_vector_weight": getattr(arm, "vector_weight", None),
         "depth": DEPTH,
         "driver_model": driver_model,
         "driver_settings": DRIVER_SETTINGS if llm_driven else None,
@@ -215,11 +211,11 @@ async def _run_questions(
         reranker_revision=_reranker_revision(manifest["reranker"]),
     )
     if answering:
-        from ..v2.answering import prompts_sha256
+        from .answering import prompts_sha256
 
         manifest["prompts_sha256"] = prompts_sha256()
     elif llm_driven:
-        from ..v2.agent import prompts_sha256
+        from ..agent import prompts_sha256
 
         manifest["prompts_sha256"] = prompts_sha256()
 
@@ -287,6 +283,10 @@ async def _run_questions(
             tasks = [tg.create_task(one(q)) for q in corpus.questions]
     except ExceptionGroup as group:
         raise group.exceptions[0] from group  # the caller sees the real error
+    finally:
+        store = getattr(built, "store", None)
+        if store is not None:
+            await store.close()
     rows = [t.result() for t in tasks]
     manifest.update(
         search_seconds=round(time.perf_counter() - t0, 2),

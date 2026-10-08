@@ -1,96 +1,65 @@
-"""Harvest-backed source conversion — the ONLY place ``andamentum.harvest`` is imported.
+"""Any source (PDF, DOCX, HTML, URL, ...) into the store, through ``andamentum.harvest``.
 
-The store core is deliberately harvest-free: :func:`process_pending` takes a
-``convert_fn`` rather than importing a converter, so a caller that already has
-markdown never pulls in Docling/trafilatura. This module is the optional adapter
-that fills that parameter in with :func:`andamentum.harvest.extract`, following
-the same single-glue-point pattern as ``figures.bundle_glue`` and
-``proofread.cli``.
-
-Nothing here is privileged. It is a convenience, not a gateway — an app may call
-the core directly and inject its own converter:
-
-    from andamentum.document_store import process_pending
-    await process_pending("brain", model=..., embedding_model=...,
-                          convert_fn=my_own_converter)
-
-Usage with harvest:
-
-    from andamentum.document_store.pipeline import ingest_source, drain
-
-    await ingest_source("brain", "~/papers/big.pdf")   # queued, no conversion yet
-    await drain("brain", model=..., embedding_model=...)  # converts + enriches
+This module is the ONLY place ``harvest`` is imported, and it imports it
+lazily, so a caller that already has text never pulls in Docling. ``ingest``
+converts one source to markdown, keeps the original bytes beside the text,
+and stores both with ``Store.put``. It calls no model besides harvest's own
+converter; indexing happens later, in ``Store.sync``.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any, Literal
 
-from .public import (
-    ConvertFn,
-    ProcessMode,
-    ProcessReport,
-    ingest_source as _core_ingest_source,
-    process_pending as _core_process_pending,
-)
+from .store import Store
 
-__all__ = ["harvest_convert_fn", "ingest_source", "drain"]
-
-
-def harvest_convert_fn() -> ConvertFn:
-    """Return an async ``(source) -> markdown`` backed by ``harvest.extract``.
-
-    Imported lazily so that merely importing this module does not pull in
-    Docling — the cost is paid only when a conversion actually runs.
-
-    Raises:
-        ImportError: If harvest's extraction backends are not installed.
-    """
-
-    async def _convert(source: str) -> str:
-        from andamentum.harvest import extract
-
-        # harvest.extract takes str | Path; a local path is passed as Path so
-        # its format detection uses the extension, not URL heuristics.
-        target: str | Path = source
-        if "://" not in source:
-            target = Path(source).expanduser()
-        return await extract(target)
-
-    return _convert
+#: Media types recorded for the original bytes, by harvest's detected format.
+_MEDIA_TYPES = {
+    "pdf": "application/pdf",
+    "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "html": "text/html",
+    "markdown": "text/markdown",
+    "plain": "text/plain",
+}
 
 
-async def ingest_source(
-    database: str,
-    source: str,
-    title: str | None = None,
-    metadata: dict | None = None,
+async def ingest(
+    store: Store,
+    source: str | Path,
     *,
-    embedding_model: str | None = None,
-    process: ProcessMode = "defer",
+    key: str | None = None,
+    metadata: dict[str, Any] | None = None,
+    mode: Literal["fast", "accurate"] = "fast",
 ) -> str:
-    """Queue (or immediately convert + enrich) a source file/URL using harvest.
+    """Convert ``source`` (a path or URL) to markdown and store it; returns the doc id.
 
-    Thin wrapper over :func:`document_store.ingest_source` with
-    ``convert_fn`` pre-filled. See that function for the argument semantics.
+    The original bytes are kept (``Store.original``). ``metadata["source"]``
+    records where the text came from: ``{"location": ..., "format": ...,
+    "media_type": ...}``; any other metadata is the caller's. A conversion
+    error is raised; nothing is stored then.
     """
-    return await _core_ingest_source(
-        database,
-        source,
-        title,
-        metadata,
-        convert_fn=harvest_convert_fn(),
-        embedding_model=embedding_model,
-        process=process,
+    from andamentum.harvest import extract_from_bytes
+    from andamentum.harvest.fetch import resolve
+
+    if isinstance(source, str) and "://" not in source:
+        source = Path(source).expanduser()
+    fetched = await resolve(source)
+    text = await extract_from_bytes(
+        fetched.data, format=fetched.format, source_url=fetched.source_url, mode=mode
+    )
+    meta = dict(metadata or {})
+    if "source" in meta:
+        raise ValueError("metadata['source'] is set by ingest; use another key")
+    meta["source"] = {
+        "location": fetched.source_url,
+        "format": str(fetched.format),
+        "media_type": _MEDIA_TYPES.get(str(fetched.format), "application/octet-stream"),
+    }
+    return await store.put(
+        text, key=key, media_type="text/markdown", metadata=meta, original=fetched.data
     )
 
 
-async def drain(database: str, **kwargs) -> ProcessReport:
-    """Run :func:`document_store.process_pending` with harvest wired in.
-
-    Accepts every keyword :func:`process_pending` does (``embedding_model``,
-    ``should_continue``, ``on_progress``, ``max_docs``, ``max_seconds``);
-    ``convert_fn`` defaults to harvest but can be overridden.
-    """
-    kwargs.setdefault("convert_fn", harvest_convert_fn())
-    return await _core_process_pending(database, **kwargs)
+__all__ = ["ingest"]

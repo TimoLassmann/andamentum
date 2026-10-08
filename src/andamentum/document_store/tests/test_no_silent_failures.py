@@ -18,10 +18,9 @@ that cannot be reached may not.
 
 from __future__ import annotations
 
-import logging
-
 import pytest
 
+from andamentum.document_store import HybridIndex, HybridRerankSearcher, Store
 from andamentum.document_store.extraction import (
     ExtractionUnavailable,
     _reraise_if_infrastructure,
@@ -74,84 +73,43 @@ class TestInfrastructureErrorsRaise:
         _reraise_if_infrastructure(ValueError("bad field"), label="Document", model="m")
 
 
-class TestDegradedSignalsAreVisible:
-    """A search signal dropping out must be visible at default log level."""
+class TestIndexFailuresAreNotAbsorbed:
+    """A search signal must not drop out silently: a dead backend raises, a bad
+    document is reported, and a search refuses to answer from a partial index."""
 
-    async def test_fts5_signal_failure_logs_a_warning(self, caplog):
-        from andamentum.document_store.search import _run_fts5_signal
+    async def test_embedding_backend_failure_raises_from_sync_and_search(self, tmp_path):
+        async def dead_backend(texts):
+            raise ConnectionError("embedding backend down")
 
-        # A database path that does not exist makes the signal fail.
-        with caplog.at_level(
-            logging.WARNING, logger="andamentum.document_store.search"
-        ):
-            result = await _run_fts5_signal("/nonexistent/nope.db", "query", 5)
+        index = HybridIndex(embedding_model="fake", embed_fn=dead_backend)
+        searcher = HybridRerankSearcher(index=index, reranker_model="unused")
+        async with await Store.open(
+            tmp_path / "s.db", indexes=[index], searcher=searcher
+        ) as store:
+            await store.put("# T\n\nbody text here", key="a")
+            with pytest.raises(ConnectionError, match="backend down"):
+                await store.sync()
+            with pytest.raises(ConnectionError, match="backend down"):
+                await store.search("body", limit=3)
 
-        assert result is None  # search still degrades rather than aborting
-        assert any(
-            "FTS5 keyword signal FAILED" in r.message and r.levelno >= logging.WARNING
-            for r in caplog.records
-        ), (
-            f"expected a WARNING naming the dropped signal, got: {[r.message for r in caplog.records]}"
-        )
-
-    async def test_doc_embedding_failure_warns_instead_of_blaming_size(
-        self, tmp_path, monkeypatch, caplog
+    async def test_a_document_the_index_cannot_process_is_reported_and_blocks_search(
+        self, tmp_path, monkeypatch
     ):
-        """_embed_doc_level used to log INFO 'content too large' for ANY error.
+        from andamentum.document_store import index as index_module
 
-        Drives the REAL _run_phase2 with a document-level embedding that fails
-        for a non-size reason, and asserts (a) phase 2 still completes — the
-        doc-level signal is genuinely optional — and (b) the failure is visible
-        at WARNING rather than mislabelled at INFO.
-        """
-        from andamentum.document_store import public
-        from andamentum.document_store.api import DocumentStore
+        def broken_chunker(text, *, max_chars):
+            raise ValueError("cannot chunk this")
 
-        store = DocumentStore(database_name="warnprobe", db_dir=str(tmp_path))
-        await store.initialize()
-        doc_id = await store.register_document(title="t", content="body text here")
-
-        class _PartlyBrokenEmbeddingService:
-            """Chunk embeddings work; the doc-level one hits a dead backend."""
-
-            def __init__(self, *a, **k):
-                pass
-
-            async def embed_text(self, *a, **k):
-                raise ConnectionError("embedding backend down")
-
-            async def embed_batch(self, texts, **k):
-                return [[0.0] * 768 for _ in texts]
-
-            async def close(self):
-                return None
-
-        monkeypatch.setattr(public, "OllamaEmbedder", _PartlyBrokenEmbeddingService)
-        monkeypatch.setattr(public, "make_ollama_embedder", lambda **k: None)
-
-        with caplog.at_level(
-            logging.WARNING, logger="andamentum.document_store.public"
-        ):
-            await public._run_phase2(
-                store, doc_id, "body text here", "t", "embed-model"
-            )
-
-        assert any(
-            "Doc-level embedding FAILED" in r.message and r.levelno >= logging.WARNING
-            for r in caplog.records
-        ), (
-            f"expected a WARNING, got: {[(r.levelname, r.message) for r in caplog.records]}"
-        )
-        # Phase 2 still succeeded: chunks exist, so the document is searchable.
-        import sqlite3
-
-        conn = sqlite3.connect(str(store.db_path))
-        try:
-            n_chunks = conn.execute(
-                "SELECT COUNT(*) FROM chunks c JOIN documents d "
-                "ON c.document_id = d.id WHERE d.doc_uuid = ?",
-                (doc_id,),
-            ).fetchone()[0]
-        finally:
-            conn.close()
-        assert n_chunks > 0
+        monkeypatch.setattr(index_module, "chunk", broken_chunker)
+        index = HybridIndex(embedding_model=None)
+        searcher = HybridRerankSearcher(index=index, reranker_model="unused")
+        async with await Store.open(
+            tmp_path / "s.db", indexes=[index], searcher=searcher
+        ) as store:
+            await store.put("body text here", key="a")
+            report = await store.sync()
+            assert not report.ok
+            [(_, error)] = report.failures["hybrid"]
+            assert "cannot chunk this" in error
+            with pytest.raises(RuntimeError, match="could not be indexed"):
+                await store.search("body", limit=3)

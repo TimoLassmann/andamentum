@@ -16,7 +16,7 @@ Andamentum is a single Python package of tightly-scoped sub-modules covering the
 | **harvest** | Universal source → markdown extraction (PDF / HTML / DOCX / PPTX / Markdown / plain). |
 | **chunker** | Deterministic markdown chunking by headings, paragraphs and sentences, with source offsets and heading paths. No model. |
 | [**llm_judge**](./llm_judge.html) | LLM-as-judge: score one output against criteria, or compare two. Derived confidence + doubt, and a panel agreement gate that flags shaky verdicts rather than blocking. |
-| [**document_store**](./document_store/overview.md) | SQLite + FTS5 + sqlite-vec personal knowledge base with 4-signal RRF search and LLM metadata extraction. |
+| [**document_store**](./document_store/overview.md) | One SQLite file of documents with a fixed API: hybrid search (BM25 + vectors, cross-encoder rerank), an opt-in search agent, metadata enrichers. |
 | [**deep_research**](./deep_research/overview.md) | Web research pipeline (search → fetch → extract → verify → synthesize) over a local SearXNG instance. |
 | **core** | Shared model resolution, agent runners, fetch gate, audit log, and embedding clients. |
 
@@ -41,7 +41,7 @@ from andamentum.figures import figure
 from andamentum.proofread import analyze
 from andamentum.harvest import extract
 from andamentum.chunker import chunk
-from andamentum.document_store import ingest, search
+from andamentum.document_store import Store, HybridIndex, HybridRerankSearcher
 from andamentum.deep_research import ResearchState
 from andamentum.vision_critique import critique_figure
 from andamentum.llm_judge import judge_score, judge_compare

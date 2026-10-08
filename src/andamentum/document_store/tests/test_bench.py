@@ -1,10 +1,8 @@
 """Tests for the retrieval benchmark (``document_store.bench``).
 
-All data is synthetic and every embedding comes from a deterministic fake, so
-no test needs the network or a model. The test that matters most is the
-equivalence one: the benchmark builds stores through its own copy of the
-ingest path (to read vectors from a cache), and that copy must write exactly
-what ``public.ingest`` writes, or the benchmark measures a store nobody runs.
+All data is synthetic, every embedding comes from a deterministic fake, and
+the cross-encoder is replaced by a deterministic stub, so no test needs the
+network, Ollama or a model download.
 """
 
 from __future__ import annotations
@@ -16,13 +14,12 @@ from pathlib import Path
 
 import pytest
 
-from andamentum.document_store import public
-from andamentum.document_store.api import DocumentStore
+from andamentum.document_store import reranking
 from andamentum.document_store.bench import arms, data, runner
 from andamentum.document_store.bench.data import Corpus, Passage, Question
 from andamentum.document_store.bench.embedding_cache import EmbeddingCache
 from andamentum.document_store.bench.metrics import paired_bootstrap, question_metrics
-from andamentum.document_store.connection import get_connection
+from andamentum.document_store.types import Hit
 
 DIM = 768
 
@@ -345,66 +342,6 @@ async def test_cache_is_keyed_by_model_digest(tmp_path):
     assert other.misses == 1
 
 
-# ── the benchmark's ingest equals public.ingest ──────────────────────────
-
-LONG_DOC = "# Apollo handbook\n\n" + "\n\n".join(
-    f"## Part {i}\n\n" + " ".join(f"Apollo widget sentence {i}-{j}." for j in range(60))
-    for i in range(6)
-)
-
-
-def _store_rows(db_path: Path) -> list[tuple]:
-    with get_connection(db_path) as conn:
-        chunks = conn.execute(
-            "SELECT c.chunk_index, c.content, c.start_char, c.end_char, c.metadata, "
-            "e.embedding FROM chunks c JOIN chunk_embeddings e ON e.chunk_id = c.id "
-            "ORDER BY c.chunk_index"
-        ).fetchall()
-        doc_emb = conn.execute("SELECT embedding FROM doc_embeddings").fetchall()
-    rows = []
-    for idx, content, start, end, meta, emb in chunks:
-        meta = json.loads(meta)
-        meta.pop("parent_doc_id")  # a fresh uuid in each store
-        rows.append((idx, content, start, end, meta, emb))
-    return rows + [("doc", e[0]) for e in doc_emb]
-
-
-@pytest.mark.parametrize(
-    "text",
-    ["A short passage about SaltLog.", LONG_DOC],
-    ids=["one_chunk", "many_chunks"],
-)
-async def test_bench_ingest_writes_what_public_ingest_writes(
-    tmp_path, monkeypatch, text
-):
-    passage = Passage(pid="p1", title="Apollo", text=text)
-
-    monkeypatch.setattr(public, "OllamaEmbedder", _FakeEmbedder)
-    monkeypatch.setattr(public, "make_ollama_embedder", lambda **_kw: _fake_embed_fn)
-    monkeypatch.setattr(public, "_preflight", _no_preflight)
-    reference = DocumentStore("reference", db_dir=tmp_path / "ref")
-    await reference.initialize()
-    monkeypatch.setattr(public, "_stores", {"reference": reference})
-    await public.ingest(
-        "reference",
-        arms.document_content(passage),
-        title=passage.title,
-        embedding_model="fake-embed",
-    )
-
-    bench = DocumentStore("bench", db_dir=tmp_path / "bench")
-    await bench.initialize()
-    await arms._ingest_like(bench, passage, _cache(tmp_path))
-
-    expected = _store_rows(reference.db_path)
-    assert len(expected) >= 2
-    assert _store_rows(bench.db_path) == expected
-
-
-async def _no_preflight(*_a, **_kw) -> None:
-    return None
-
-
 # ── arms and the runner, end to end on a synthetic corpus ────────────────
 
 PASSAGES = [
@@ -446,81 +383,227 @@ def _corpus() -> Corpus:
     )
 
 
-async def test_bm25_arm_ranks_the_supporting_passages_first(tmp_path):
-    built = await arms.build_current_store(_corpus(), workdir=tmp_path, emb=None)
-    ranked = _ranked(await arms.ARMS["bm25"].rank(built, QUESTIONS[0], None))
-    assert set(ranked[:2]) == {"p-salt", "p-river"}
+async def _build(tmp_path, emb=None):
+    return await arms.build_store(_corpus(), workdir=tmp_path, emb=emb)
 
 
-async def test_store_is_built_once_and_reused(tmp_path):
-    first = await arms.build_current_store(_corpus(), workdir=tmp_path, emb=None)
-    second = await arms.build_current_store(_corpus(), workdir=tmp_path, emb=None)
-    assert first.doc_to_pid == second.doc_to_pid
-    assert first.info is not None and second.info is not None
-    assert first.info.reused is False and second.info.reused is True
-    assert second.info.build["layout"] == arms.CURRENT_LAYOUT
-
-
-@pytest.mark.parametrize("builder", ["build_current_store", "build_v2_store"])
-async def test_a_store_built_for_another_layout_is_refused(tmp_path, builder):
-    build = getattr(arms, builder)
-    first = await build(_corpus(), workdir=tmp_path, emb=None)
-    assert first.info is not None
-    meta_path = next((tmp_path / "stores").glob("*.meta.json"))
-    meta = json.loads(meta_path.read_text())
-    meta["layout"] = 0
-    meta_path.write_text(json.dumps(meta))
-    with pytest.raises(ValueError, match="built for a different run"):
-        await build(_corpus(), workdir=tmp_path, emb=None)
-
-
-async def test_v2_store_has_the_agent_tables(tmp_path):
-    built = await arms.build_v2_store(_corpus(), workdir=tmp_path, emb=None)
-    with sqlite3.connect(built.store.path) as db:
-        tables = {r[0] for r in db.execute("SELECT name FROM sqlite_master")}
-    assert {"collections", "evidence", "decisions"} <= tables
-
-
-async def test_store_names_carry_the_embedding_digest(tmp_path):
-    emb = _cache(tmp_path)
-    await arms.build_v2_store(_corpus(), workdir=tmp_path, emb=emb)
-    [meta] = (tmp_path / "stores").glob("*.meta.json")
-    assert emb.digest in meta.name and f"v2_{arms.V2_LAYOUT}" in meta.name
-
-
-async def test_v1_arm_runs_on_cached_vectors(tmp_path):
-    emb = _cache(tmp_path)
-    built = await arms.build_current_store(_corpus(), workdir=tmp_path, emb=emb)
-    ranked = _ranked(await arms.ARMS["v1"].rank(built, QUESTIONS[0], emb))
-    assert set(ranked) <= {p.pid for p in PASSAGES}
-    assert ranked
-
-
-async def test_v1_rerank_arm_reorders_the_pool_by_reranker_score(tmp_path, monkeypatch):
-    from andamentum.document_store import reranking
-
-    seen: dict[str, list[str]] = {}
+@pytest.fixture
+def stub_rerank(monkeypatch):
+    """Replace the cross-encoder: passages about hills score highest, ties keep order."""
+    seen: dict[str, list] = {"texts": [], "models": []}
 
     async def fake_rerank(query, texts, *, reranker_model):
-        seen["texts"] = list(texts)
-        seen["model"] = [reranker_model]
-        # The passage about hills scores highest, everything else keeps order.
+        seen["texts"].extend(texts)
+        seen["models"].append(reranker_model)
         return [1.0 if "hill" in t.lower() else 0.0 for t in texts]
 
     monkeypatch.setattr(reranking, "rerank", fake_rerank)
-    emb = _cache(tmp_path)
-    await arms.build_current_store(_corpus(), workdir=tmp_path, emb=emb)
-    # Reopened from disk: the passage texts must still be there.
-    built = await arms.build_current_store(_corpus(), workdir=tmp_path, emb=emb)
-    arm = arms.ARMS["v1_rerank"]
-    plain = _ranked(await arms.ARMS["v1"].rank(built, QUESTIONS[0], emb))
-    ranked = _ranked(await arm.rank(built, QUESTIONS[0], emb))
+    return seen
 
-    texts = {arms.document_content(p) for p in PASSAGES}
-    assert seen["texts"] and set(seen["texts"]) <= texts
-    assert seen["model"] == [arms.SUGGESTED_RERANKER_MODEL]
+
+async def test_bm25_arm_ranks_the_supporting_passages_first(tmp_path):
+    built = await _build(tmp_path)
+    ranked = _ranked(await arms.ARMS["bm25"].rank(built, QUESTIONS[0], None))
+    assert set(ranked[:2]) == {"p-salt", "p-river"}
+    await built.store.close()
+
+
+def test_arm_table_has_the_expected_arms_and_store_kinds():
+    expected = {
+        "oracle": "none",
+        "shuffled": "none",
+        "closed_book": "none",
+        "bm25": "store",
+        "fused": "store",
+        "default": "store",
+        "lexical": "store",
+        "rag": "store",
+        "agent": "store",
+        "agent_lexical": "store",
+    }
+    assert {n: a.store_kind for n, a in arms.ARMS.items()} == expected
+    assert {n for n, a in arms.ARMS.items() if a.needs_embeddings} == {
+        "fused",
+        "default",
+        "rag",
+        "agent",
+    }
+
+
+def test_ranked_maps_documents_to_passage_ids_in_group_by_document_order():
+    class Built:
+        doc_to_pid = {"d1": "p1", "d2": "p2", "d3": "p3"}
+
+    hits = [
+        Hit("d2", 1, 0, 5, "a", 0.9),
+        Hit("d1", 1, 0, 5, "b", 0.8),
+        Hit("d2", 1, 5, 9, "c", 0.7),  # a second passage of d2 adds nothing
+        Hit("d3", 1, 0, 5, "d", 0.1),
+    ]
+    assert arms._ranked(Built(), hits) == ["p2", "p1", "p3"]  # type: ignore[arg-type]
+
+
+def test_ranked_is_cut_at_depth():
+    class Built:
+        doc_to_pid = {f"d{i}": f"p{i}" for i in range(arms.DEPTH + 5)}
+
+    hits = [Hit(f"d{i}", 1, 0, 1, "x", 1.0) for i in range(arms.DEPTH + 5)]
+    assert len(arms._ranked(Built(), hits)) == arms.DEPTH  # type: ignore[arg-type]
+
+
+async def test_store_is_built_once_and_reused(tmp_path):
+    first = await _build(tmp_path)
+    await first.store.close()
+    second = await _build(tmp_path)
+    await second.store.close()
+    assert first.doc_to_pid == second.doc_to_pid
+    assert set(first.doc_to_pid.values()) == {p.pid for p in PASSAGES}
+    assert first.info is not None and second.info is not None
+    assert first.info.reused is False and second.info.reused is True
+    assert second.info.build["layout"] == arms.STORE_LAYOUT
+    assert first.hybrid is None  # no embeddings in this run
+
+
+def _tamper(tmp_path, **changes) -> None:
+    meta_path = next((tmp_path / "stores").glob("*.meta.json"))
+    meta = json.loads(meta_path.read_text())
+    meta.update(changes)
+    meta_path.write_text(json.dumps(meta))
+
+
+@pytest.mark.parametrize(
+    "field, value",
+    [
+        ("layout", 0),
+        ("corpus_sha256", "other"),
+        ("embedding_model", "other-embed"),
+        ("embedding_digest", "other-digest"),
+    ],
+)
+async def test_a_store_built_for_another_run_is_refused(tmp_path, field, value):
+    emb = _cache(tmp_path)
+    first = await _build(tmp_path, emb)
+    await first.store.close()
+    _tamper(tmp_path, **{field: value})
+    with pytest.raises(ValueError, match="built for a different run") as exc:
+        await _build(tmp_path, emb)
+    assert field in str(exc.value)
+
+
+async def test_a_store_without_embeddings_is_refused_for_a_run_with_them(tmp_path):
+    emb = _cache(tmp_path)
+    first = await _build(tmp_path, emb)
+    await first.store.close()
+    _tamper(tmp_path, embedding_model=None, embedding_digest=None)
+    with pytest.raises(ValueError, match="built for a different run"):
+        await _build(tmp_path, emb)
+
+
+async def test_a_half_built_store_is_removed_and_rebuilt(tmp_path):
+    built = await _build(tmp_path)
+    await built.store.close()
+    [meta_path] = (tmp_path / "stores").glob("*.meta.json")
+    db_path = meta_path.with_name(meta_path.name.removesuffix(".meta.json") + ".db")
+    meta_path.unlink()  # the meta is written last: no meta means an interrupted build
+    db_path.write_bytes(b"not a database")
+    rebuilt = await _build(tmp_path)
+    await rebuilt.store.close()
+    assert rebuilt.info is not None and rebuilt.info.reused is False
+    assert meta_path.exists()
+    assert set(rebuilt.doc_to_pid.values()) == {p.pid for p in PASSAGES}
+
+
+async def test_a_meta_without_its_store_file_is_an_error(tmp_path):
+    built = await _build(tmp_path)
+    await built.store.close()
+    for f in (tmp_path / "stores").glob("*.db*"):
+        f.unlink()
+    with pytest.raises(FileNotFoundError, match="missing"):
+        await _build(tmp_path)
+
+
+async def test_store_names_carry_the_layout_and_embedding_digest(tmp_path):
+    emb = _cache(tmp_path)
+    built = await _build(tmp_path, emb)
+    await built.store.close()
+    [meta] = (tmp_path / "stores").glob("*.meta.json")
+    assert emb.digest in meta.name and f"store{arms.STORE_LAYOUT}_" in meta.name
+    assert built.hybrid is not None and built.hybrid.embedding_model == "fake-embed"
+
+
+async def test_store_holds_one_keyed_document_per_passage(tmp_path):
+    built = await _build(tmp_path)
+    try:
+        refs = await built.store.list(limit=None)
+        assert {r.key for r in refs} == {p.pid for p in PASSAGES}
+        by_pid = {pid: doc_id for doc_id, pid in built.doc_to_pid.items()}
+        doc = await built.store.get(by_pid["p-hill"])
+    finally:
+        await built.store.close()
+    assert doc is not None and doc.text == arms.document_content(PASSAGES[2])
+
+
+async def test_fused_arm_runs_on_cached_vectors_without_reranking(
+    tmp_path, monkeypatch
+):
+    async def forbidden(*_a, **_kw):
+        raise AssertionError("the fused arm must not rerank")
+
+    monkeypatch.setattr(reranking, "rerank", forbidden)
+    emb = _cache(tmp_path)
+    built = await _build(tmp_path, emb)
+    ranked = _ranked(await arms.ARMS["fused"].rank(built, QUESTIONS[0], emb))
+    await built.store.close()
+    assert ranked and set(ranked) <= {p.pid for p in PASSAGES}
+
+
+async def test_default_arm_reorders_the_fused_pool_by_reranker_score(
+    tmp_path, stub_rerank
+):
+    emb = _cache(tmp_path)
+    await (await _build(tmp_path, emb)).store.close()
+    # Reopened from disk: the passage texts must still be there.
+    built = await _build(tmp_path, emb)
+    q = QUESTIONS[1]
+    fused = _ranked(await arms.ARMS["fused"].rank(built, q, emb))
+    ranked = _ranked(await arms.ARMS["default"].rank(built, q, emb))
+    await built.store.close()
+    assert stub_rerank["texts"]
+    assert stub_rerank["models"] and set(stub_rerank["models"]) == {
+        arms.SUGGESTED_RERANKER_MODEL
+    }
     assert ranked[0] == "p-hill"
-    assert set(ranked) == set(plain)
+    assert set(ranked) == set(fused)
+
+
+async def test_lexical_arm_needs_no_embeddings_and_reranks(tmp_path, stub_rerank):
+    arm = arms.ARMS["lexical"]
+    assert arm.needs_embeddings is False
+    built = await _build(tmp_path)
+    ranked = _ranked(await arm.rank(built, QUESTIONS[1], None))
+    await built.store.close()
+    assert ranked[0] == "p-hill" and stub_rerank["texts"]
+
+
+@pytest.mark.parametrize("name", ["fused", "default", "rag", "agent"])
+async def test_vector_arms_refuse_a_run_without_an_embedding_cache(tmp_path, name):
+    built = await _build(tmp_path)
+    try:
+        with pytest.raises(ValueError, match="embedding cache"):
+            await arms.ARMS[name].rank(built, QUESTIONS[0], None, driver_model="m")
+    finally:
+        await built.store.close()
+
+
+async def test_oracle_and_shuffled_controls_need_no_store(tmp_path):
+    pool = await arms.build_pool(_corpus(), workdir=tmp_path, emb=None)
+    assert pool.info is None and pool.pids == [p.pid for p in PASSAGES]
+    oracle = await arms.ARMS["oracle"].rank(pool, QUESTIONS[0], None)
+    assert oracle == ["p-river", "p-salt"]
+    first = await arms.ARMS["shuffled"].rank(pool, QUESTIONS[0], None)
+    again = await arms.ARMS["shuffled"].rank(pool, QUESTIONS[0], None)
+    assert isinstance(first, list)
+    assert first == again and sorted(first) == sorted(pool.pids)
 
 
 async def test_ollama_cache_sends_one_embedding_request_at_a_time(
@@ -637,7 +720,7 @@ async def test_manifest_records_status_store_and_provenance(tmp_path, synthetic_
     manifest = json.loads((run_dir / "manifest.json").read_text())
     assert manifest["status"] == "complete"
     assert manifest["started"] and manifest["ended"]
-    assert manifest["store_file"]["layout"] == arms.CURRENT_LAYOUT
+    assert manifest["store_file"]["layout"] == arms.STORE_LAYOUT
     assert manifest["store_file"]["reused"] is False
     assert manifest["git"] == _CLEAN_GIT
     assert "uv_lock_sha256" in manifest

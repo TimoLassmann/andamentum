@@ -1,214 +1,121 @@
 # andamentum.document_store
 
-Personal knowledge base with 4-signal search. Store anything — thoughts, papers, meeting notes, decisions, tasks — and find it again with natural language.
+One SQLite file of documents that you can search. The design keeps three things apart:
 
-## What it provides
+- **Fixed data.** The source tables keep every revision of every document in full, plus the original bytes (a PDF, say) when you give them. Their shape never changes.
+- **Flexible index.** Indexes are disposable tables built from the source tables. A new chunk size, embedding model or search method rebuilds the index; the data stays as it is.
+- **Fixed API.** A small set of async calls on `Store`. Searchers and enrichers change behind it.
 
-The core async functions that form the public surface:
-
-| Function | Purpose |
-|----------|---------|
-| `ingest(database, content)` | Store content with auto-chunking and embedding (no LLM) |
-| `search(database, query)` | Natural language search with LLM query planning |
-| `find_by_metadata(database, filters)` | Structured query by metadata fields — exact match or set-membership |
-| `describe_metadata(database)` | Discover the metadata schema — fields present + value distributions |
-| `update_metadata(database, doc_id, metadata)` | Update fields on a document |
-| `delete(database, doc_id)` | Remove a document and all its chunks |
-| `repair(database)` | Fix incomplete ingestions after crashes |
-| `find_duplicates(database)` | Detect near-duplicate documents via embeddings |
-| `ingest_source(database, path_or_url)` | Queue a PDF/DOCX/HTML source for later conversion + enrichment |
-| `process_pending(database)` | Drain the deferred-ingestion queue — resumable and pausable |
-| `pending_status(database)` | Queue depth per stage (no model needed) |
-| `retry_failed(database)` | Requeue documents whose processing failed |
-
-### The three read functions
-
-The store is **schema-less** — metadata is arbitrary JSON, and consumers define
-their own vocabulary (`record_type`, `status`, …). Three uniform functions cover
-reading, identically usable by humans and agents:
-
-- **`search`** — unstructured recall over *content* (NL query, RRF ranking). It
-  does **not** rank or filter on arbitrary metadata; only the LLM query planner's
-  small built-in field whitelist narrows by metadata.
-- **`find_by_metadata`** — deterministic structured query over *any* metadata
-  field. A scalar value matches by equality; a **list value matches by
-  set-membership** (`field IN (...)`), so "any of several statuses" is one call.
-- **`describe_metadata`** — reports the vocabulary actually present, so a caller
-  can fill `find_by_metadata` filters without prior knowledge of the schema.
-
-Domain-specific querying (a task layer's "open" / "overdue" / "high priority")
-belongs to the **consumer**, built on top of these primitives — the store does
-not grow a function per consumer.
-
-## Querying metadata
+## Store and read documents
 
 ```python
-from andamentum.document_store import describe_metadata, find_by_metadata
+from andamentum.document_store import Store
 
-# 1. Discover what exists — no prior knowledge of the schema.
-schema = await describe_metadata("brain")
-#   {"record_type": FieldProfile(present_in=62, distinct=3,
-#                                values={"task": 42, "idea": 13, "decision": 7}),
-#    "title":       FieldProfile(present_in=62, distinct=62, values=None)}  # high-cardinality
-
-# 2. Drill into a subset to see its fields.
-await describe_metadata("brain", filters={"record_type": "task"})
-#   {"status": FieldProfile(present_in=42, distinct=4,
-#                           values={"todo": 20, "in_progress": 5, "blocked": 3, "done": 14}), ...}
-
-# 3. Now the filter is grounded. Set-membership in a single query:
-open_tasks = await find_by_metadata("brain", {
-    "record_type": "task",
-    "status": ["todo", "in_progress", "blocked"],
-})
-
-# Cheap overview — metadata only, no per-document content reads:
-rows = await find_by_metadata("brain", {"record_type": "task"},
-                              limit=10_000, include_content=False)
+async with await Store.open("notes.db") as store:
+    doc_id = await store.put(
+        "# Apollo\n\nThe SaltLog service ships logs.",
+        key="notes/apollo",                  # optional, unique among live documents
+        metadata={"title": "Apollo notes", "kind": "note"},
+    )
+    doc = await store.get(doc_id)            # full text + metadata of the newest revision
+    await store.update(doc_id, metadata={**doc.metadata, "reviewed": True})  # revision 2
+    old = await store.get(doc_id, rev=1)     # every revision stays readable
+    same = await store.resolve("notes/apollo")
+    notes = await store.list(where={"kind": "note"}, limit=None)   # None = all
+    n = await store.count(where={"reviewed": True})
+    await store.delete(doc_id)               # soft delete; restore() undoes it
 ```
 
-A `FieldProfile` carries `present_in` (documents with the field), `distinct`
-(number of distinct values), and `values` (the value→count breakdown, populated
-only for low-cardinality fields so output stays bounded — `None` otherwise; tune
-the cut-off with `describe_metadata(..., max_values=...)`).
+| Call | What it does |
+|---|---|
+| `put(text, *, key, media_type, metadata, original)` | New document. Never deduplicates. A key held by a live document raises `KeyExists`. |
+| `get(doc_id, *, rev=None)` | The newest (or a given) revision with its full text, or `None`. |
+| `original(doc_id, *, rev=None)` | The original bytes stored with a revision, or `None`. |
+| `resolve(key)` | The id of the live document with this key, or `None`. |
+| `update(doc_id, *, text, metadata, media_type, original)` | A new revision; what you leave out is copied. `metadata` replaces the whole object. |
+| `delete` / `restore` / `purge` | Soft delete, undo it, remove for good (with its revisions and unshared original bytes). |
+| `list(*, where, limit, cursor)` | Live documents, newest first, without text. `limit` has no default. |
+| `count(*, where)` | How many live documents match. |
+| `read(doc_id, *, rev, start, end)` | Characters `start..end` of a revision. |
+| `search(query, *, limit, where)` | The best passages, best first (needs a searcher). |
+| `sync()` | Brings every index up to date. |
 
-## How search works
+`where` has three forms: `{"field": value}` (equal), `{"field": None}` (missing or null), `{"field": [a, b]}` (one of). All entries must hold; dotted names reach nested fields (`{"bib.year": 2024}`).
 
-`search()` fuses four signals via Reciprocal Rank Fusion (RRF):
+## Search
 
-1. **FTS5 keyword matching** — fast, available immediately after ingest
-2. **Chunk-level semantic search** — embedding similarity on individual chunks
-3. **Document-level semantic search** — embedding similarity on whole documents
-4. **DHP temporal clustering** — recently active and relevant topics rank higher
-
-An LLM decomposes the query into a search plan (semantic query + optional metadata filter) before running the four signals.
-
-## How ingest works
-
-Two-phase design:
-- **Phase 1** (atomic): document stored in SQLite, FTS5 keyword-searchable immediately
-- **Phase 2** (repairable): content chunked and each chunk embedded; if interrupted, `repair()` re-runs it
-
-**Ingest never calls an LLM.** The store does not invent a metadata vocabulary —
-that belongs to whoever uses it. Pass your own fields with `metadata=`, or set
-them later with `update_metadata()`, and query them deterministically with
-`find_by_metadata()`. If you want an LLM-generated title, call
-`extract_document_metadata()` yourself and pass the result as `title=`.
-
-> Per-chunk LLM tagging (`topics`, `people`, `has_decision`, `has_action_item`)
-> was removed. Nothing read those fields, and producing them cost ~93% of ingest
-> wall-time — one LLM call per chunk. Measured on one arXiv paper: **283 s → 3.5 s
-> (81×)**, with retrieval unchanged. Only `search()` still uses an LLM, for query
-> planning.
-
-## Deferred ingestion — capture now, enrich later
-
-The expensive work (converting a source to markdown, and chunking/embedding/LLM
-metadata) can be queued instead of run inline, then drained on demand or on a
-schedule. The queue is three columns on `documents`, because the unit of work
-*is* a document:
-
-```
-pending_source ──convert──► pending_enrich ──enrich──► complete
-       └──────────────── failed ◄────────────────┘
-```
+Open the store with an index and a searcher:
 
 ```python
-from andamentum.document_store import ingest, ingest_source, process_pending, pending_status
+from andamentum.document_store import (
+    HybridIndex, HybridRerankSearcher, Store, SUGGESTED_RERANKER_MODEL, group_by_document,
+)
 
-# Capture fast: register + FTS index only. No LLM call, no embeddings.
-await ingest("research", note_text, process="defer")
+index = HybridIndex(embedding_model="embeddinggemma-2:latest")   # an Ollama model
+searcher = HybridRerankSearcher(index=index, reranker_model=SUGGESTED_RERANKER_MODEL)
+store = await Store.open("notes.db", indexes=[index], searcher=searcher)
 
-# Queue a slow source (PDF/DOCX/HTML). Nothing is converted yet.
-await ingest_source("research", "~/papers/big.pdf")
+hits = await store.search("what limits the method?", limit=10)
+for h in hits:
+    print(h.score, h.doc_id, h.heading_path, h.text[:80])
+docs = group_by_document(hits)    # documents in rank order, each scored by its best passage
+```
 
-print((await pending_status("research")).pending)   # -> 2
+`search` calls `sync` first, so the results cover every document. Each `Hit` holds `doc_id`, `rev`, `start`, `end` (character offsets in that revision), `text`, `score` and `heading_path`; `store.read(h.doc_id, rev=h.rev, start=h.start, end=h.end) == h.text`. To return the whole document, call `store.get(h.doc_id)`.
 
-# Drain later — e.g. overnight, capped so it stops before morning.
-report = await process_pending(
-    "research", model=..., embedding_model=...,
-    convert_fn=...,                    # see "Conversion" below
-    max_seconds=6 * 3600,
-    should_continue=lambda: not stop_button_pressed,
-    on_progress=lambda done, total, title: print(f"[{done}/{total}] {title}"),
+**The default searcher** splits each document into chunks of at most 2,000 characters with `andamentum.chunker` (at headings, then paragraph breaks, then sentence ends; code blocks and tables are never cut). It ranks chunks by BM25 and by vector similarity, fuses the two rankings (reciprocal rank fusion, top 50), and reranks those 50 with a cross-encoder. Each chunk is scored with its context, `"<title> > <heading path>"`. On the retrieval benchmark (MuSiQue dev, 200 multi-hop questions) this configuration found all supporting passages in the top 10 for 0.490 of questions.
+
+**The search agent** is opt-in:
+
+```python
+from andamentum.document_store import AgentSearcher
+
+searcher = AgentSearcher(
+    model="ollama:gemma4:31b-cloud",
+    inner=HybridRerankSearcher(index=index, reranker_model=SUGGESTED_RERANKER_MODEL),
 )
 ```
 
-**Resumable and pausable.** Each stage transition commits as it completes, so
-all state lives in the database — there is no in-memory cursor to lose.
-"Resume" is simply calling `process_pending` again; it picks up whatever is
-still pending. Pausing (via `should_continue`, `max_docs`, or `max_seconds`) is
-checked *between* documents, so a pause never interrupts a commit. A hard kill
-mid-document loses **at most that one document's** work — everything already
-committed is kept, and phase 2 is idempotent.
+It runs the default search first, asks the model whether the passages are enough, and if not, lets the model use tools (`search`, `grep`, `outline`, `read`, `list`, `glob`, `note`) until it selects the passages the request needs. Its `search` tool is the default searcher. It returns passages in the same form, with every score from the reranker against your request. On the same benchmark it reached 0.625, at the cost of several model calls per search.
 
-Because conversion is checkpointed (`pending_source → pending_enrich` persists
-the markdown), an interrupted run never re-parses a PDF it already converted.
+A store opened with no index and no searcher (as epistemic opens it) stores and reads documents and never calls a model.
 
-**Conversion is injected, not imported.** `process_pending` takes a
-`convert_fn: (source) -> markdown` so this module never depends on
-`andamentum.harvest`. `document_store.pipeline` is the *only* place harvest is
-imported and simply pre-fills that parameter — it is a convenience, not a
-gateway; an app may call the core directly with its own converter:
+## Indexing
+
+`sync()` processes the documents changed since the last sync. It is safe to stop and run again: documents already embedded are not embedded again, and a metadata change that leaves the title and text alone embeds nothing. If a document cannot be indexed, `sync` reports it in `SyncReport.failures` and retries it next time; `search` refuses to run until it is fixed, because it would silently miss that document. If the embedding service is down, `sync` raises.
+
+Changing `embedding_model` or `max_chars` rebuilds the index from scratch on the next sync.
+
+## Ingest files and URLs
 
 ```python
-from andamentum.document_store.pipeline import ingest_source, drain   # harvest-backed
-await drain("research", model=..., embedding_model=...)
+from andamentum.document_store.pipeline import ingest
+
+doc_id = await ingest(store, "paper.pdf", metadata={"kind": "paper"})
 ```
 
-> **Note.** Converting *outside* the drain (calling harvest yourself, then
-> `ingest()`) works, but is **not** checkpointed: an interrupted run re-parses
-> every in-flight document. For resumable bulk work, enqueue sources and let
-> `process_pending` convert them.
+`ingest` converts a path or URL to markdown with `andamentum.harvest`, keeps the original bytes and records `metadata["source"]` (location, format, media type).
 
-**What is searchable, and when** — the two entry points differ, and the
-distinction matters:
+## Enrichers
 
-| queued via | keyword (FTS5) | semantic | LLM metadata |
-|---|---|---|---|
-| `ingest(..., process="defer")` | **immediately** | after drain | after drain |
-| `ingest_source(...)` | **only after conversion** | after drain | after drain |
+Enrichers live outside the store (`andamentum.document_store.enrich`). Each reads a document and writes one top-level metadata key through `update`, keeping the other keys: identifiers (DOI, PMID, PMCID, arXiv, ISBN, URLs), bibliographic records (Crossref by DOI, PubMed by PMID), basic facts, LLM-extracted fields (needs `model=`) and labels from a decision model with labels you define (needs `decision_model=`). `enrich_all` runs one enricher over every document a `where` matches, one at a time.
 
-`ingest_source` records a *reference* and writes `markdown_content=''`, so there
-is no text to index until `process_pending` converts it — a queued source
-returns zero FTS hits (measured, not assumed: see the validation experiment's
-`H-a5`). Only `ingest` gives you the immediate keyword-searchability property.
-
-`repair()` deliberately ignores `pending_*` documents, so an interactive
-`search()` never turns into a synchronous drain of the backlog.
-
-### CLI
-
-The store owns a drainable queue, not a scheduler — cron/launchd supplies the clock.
+## Command line
 
 ```bash
-andamentum-docstore ingest research notes.md --defer
-andamentum-docstore ingest-source research ~/papers/big.pdf
-andamentum-docstore status research
-andamentum-docstore process-pending research \
-    --embedding-model embeddinggemma-2:latest \
-    --max-seconds 21600
-andamentum-docstore retry-failed research
+andamentum-docstore ingest notes.db paper.pdf https://example.org/page
+andamentum-docstore sync notes.db --embedding-model embeddinggemma-2:latest
+andamentum-docstore search notes.db "what limits the method?" \
+    --embedding-model embeddinggemma-2:latest --reranker-model BAAI/bge-reranker-v2-m3
+andamentum-docstore list notes.db --where '{"kind": "paper"}' --limit 20
+andamentum-docstore get notes.db notes/apollo
+andamentum-docstore delete notes.db notes/apollo
 ```
 
-`Ctrl-C` (or `SIGTERM`) pauses cleanly: the in-flight document finishes and
-commits, then the run exits. Re-run the same command to resume.
+## Reranking cost
 
-## Installation
+The cross-encoder stays loaded in the process after the first search: a 0.6B model's memory, which `ollama ps` does not show, plus a few seconds per search. `rerank(query, texts, reranker_model=...)` and `select_relevant(scored, min_relevance=..., buffer=...)` are exported for callers who want to score their own passages and decide how many to keep.
 
-```bash
-pip install andamentum
-```
+## Files
 
-## Quick start
-
-```python
-from andamentum.document_store import ingest, search
-
-doc_id = await ingest("research", "MAP-Elites could work for antibody optimization")
-results = await search("research", "What do I know about quality-diversity optimization?")
-for r in results:
-    print(r.title, r.score)
-```
-
-Databases are stored at `~/.config/andamentum/databases/{name}.db`. Override with `$DOCUMENT_STORE_DIR` or `$ANDAMENTUM_DATABASES_DIR`.
+The store is one SQLite file (WAL mode, so several processes can write it) plus its `-wal` and `-shm` files. There is no default location and no environment variable; you name the path. Files written by the earlier v1 and v2 stores are not read.

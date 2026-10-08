@@ -2,6 +2,36 @@
 
 ## Unreleased
 
+### document_store
+
+  - **One store, rebuilt.** The v1 store (`DocumentStore`, `search`,
+    `find_by_metadata`, the deferred-ingestion queue, DHP clustering) and the
+    v2 section store are replaced by `Store`: fixed source tables that keep
+    every revision in full and the original bytes, disposable indexes rebuilt
+    from a change log, and a fixed async API (`put`, `get`, `resolve`,
+    `update`, `delete`, `restore`, `purge`, `list`, `count`, `search`, `read`,
+    `sync`). `list` has no default limit. Old database files are not read.
+  - **Search.** `HybridRerankSearcher` (default): BM25 + vectors over chunks,
+    RRF top 50, cross-encoder rerank. `AgentSearcher` (opt-in): a model-driven
+    tool loop on top of it.
+  - **Enrichers** (`document_store.enrich`) write identifiers, bibliographic
+    records, basic facts, LLM-extracted fields or decision-model labels into
+    a document's metadata.
+  - CLI: `andamentum-docstore ingest | sync | search | get | list | delete`.
+
+### chunker
+
+  - **One deterministic chunker.** `chunk(text, *, max_chars)` splits at
+    headings, then paragraph breaks, then sentence ends, never inside fenced
+    code or tables. The embedding split, the LLM judge and `extract_units`
+    are removed.
+
+### references
+
+  - `extract_identifiers` (now also PMCID, ISBN, URLs), Crossref `fetch_work`
+    / `search_crossref` / `to_csl` and PubMed `parse_pubmed_xml` /
+    `fetch_pubmed` move here from epistemic and compose.
+
 ### proofread
 
   - **Slide mode.** `andamentum-proofread deck.pptx --slides` runs per-slide

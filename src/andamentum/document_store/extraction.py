@@ -13,14 +13,9 @@ Self-correction for local models:
 
 Document extraction: title, projects, people.
 
-This is an OPT-IN utility, not part of ingest. ``ingest()`` never calls an LLM:
-the store persists, chunks and embeds text, and leaves the metadata vocabulary
-entirely to its consumers. Call this yourself if you want a generated title, and
-pass the result to ``ingest(title=..., metadata=...)``.
-
-(Chunk-level extraction — topics / people / has_decision / has_action_item —
-was removed. Nothing read those fields, and they cost ~93% of ingest wall-time
-at one LLM call per chunk.)
+This is an OPT-IN utility, never part of storing a document: call it yourself,
+or run the ``extract`` enricher (``document_store.enrich``), which writes the
+result under the document's ``extracted`` metadata key.
 
 Requires: pydantic-ai (installed as part of andamentum).
 """
@@ -216,7 +211,6 @@ async def extract_document_metadata(
     """Extract LLM fields for a document using PydanticAI structured output.
 
     Extracts: title, projects, people.
-    Deterministic fields (source, created_at) are left at defaults.
 
     Args:
         content: Full document text.

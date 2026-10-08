@@ -20,7 +20,7 @@ Andamentum is a single Python package (`src/andamentum/`) of tightly-scoped sub-
 
 - `andamentum.epistemic` — formal epistemology: evidence/claims/uncertainty entities, deterministic stage gates, pattern-driven work scheduling, multi-agent verification
 - `andamentum.deep_research` — web research pipeline (search → fetch → extract → verify → synthesize) built on `pydantic-graph`
-- `andamentum.document_store` — SQLite + FTS5 + sqlite-vec knowledge base: 4-signal RRF search ranks documents and a cross-encoder reranks the top 50 by their best passage; `get_chunks` / `get_chunk` read the passages
+- `andamentum.document_store` — one SQLite file of documents: fixed source tables (every revision in full, original bytes), disposable indexes rebuilt from them, and a fixed async API (`Store`: put / get / update / delete / list / count / search / read / sync). Default search: BM25 + vectors over chunks, RRF top 50, cross-encoder rerank; `AgentSearcher` adds a model-driven tool loop on top. Enrichers write metadata outside the store
 - `andamentum.whetstone` — criterion-cascade review of your own drafts → markdown / HTML / tracked-changes `.docx`; reviewer profiles, checklist and panel modes, the goal loop
 - `andamentum.figures` — publication-quality scientific figures: 10 chart types, journal palettes and the andamentum report look
 - `andamentum.chunker` — deterministic, model-free chunking of markdown: `chunk(text, max_chars=N)` splits at headings, then paragraphs, then sentences; fenced code, tables and front matter are never cut; each `Chunk` carries source offsets and its heading path. Standard library only.
@@ -37,7 +37,7 @@ Andamentum is a single Python package (`src/andamentum/`) of tightly-scoped sub-
 
 **Each module's full notes** — design decisions, measured numbers, pitfalls, layering reasons — live in `src/andamentum/<module>/CLAUDE.md`, which Claude Code loads when it reads files in that directory. Read it before you change the module.
 
-Everything ships in one distribution. The default dependencies are the flat union of what the sub-modules need. Two optional extras add heavier, self-contained capabilities with graceful fallback when absent: `html-articles` (trafilatura, Apache-2.0 — falls back to docling) and `pdf` (WeasyPrint, BSD-3 — `typeset` raises a clear ImportError without it). A third, `vlm`, is documented under harvest. sentence-transformers (Apache-2.0) is a core dependency, because `document_store.search` reranks every query.
+Everything ships in one distribution. The default dependencies are the flat union of what the sub-modules need. Two optional extras add heavier, self-contained capabilities with graceful fallback when absent: `html-articles` (trafilatura, Apache-2.0 — falls back to docling) and `pdf` (WeasyPrint, BSD-3 — `typeset` raises a clear ImportError without it). A third, `vlm`, is documented under harvest. sentence-transformers (Apache-2.0) is a core dependency, because the document store's default searcher reranks every query.
 
 ## Commands
 
@@ -100,7 +100,7 @@ The scripts installed by the package. Run `--help` on any binary for the exhaust
 | `andamentum-forge` | Meta-system: a natural-language brief → a recipe/dialect-validated `SystemSpec` → rendered, agent-authored, sandbox-audited runnable package. `build` (full pipeline: design → render → author code → audit) or `design` (validated spec only). `--stop-after {render,build,audit}`, `--sandbox {podman,subprocess}`, `--verbose` (live progress dashboard) | required |
 | `andamentum-llm-judge` | LLM-as-judge → JSON on stdout (or `-o FILE`). `score <output>` (per-criterion, against `--criteria` or the built-in six) or `compare <output_a> <output_b>` (both presentation orders, always). `--model` once = fast single judge; repeated or comma-separated = sequential panel with an agreement gate. Every result carries `confidence`, `doubt`, and `needs_review` | required |
 | `andamentum-compose` | A task → a finished document. `write "<task>" --out FILE.docx [--into FILE.docx] [--results DIR] [--library FILE] [--zotero] [--template FILE] [--offline]` drafts into Word as tracked changes, comments, verified citations and bound numbers (the `--into` file is never edited); `write "<task>" --out DIR` is the bundle path (`--genre`, `--source`, `--research`, `--format`, `--no-provenance`); `--model` or per-role `--drafter/--critic/--judge/--reader`, `--max-rounds`. Word verbs, each writing a copy: `check FILE.docx` (citations, retractions, URLs, cross-references, statistics, abstract numbers; `--results DIR --model M` numbers, `--decision-model M` pre-gate; exit 0/1/2/3), `bind-numbers FILE.docx --results DIR --model M`, `refresh FILE.docx --results DIR` (exit 0/1), `respond FILE.docx [--reviews FILE] --model M` (exit 0/4), `find-citation QUERY`, `insert-citation FILE.docx --paragraph-id ID --at N --doi DOI`, `mcp` (stdio MCP server). Bundle verbs: `run DIR`, `status DIR`, `check-bundle DIR`, `render DIR` (`--raw --format F --out FILE`), `genres`, `eval`, and the no-model `new`, `sections`, `show`, `edit`, `add`, `validate`. Exit 0 done, 4 open issues, 3 crash, 2 usage. Guide: `docs/compose.md`; details: `src/andamentum/compose/CLAUDE.md`, `src/andamentum/compose/harness/CLAUDE.md` | required for the writing verbs; `check` needs a model only with `--results`/`--decision-model` |
-| `andamentum-docstore` | Deferred ingestion for the document store: `ingest [--defer]`, `ingest-source`, `status`, `process-pending`, `retry-failed` | only for `process-pending` and the non-deferred paths |
+| `andamentum-docstore` | The document store from a shell: `ingest DB SOURCE...` (harvest → markdown, original bytes kept), `sync DB --embedding-model M` (build the index; Ctrl-C and rerun to continue), `search DB QUERY --embedding-model M --reranker-model R`, `get`, `list`, `delete` | none for `ingest`/`get`/`list`/`delete`; `sync` embeds, `search` embeds and reranks |
 
 `andamentum-epistemic`, `andamentum-research` and `andamentum-forge` resolve their LLM via `--model anthropic:claude-haiku-4-5` or `$ANDAMENTUM_MAIN_LLM_MODEL`, routed through `core.models.resolve_model_from_args`, which `sys.exit(1)`s if neither is set — no hidden defaults. `andamentum-whetstone`, `andamentum-vision-critique`, and `andamentum-llm-judge` take `--model` directly (any pydantic-ai model id; vision-critique requires a multimodal one, and llm-judge accepts the flag more than once to form a panel). `andamentum-figures`, `andamentum-harvest`, and `andamentum-proofread` have no LLM dependency.
 
@@ -112,13 +112,13 @@ The scripts installed by the package. Run `--help` on any binary for the exhaust
 
 This is not a blanket rule — genuinely positional signatures (`cosine_similarity(a, b)`, `_pct(numerator, denominator)`) stay as they are. It applies where the confusable values are *passed onward* rather than consumed locally, so a swap produces wrong behaviour instead of an immediate error. Retrofit opportunistically when touching a file; don't sweep the repo.
 
-Worked example — `document_store/public.py:_preflight` took `(database, embedding_model, model=None, *, auto_repair=True)`. A caller passing `(database, model, embedding_model)` handed the embedding service an LLM id, breaking every `search()` call, and neither pyright nor the test suite could see it. The `*` now sits directly after `database`.
+Worked example — a former document-store helper, `_preflight`, took `(database, embedding_model, model=None, *, auto_repair=True)`. A caller passing `(database, model, embedding_model)` handed the embedding service an LLM id, breaking every `search()` call, and neither pyright nor the test suite could see it. The `*` now sits directly after `database`.
 
 **Core module** (`andamentum.core`) — shared infrastructure for model resolution, agent execution, embeddings (`core.embeddings`), and SSRF-safe URL fetching (`core.url_safety`). All sub-modules import from core instead of maintaining independent implementations. When adding LLM-calling code, use `core.agents.AgentRunner` or `core.agents.run_agent_with_fallback()` — they provide model resolution (ollama, bedrock, passthrough) and PromptedOutput fallback for free.
 
 **Layering:**
 - `core` is the shared base — no sub-module imports from another sub-module via core's surface (core itself depends on neither).
-- `document_store` is foundational; `epistemic` may depend on it directly (e.g., `EpistemicRepository` wraps a `DocumentStore`).
+- `document_store` is foundational; `epistemic` may depend on it directly (e.g., `EpistemicRepository` wraps a `Store`). `document_store` depends on `core`, `chunker`, `references` (enrichers) and `harvest` (`pipeline.py` only).
 - `deep_research` is foundational for evidence gathering; `epistemic.evidence_gathering` may depend on it.
 - `document_store` and `deep_research` MUST NOT depend on `epistemic` or on each other.
 - `whetstone` depends on `core`, `typeset`, `chunker`, `harvest` and `references`; on `deep_research`, `vision_critique` and `llm_judge` only behind opt-in features (novelty check, goal checks). It MUST NOT depend on `epistemic` or `document_store`.
@@ -130,7 +130,7 @@ Worked example — `document_store/public.py:_preflight` took `(database, embedd
 - `epistemic` MAY depend on `llm_judge` and on `references` (identifier extraction and PubMed record parsing live in `references`), one way only. `forge` depends on `core` and `agentic_dialect`.
 - The full rules, with their reasons, are in each module's `CLAUDE.md`; conformance tests enforce several of them.
 
-**Public API lives in `__init__.py`.** Each sub-module's `__init__.py` defines `__all__` explicitly; everything not listed is internal. `document_store` also re-exports its public surface from `public.py`.
+**Public API lives in `__init__.py`.** Each sub-module's `__init__.py` defines `__all__` explicitly; everything not listed is internal.
 
 ## Design language (andamentum visual system)
 

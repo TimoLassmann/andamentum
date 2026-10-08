@@ -42,7 +42,6 @@ classifiers = [
 # the API. Upgrade the upper bound deliberately when bumping a major.
 dependencies = [
     "pydantic>=2.0.0,<3",            # epistemic, deep-research, document-store
-    "aiosqlite>=0.19.0,<1",          # document-store
     "sqlite-vec>=0.1.6,<0.2",        # pre-1.0 ABI: pin minor too
     "numpy>=1.24.0,<3",              # document-store
     "scipy>=1.10.0,<2",              # document-store

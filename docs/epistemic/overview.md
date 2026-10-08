@@ -712,7 +712,7 @@ Top-level layout under `src/andamentum/epistemic/`:
 | `confidence.py` | Posterior aggregation (abductive-primary, diagnostic counting posterior — see section 10) plus `build_verdict`, which assembles the run's `EpistemicVerdict` from the live DB. |
 | `judgment_signal.py` | Pure math for the verbalized judgment distribution: normalisation, argmax verdict, confidence, entropy, one-hot detection. Leaf module, no epistemic deps. |
 | `demand.py` | The `Demand` Pydantic model used everywhere lazy-escalation happens. |
-| `repository.py` | `EpistemicRepository` wraps a `DocumentStore` (from `andamentum.document_store`). |
+| `repository.py` | `EpistemicRepository` wraps a `Store` (from `andamentum.document_store`). |
 | `runner.py` | `DefaultAgentRunner` wrapping `core.AgentRunner` with the epistemic agent registry. |
 | `cli.py` | `andamentum-epistemic` entry point. Primary modes: `ask` (research) and `verify` (seed-claim); further subcommands `run`, `agents`, `preflight`, `stage`, `inspect`, `confidence`. |
 | `tests/` | Tests live next to the code they test. `test_topology.py` asserts reachability properties. |

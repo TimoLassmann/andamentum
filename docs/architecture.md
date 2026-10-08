@@ -119,7 +119,8 @@ machine-checkable via grep and are enforced by code review.
 - **`chunker`** depends on nothing but the standard library. Other modules
   may depend on chunker.
 - **`document_store`** is foundational. Depends on `core`, `chunker`,
-  `httpx`. Other modules may depend on it.
+  `references` (enrichers) and `harvest` (ingest only). Other modules may
+  depend on it.
 - **`deep_research`** depends on `core`, `harvest`. MUST NOT depend on
   `document_store`.
 - **`typeset`** is a leaf. Used by `whetstone`, `compose.bundle`,
@@ -156,7 +157,7 @@ src/andamentum/
 ├── core/             — shared model resolution, fetch gate, audit log
 ├── harvest/          — universal source → markdown extraction
 ├── chunker/          — deterministic markdown chunking
-├── document_store/   — SQLite + FTS5 + sqlite-vec personal knowledge base
+├── document_store/   — one SQLite file of documents; hybrid search, search agent
 ├── deep_research/    — web research pipeline (search → fetch → extract → verify → synthesise)
 ├── typeset/          — typesetting system (HTML + PDF output)
 ├── compose/          — a task in, a finished document out (brief → evidence → draft → checks → revise); `compose/bundle/` is the model-free folder-bundle layer → .docx / .md / .html / .txt

@@ -60,8 +60,9 @@ Two commitments shape the whole package:
   DOCX / PPTX / Markdown / plain)
 - `andamentum.chunker` — deterministic markdown chunking by headings,
   paragraphs and sentences, with source offsets and heading paths
-- `andamentum.document_store` — SQLite + FTS5 + sqlite-vec personal knowledge
-  base with 4-signal RRF search and LLM metadata extraction
+- `andamentum.document_store` — one SQLite file of documents with a fixed
+  API; hybrid search (BM25 + vectors, cross-encoder rerank) and an opt-in
+  search agent
 - `andamentum.deep_research` — web research pipeline (search → fetch → extract
   → verify → synthesise) over a local SearXNG instance
 
@@ -230,16 +231,11 @@ publicly-funded data infrastructure.
 
 ### Algorithms
 
-- **Reciprocal Rank Fusion** (RRF) — multi-signal search fusion in
-  `document_store.chunks_search`.
+- **Reciprocal Rank Fusion** (RRF) — search fusion in
+  `document_store.searchers`.
   Cormack, G.V., Clarke, C.L.A., Büttcher, S. (2009). "Reciprocal
   Rank Fusion outperforms Condorcet and individual rank learning
   methods", *SIGIR '09*.
-- **Dirichlet-Hawkes Process** (DHP) — temporal clustering in
-  `document_store.dhp`.
-  Du, N., Farajtabar, M., Ahmed, A., Smola, A., Song, L. (2015).
-  "Dirichlet-Hawkes Processes with Applications to Clustering
-  Continuous-Time Document Streams", *KDD '15*.
 - **HDBSCAN** — density-based clustering.
   Campello, R.J.G.B., Moulavi, D., Sander, J. (2013).
   "Density-Based Clustering Based on Hierarchical Density

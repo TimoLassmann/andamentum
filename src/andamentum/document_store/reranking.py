@@ -1,10 +1,10 @@
 """Cross-encoder reranking and the selection rule that consumes its scores.
 
-Why this exists at all. :func:`~.search.search_unified` ranks documents by a
+Why this exists at all. The store's fusion step ranks passages by a
 Reciprocal Rank Fusion sum. An RRF score is an artefact of the ranks that fed
 it: it has no absolute meaning, it is not comparable between two queries, and
 it cannot answer "is result 7 actually relevant, or merely seventh". So every
-caller of :func:`~.public.search` has to guess a ``limit`` and hope. A
+caller of a fusion-only search has to guess a ``limit`` and hope. A
 cross-encoder score can answer that question, which turns "how many results"
 from a constant the caller picked into a property of the query's own evidence.
 
@@ -25,9 +25,9 @@ Two functions, split on purpose:
 - :func:`select_relevant` needs nothing but arithmetic, so it is testable
   without loading a model.
 
-**Where the store calls them.** :func:`~.public.search` calls :func:`rerank`
-on its fused top candidates, scoring each document by its best passage, so
-every search pays for the model. That was a measured choice: on a multi-hop
+**Where the store calls them.** ``HybridRerankSearcher`` (the default
+searcher, ``searchers.py``) calls :func:`rerank` on its fused top 50 passages,
+so every search pays for the model. That was a measured choice: on a multi-hop
 benchmark the rerank gave the largest single gain of anything tried.
 :func:`select_relevant` is never called by the store; deciding how many
 results are relevant stays with the caller.
