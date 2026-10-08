@@ -57,3 +57,15 @@ def test_split_section_recursively_descends_into_children_when_too_big():
     # Total span coverage should equal the parent's span
     total = sum(p.end - p.start for p in pieces)
     assert total == parent.length
+
+
+def test_find_headings_skips_headings_inside_code_fences():
+    src = (
+        "# Real\n\n```\n# fake\n```\n\n~~~\n## fake too\n~~~\n\n"
+        "````\n```\n# still fake\n````\n\n## Also real\n"
+    )
+    assert [h.title for h in find_headings(src)] == ["Real", "Also real"]
+
+
+def test_find_headings_unclosed_fence_hides_the_rest():
+    assert [h.title for h in find_headings("# A\n\n```\n# B\n")] == ["A"]

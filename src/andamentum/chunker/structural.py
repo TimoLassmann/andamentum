@@ -1,12 +1,9 @@
-"""Structural split: parse markdown headers, build a section tree.
+"""Structural layer: parse markdown headings, build a section tree.
 
-This is stage 1 of the structural-first chunker. We rely on markdown
-heading lines (`# `, `## `, etc.) to identify section boundaries — for
-academic papers and clean web articles this gets us 80%+ of the way
-without any LLM call.
-
-Outputs are dataclasses with absolute character spans into the source.
-The orchestrator turns these into final ``Unit`` objects.
+Heading lines (`# `, `## `, etc.) identify section boundaries. Heading
+lines inside fenced code blocks are not headings. Outputs are dataclasses
+with absolute character spans into the source. ``chunk()`` and whetstone's
+sectionizer both build on this module.
 """
 
 from __future__ import annotations
@@ -18,6 +15,46 @@ from dataclasses import dataclass, field
 # formed markdown. Setext (underline) headers are not handled here because
 # trafilatura/docling output is consistently ATX.
 _HEADING_RE = re.compile(r"^(#{1,6})[ \t]+(.+?)[ \t]*$", re.MULTILINE)
+
+
+_FENCE_OPEN_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
+
+
+def fence_line_ranges(lines: list[str]) -> list[tuple[int, int]]:
+    """Return ``(first, last)`` line indices (inclusive) of each fenced code block.
+
+    A fence opens with three or more backticks or tildes. It closes only on a
+    line of the same character, at least as long as the opening, with nothing
+    after it. An unclosed fence runs to the last line.
+    """
+    out: list[tuple[int, int]] = []
+    i, n = 0, len(lines)
+    while i < n:
+        m = _FENCE_OPEN_RE.match(lines[i].rstrip("\r"))
+        if m is None or (m.group(1)[0] == "`" and "`" in m.group(2)):
+            i += 1
+            continue
+        char, length = m.group(1)[0], len(m.group(1))
+        close = re.compile(rf"^ {{0,3}}{re.escape(char)}{{{length},}}[ \t]*$")
+        j = i + 1
+        while j < n and not close.match(lines[j].rstrip("\r")):
+            j += 1
+        last = min(j, n - 1)
+        out.append((i, last))
+        i = last + 1
+    return out
+
+
+def fenced_ranges(source: str) -> list[tuple[int, int]]:
+    """Character ranges ``[start, end)`` of fenced code blocks in `source`."""
+    lines = source.split("\n")
+    offsets = [0]
+    for line in lines:
+        offsets.append(offsets[-1] + len(line) + 1)
+    return [
+        (offsets[first], min(offsets[last + 1] - 1, len(source)))
+        for first, last in fence_line_ranges(lines)
+    ]
 
 
 @dataclass
@@ -37,7 +74,7 @@ class Section:
     Sections nest: a level-2 section contains all level-3+ headings up to
     the next level-2-or-shallower heading. ``children`` lists those nested
     sections; the section's body INCLUDES its children's text (we do not
-    pre-split — the orchestrator decides).
+    pre-split — the caller decides).
     """
 
     start: (
@@ -54,9 +91,12 @@ class Section:
 
 
 def find_headings(source: str) -> list[Heading]:
-    """Find all ATX markdown headings in `source`."""
+    """Find all ATX markdown headings in `source`, skipping fenced code blocks."""
     out: list[Heading] = []
+    fences = fenced_ranges(source)
     for m in _HEADING_RE.finditer(source):
+        if any(a <= m.start() < b for a, b in fences):
+            continue
         line_end = source.find("\n", m.end())
         if line_end == -1:
             line_end = len(source)
@@ -79,7 +119,7 @@ def build_section_tree(source: str, headings: list[Heading]) -> list[Section]:
     level is strictly deeper, until that next sibling/parent.
 
     If the source has content BEFORE the first heading, we don't manufacture
-    a fake section for it — the orchestrator handles preamble separately.
+    a fake section for it — the caller handles preamble separately.
     """
     if not headings:
         return []
@@ -138,7 +178,7 @@ def split_section_recursively(section: Section, target_max: int) -> list[Section
         return [section]
 
     if not section.children:
-        # No structural breakdown possible — caller (orchestrator) must use
+        # No structural breakdown possible — caller (caller) must use
         # the embedding-based split as a fallback.
         return [section]
 

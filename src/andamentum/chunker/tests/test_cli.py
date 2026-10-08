@@ -1,74 +1,57 @@
-"""Smoke tests for andamentum-chunker CLI."""
+"""Smoke tests for the andamentum-chunker CLI."""
 
-import os
+import json
 import subprocess
 import sys
 
 from andamentum.chunker import cli
-from andamentum.chunker.types import ChunkingResult
 
 
-def _run(args: list[str], env: dict | None = None) -> subprocess.CompletedProcess:
+def _run(args: list[str], stdin: str | None = None) -> subprocess.CompletedProcess:
     return subprocess.run(
         [sys.executable, "-m", "andamentum.chunker.cli", *args],
         capture_output=True,
         text=True,
-        env=env,
+        input=stdin,
         check=False,
     )
 
 
-def test_help_lists_required_args():
+def test_help_lists_args():
     result = _run(["--help"])
     assert result.returncode == 0
-    for token in ("--judge-model", "--domain", "--output", "input"):
+    for token in ("--max-chars", "--output", "--text-only", "input"):
         assert token in result.stdout
+    assert "--judge-model" not in result.stdout
 
 
-def test_missing_input_file_exits_nonzero(tmp_path):
-    env = os.environ.copy()
-    result = _run(["/nonexistent/file.txt"], env=env)
-    assert result.returncode != 0
+def test_max_chars_is_required():
+    result = _run(["file.md"])
+    assert result.returncode == 2
+    assert "--max-chars" in result.stderr
 
 
-def _capture_extract(monkeypatch) -> dict:
-    """Replace the CLI's ``extract_units`` with a stub recording its kwargs."""
-    seen: dict = {}
-
-    async def fake_extract_units(source, **kwargs):
-        seen.update(kwargs)
-        return ChunkingResult(
-            units=[],
-            gaps=[],
-            total_chars=len(source),
-            model_calls=0,
-            retries_used=0,
-            windows_processed=0,
-        )
-
-    monkeypatch.setattr(cli, "extract_units", fake_extract_units)
-    return seen
+def test_missing_input_file_exits_nonzero():
+    assert _run(["/nonexistent/file.txt", "--max-chars", "100"]).returncode == 1
 
 
-def test_stage_three_is_off_without_judge_model(tmp_path, monkeypatch):
-    """Regression: the CLI used to hand its primary model to stage 3 on every run."""
-    seen = _capture_extract(monkeypatch)
-    src = tmp_path / "doc.md"
-    src.write_text("## A\n\nbody")
+def test_json_output_from_file(tmp_path):
+    src = "# A\n\nfirst\n\n# B\n\nsecond\n"
+    f = tmp_path / "doc.md"
+    f.write_text(src)
     out = tmp_path / "out.json"
+    assert cli.main([str(f), "--max-chars", "12", "-o", str(out)]) == 0
+    data = json.loads(out.read_text())
+    assert data["total_chars"] == len(src)
+    assert [c["heading_path"] for c in data["chunks"]] == [["A"], ["B"]]
+    for c in data["chunks"]:
+        assert src[c["start"] : c["end"]] == c["text"]
 
-    assert cli.main([str(src), "-o", str(out)]) == 0
 
-    assert seen["judge_executor"] is None
-
-
-def test_stage_three_runs_only_when_judge_model_is_given(tmp_path, monkeypatch):
-    seen = _capture_extract(monkeypatch)
-    monkeypatch.setattr(cli, "AgentRunner", lambda *, model: object())
-    src = tmp_path / "doc.md"
-    src.write_text("## A\n\nbody")
-    out = tmp_path / "out.json"
-
-    assert cli.main([str(src), "--judge-model", "ollama:x", "-o", str(out)]) == 0
-
-    assert callable(seen["judge_executor"])
+def test_stdin_and_text_only():
+    result = _run(
+        ["-", "--max-chars", "12", "--text-only"],
+        stdin="# A\n\nfirst\n\n# B\n\nsecond\n",
+    )
+    assert result.returncode == 0
+    assert result.stdout.strip() == "# A\n\nfirst\n\n---\n\n# B\n\nsecond"

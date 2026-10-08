@@ -1,35 +1,11 @@
-"""andamentum.chunker — structural-first semantic chunking.
+"""andamentum.chunker — deterministic markdown chunking.
 
-Pipeline (literature consensus, 2026):
-  1. Structural split on markdown headings (deterministic, free).
-  2. Semantic split for over-budget sections via cosine drops between
-     paragraph embeddings.
-  3. Optional LLM judge for grey-zone boundaries.
-
-Output units' ``text`` is byte-identical to a source span. The LLM is
-used only as a boundary judge, never as the primary segmenter.
+``chunk(text, max_chars=N)`` splits at headings, then paragraphs, then
+sentences. Fenced code blocks, tables and YAML front matter are never cut.
+Each chunk carries its source offsets and its heading path. No model is
+involved and nothing outside the standard library is imported.
 """
 
-from .embeddings import EmbeddingFn, make_ollama_embedder
-from .extractor import ExecutorFn, extract_units, make_runner_executor
-from .judge import JudgeVerdict
-from .types import (
-    ChunkingResult,
-    Gap,
-    Unit,
-)
+from .splitter import Chunk, chunk
 
-
-__all__ = [
-    # Functions / callables
-    "extract_units",
-    "make_ollama_embedder",
-    "make_runner_executor",
-    # Data types
-    "ChunkingResult",
-    "EmbeddingFn",
-    "ExecutorFn",
-    "Gap",
-    "JudgeVerdict",
-    "Unit",
-]
+__all__ = ["Chunk", "chunk"]

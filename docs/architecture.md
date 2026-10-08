@@ -116,7 +116,7 @@ machine-checkable via grep and are enforced by code review.
 - **`harvest`** is a leaf service — depends only on `httpx`,
   `trafilatura`, `docling`, and stdlib. Other modules may depend on
   harvest to convert URLs/files to markdown.
-- **`chunker`** depends only on `core` and `rapidfuzz`. Other modules
+- **`chunker`** depends on nothing but the standard library. Other modules
   may depend on chunker.
 - **`document_store`** is foundational. Depends on `core`, `chunker`,
   `httpx`. Other modules may depend on it.
@@ -155,7 +155,7 @@ machine-checkable via grep and are enforced by code review.
 src/andamentum/
 ├── core/             — shared model resolution, fetch gate, audit log
 ├── harvest/          — universal source → markdown extraction
-├── chunker/          — structural-first semantic markdown chunking
+├── chunker/          — deterministic markdown chunking
 ├── document_store/   — SQLite + FTS5 + sqlite-vec personal knowledge base
 ├── deep_research/    — web research pipeline (search → fetch → extract → verify → synthesise)
 ├── typeset/          — typesetting system (HTML + PDF output)

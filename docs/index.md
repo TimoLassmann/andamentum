@@ -14,7 +14,7 @@ Andamentum is a single Python package of tightly-scoped sub-modules covering the
 | **proofread** | Deterministic readability + style checking (SMOG, Flesch–Kincaid, weasel words, passive voice). No LLM. |
 | **vision_critique** | Bounded vision critique of rendered figures via local multimodal models. |
 | **harvest** | Universal source → markdown extraction (PDF / HTML / DOCX / PPTX / Markdown / plain). |
-| **chunker** | Structural-first semantic chunking of long markdown into 2k–10k char self-contained units. |
+| **chunker** | Deterministic markdown chunking by headings, paragraphs and sentences, with source offsets and heading paths. No model. |
 | [**llm_judge**](./llm_judge.html) | LLM-as-judge: score one output against criteria, or compare two. Derived confidence + doubt, and a panel agreement gate that flags shaky verdicts rather than blocking. |
 | [**document_store**](./document_store/overview.md) | SQLite + FTS5 + sqlite-vec personal knowledge base with 4-signal RRF search and LLM metadata extraction. |
 | [**deep_research**](./deep_research/overview.md) | Web research pipeline (search → fetch → extract → verify → synthesize) over a local SearXNG instance. |
@@ -40,7 +40,7 @@ from andamentum.compose import write_document, Roles
 from andamentum.figures import figure
 from andamentum.proofread import analyze
 from andamentum.harvest import extract
-from andamentum.chunker import extract_units
+from andamentum.chunker import chunk
 from andamentum.document_store import ingest, search
 from andamentum.deep_research import ResearchState
 from andamentum.vision_critique import critique_figure
@@ -58,7 +58,7 @@ Ten scripts installed by the package. Run `--help` on any binary for full flag r
 | `andamentum-whetstone` | Draft review → markdown / HTML / .docx with comments and tracked changes; the default run also checks the references. Seven subcommands: `review` (default), `panel`, `checklist` (probe bank + coverage table), `references`, `proofread`, `apply-patches`, `verify-provenance`. | required for `review`, `panel` + `checklist`; optional for `references` |
 | `andamentum-proofread` | Deterministic readability + style check. | none |
 | `andamentum-harvest` | Universal source → markdown extraction. | none |
-| `andamentum-chunker` | Structural-first semantic chunking. | required |
+| `andamentum-chunker` | Deterministic markdown chunking. | none |
 | `andamentum-vision-critique` | Vision-critique of a rendered figure → bounded JSON. | required (multimodal) |
 | `andamentum-research` | Web research over local SearXNG. | required |
 | `andamentum-llm-judge` | LLM-as-judge → JSON. `score <output>` or `compare <a> <b>`. One `--model` = fast single judge; repeated = sequential panel with an agreement gate. | required |

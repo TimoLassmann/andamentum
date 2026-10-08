@@ -58,8 +58,8 @@ Two commitments shape the whole package:
 **Sourcing and indexing**
 - `andamentum.harvest` — universal source → markdown extraction (PDF / HTML /
   DOCX / PPTX / Markdown / plain)
-- `andamentum.chunker` — structural-first semantic chunking of long markdown
-  into 2k–10k char self-contained units
+- `andamentum.chunker` — deterministic markdown chunking by headings,
+  paragraphs and sentences, with source offsets and heading paths
 - `andamentum.document_store` — SQLite + FTS5 + sqlite-vec personal knowledge
   base with 4-signal RRF search and LLM metadata extraction
 - `andamentum.deep_research` — web research pipeline (search → fetch → extract
@@ -136,7 +136,7 @@ the full flag reference.
 | `andamentum-proofread` | Deterministic readability + style check (SMOG, Flesch–Kincaid, weasel words, passive voice, weak openers, adverb density). Accepts URLs, PDF, DOCX, HTML, PPTX, Markdown, plain text. | none |
 | `andamentum-harvest` | Universal source → markdown extraction (PDF / HTML / DOCX / PPTX / Markdown / plain, auto-detected) | none |
 | `andamentum-typeset` | Render Markdown to typeset HTML / PDF in three styles (article / cv / report). PDF needs the `pdf` extra. | none |
-| `andamentum-chunker` | Verifiable semantic chunking of long markdown into 2k–10k char self-contained units | required |
+| `andamentum-chunker` | Deterministic chunking of markdown by headings, paragraphs and sentences | none |
 | `andamentum-vision-critique` | Vision-critique a rendered figure → bounded JSON (label overlap, legibility, suggested fixes). Multimodal model required | required (multimodal) |
 | `andamentum-research` | Web-research pipeline (search → fetch → extract → verify → synthesise) over a local SearXNG instance | required |
 | `andamentum-epistemic` | Formal-epistemology pipeline: `ask "<question>"` (decompose + research) or `verify "<claim>"` (single-claim verification) | required |
