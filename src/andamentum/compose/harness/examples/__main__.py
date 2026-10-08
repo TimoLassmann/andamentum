@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import sys
 from pathlib import Path
 
@@ -9,13 +10,13 @@ from . import make_example
 
 
 def main(argv: list[str]) -> int:
-    if len(argv) != 1:
-        print(
-            "usage: python -m andamentum.compose.harness.examples DEST",
-            file=sys.stderr,
-        )
-        return 2
-    project = make_example(Path(argv[0]))
+    parser = argparse.ArgumentParser(
+        prog="python -m andamentum.compose.harness.examples",
+        description="Write the invented SaltLog example project into a new folder.",
+    )
+    parser.add_argument("dest", type=Path, help="folder to create (must not exist)")
+    args = parser.parse_args(argv)
+    project = make_example(args.dest)
     print(f"example project: {project.root}")
     return 0
 

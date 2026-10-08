@@ -57,7 +57,10 @@ def _run(name: str, argv: list[str]) -> int:
         print(f"error: {exc.args[0]}", file=sys.stderr)
         return 2
     cli = importlib.import_module(tool.cli)
-    code = cli.main(argv)
+    try:
+        code = cli.main(argv)
+    except SystemExit as exc:  # argparse exits for --help, --version and usage errors
+        code = exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 2)
     return int(code or 0)
 
 
