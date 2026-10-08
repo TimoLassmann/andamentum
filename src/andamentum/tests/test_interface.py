@@ -172,3 +172,10 @@ def test_no_configuration_from_the_environment():
         for name in re.findall(r"""["'](ANDAMENTUM_[A-Z_]+)["']""", text):
             found.setdefault(name, []).append(str(path.relative_to(ROOT)))
     assert not found, f"configuration read from the environment: {found}"
+
+
+@pytest.mark.parametrize("doc", ["README.md", "CLAUDE.md", "docs/index.md"])
+def test_every_tool_is_documented(doc):
+    text = (ROOT / doc).read_text()
+    missing = [t.command for t in TOOLS if f"`{t.command}`" not in text]
+    assert not missing, f"{doc} does not mention {missing}"

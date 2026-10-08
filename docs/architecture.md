@@ -39,7 +39,7 @@ trusting the README.
   `compose.bundle.parser`, `compose.bundle.render_docx`) — invisible metadata
   stamping (docx core properties, HTML `<meta>` tags, markdown
   HTML-comment headers) always on; visible banner on standalone
-  review reports default ON, default OFF on `--apply-patches`
+  review reports default ON, default OFF on `apply-patches`
   modified-manuscript output. The user can mark prose spans
   with the conventional `[ai-drafted]` / `[ai-edited]` inline
   markers that the bundle surfaces and stamps as docx keywords.

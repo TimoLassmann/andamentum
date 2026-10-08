@@ -36,8 +36,11 @@ Two commitments shape the whole package:
   report, article, how-to, proposal, grant); no approval step, never sends
   anything; its `compose.bundle` subpackage holds a document as a plain folder
   of markdown sections with frontmatter and renders to .docx / .md / .html / .txt
+- `andamentum.word` — work on an existing Word file: check it, answer
+  reviewers' comments, bind and refresh numbers, insert verified citations,
+  draft into it as tracked changes; the input is never edited
 - `andamentum.figures` — deterministic publication-quality figure rendering
-  with journal-matched sizing (9 chart types, 7 journal palettes)
+  with journal-matched sizing (10 chart types, 7 journal palettes)
 - `andamentum.typeset` — HTML / PDF typesetting used by other modules
 
 **Reviewing your own drafts**
@@ -117,37 +120,44 @@ print(result.summary)
 ```
 
 Every public function that calls an LLM takes `model=` as a keyword-only
-argument. Set `ANDAMENTUM_MAIN_LLM_MODEL` once to avoid passing `--model` on
-every CLI invocation:
-
-```bash
-export ANDAMENTUM_MAIN_LLM_MODEL=anthropic:claude-haiku-4-5
-```
+argument. Every command that calls a model takes `--model` on the command
+line; there is no environment variable and no default model.
 
 ## Command-line tools
 
-Twelve CLIs are installed with the package. Run `--help` on any of them for
-the full flag reference.
+Sixteen tools are installed with the package, each with its own command.
+`andamentum list` prints them (`--json` for programs and agents) and
+`andamentum <tool> ...` runs one. Every command follows the same rules
+([docs/interface.md](docs/interface.md)): `-o/--out` for output, `--json`,
+`-` for stdin, `--model` with no default, and one set of exit codes (0 success,
+1 negative result, 2 usage, 3 input unreadable, 4 run failed). Run `--help` on
+any of them for the full flag reference.
 
 | Command | What it does | LLM? |
 |---|---|---|
-| `andamentum-compose` | A task in, a finished document out (`write "<task>" --out DIR`); brief, evidence, draft, independent checks and revision run without an approval step; the result is a folder bundle plus rendered outputs. Its no-model verbs edit a bundle directly: `new`, `sections`, `show`, `edit`, `add`, `validate`, `render --raw`; `check FILE.docx` checks a Word file (citations, retractions, URLs, cross-references, statistics) into a commented copy and a report | required for `write`, `run`, `check-bundle`, `eval`; none for the bundle verbs and for `check` (a model only for its optional checks) |
-| `andamentum-figures` | Publication-quality scientific figure rendering (9 chart types, journal-matched sizing). Deterministic plotting — no generative AI. | none |
-| `andamentum-whetstone` | Review of your own draft → markdown / HTML / .docx with comments and tracked changes. The default run also checks the references (Crossref lookup on) and suggests a next step; `--no-editor`, `--no-references`, `--no-lookup` turn parts off, `--goal` loops until a condition holds. Seven subcommands: `review` (default), `panel` (multi-expert), `checklist` (fixed probe bank + coverage table), `references` (reference check alone; model optional), `proofread` (no LLM), `apply-patches` (no LLM), `verify-provenance` (no LLM) | required for `review`, `panel` + `checklist`; optional for `references` |
-| `andamentum-proofread` | Deterministic readability + style check (SMOG, Flesch–Kincaid, weasel words, passive voice, weak openers, adverb density). Accepts URLs, PDF, DOCX, HTML, PPTX, Markdown, plain text. | none |
+| `andamentum-compose` | A task in, a finished document out (`write "<task>" -o DIR`); brief, evidence, draft, independent checks and revision run without an approval step; the result is a document folder plus rendered outputs. `continue`, `status`, `check`, `render` and `genres` work on a folder; `new`, `sections`, `show`, `edit`, `add`, `validate` edit it without a model | required for `write`, `continue`, `check`, `eval`; none for the folder commands |
+| `andamentum-word` | Work on an existing Word file (never edited; results go into `-o DIR`): `check` (citations, retractions, URLs, cross-references, statistics), `respond` to comments and reviews, `bind-numbers` and `refresh` numbers from result files, `find-citation` / `insert-citation`, `draft` a task into Word as tracked changes, `mcp` for Claude Code and Claude for Word | required for `respond`, `bind-numbers`, `draft`; `check` only for its optional checks |
+| `andamentum-figures` | Publication-quality scientific figure rendering (10 chart types, journal-matched sizing): `plot DATA -o FILE`. Deterministic plotting — no generative AI. | none |
+| `andamentum-whetstone` | Review of your own draft → markdown / HTML / .docx with comments and tracked changes (`-o FILE`, repeatable). The default run also checks the references (Crossref lookup on) and suggests a next step; `--no-editor`, `--no-references`, `--no-lookup` turn parts off, `--goal` loops until a condition holds (exit 1 if not met). Six commands: `review` (default), `panel` (multi-expert; `--i-am-the-author`), `checklist` (fixed probe bank + coverage table), `reviewers` (list the named reviewers), `apply-patches` (no LLM), `verify-provenance` (no LLM). Exit 0 / 1 negative result / 2 usage / 3 input unreadable / 4 run failed | required for `review`, `panel` + `checklist` |
+| `andamentum-references` | Check a draft's citations against its reference list in any citation style, then each entry against Crossref (`DRAFT [--model M] [--decision-model M] [--no-lookup] [--mailto EMAIL] [--json] [-o FILE]`; Word and PDF through harvest). Exit 1 when problems are found | optional (`--model` only for what the text leaves open) |
+| `andamentum-proofread` | Deterministic readability + style check (SMOG, Flesch–Kincaid, weasel words, passive voice, weak openers, adverb density). Accepts URLs, PDF, DOCX, HTML, PPTX, Markdown, plain text, or `-` for stdin; `--json`, `-o FILE`, `--slides [--allow ACRONYMS]` for a .pptx deck. | none |
 | `andamentum-harvest` | Universal source → markdown extraction (PDF / HTML / DOCX / PPTX / Markdown / plain, auto-detected) | none |
 | `andamentum-typeset` | Render Markdown to typeset HTML / PDF in three styles (article / cv / report). PDF needs the `pdf` extra. | none |
 | `andamentum-chunker` | Deterministic chunking of markdown by headings, paragraphs and sentences | none |
+| `andamentum-docstore` | Store documents in one SQLite file, index and search them: `ingest`, `sync`, `search`, `get`, `list`, `delete`, `enrich` | `sync` and `search` need an embedding model (and a reranker for `search`) |
 | `andamentum-vision-critique` | Vision-critique a rendered figure → bounded JSON (label overlap, legibility, suggested fixes). Multimodal model required | required (multimodal) |
+| `andamentum-llm-judge` | Score a text (`score TEXT`) or compare two (`compare TEXT_A TEXT_B`) against criteria; `-` reads stdin; JSON out. One `--model` = one fast judge; repeated = a sequential panel with an agreement gate | required |
 | `andamentum-research` | Research a question over the web (a Chrome or SearxNG) and scholarly sources; the report cites verified findings | required |
-| `andamentum-epistemic` | Formal-epistemology pipeline: `ask "<question>"` (decompose + research) or `verify "<claim>"` (single-claim verification) | required |
-| `andamentum-agentic-dialect` | The agentic-systems house style: `laws`, `law <id>`, `roles`, `role <role>`, `checklist`, `skeleton`, `check <path> [--strict]` (portable conformance gates, nonzero exit on fail) | none |
-| `andamentum-forge` | Natural-language brief → validated, agent-authored, sandbox-audited runnable package. `build` (full pipeline) or `design` (spec only). `--stop-after {render,build,audit}`, `--sandbox {podman,subprocess}` | required |
+| `andamentum-epistemic` | Answer a question (`ask`) or check a claim (`verify`) by weighing evidence for and against it; `--out DIR` keeps the database and report | required |
+| `andamentum-agentic-dialect` | The agentic-systems house style: `laws`, `law <id>`, `roles`, `role <role>`, `checklist`, `skeleton`, `check <path> [--strict]` (portable conformance gates, exit 1 on fail) | none |
+| `andamentum-forge` | Plain-language brief → small runnable function package, tested in a sandbox (refuses apps, agents and services). `build BRIEF --out DIR` or `design BRIEF`. `--stop-after {render,build,audit}`, `--sandbox {podman,subprocess}` | required |
 
 ## Documentation
 
-Writing into Word (`andamentum-compose`: write, check, refresh, respond,
-MCP): [`docs/compose.md`](./docs/compose.md).
+Writing a document from a task into a folder (`andamentum-compose`):
+[`docs/compose.md`](./docs/compose.md). Working on a Word file
+(`andamentum-word`: check, respond, refresh, citations, MCP):
+[`docs/word.md`](./docs/word.md).
 
 See [`docs/`](./docs/) for module-level documentation and
 [`examples/`](./examples/) for runnable code demonstrating common workflows.

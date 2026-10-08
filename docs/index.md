@@ -6,16 +6,17 @@ Andamentum is a single Python package of tightly-scoped sub-modules covering the
 
 | Module | Role |
 |---|---|
-| **compose** | A task in, a finished document out (email, memo, report, article, how-to, proposal, grant): brief, evidence, outline, draft, independent checks, revision. No approval step; never sends anything. Its `compose.bundle` subpackage holds a document as a plain folder bundle (markdown sections with frontmatter, figures, references), rendered to .docx / .md / .html / .txt. |
+| **compose** | A task in, a finished document out (email, memo, report, article, how-to, proposal, grant): brief, evidence, outline, draft, independent checks, revision. No approval step; never sends anything. Its `compose.bundle` subpackage holds a document as a plain document folder (markdown sections with frontmatter, figures, references), rendered to .docx / .md / .html / .txt. |
+| **word** | Work on an existing Word file: checks (citations, cross-references, statistics, numbers), answers to comments and reviewers, bound numbers that refresh from result files, verified citations, drafting into Word as tracked changes. The input file is never edited. |
 | **figures** | Publication-quality scientific figure rendering — deterministic plotting of your data with journal-matched sizing (10 chart types, 7 journal palettes and the andamentum report palette). |
 | **typeset** | Standalone typesetting system (7 visual atoms, 3 named styles, HTML + PDF output) used by other modules. |
-| [**whetstone**](./whetstone.html) | Structured review of your own drafts → markdown / HTML / .docx with comments and tracked changes. The default run reviews, rewrites, checks the references and suggests a next step; flags turn parts off, and `--goal` loops until a condition you state holds. Three review shapes over one substrate: `review` (criterion cascade, default), `checklist` (probe bank + coverage table), `panel` (simulated experts); plus `references`, `proofread`, `apply-patches`, `verify-provenance`. |
+| [**whetstone**](./whetstone.html) | Structured review of your own drafts → markdown / HTML / .docx with comments and tracked changes. The default run reviews, rewrites, checks the references and suggests a next step; flags turn parts off, and `--goal` loops until a condition you state holds. Three review shapes over one substrate: `review` (criterion cascade, default), `checklist` (probe bank + coverage table), `panel` (simulated experts); plus `reviewers`, `apply-patches`, `verify-provenance`. The reference check alone is `andamentum-references`; the style check alone is `andamentum-proofread`. |
 | [**references**](./whetstone.html) | Reference checking in any citation style — numbered, superscript, author-year, footnotes, Pandoc keys: citations against the list, then each entry against Crossref. Evidence first; a model only for what the text leaves open. |
 | **proofread** | Deterministic readability + style checking (SMOG, Flesch–Kincaid, weasel words, passive voice). No LLM. |
 | **vision_critique** | Bounded vision critique of rendered figures via local multimodal models. |
 | **harvest** | Universal source → markdown extraction (PDF / HTML / DOCX / PPTX / Markdown / plain). |
 | **chunker** | Deterministic markdown chunking by headings, paragraphs and sentences, with source offsets and heading paths. No model. |
-| [**llm_judge**](./llm_judge.html) | LLM-as-judge: score one output against criteria, or compare two. Derived confidence + doubt, and a panel agreement gate that flags shaky verdicts rather than blocking. |
+| [**llm_judge**](./llm_judge.html) | LLM-as-judge: score one text against criteria, or compare two. Derived confidence + doubt, and a panel agreement gate that flags shaky verdicts rather than blocking. |
 | [**document_store**](./document_store/overview.md) | One SQLite file of documents with a fixed API: hybrid search (BM25 + vectors, cross-encoder rerank), an opt-in search agent, metadata enrichers. |
 | [**deep_research**](./deep_research/overview.md) | Evidence-first research loop over the web and scholarly sources: a report that cites findings, each a verbatim quote that code found in the page. |
 | **core** | Shared model resolution, agent runners, fetch gate, audit log, and embedding clients. |
@@ -49,18 +50,25 @@ from andamentum.llm_judge import judge_score, judge_compare
 
 ## CLIs
 
-Ten scripts installed by the package. Run `--help` on any binary for full flag reference.
+Sixteen tools are installed with the package, each with its own command. `andamentum list` prints this list (`andamentum list --json` for programs and agents), `andamentum <tool> ...` runs a tool, and every command follows the rules in [interface.md](./interface.md): `-o/--out`, `--json`, `-` for stdin, `--model` with no default, and the same exit codes. Run `--help` on any command for its options.
 
-| Script | What it does | LLM? |
+| Command | What it does | Model? |
 |---|---|---|
-| `andamentum-compose` | A task in, a finished document out, in a bundle folder; also edits a bundle without a model (`new`, `sections`, `show`, `edit`, `add`, `validate`, `render --raw`). | required for writing; none for the bundle verbs |
-| `andamentum-figures` | Publication-quality scientific figure rendering (deterministic plotting). | none |
-| `andamentum-whetstone` | Draft review → markdown / HTML / .docx with comments and tracked changes; the default run also checks the references. Seven subcommands: `review` (default), `panel`, `checklist` (probe bank + coverage table), `references`, `proofread`, `apply-patches`, `verify-provenance`. | required for `review`, `panel` + `checklist`; optional for `references` |
-| `andamentum-proofread` | Deterministic readability + style check. | none |
-| `andamentum-harvest` | Universal source → markdown extraction. | none |
-| `andamentum-chunker` | Deterministic markdown chunking. | none |
-| `andamentum-vision-critique` | Vision-critique of a rendered figure → bounded JSON. | required (multimodal) |
-| `andamentum-research` | Research a question over the web (a Chrome or SearxNG) and scholarly sources; the report cites verified findings. | required |
-| `andamentum-llm-judge` | LLM-as-judge → JSON. `score <output>` or `compare <a> <b>`. One `--model` = fast single judge; repeated = sequential panel with an agreement gate. | required |
+| `andamentum-harvest` | Convert a PDF, Word, PowerPoint, HTML page, URL or text file to markdown. | for some uses |
+| `andamentum-chunker` | Split markdown into chunks at headings, paragraphs and sentences. | none |
+| `andamentum-docstore` | Store documents in one SQLite file, index them and search them. | for some uses |
+| `andamentum-research` | Research a question on the web and in scholarly sources; the report cites what it found. | required |
+| `andamentum-epistemic` | Answer a question or check a claim by weighing evidence for and against it. | required |
+| `andamentum-references` | Check the citations and reference list of a draft, and look the references up. | for some uses |
+| `andamentum-whetstone` | Review your own draft and write the review as markdown, HTML or tracked changes in Word. | required |
+| `andamentum-proofread` | Check readability and style of a text; no model. | none |
+| `andamentum-compose` | Write a document (email, memo, report, article, proposal, grant) from a task into a folder. | required |
+| `andamentum-word` | Work on an existing Word file: check it, answer reviewer comments, refresh numbers, insert citations. | for some uses |
+| `andamentum-llm-judge` | Score a text, or compare two texts, against criteria with one model or a panel. | required |
+| `andamentum-figures` | Draw a publication-quality chart from a CSV or JSON table. | none |
+| `andamentum-vision-critique` | Check a rendered figure for overlapping labels, legibility and layout with a vision model. | required |
+| `andamentum-typeset` | Render markdown to a styled HTML page or PDF. | none |
+| `andamentum-agentic-dialect` | Show the house style for agentic systems and check code against it. | none |
+| `andamentum-forge` | Build a small runnable function package from a plain-language brief, tested in a sandbox. | required |
 
-The LLM-using CLIs resolve their model via `--model anthropic:claude-haiku-4-5` or `$ANDAMENTUM_MAIN_LLM_MODEL`. The CLI exits with a clear error if neither is set — no hidden defaults.
+Every LLM-using CLI takes `--model anthropic:claude-haiku-4-5` on the command line. There is no environment variable and no default model.
