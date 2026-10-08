@@ -5,8 +5,7 @@ six scholarly works served in OpenAlex's shape, one of them retracted in
 Crossref, one found only as a citation, and four web pages behind a SearxNG
 endpoint. ``World.handler`` answers every HTTP request the engine makes;
 ``world_llm`` answers every language-model call of the new loop (plan, queries, choose, notes, reflect,
-write) by reading the prompt the way a model would; ``world_decisions`` answers
-the decision-model questions of the novelty check. No network, no real model.
+write) by reading the prompt the way a model would; No network, no real model.
 The stand-ins at the end replace the reading, writing, verifying and ranking
 modules for the tests of the loop alone.
 """
@@ -14,7 +13,6 @@ modules for the tests of the loop alone.
 from __future__ import annotations
 
 import asyncio
-import json
 import re
 from collections.abc import Awaitable, Callable, Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -22,13 +20,6 @@ from dataclasses import dataclass, field
 import httpx
 import pytest
 from pydantic import BaseModel
-
-from andamentum.core.decisions import DecisionModel
-from andamentum.core.decisions.testing import (
-    StubDecisions,
-    choice_answer,
-    noul_answer,
-)
 
 from andamentum.references import ReferenceHttp, Work
 
@@ -287,22 +278,6 @@ class World:
 # -- the language model ------------------------------------------------------------
 
 
-def holds(question: str, text: str) -> bool:
-    """Whether a yes/no question (a decision-model request) holds of *text*."""
-    lowered = question.lower()
-    item = text.lower()
-    if lowered.startswith("do the quotes state"):
-        return True
-    if lowered.startswith("do the two findings contradict"):
-        return False
-    if "advertisement" in lowered:
-        return False
-    if "measurement" in lowered:
-        return bool(re.search(r"\d", item)) or "half" in item
-    topic = _topic(lowered)
-    return bool(topic) and topic in item
-
-
 _FENCED = re.compile(r"(<{3,})\n.*?\n(>{3,})", re.DOTALL)
 _QUERY_WORDS = ("latency", "benchmark", "measurement", "study")
 
@@ -445,42 +420,6 @@ def respond(instructions: str, prompt: str) -> dict[str, object]:
 
 def world_llm() -> ScriptedLLM:
     return ScriptedLLM(respond)
-
-
-# -- the decision model ------------------------------------------------------------
-
-
-def _state_text(state: object) -> str:
-    """What a question is asked about: the state without the sub-question,
-    which names the topic and would make every item look relevant."""
-    if isinstance(state, dict):
-        return json.dumps({k: v for k, v in state.items() if k != "question"})
-    return str(state)
-
-
-def world_decisions(
-    *, judge: Callable[[str, str], bool] = holds
-) -> tuple[DecisionModel, StubDecisions]:
-    """A decision model that answers by *judge(question, state_text)*:
-    p 0.9 for yes and 0.05 for no; choices pick the first sensible option."""
-
-    def answer(state: object, questions: dict[str, dict[str, object]]):
-        text = _state_text(state)
-        answers = {}
-        for key, question in questions.items():
-            if question["type"] == "choice":
-                described = question["criteria"]
-                assert isinstance(described, dict)
-                options = [str(name) for name in described]
-                pick = "primary_study" if "primary_study" in options else "topical"
-                answers[key] = choice_answer(options, pick, 0.8)
-            else:
-                yes = judge(str(question["instructions"]), text)
-                answers[key] = noul_answer(0.9 if yes else 0.05)
-        return answers
-
-    stub = StubDecisions(answer)
-    return stub.model(), stub
 
 
 # -- stand-ins for the reading, writing, verifying and ranking modules -----------------

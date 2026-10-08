@@ -427,17 +427,6 @@ def test_run_errors_are_loud(store: ResearchStore) -> None:
         store.finish_run("r_nope", stats={}, degraded=[])
     with pytest.raises(StoreError, match="unknown run"):
         store.add_run_item("r_nope", "finding", "F1", {})
-    with pytest.raises(StoreError, match="unknown run"):
-        store.log_decision(
-            "r_nope",
-            step="s",
-            model="m",
-            digest="d",
-            question_hash="q",
-            state_hash="h",
-            answer={},
-            ms=1.0,
-        )
     with pytest.raises(ValueError, match="kind"):
         store.add_run_item("r_fixed", "bogus", "x", {})  # type: ignore[arg-type]
 
@@ -469,35 +458,19 @@ def test_run_items_keep_order_filter_by_kind_and_replace_by_ref(
     assert Finding.model_validate(item.data) == finding
 
 
-def test_decisions_are_logged_in_order(store: ResearchStore) -> None:
-    run_id = store.start_run(question="q", mode="web", config={}, models={})
-    for step, p in (("screen", 0.9), ("screen", 0.1), ("verify", 0.5)):
-        store.log_decision(
-            run_id,
-            step=step,
-            model="nimble:9b",
-            digest="abc",
-            question_hash="qh",
-            state_hash="sh",
-            answer={"p": p},
-            ms=12.5,
-        )
-    assert [d.answer["p"] for d in store.decisions(run_id)] == [0.9, 0.1, 0.5]
-    assert [d.step for d in store.decisions(run_id, "screen")] == ["screen", "screen"]
-    assert store.decisions(run_id)[0].ms == 12.5
-
-
 def test_a_store_of_the_previous_schema_loses_only_the_dropped_tables(
     tmp_path: Path,
 ) -> None:
-    """Version 6 drops the decision-answer cache, the determinism table and the
-    embedding cache; the works, the HTTP cache and the decisions stay."""
+    """Versions 6 and 7 drop the decision-answer cache, the determinism table,
+    the embedding cache and the decision audit trail; the works and the HTTP
+    cache stay."""
     path = tmp_path / "old.db"
     with ResearchStore(path) as first:
         stored = first.upsert_work(Work(doi="10.1001/a", title="Alpha"))
     with sqlite3.connect(path) as raw:
         raw.executescript(
-            "DELETE FROM schema_version WHERE version = 6;"
+            "DELETE FROM schema_version WHERE version >= 6;"
+            "CREATE TABLE decisions (run_id TEXT);"
             "CREATE TABLE decision_cache (digest TEXT);"
             "CREATE TABLE decision_determinism (digest TEXT);"
             "CREATE TABLE embeddings (model TEXT);"
@@ -510,5 +483,10 @@ def test_a_store_of_the_previous_schema_loses_only_the_dropped_tables(
             row[0]
             for row in raw.execute("SELECT name FROM sqlite_master WHERE type='table'")
         }
-    assert {"decisions", "works", "http_cache"} <= tables
-    assert not tables & {"decision_cache", "decision_determinism", "embeddings"}
+    assert {"works", "http_cache"} <= tables
+    assert not tables & {
+        "decisions",
+        "decision_cache",
+        "decision_determinism",
+        "embeddings",
+    }

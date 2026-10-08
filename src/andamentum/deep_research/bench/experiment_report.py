@@ -58,7 +58,6 @@ DEFAULT_REPORT_METRICS: dict[str, list[str]] = {
 COST_METRICS = (
     "wall_s",
     "llm_calls",
-    "decision_calls",
     "input_tokens",
     "output_tokens",
 )
@@ -263,7 +262,6 @@ def _cost_section(exp: Experiment, cells: Cells) -> str:
                 "median wall s",
                 "total wall s",
                 "mean llm calls",
-                "mean decision calls",
                 "mean input tokens",
                 "mean output tokens",
             ],

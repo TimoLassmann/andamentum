@@ -1,7 +1,7 @@
 """The shared read-through HTTP cache, the cache merge, one limiter per source.
 
 Offline: the invented world answers through a mock transport, the language
-model is scripted and the decision model a stub. Nothing here waits on a
+model is scripted and the rest stubbed. Nothing here waits on a
 real rate limit.
 """
 

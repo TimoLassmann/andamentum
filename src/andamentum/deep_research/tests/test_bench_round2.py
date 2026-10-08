@@ -356,7 +356,7 @@ def _timed(question: str, call: int, *, seconds: float, calls: int) -> ArmOutput
     )
     assert out.result is not None
     out.result = out.result.model_copy(update={"stats": stats})
-    out.cost = Cost(wall_s=seconds, llm_calls=calls, decision_calls=0)
+    out.cost = Cost(wall_s=seconds, llm_calls=calls)
     return out
 
 

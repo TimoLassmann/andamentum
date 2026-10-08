@@ -2,9 +2,7 @@
 VERIFY and WRITE tests.
 
 ``ScriptedLLM`` is a pydantic-ai ``FunctionModel`` whose answers a test writes
-as a function of the instructions and the user message; ``decisions`` is a
-``core.decisions`` stub server answering every ``noul`` question from a
-function of the state; ``http`` is a ``ReferenceHttp`` over a mock transport.
+as a function of the instructions and the user message; ``http`` is a ``ReferenceHttp`` over a mock transport.
 Nothing here touches the network or a real model.
 """
 
@@ -24,8 +22,6 @@ from pydantic_ai.messages import (
 )
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
-from andamentum.core.decisions import DecisionModel
-from andamentum.core.decisions.testing import StubDecisions, noul_answer
 from andamentum.references import ReferenceHttp
 
 from ..ask import Asker
@@ -76,21 +72,6 @@ class ScriptedLLM:
         )
 
 
-def decisions(
-    respond: Callable[[object, str], float],
-) -> tuple[DecisionModel, StubDecisions]:
-    """A decision model whose every ``noul`` answer is ``respond(state, instructions)``."""
-
-    def answer(state: object, questions: dict[str, dict[str, object]]):
-        return {
-            key: noul_answer(respond(state, str(q["instructions"])))
-            for key, q in questions.items()
-        }
-
-    stub = StubDecisions(answer)
-    return stub.model(), stub
-
-
 def http(handler: Callable[[httpx.Request], httpx.Response]) -> ReferenceHttp:
     """A ``ReferenceHttp`` over *handler*, with every URL treated as safe."""
     client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
@@ -100,7 +81,6 @@ def http(handler: Callable[[httpx.Request], httpx.Response]) -> ReferenceHttp:
 def make_asker(
     *,
     model: ScriptedLLM | None = None,
-    decision_model: DecisionModel | None = None,
     budget: Budget | None = None,
     store: ResearchStore | None = None,
 ) -> Asker:
@@ -113,5 +93,4 @@ def make_asker(
         run_id=run_id,
         budget=budget or Budget(),
         stats=RunStats(),
-        decision_model=decision_model,
     )

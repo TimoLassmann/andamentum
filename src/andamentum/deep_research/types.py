@@ -60,7 +60,6 @@ DEFAULT_WINDOW_CHARS = 20_000
 DEFAULT_EXPAND_PER_ROUND = 20
 DEFAULT_CONCURRENCY = 4
 DEFAULT_MAX_LLM_CALLS = 200
-DEFAULT_MAX_DECISION_CALLS = 5000
 DEFAULT_MAX_WALL_S = 3600.0
 DEFAULT_MAX_FETCH_BYTES = 50_000_000
 
@@ -269,8 +268,6 @@ class Budget(BaseModel):
     # Model calls in flight together (a local model is held to one).
     concurrency: int = Field(default=DEFAULT_CONCURRENCY, ge=1)
     max_llm_calls: int = Field(default=DEFAULT_MAX_LLM_CALLS, ge=1)
-    # Only the novelty check's local decision model counts against this.
-    max_decision_calls: int = Field(default=DEFAULT_MAX_DECISION_CALLS, ge=1)
     max_wall_s: float = Field(default=DEFAULT_MAX_WALL_S, gt=0)
     max_fetch_bytes: int = Field(default=DEFAULT_MAX_FETCH_BYTES, ge=1)
 
@@ -281,8 +278,6 @@ class RunStats(BaseModel):
     llm_calls: int = Field(default=0, ge=0)
     input_tokens: int = Field(default=0, ge=0)
     output_tokens: int = Field(default=0, ge=0)
-    # The novelty check's decision model (0 for the engine itself).
-    decision_calls: int = Field(default=0, ge=0)
     wall_s: float = Field(default=0.0, ge=0)
     cache_hits: int = Field(default=0, ge=0)
     cache_misses: int = Field(default=0, ge=0)
@@ -290,10 +285,9 @@ class RunStats(BaseModel):
     per_source: dict[str, int] = Field(default_factory=dict)
     # Per step (``STEPS``): busy seconds on the run's clock, summed over the
     # tasks that ran in parallel (so the sum can exceed ``wall_s``), and the
-    # language-model and decision-model requests made under it.
+    # language-model requests made under it.
     step_seconds: dict[str, float] = Field(default_factory=dict)
     step_llm_calls: dict[str, int] = Field(default_factory=dict)
-    step_decision_calls: dict[str, int] = Field(default_factory=dict)
     # Pages the loop tried to read, those that gave no text at all, and
     # findings whose quote could not be found in the page.
     pages_read: int = Field(default=0, ge=0)

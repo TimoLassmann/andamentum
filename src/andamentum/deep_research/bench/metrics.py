@@ -140,7 +140,6 @@ class Cost(BaseModel):
     llm_calls: int | None = None
     input_tokens: int | None = None
     output_tokens: int | None = None
-    decision_calls: int | None = None
 
 
 def total_cost(costs: Sequence[Cost]) -> Cost:
@@ -155,5 +154,4 @@ def total_cost(costs: Sequence[Cost]) -> Cost:
         llm_calls=total([c.llm_calls for c in costs]),
         input_tokens=total([c.input_tokens for c in costs]),
         output_tokens=total([c.output_tokens for c in costs]),
-        decision_calls=total([c.decision_calls for c in costs]),
     )

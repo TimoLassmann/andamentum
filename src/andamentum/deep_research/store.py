@@ -3,7 +3,7 @@
 Everything a run learns lives here, so a second run starts from the first
 one's answers: the HTTP cache every source reads and writes through, the works
 found (merged by any identifier), the verbatim passages, and each run's rows
-and decision-model answers, so a whole run can be inspected afterwards.
+so a whole run can be inspected afterwards.
 
 ``ResearchStore(path)`` is persistent: ``path`` is the database file and the
 blobs go in a ``blobs/`` folder beside it. ``ResearchStore.in_memory()`` keeps
@@ -47,7 +47,7 @@ from andamentum.references.works import ID_FIELDS, title_key
 
 from .types import Passage
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 TTL_SEARCH_S = 7 * 86_400
 TTL_METADATA_S = 30 * 86_400
@@ -166,17 +166,6 @@ CREATE TABLE run_items (
     data_json TEXT NOT NULL,
     PRIMARY KEY (run_id, kind, ref_id)
 );
-CREATE TABLE decisions (
-    run_id TEXT NOT NULL REFERENCES runs(run_id),
-    step TEXT NOT NULL,
-    model TEXT NOT NULL,
-    digest TEXT NOT NULL,
-    question_hash TEXT NOT NULL,
-    state_hash TEXT NOT NULL,
-    answer_json TEXT NOT NULL,
-    ms REAL NOT NULL
-);
-CREATE INDEX decisions_run ON decisions(run_id, step);
 """
 
 # The cache's size and recency, for the size cap: ``size`` is the body's bytes
@@ -223,12 +212,16 @@ CREATE TABLE embeddings (
 """
 
 # The decision-answer cache, the determinism check and the embedding cache served
-# strategies the engine no longer has; their tables go (``decisions``, the audit
-# trail of the novelty check's decision model, stays).
+# strategies the engine no longer has; their tables go.
 _SCHEMA_V6 = """
 DROP TABLE IF EXISTS decision_cache;
 DROP TABLE IF EXISTS decision_determinism;
 DROP TABLE IF EXISTS embeddings;
+"""
+
+# The audit trail of a decision model, which no part of the package has any more.
+_SCHEMA_V7 = """
+DROP TABLE IF EXISTS decisions;
 """
 
 # Migrations by the version they produce. Development: no shims for old files.
@@ -239,6 +232,7 @@ _MIGRATIONS: dict[int, str] = {
     4: _SCHEMA_V4,
     5: _SCHEMA_V5,
     6: _SCHEMA_V6,
+    7: _SCHEMA_V7,
 }
 
 
@@ -316,17 +310,6 @@ class RunItem(BaseModel):
     kind: str
     ref_id: str
     data: dict[str, JsonValue]
-
-
-class DecisionRecord(BaseModel):
-    run_id: str
-    step: str
-    model: str
-    digest: str
-    question_hash: str
-    state_hash: str
-    answer: Any
-    ms: float
 
 
 def cache_key(
@@ -1175,59 +1158,6 @@ class ResearchStore:
                 kind=r["kind"],
                 ref_id=r["ref_id"],
                 data=json.loads(r["data_json"]),
-            )
-            for r in rows
-        ]
-
-    def log_decision(
-        self,
-        run_id: str,
-        *,
-        step: str,
-        model: str,
-        digest: str,
-        question_hash: str,
-        state_hash: str,
-        answer: Any,
-        ms: float,
-    ) -> None:
-        """Record one decision-model answer (audit trail; nothing reads it back for a run)."""
-        with self._lock:
-            try:
-                self._conn.execute(
-                    "INSERT INTO decisions VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                    (
-                        run_id,
-                        step,
-                        model,
-                        digest,
-                        question_hash,
-                        state_hash,
-                        json.dumps(answer),
-                        ms,
-                    ),
-                )
-            except sqlite3.IntegrityError as error:
-                raise StoreError(f"unknown run {run_id}") from error
-
-    def decisions(self, run_id: str, step: str | None = None) -> list[DecisionRecord]:
-        query = "SELECT * FROM decisions WHERE run_id = ?"
-        args: tuple[Any, ...] = (run_id,)
-        if step is not None:
-            query += " AND step = ?"
-            args += (step,)
-        with self._lock:
-            rows = self._conn.execute(query + " ORDER BY rowid", args).fetchall()
-        return [
-            DecisionRecord(
-                run_id=r["run_id"],
-                step=r["step"],
-                model=r["model"],
-                digest=r["digest"],
-                question_hash=r["question_hash"],
-                state_hash=r["state_hash"],
-                answer=json.loads(r["answer_json"]),
-                ms=r["ms"],
             )
             for r in rows
         ]

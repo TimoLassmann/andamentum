@@ -9,7 +9,7 @@ search, choose what to read, read, take notes, reflect (is it answered?), then
 one write and a code-only verify. See ``CLAUDE.md`` for the design.
 """
 
-from .ask import MODEL_ERRORS, Asker, AskError, BudgetExhausted
+from .ask import MODEL_ERRORS, Asker, BudgetExhausted
 from .engine import research
 from .identity import merge
 from .novelty import NoveltyResearch, run_novelty_check
@@ -39,7 +39,6 @@ from .types import (
 
 __all__ = [
     "MODEL_ERRORS",
-    "AskError",
     "Asker",
     "Budget",
     "BudgetExhausted",

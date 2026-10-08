@@ -193,7 +193,7 @@ def output(
     return ArmOutput(
         answer_text=answer,
         works=kept,
-        cost=Cost(wall_s=1.5, llm_calls=2, decision_calls=0),
+        cost=Cost(wall_s=1.5, llm_calls=2),
         result=make_result(question, kept),
         **kw,  # type: ignore[arg-type]
     )
@@ -318,7 +318,6 @@ async def test_every_arm_runs_every_item_repeat_times_and_is_recorded(
     assert first.experiment_hash == exp.config_hash()
     assert first.metrics["correct"] == 1.0 and first.metrics["attempted"] == 1.0
     assert first.metrics["wall_s"] == 1.5
-    assert first.metrics["decision_calls"] == 0.0
     assert first.output is not None and first.output.result is not None
     assert first.output.result.passages == []  # slimmed for the registry
 

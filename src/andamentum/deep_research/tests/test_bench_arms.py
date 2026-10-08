@@ -99,7 +99,7 @@ def test_report_sentences_are_paired_with_the_quotes_they_cite() -> None:
 def test_research_result_maps_to_works_cost_and_links() -> None:
     out = map_research(research_result(REPORT))
     assert [w.work_id for w in out.works] == ["w1", "w2", "w3"]
-    assert out.cost.llm_calls == 7 and out.cost.decision_calls == 0
+    assert out.cost.llm_calls == 7
     assert out.cost.input_tokens == 100 and out.cost.wall_s == 12.5
     assert out.degraded == ["openalex: 429"] and out.stop_reason == "covered"
     assert "https://kilns.example.org/two" in out.urls
@@ -135,7 +135,7 @@ async def test_the_research_arm_calls_research_with_the_new_signature(
         "sources": sources,
         "http_cache": None,
     }
-    assert out.cost.llm_calls == 7 and out.cost.decision_calls == 0
+    assert out.cost.llm_calls == 7
     assert out.result is not None and out.result.passages == []  # slimmed
     assert out.log is not None  # the run log travels to the cell log files
 

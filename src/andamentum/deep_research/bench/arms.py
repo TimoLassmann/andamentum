@@ -135,7 +135,6 @@ def map_research(result: ResearchResult) -> ArmOutput:
             llm_calls=stats.llm_calls,
             input_tokens=stats.input_tokens,
             output_tokens=stats.output_tokens,
-            decision_calls=0,
         ),
         result=result.model_copy(
             update={"passages": [], "log": RunLog(run_id=result.run_id)}

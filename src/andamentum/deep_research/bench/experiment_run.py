@@ -133,9 +133,6 @@ def cost_metrics(cost: Cost | None) -> dict[str, float | None]:
     return {
         "wall_s": cost.wall_s,
         "llm_calls": None if cost.llm_calls is None else float(cost.llm_calls),
-        "decision_calls": (
-            None if cost.decision_calls is None else float(cost.decision_calls)
-        ),
         "input_tokens": None if cost.input_tokens is None else float(cost.input_tokens),
         "output_tokens": None
         if cost.output_tokens is None
