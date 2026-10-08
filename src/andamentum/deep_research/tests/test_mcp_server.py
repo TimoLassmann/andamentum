@@ -10,7 +10,6 @@ from __future__ import annotations
 import functools
 import inspect
 import json
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -455,11 +454,16 @@ def test_the_research_cli_dispatches_the_mcp_subcommand(
 ):
     from andamentum.deep_research import cli
 
-    seen: list[list[str]] = []
-    monkeypatch.setattr(mcp_server, "main", seen.append)
-    monkeypatch.setattr(sys, "argv", ["andamentum-research", "mcp", "--store", "x.db"])
-    cli.main()
-    assert seen == [["--store", "x.db"]]
+    seen: list[Any] = []
+    monkeypatch.setattr(mcp_server, "run", lambda args: seen.append(args) or 0)
+    assert cli.main(["mcp", "--store", "x.db"]) == 0
+    assert seen[0].store == "x.db"
+
+
+def _run_mcp(argv: list[str]) -> int:
+    from andamentum.deep_research import cli
+
+    return cli.main(["mcp", *argv])
 
 
 def test_main_opens_the_store_at_the_given_path(
@@ -476,7 +480,7 @@ def test_main_opens_the_store_at_the_given_path(
 
     monkeypatch.setattr(mcp_server, "serve_stdio", fake_serve)
     path = tmp_path / "lab" / "research.db"
-    mcp_server.main(
+    _run_mcp(
         ["--store", str(path), "--model", "m", "--searxng-url", "http://searx.test"]
         + ["--browser"]
     )
@@ -497,5 +501,5 @@ def test_main_without_a_store_keeps_nothing(monkeypatch: pytest.MonkeyPatch):
         await tools.aclose()
 
     monkeypatch.setattr(mcp_server, "serve_stdio", fake_serve)
-    mcp_server.main([])
+    _run_mcp([])
     assert opened == {"path": None}

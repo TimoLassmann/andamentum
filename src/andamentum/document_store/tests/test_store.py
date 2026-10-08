@@ -291,3 +291,17 @@ def test_group_by_document_keeps_rank_order_and_takes_the_best_score():
     docs = group_by_document(hits)
     assert [d.doc_id for d in docs] == ["b", "a"]
     assert docs[0].score == 0.95 and len(docs[0].hits) == 2
+
+
+async def test_open_with_search_builds_the_default_searcher(tmp_path) -> None:
+    from ..searchers import HybridRerankSearcher
+    from ..types import SearchUnavailable
+
+    async with await Store.open_with_search(
+        tmp_path / "s.db", embedding_model="m", reranker_model="r"
+    ) as store:
+        assert isinstance(store.searcher, HybridRerankSearcher)
+        assert list(store.indexes) == ["hybrid"]
+    async with await Store.open(tmp_path / "t.db") as bare:
+        with pytest.raises(SearchUnavailable):
+            await bare.search("x", limit=1)

@@ -27,6 +27,7 @@ from .types import (
     DocumentNotFound,
     Hit,
     KeyExists,
+    SearchUnavailable,
     SyncReport,
     Where,
 )
@@ -101,6 +102,26 @@ class Store:
         """
         path = Path(path)
         return cls(path, connect(path), indexes=indexes, searcher=searcher)
+
+    @classmethod
+    async def open_with_search(
+        cls,
+        path: Path | str,
+        *,
+        embedding_model: str,
+        reranker_model: str,
+        max_chars: int = 2000,
+    ) -> Store:
+        """Open the store at ``path`` with the default search: BM25 and vectors
+        over chunks of at most ``max_chars``, fused, reranked by
+        ``reranker_model``. ``embedding_model`` is an Ollama model name. Neither
+        model has a default."""
+        from .index import HybridIndex
+        from .searchers import HybridRerankSearcher
+
+        index = HybridIndex(embedding_model=embedding_model, max_chars=max_chars)
+        searcher = HybridRerankSearcher(index=index, reranker_model=reranker_model)
+        return await cls.open(path, indexes=[index], searcher=searcher)
 
     async def close(self) -> None:
         try:
@@ -486,12 +507,12 @@ class Store:
         document. ``where`` restricts the candidate documents before ranking.
         """
         if self.searcher is None:
-            raise RuntimeError("this store was opened without a searcher")
+            raise SearchUnavailable("this store was opened without a searcher")
         if limit < 1:
             raise ValueError("limit must be >= 1")
         report = await self.sync()
         if not report.ok:
-            raise RuntimeError(
+            raise SearchUnavailable(
                 "some documents could not be indexed, so a search would silently "
                 f"miss them: {report.failures}"
             )

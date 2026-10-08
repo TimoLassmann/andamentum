@@ -15,7 +15,7 @@ import pytest
 from andamentum.harvest import api as api_mod
 from andamentum.harvest import extract, extract_from_bytes
 from andamentum.harvest.backends import docling_backend as backend
-from andamentum.harvest.errors import ExtractionError
+from andamentum.harvest.errors import ExtractionError, FigureModelRequired
 from andamentum.harvest.fetch import Fetched
 
 
@@ -72,26 +72,28 @@ async def test_default_mode_is_fast(patched_resolve, spy_docling):
 
 async def test_accurate_mode_reaches_backend(patched_resolve, spy_docling):
     patched_resolve(_make_fetched(fmt="pdf", data=b"%PDF-1.4"))
-    await extract("https://x.com/p.pdf", mode="accurate")
+    await extract("https://x.com/p.pdf", mode="accurate", figure_model="smolvlm")
     assert spy_docling == [{"fmt": "pdf", "mode": "accurate"}]
 
 
 @pytest.mark.parametrize("fmt", ["pdf", "docx", "pptx"])
 async def test_mode_reaches_every_docling_format(patched_resolve, spy_docling, fmt):
     patched_resolve(_make_fetched(fmt=fmt))
-    await extract(f"https://x.com/p.{fmt}", mode="accurate")
+    await extract(f"https://x.com/p.{fmt}", mode="accurate", figure_model="smolvlm")
     assert spy_docling == [{"fmt": fmt, "mode": "accurate"}]
 
 
 async def test_extract_from_bytes_carries_mode(spy_docling):
-    await extract_from_bytes(b"%PDF-1.4", format="pdf", mode="accurate")
+    await extract_from_bytes(
+        b"%PDF-1.4", format="pdf", mode="accurate", figure_model="smolvlm"
+    )
     assert spy_docling == [{"fmt": "pdf", "mode": "accurate"}]
 
 
 async def test_html_not_article_carries_mode(patched_resolve, spy_docling):
     html = b'<html><head><script type="application/ld+json">{"@type":"WebPage"}</script></head></html>'
     patched_resolve(_make_fetched(fmt="html", data=html))
-    await extract("https://x.com/index", mode="accurate")
+    await extract("https://x.com/index", mode="accurate", figure_model="smolvlm")
     assert spy_docling == [{"fmt": "html", "mode": "accurate"}]
 
 
@@ -99,14 +101,14 @@ async def test_html_race_carries_mode(patched_resolve, spy_docling):
     patched_resolve(
         _make_fetched(fmt="html", data=b"<html><body><p>x</p></body></html>")
     )
-    await extract("https://x.com/?", mode="accurate")
+    await extract("https://x.com/?", mode="accurate", figure_model="smolvlm")
     assert spy_docling == [{"fmt": "html", "mode": "accurate"}]
 
 
 async def test_markdown_ignores_mode(patched_resolve, spy_docling):
     """A markdown source never reaches docling, whatever the mode."""
     patched_resolve(_make_fetched(fmt="markdown", data=b"## hi\n\nbody\n"))
-    md = await extract("https://x.com/p.md", mode="accurate")
+    md = await extract("https://x.com/p.md", mode="accurate", figure_model="smolvlm")
     assert "## hi" in md
     assert spy_docling == []
 
@@ -200,23 +202,18 @@ def spy_figure_model(monkeypatch):
     return seen
 
 
-async def test_figure_model_defaults_to_the_measured_best(
-    patched_resolve, spy_figure_model
-):
+async def test_accurate_mode_without_a_figure_model_is_refused(patched_resolve):
     patched_resolve(_make_fetched(fmt="pdf", data=b"%PDF-1.4"))
-    await extract("https://x.com/p.pdf", mode="accurate")
-    assert spy_figure_model == [backend.DEFAULT_FIGURE_MODEL]
+    with pytest.raises(FigureModelRequired, match="figure_model"):
+        await extract("https://x.com/p.pdf", mode="accurate")
+    with pytest.raises(FigureModelRequired):
+        await extract_from_bytes(b"%PDF-1.4", format="pdf", mode="accurate")
 
 
-def test_the_default_is_an_ollama_model():
-    """Pinned deliberately: the default is NOT self-contained.
-
-    It scored 8/8 against smolvlm's 4/8 on a figure with known values, which
-    is why accurate mode uses it. The cost is that a machine with no Ollama
-    cannot run accurate mode without passing `figure_model`, so this fact is
-    asserted rather than left as a surprise.
-    """
-    assert backend.DEFAULT_FIGURE_MODEL.startswith(backend._OLLAMA_PREFIX)
+async def test_fast_mode_needs_no_figure_model(patched_resolve, spy_figure_model):
+    patched_resolve(_make_fetched(fmt="pdf", data=b"%PDF-1.4"))
+    await extract("https://x.com/p.pdf")
+    assert spy_figure_model == [None]
 
 
 async def test_figure_model_reaches_the_backend(patched_resolve, spy_figure_model):
@@ -308,5 +305,5 @@ async def test_extraction_error_survives_the_mode_parameter(
     monkeypatch.setattr(api_mod, "extract_with_docling", boom)
     patched_resolve(_make_fetched(fmt="pdf", data=b"%PDF-1.4"))
     with pytest.raises(ExtractionError) as exc_info:
-        await extract("https://x.com/p.pdf", mode="accurate")
+        await extract("https://x.com/p.pdf", mode="accurate", figure_model="smolvlm")
     assert "docling[accurate]" in str(exc_info.value)

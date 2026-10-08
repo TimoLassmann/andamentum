@@ -17,7 +17,9 @@ from .api import ExtractionMode, extract, extract_from_bytes
 from .errors import (
     ExtractionError,
     FetchError,
+    FigureModelRequired,
     HarvestError,
+    OllamaUnavailableError,
     UnsupportedFormatError,
 )
 
@@ -28,6 +30,8 @@ __all__ = [
     "ExtractionMode",
     "ExtractionError",
     "FetchError",
+    "FigureModelRequired",
     "HarvestError",
+    "OllamaUnavailableError",
     "UnsupportedFormatError",
 ]

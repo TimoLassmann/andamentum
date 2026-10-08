@@ -57,21 +57,18 @@ def test_harvest_cli_creates_parent_dirs(tmp_path: Path) -> None:
 
 
 def test_harvest_cli_fetch_error_exits_2(monkeypatch) -> None:
-    """FetchError is exit code 2."""
+    """FetchError means the input could not be read: exit code 3."""
 
     async def boom(source, **_kwargs):
         raise FetchError("boom")
 
     monkeypatch.setattr(api_mod, "resolve", boom)
 
-    with pytest.raises(SystemExit) as excinfo:
-        main(["https://nope.invalid/"])
-
-    assert excinfo.value.code == 2
+    assert main(["https://nope.invalid/"]) == 3
 
 
 def test_harvest_cli_extraction_error_exits_3(monkeypatch) -> None:
-    """ExtractionError is exit code 3."""
+    """ExtractionError means the run failed: exit code 4."""
     from andamentum.harvest.fetch import Fetched
 
     async def fake_resolve(source, **_kwargs):
@@ -87,10 +84,7 @@ def test_harvest_cli_extraction_error_exits_3(monkeypatch) -> None:
     monkeypatch.setattr(api_mod, "extract_with_trafilatura", fake_traf)
     monkeypatch.setattr(api_mod, "extract_with_docling", fake_docl)
 
-    with pytest.raises(SystemExit) as excinfo:
-        main(["http://example.com/"])
-
-    assert excinfo.value.code == 3
+    assert main(["http://example.com/"]) == 4
 
 
 # ---------- --mode ---------------------------------------------------------
@@ -124,7 +118,13 @@ def test_harvest_cli_mode_accurate_is_passed_through(
     src = tmp_path / "doc.md"
     src.write_text("# Hi")
 
-    assert main([str(src), "--mode", "accurate", "-o", str(tmp_path / "o.md")]) == 0
+    assert (
+        main(
+            [str(src), "--mode", "accurate", "--figure-model", "smolvlm"]
+            + ["-o", str(tmp_path / "o.md")]
+        )
+        == 0
+    )
     assert seen == ["accurate"]
 
 
@@ -138,8 +138,8 @@ def test_harvest_cli_rejects_an_unknown_mode(tmp_path: Path) -> None:
     assert excinfo.value.code == 2  # argparse's own usage error
 
 
-def test_harvest_cli_missing_vlm_extra_exits_4(tmp_path: Path, monkeypatch) -> None:
-    """A missing optional dependency is its own exit code, not an extraction failure."""
+def test_harvest_cli_missing_vlm_extra_exits_2(tmp_path: Path, monkeypatch) -> None:
+    """A missing optional dependency is a setup problem, not an extraction failure."""
 
     async def boom(source, **_kwargs):
         raise ImportError('mode="accurate" needs ... uv sync --extra vlm')
@@ -148,7 +148,39 @@ def test_harvest_cli_missing_vlm_extra_exits_4(tmp_path: Path, monkeypatch) -> N
     src = tmp_path / "doc.pdf"
     src.write_bytes(b"%PDF-1.4")
 
+    assert main([str(src), "--mode", "accurate", "--figure-model", "smolvlm"]) == 2
+
+
+def test_harvest_cli_accurate_needs_a_figure_model(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    src = tmp_path / "doc.pdf"
+    src.write_bytes(b"%PDF-1.4")
+
     with pytest.raises(SystemExit) as excinfo:
         main([str(src), "--mode", "accurate"])
 
-    assert excinfo.value.code == 4
+    assert excinfo.value.code == 2
+    assert "--figure-model" in capsys.readouterr().err
+
+
+def test_harvest_cli_preserve_superscripts_reaches_extract(
+    tmp_path: Path, monkeypatch
+) -> None:
+    seen: list[bool] = []
+
+    async def spy(source, *, preserve_superscripts=False, **_kwargs):
+        seen.append(preserve_superscripts)
+        return "# ok\n"
+
+    monkeypatch.setattr("andamentum.harvest.cli.extract", spy)
+    src = tmp_path / "doc.md"
+    src.write_text("# Hi")
+
+    assert main([str(src), "--preserve-superscripts", "-o", str(tmp_path / "o.md")]) == 0
+    assert seen == [True]
+
+
+def test_harvest_cli_unreadable_source_exits_3(tmp_path: Path, capsys) -> None:
+    assert main([str(tmp_path / "missing.pdf")]) == 3
+    assert capsys.readouterr().err.startswith("error:")

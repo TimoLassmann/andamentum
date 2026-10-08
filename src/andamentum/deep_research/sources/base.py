@@ -48,6 +48,7 @@ from andamentum.deep_research.searxng_search import (
 )
 from andamentum.references import Work
 
+from ..errors import ResearchError
 from ..store import (
     TTL_FULL_TEXT_S,
     ReferenceCache,
@@ -122,7 +123,7 @@ MIN_FULL_TEXT_CHARS = 200  # shorter is an error page or a stub, not a paper
 Extractor = Callable[[bytes, str, str], Awaitable[str]]
 
 
-class SourceError(RuntimeError):
+class SourceError(ResearchError):
     """A source could not answer. The engine records it and marks the run degraded."""
 
     def __init__(

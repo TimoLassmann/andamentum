@@ -1,4 +1,4 @@
-"""``andamentum-research``: flags to arguments, output, exit status."""
+"""``andamentum-research``: flags to arguments, output, exit codes."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ def _result(*, degraded: list[str] | None = None) -> ResearchResult:
 
 @pytest.fixture(autouse=True)
 def _in_tmp(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Every run writes its log; without --out it lands in the current directory."""
+    """Nothing is written into the current folder unless --out names it."""
     monkeypatch.chdir(tmp_path)
 
 
@@ -52,6 +52,7 @@ def test_flags_become_the_research_arguments(
     store = tmp_path / "research.db"
     cli.main(
         [
+            "ask",
             "Why Apollo?",
             "--mode",
             "both",
@@ -96,7 +97,7 @@ def test_the_flags_of_the_removed_steps_are_usage_errors(
     flag: str, calls: list[dict[str, Any]]
 ) -> None:
     with pytest.raises(SystemExit) as stopped:
-        cli.main(["q", "--mode", "scholarly", "--model", "m", flag, "x"])
+        cli.main(["ask", "q", "--mode", "scholarly", "--model", "m", flag, "x"])
     assert stopped.value.code == 2 and calls == []
 
 
@@ -106,7 +107,7 @@ def test_secrets_come_from_the_environment_only(
     monkeypatch.setenv("OPENALEX_API_KEY", "k-open")
     monkeypatch.setenv("OPENALEX_EMAIL", "jane@example.org")
     monkeypatch.setenv("SEMANTIC_SCHOLAR_API_KEY", "k-s2")
-    cli.main(["q", "--mode", "scholarly", "--model", "m", "--quiet"])
+    cli.main(["ask", "q", "--mode", "scholarly", "--model", "m", "--quiet"])
     sources: SourceConfig = calls[0]["sources"]
     assert sources.openalex_api_key == "k-open"
     assert sources.mailto == "jane@example.org"
@@ -114,13 +115,49 @@ def test_secrets_come_from_the_environment_only(
     assert calls[0]["store"] is None
 
 
-def test_json_output_to_a_file(calls: list[dict[str, Any]], tmp_path: Path) -> None:
-    out = tmp_path / "result.json"
-    cli.main(["q", "--mode", "web", "--model", "m", "--json", "--out", str(out)])
-    assert json.loads(out.read_text())["stop_reason"] == "answered"
+def test_without_out_nothing_is_written(
+    calls: list[dict[str, Any]], capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    assert cli.main(["ask", "q", "--mode", "scholarly", "--model", "m", "--quiet"]) == 0
+    assert capsys.readouterr().out.startswith("# Why Apollo?")
+    assert list(tmp_path.iterdir()) == []
 
 
-def test_a_degraded_run_exits_4_after_writing_the_result(
+def test_out_is_a_folder_with_the_report_and_the_log(
+    calls: list[dict[str, Any]], tmp_path: Path
+) -> None:
+    out = tmp_path / "run"
+    cli.main(
+        ["ask", "q", "--mode", "scholarly", "--model", "m", "-o", str(out), "--quiet"]
+    )
+    assert sorted(p.name for p in out.iterdir()) == ["log.jsonl", "log.md", "report.md"]
+    assert (out / "report.md").read_text().startswith("# Why Apollo?")
+    assert [p.name for p in tmp_path.iterdir()] == ["run"]
+
+
+def test_json_output_into_the_folder(
+    calls: list[dict[str, Any]], tmp_path: Path
+) -> None:
+    out = tmp_path / "run"
+    cli.main(
+        [
+            "ask",
+            "q",
+            "--mode",
+            "scholarly",
+            "--model",
+            "m",
+            "--json",
+            "-o",
+            str(out),
+            "--quiet",
+        ]
+    )
+    assert json.loads((out / "report.json").read_text())["stop_reason"] == "answered"
+    assert not (out / "report.md").exists()
+
+
+def test_a_degraded_run_exits_1_after_writing_the_result(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     async def research(question: str, **kwargs: Any) -> ResearchResult:
@@ -128,74 +165,116 @@ def test_a_degraded_run_exits_4_after_writing_the_result(
 
     monkeypatch.setattr(cli, "research", research)
     monkeypatch.setattr(cli, "load_dotenv", lambda: None)
-    with pytest.raises(SystemExit) as exited:
-        cli.main(["q", "--mode", "web", "--model", "m", "--quiet"])
-    assert exited.value.code == cli.EXIT_DEGRADED
+    code = cli.main(
+        ["ask", "q", "--mode", "web", "--browser", "--model", "m", "--quiet"]
+    )
+    assert code == cli.EXIT_DEGRADED == 1
     out = capsys.readouterr()
     assert out.out.startswith("# Why Apollo?")
     assert "web search failed" in out.err
 
 
-def test_an_error_exits_1(
+def test_a_failed_run_exits_4_with_an_error_line(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     async def research(question: str, **kwargs: Any) -> ResearchResult:
-        raise ValueError("web mode needs searxng_url")
+        raise RuntimeError("model unreachable")
 
     monkeypatch.setattr(cli, "research", research)
     monkeypatch.setattr(cli, "load_dotenv", lambda: None)
-    with pytest.raises(SystemExit) as exited:
-        cli.main(["q", "--mode", "web", "--model", "m", "--quiet"])
-    assert exited.value.code == 1
-    assert "searxng_url" in capsys.readouterr().err
+    code = cli.main(["ask", "q", "--mode", "scholarly", "--model", "m", "--quiet"])
+    assert code == 4
+    assert capsys.readouterr().err.startswith("error: RuntimeError: model unreachable")
+
+
+def test_a_missing_local_corpus_exits_3(
+    calls: list[dict[str, Any]], tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    code = cli.main(
+        ["ask", "q", "--mode", "scholarly", "--model", "m", "--sources", "local_corpus"]
+        + ["--local-corpus", str(tmp_path / "none")]
+    )
+    assert code == 3 and calls == []
+    assert capsys.readouterr().err.startswith("error:")
 
 
 @pytest.mark.parametrize(
     "argv",
     [
-        ["q", "--model", "m"],  # no mode
-        ["q", "--mode", "web"],  # no model
-        ["q", "--mode", "web", "--model", "m", "--sources", "openalex,nope"],
-        ["q", "--mode", "web", "--model", "m", "--json", "--md"],
+        ["ask", "q", "--model", "m"],  # no mode
+        ["ask", "q", "--mode", "scholarly"],  # no model
+        [
+            "ask",
+            "q",
+            "--mode",
+            "scholarly",
+            "--model",
+            "m",
+            "--sources",
+            "openalex,nope",
+        ],
+        ["ask", "q", "--mode", "web", "--model", "m"],  # web needs an address
+        [
+            "ask",
+            "q",
+            "--mode",
+            "scholarly",
+            "--model",
+            "m",
+            "--sources",
+            "local_corpus",
+        ],
+        ["ask", "q", "--mode", "scholarly", "--model", "m", "--md"],
+        ["no-such-command"],
+        [],
     ],
 )
 def test_usage_errors_exit_2(
     argv: list[str], calls: list[dict[str, Any]], capsys: pytest.CaptureFixture[str]
 ) -> None:
-    with pytest.raises(SystemExit) as exited:
-        cli.main(argv)
-    assert exited.value.code == 2 and calls == []
+    try:
+        code = cli.main(argv)
+    except SystemExit as exited:
+        code = exited.code
+    assert code == 2 and calls == []
 
 
-def test_the_question_is_the_first_argument_and_argv_defaults_to_the_process(
+def test_a_question_that_starts_with_mcp_is_a_question(
+    calls: list[dict[str, Any]],
+) -> None:
+    cli.main(
+        [
+            "ask",
+            "mcp servers compared",
+            "--mode",
+            "scholarly",
+            "--model",
+            "m",
+            "--quiet",
+        ]
+    )
+    assert [c["question"] for c in calls] == ["mcp servers compared"]
+
+
+def test_the_question_can_come_from_stdin(
     calls: list[dict[str, Any]], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(
-        sys,
-        "argv",
-        ["andamentum-research", "Why Apollo?", "--mode", "web", "--model", "m"],
-    )
-    cli.main()
+    import io
+
+    monkeypatch.setattr(sys, "stdin", io.StringIO("Why Apollo?\n"))
+    cli.main(["ask", "-", "--mode", "scholarly", "--model", "m", "--quiet"])
     assert [c["question"] for c in calls] == ["Why Apollo?"]
 
 
-def test_the_mcp_subcommand_goes_to_the_mcp_server(
-    monkeypatch: pytest.MonkeyPatch,
+def test_every_budget_flag_has_a_plain_description() -> None:
+    ask = cli.build_parser()._subparsers._group_actions[0].choices["ask"]  # type: ignore[union-attr]
+    helps = {a.dest: a.help for a in ask._actions}
+    for name in Budget.model_fields:
+        assert helps[name] and "default:" in helps[name]
+        assert helps[name].split(" (default")[0] != ""
+
+
+def test_the_cache_subcommands_run_the_cache_job(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    from .. import mcp_server
-
-    seen: list[list[str]] = []
-    monkeypatch.setattr(mcp_server, "main", seen.append)
-    cli.main(["mcp", "--store", "s.db"])
-    assert seen == [["--store", "s.db"]]
-
-
-def test_the_cache_subcommands_go_to_the_cache_cli(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from .. import cache_cli
-
-    seen: list[list[str]] = []
-    monkeypatch.setattr(cache_cli, "main", seen.append)
-    cli.main(["cache-info", "--cache", "c.db"])
-    assert seen == [["cache-info", "--cache", "c.db"]]
+    assert cli.main(["cache", "info", "--cache", str(tmp_path / "none.db")]) == 3

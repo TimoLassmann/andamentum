@@ -106,11 +106,13 @@ def test_parser_follows_the_flag_rules(name):
                         f"{p.prog} {opt} has a default ({action.default!r}); models have none"
                     )
     if tool.needs_model == "no":
-        assert not any("--model" in a.option_strings for a in model_flags)
-    else:
+        assert not model_flags, f"{tool.command} is listed as needing no model"
+    elif tool.needs_model == "yes":
         assert any("--model" in a.option_strings for a in model_flags), (
             f"{tool.command} needs a model but has no --model"
         )
+    else:  # "some": a model flag for the uses that need one, named by its job
+        assert model_flags, f"{tool.command} needs a model for some uses but has no model flag"
 
 
 #: Commands whose --out names a folder; -o is optional there because a

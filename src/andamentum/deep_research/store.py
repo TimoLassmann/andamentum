@@ -45,6 +45,7 @@ from andamentum.references import (
 )
 from andamentum.references.works import ID_FIELDS, title_key
 
+from .errors import ResearchError
 from .types import Passage
 
 SCHEMA_VERSION = 7
@@ -236,7 +237,7 @@ _MIGRATIONS: dict[int, str] = {
 }
 
 
-class StoreError(RuntimeError):
+class StoreError(ResearchError):
     """The store cannot do what was asked: a missing blob, an unknown run, a
     database written by a newer version."""
 

@@ -37,6 +37,7 @@ from pydantic_ai import ModelRetry
 from andamentum.references import Work
 
 from .ask import MODEL_ERRORS, UNTRUSTED, Asker, BudgetExhausted, fence
+from .errors import ResearchError
 from .origin import independent_sources, origin_key, origin_label
 from .types import Finding, SubQuestion, SubQuestionResult
 
@@ -50,7 +51,7 @@ MAX_FINDINGS_PER_SECTION = 30
 _CITATION = re.compile(r"\[\s*F\d+(?:\s*[,;]\s*F\d+)*\s*\]")
 
 
-class ReportWriterError(RuntimeError):
+class ReportWriterError(ResearchError):
     """The report could not be written: a section has no model-written sentence
     after the repairs and its own call. Names the sub-question and the reason."""
 

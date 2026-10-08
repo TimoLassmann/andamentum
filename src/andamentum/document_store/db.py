@@ -8,6 +8,8 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .types import SchemaMismatch
+
 #: Version of the source tables below. The source schema is meant never to
 #: change; if it ever must, this number says which layout a file holds.
 SCHEMA_VERSION = 1
@@ -87,7 +89,7 @@ def connect(path: Path) -> sqlite3.Connection:
                 (str(SCHEMA_VERSION),),
             )
         elif int(row[0]) != SCHEMA_VERSION:
-            raise RuntimeError(
+            raise SchemaMismatch(
                 f"{path} holds source schema version {row[0]}; this code reads "
                 f"version {SCHEMA_VERSION}"
             )

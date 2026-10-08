@@ -32,13 +32,15 @@ async def ingest(
     key: str | None = None,
     metadata: dict[str, Any] | None = None,
     mode: Literal["fast", "accurate"] = "fast",
+    figure_model: str | None = None,
 ) -> str:
     """Convert ``source`` (a path or URL) to markdown and store it; returns the doc id.
 
     The original bytes are kept (``Store.original``). ``metadata["source"]``
     records where the text came from: ``{"location": ..., "format": ...,
     "media_type": ...}``; any other metadata is the caller's. A conversion
-    error is raised; nothing is stored then.
+    error is raised; nothing is stored then. ``mode="accurate"`` needs
+    ``figure_model`` (harvest raises ``FigureModelRequired`` without it).
     """
     from andamentum.harvest import extract_from_bytes
     from andamentum.harvest.fetch import resolve
@@ -47,7 +49,11 @@ async def ingest(
         source = Path(source).expanduser()
     fetched = await resolve(source)
     text = await extract_from_bytes(
-        fetched.data, format=fetched.format, source_url=fetched.source_url, mode=mode
+        fetched.data,
+        format=fetched.format,
+        source_url=fetched.source_url,
+        mode=mode,
+        figure_model=figure_model,
     )
     meta = dict(metadata or {})
     if "source" in meta:

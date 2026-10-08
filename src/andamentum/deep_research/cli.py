@@ -1,31 +1,29 @@
-"""``andamentum-research``: the research engine from the command line.
+"""``andamentum-research``: research a question over the web and scholarly sources.
 
-    andamentum-research "QUESTION" --mode both --model M
-        [--store PATH] [--cache PATH] [--searxng-url URL | --browser]
-        [--sources openalex,europepmc,arxiv] [--local-corpus PATH]
-        [--openalex-search keyword]
-        [--tdm-host HOST ...] [--results-per-query N]
-        [--max-rounds N ... every Budget field] [--json | --md] [--out FILE]
-        [--log PATH]
+    andamentum-research ask "QUESTION" --mode {web,scholarly,both} --model M
+        [-o DIR] [--json] [--store PATH] [--cache PATH]
+        [--searxng-url URL | --browser] [--sources openalex,europepmc,arxiv]
+        [--local-corpus PATH] [--openalex-search keyword] [--tdm-host HOST ...]
+        [--results-per-query N] [--max-rounds N ... every Budget field] [--quiet]
+    andamentum-research mcp [--store PATH] [--model M] [--searxng-url URL | --browser]
+    andamentum-research cache info --cache PATH
+    andamentum-research cache prune --cache PATH [--max-bytes N]
 
 Every model and address is a flag; nothing has a hidden default. Without
 ``--store`` nothing persists. Secrets are read here only, from the environment
 after ``load_dotenv()``: ``OPENALEX_API_KEY``, ``OPENALEX_EMAIL`` (the polite
 contact address for OpenAlex and Crossref) and ``SEMANTIC_SCHOLAR_API_KEY``.
 
-Every run writes its log (``RunLog``: what happened at each step) as two
-files, ``<stem>.log.md`` and ``<stem>.log.jsonl``: beside ``--out FILE`` (the
-out file's stem), else in the current directory as
-``research-<run id prefix>.log.md``; ``--log PATH`` (a ``.md`` path, the
-``.jsonl`` beside it) puts it elsewhere. A failed run writes the log so far.
+Output of ``ask``: without ``-o`` the report (Markdown, or the whole result as
+JSON with ``--json``) goes to stdout and no file is written. With ``-o DIR`` the
+folder gets ``report.md`` (``report.json`` with ``--json``) and the run log as
+``log.md`` and ``log.jsonl`` (what happened at each step); a failed run writes
+the log so far. Nothing is written anywhere else.
 
-Subcommands, picked by the first argument: ``mcp`` (the MCP server over the
-store), ``cache-info`` and ``cache-prune`` (look at, and trim, an HTTP cache).
-Anything else is the question.
-
-Exit status: 0 for a clean run, 4 for a run that finished degraded (a source
-or model failed; the result is still written and the reasons are on stderr),
-1 for an error, 2 for a usage error.
+Exit status: 0 the run finished clean; 1 it finished degraded (a source or model
+failed; the result is still written and the reasons are on stderr); 2 usage
+error; 3 an input could not be read (``--local-corpus`` is missing); 4 the run
+failed (model, network or crash).
 """
 
 from __future__ import annotations
@@ -43,18 +41,40 @@ from dotenv import load_dotenv
 from .engine import research
 from .runlog import write_log
 from .sources import SourceConfig
+from .sources.base import DEFAULT_RESULTS_PER_QUERY
 from .store import ResearchStore
 from .types import Budget, Mode, ResearchResult, RunLog
 
-EXIT_DEGRADED = 4
+EXIT_OK = 0
+EXIT_DEGRADED = 1
+EXIT_USAGE = 2
+EXIT_INPUT = 3
+EXIT_FAILED = 4
+
 ScholarlyName = Literal[
     "openalex", "europepmc", "arxiv", "semantic_scholar", "local_corpus"
 ]
 _SCHOLARLY: tuple[ScholarlyName, ...] = get_args(ScholarlyName)
+_DEFAULT_SOURCES = ("openalex", "europepmc", "arxiv")
+
+_EPILOG = """\
+exit status:
+  0  the run finished clean
+  1  the run finished degraded (a source or model failed); the result is still written
+  2  usage error: a wrong or missing argument
+  3  an input could not be read (for example --local-corpus does not exist)
+  4  the run failed (model or network error, or a crash)
+"""
 
 
 def _flag(field: str) -> str:
     return "--" + field.replace("_", "-")
+
+
+def _version() -> str:
+    from andamentum import __version__
+
+    return f"andamentum-research {__version__}"
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -62,106 +82,195 @@ def build_parser() -> argparse.ArgumentParser:
         prog="andamentum-research",
         description="Research a question over the web and scholarly sources; "
         "the report cites verified findings by id.",
+        epilog=_EPILOG,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument("question", help="the research question")
-    parser.add_argument(
+    parser.add_argument("--version", action="version", version=_version())
+    sub = parser.add_subparsers(dest="command", metavar="COMMAND")
+    _add_ask(sub)
+    _add_mcp(sub)
+    _add_cache(sub)
+    return parser
+
+
+def _add_ask(sub: argparse._SubParsersAction) -> None:  # type: ignore[type-arg]
+    ask = sub.add_parser(
+        "ask",
+        help="research a question and write the report",
+        description="Research a question and write a report that cites verified "
+        "findings by id. Without -o the report goes to stdout and no file is "
+        "written; with -o DIR the folder gets report.md (or report.json), log.md "
+        "and log.jsonl.",
+        epilog=_EPILOG,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    ask.add_argument("question", help="the research question; - reads it from stdin")
+    ask.add_argument(
         "--mode",
         required=True,
         choices=get_args(Mode),
-        help="web (Chrome over CDP or SearxNG), scholarly (OpenAlex, Europe PMC, arXiv) or both",
+        help="where to search: web (Chrome or SearxNG), scholarly (OpenAlex, "
+        "Europe PMC, arXiv) or both",
     )
-    parser.add_argument(
+    ask.add_argument(
         "--model",
         required=True,
         help="the language model, a pydantic-ai id (e.g. ollama:gemma4:31b-cloud)",
     )
-    parser.add_argument(
+    ask.add_argument(
+        "-o",
+        "--out",
+        default=None,
+        metavar="DIR",
+        help="write the report and the run log into this folder (report.md or "
+        "report.json, log.md, log.jsonl); without it the report goes to stdout "
+        "and nothing is written",
+    )
+    ask.add_argument(
+        "--json",
+        action="store_true",
+        help="give the whole result as JSON instead of the Markdown report",
+    )
+    ask.add_argument(
         "--store",
         default=None,
         metavar="PATH",
-        help="the research store (a SQLite file; blobs go beside it). Without "
-        "it nothing persists",
+        help="keep the run in this research store (a SQLite file; page copies go "
+        "beside it); without it nothing persists",
     )
-    parser.add_argument(
+    ask.add_argument(
         "--cache",
         default=None,
         metavar="PATH",
-        help="a shared HTTP cache (a SQLite file; blobs go beside it) every "
-        "source reads first and writes into, kept apart from --store; the "
-        "run's own store holds a copy of each entry the run used",
+        help="a shared HTTP cache (a SQLite file; page copies go beside it) that "
+        "every source reads first and writes into, kept apart from --store",
     )
-    parser.add_argument(
-        "--searxng-url", default=None, help="the SearxNG instance (web and both modes)"
+    ask.add_argument(
+        "--searxng-url",
+        default=None,
+        help="address of the SearxNG instance used for web search (web and both modes)",
     )
-    parser.add_argument(
+    ask.add_argument(
         "--browser",
         action="store_true",
         help="search the web and read pages through an isolated Chrome in a podman "
-        "container the run starts and removes (instead of SearxNG; needs podman; "
+        "container the run starts and removes, instead of SearxNG (needs podman; "
         "the image is built on first use)",
     )
-    parser.add_argument(
+    ask.add_argument(
         "--sources",
         type=scholarly_names,
-        default=",".join(SourceConfig().scholarly),
+        default=_DEFAULT_SOURCES,
+        metavar="NAMES",
         help=f"scholarly sources, comma-separated, from {', '.join(_SCHOLARLY)} "
-        "(default: %(default)s)",
+        f"(default: {','.join(_DEFAULT_SOURCES)})",
     )
-    parser.add_argument(
+    ask.add_argument(
         "--local-corpus",
         type=Path,
         default=None,
         metavar="PATH",
-        help="the folder of the local_corpus source (corpus.jsonl and its index, "
-        "see sources/local_corpus.py); needed when --sources names local_corpus",
+        help="the folder of your own documents searched as the local_corpus "
+        "source (corpus.jsonl and its index); needed when --sources names local_corpus",
     )
-    parser.add_argument(
+    ask.add_argument(
         "--openalex-search",
         choices=("keyword", "semantic", "both"),
         default="keyword",
-        help="OpenAlex endpoint (default: %(default)s)",
+        help="how OpenAlex is searched (default: %(default)s)",
     )
-    parser.add_argument(
+    ask.add_argument(
         "--tdm-host",
         action="append",
         default=[],
         metavar="HOST",
-        help="a publisher host whose text you are licensed to mine (repeatable)",
+        help="a publisher host whose full text you are licensed to mine; may be repeated",
     )
-    parser.add_argument(
+    ask.add_argument(
         "--results-per-query",
         type=int,
-        default=SourceConfig().results_per_query,
-        help="results asked of each source per query (default: %(default)s)",
+        default=None,
+        metavar="N",
+        help=f"results asked of each source per query (default: {DEFAULT_RESULTS_PER_QUERY})",
     )
-    limits = parser.add_argument_group("budget (every bound of the run)")
+    limits = ask.add_argument_group(
+        "limits (a spent limit ends the search; the report is still written)"
+    )
     for name, info in Budget.model_fields.items():
         kind = float if info.annotation is float else int
         limits.add_argument(
-            _flag(name), type=kind, default=info.default, help="default: %(default)s"
+            _flag(name),
+            type=kind,
+            default=info.default,
+            metavar="N",
+            help=f"{info.description} (default: {info.default})",
         )
-    output = parser.add_mutually_exclusive_group()
-    output.add_argument(
-        "--json", action="store_true", help="print the whole result as JSON"
+    ask.add_argument("--quiet", action="store_true", help="no progress lines on stderr")
+
+
+def _add_mcp(sub: argparse._SubParsersAction) -> None:  # type: ignore[type-arg]
+    mcp = sub.add_parser(
+        "mcp",
+        help="serve the engine and its store to an agent over MCP (stdio)",
+        description="Serve the research engine and its store over MCP (stdio); "
+        "example: claude mcp add research -- andamentum-research mcp --store research.db",
+        epilog=_EPILOG,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    output.add_argument(
-        "--md", action="store_true", help="print the report as Markdown (default)"
-    )
-    parser.add_argument(
-        "--out", default=None, metavar="FILE", help="write the output here, not stdout"
-    )
-    parser.add_argument(
-        "--log",
+    mcp.add_argument(
+        "--store",
         default=None,
         metavar="PATH",
-        help="write the run log here (a .md path; the .jsonl goes beside it). "
-        "Default: <stem>.log.md beside --out, else research-<run id>.log.md "
-        "in the current directory",
+        help="the research store (a SQLite file; page copies go beside it); "
+        "without it the store lives in memory and nothing persists",
     )
-    parser.add_argument(
-        "--quiet", action="store_true", help="no progress lines on stderr"
+    mcp.add_argument(
+        "--model",
+        default=None,
+        help="the language model for reading and for the research tool",
     )
-    return parser
+    mcp.add_argument(
+        "--searxng-url",
+        default=None,
+        help="address of the SearxNG instance used by the web search tool",
+    )
+    mcp.add_argument(
+        "--browser",
+        action="store_true",
+        help="search the web (and read pages a plain fetch cannot) through an "
+        "isolated Chrome in a podman container the server starts and removes, "
+        "instead of SearxNG",
+    )
+
+
+def _add_cache(sub: argparse._SubParsersAction) -> None:  # type: ignore[type-arg]
+    cache = sub.add_parser(
+        "cache",
+        help="look at, or trim, an HTTP cache file",
+        description="Look at, or trim, an HTTP cache (the --cache file of ask).",
+        epilog=_EPILOG,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    jobs = cache.add_subparsers(dest="cache_command", metavar="JOB", required=True)
+    info = jobs.add_parser(
+        "info", help="size, rows per source, oldest and newest entry"
+    )
+    info.add_argument(
+        "--cache", required=True, metavar="PATH", help="the HTTP cache file"
+    )
+    prune = jobs.add_parser(
+        "prune", help="evict expired entries, then the least recently used"
+    )
+    prune.add_argument(
+        "--cache", required=True, metavar="PATH", help="the HTTP cache file"
+    )
+    prune.add_argument(
+        "--max-bytes",
+        type=int,
+        default=None,
+        metavar="N",
+        help="the size to bring the cache under (default: the store's cap, 200 MB)",
+    )
 
 
 def scholarly_names(text: str) -> tuple[ScholarlyName, ...]:
@@ -179,6 +288,9 @@ def scholarly_names(text: str) -> tuple[ScholarlyName, ...]:
 
 
 def _source_config(args: argparse.Namespace) -> SourceConfig:
+    extra = {}
+    if args.results_per_query is not None:
+        extra["results_per_query"] = args.results_per_query
     return SourceConfig(
         mailto=os.environ.get("OPENALEX_EMAIL") or None,
         openalex_api_key=os.environ.get("OPENALEX_API_KEY") or None,
@@ -189,7 +301,7 @@ def _source_config(args: argparse.Namespace) -> SourceConfig:
         scholarly=args.sources,
         local_corpus=args.local_corpus,
         openalex_search=args.openalex_search,
-        results_per_query=args.results_per_query,
+        **extra,
     )
 
 
@@ -223,58 +335,54 @@ async def _run(args: argparse.Namespace) -> ResearchResult:
             cache.close()
 
 
-def log_path(*, log: str | None, out: str | None, run_id: str) -> Path:
-    """Where the run log's Markdown file goes: *log* when given, else
-    ``<stem>.log.md`` beside *out*, else ``research-<run id[:8]>.log.md`` in
-    the current directory."""
-    if log:
-        return Path(log)
-    if out:
-        target = Path(out)
-        return target.with_name(f"{target.stem}.log.md")
-    return Path.cwd() / f"research-{run_id[:8] or 'run'}.log.md"
-
-
-def _write_log(args: argparse.Namespace, log: RunLog) -> None:
-    md, jsonl = write_log(
-        log, md_path=log_path(log=args.log, out=args.out, run_id=log.run_id)
-    )
+def _write_log(out: str | None, log: RunLog) -> None:
+    """The run log as ``log.md`` and ``log.jsonl`` in *out*; nothing without it."""
+    if not out:
+        return
+    md, jsonl = write_log(log, md_path=Path(out) / "log.md")
     print(f"log: {md} (and {jsonl.name})", file=sys.stderr)
 
 
-def main(argv: Sequence[str] | None = None) -> None:
-    """Run one research question, or a subcommand; *argv* defaults to the
-    process arguments."""
-    args_in = list(sys.argv[1:] if argv is None else argv)
-    if args_in and args_in[0] == "mcp":
-        from .mcp_server import main as mcp_main
+def _error(message: str) -> None:
+    print(f"error: {message}", file=sys.stderr)
 
-        mcp_main(args_in[1:])
-        return
-    if args_in and args_in[0] in ("cache-info", "cache-prune"):
-        from .cache_cli import main as cache_main
 
-        cache_main(args_in)
-        return
+def _ask(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
+    if args.question == "-":
+        args.question = sys.stdin.read().strip()
+    if not args.question:
+        parser.error("the question is empty")
+    if args.mode in ("web", "both") and not (args.searxng_url or args.browser):
+        parser.error(f"--mode {args.mode} needs --searxng-url or --browser")
+    if "local_corpus" in args.sources and args.local_corpus is None:
+        parser.error("--sources names local_corpus, which needs --local-corpus")
+    if args.out and Path(args.out).is_file():
+        parser.error(f"--out must be a folder, but {args.out} is a file")
+    if args.local_corpus is not None and not args.local_corpus.exists():
+        _error(f"--local-corpus {args.local_corpus} does not exist")
+        return EXIT_INPUT
     load_dotenv()  # secrets only (API keys, contact mail); configuration is flags
-    args = build_parser().parse_args(args_in)
     try:
         result = asyncio.run(_run(args))
     except KeyboardInterrupt as stop:
         partial = getattr(stop, "run_log", None)
         if isinstance(partial, RunLog):
-            _write_log(args, partial)
-        print("\nResearch cancelled.", file=sys.stderr)
-        sys.exit(1)
-    except Exception as error:  # reported, then a failing exit status
-        partial = getattr(error, "run_log", None)
+            _write_log(args.out, partial)
+        _error("research cancelled")
+        return EXIT_FAILED
+    except Exception as failure:  # reported, then a failing exit status
+        partial = getattr(failure, "run_log", None)
         if isinstance(partial, RunLog):
-            _write_log(args, partial)
-        print(f"Error: {type(error).__name__}: {error}", file=sys.stderr)
-        sys.exit(1)
+            _write_log(args.out, partial)
+        _error(f"{type(failure).__name__}: {failure}")
+        return EXIT_FAILED
     text = _render(result, as_json=args.json)
     if args.out:
-        Path(args.out).write_text(text, encoding="utf-8")
+        folder = Path(args.out)
+        folder.mkdir(parents=True, exist_ok=True)
+        report = folder / ("report.json" if args.json else "report.md")
+        report.write_text(text, encoding="utf-8")
+        print(f"report: {report}", file=sys.stderr)
     else:
         sys.stdout.write(text)
     print(
@@ -282,7 +390,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         f"{len(result.works)} works; {len(result.verification)} verification flags",
         file=sys.stderr,
     )
-    _write_log(args, result.log)
+    _write_log(args.out, result.log)
     if result.notes:
         print(f"notes ({len(result.notes)}):", file=sys.stderr)
         for note in result.notes:
@@ -291,4 +399,24 @@ def main(argv: Sequence[str] | None = None) -> None:
         print(f"degraded ({len(result.degraded)}):", file=sys.stderr)
         for reason in result.degraded:
             print(f"  - {reason}", file=sys.stderr)
-        sys.exit(EXIT_DEGRADED)
+        return EXIT_DEGRADED
+    return EXIT_OK
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Run the command named by *argv* (default: the process arguments); return
+    the exit status."""
+    parser = build_parser()
+    args = parser.parse_args(sys.argv[1:] if argv is None else list(argv))
+    if args.command is None:
+        parser.print_help(sys.stderr)
+        return EXIT_USAGE
+    if args.command == "ask":
+        return _ask(parser, args)
+    if args.command == "mcp":
+        from .mcp_server import run as run_mcp
+
+        return run_mcp(args)
+    from .cache_cli import run as run_cache
+
+    return run_cache(args)

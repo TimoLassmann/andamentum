@@ -102,6 +102,8 @@ Enrichers live outside the store (`andamentum.document_store.enrich`). Each read
 
 ## Command line
 
+Python: `store = await Store.open_with_search(path, embedding_model=..., reranker_model=...)` opens a store that can search; `await ingest(store, source)` stores a file or URL. Every command takes `--json` where it prints a result. Exit codes: 0 success, 1 `sync` could not index some documents, 2 usage, 3 an input could not be read, 4 the run failed.
+
 ```bash
 andamentum-docstore ingest notes.db paper.pdf https://example.org/page
 andamentum-docstore sync notes.db --embedding-model embeddinggemma-2:latest
@@ -116,7 +118,7 @@ andamentum-docstore enrich notes.db extract --model ollama:gemma4:31b-cloud
 
 ## Reranking cost
 
-The cross-encoder stays loaded in the process after the first search: a 0.6B model's memory, which `ollama ps` does not show, plus a few seconds per search. `rerank(query, texts, reranker_model=...)` and `select_relevant(scored, min_relevance=..., buffer=...)` are exported for callers who want to score their own passages and decide how many to keep.
+The cross-encoder stays loaded in the process after the first search: a 0.6B model's memory, which `ollama ps` does not show, plus a few seconds per search. `rerank(query, texts, reranker_model=...)` and `select_relevant(scored, min_relevance=..., buffer=...)` are importable from `andamentum.document_store.reranking` for callers who want to score their own passages and decide how many to keep.
 
 ## Files
 

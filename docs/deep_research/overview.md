@@ -51,12 +51,12 @@ asyncio.run(main())
 ## CLI
 
 ```bash
-andamentum-research "Who wrote the novel Middlemarch?" --mode web \
+andamentum-research ask "Who wrote the novel Middlemarch?" --mode web \
   --model ollama:gemma4:31b-cloud --browser
 ```
 
-`--model` is required. `andamentum-research --help` lists every flag: `--store`, `--cache`, `--searxng-url`, `--browser`, `--sources`, `--local-corpus`, the budget flags, `--json` / `--md`, `--out`, `--log`. `andamentum-research mcp --store PATH` serves the engine and its store to an agent over MCP; `cache-info` and `cache-prune` look at and trim an HTTP cache.
+`--model` is required. `andamentum-research ask --help` lists every flag: `--store`, `--cache`, `--searxng-url`, `--browser`, `--sources`, `--local-corpus`, the limit flags, `--json`, `-o DIR`. Without `-o` the report goes to stdout and no file is written; with `-o DIR` the folder gets `report.md` (or `report.json`), `log.md` and `log.jsonl`. `andamentum-research mcp --store PATH` serves the engine and its store to an agent over MCP; `cache info` and `cache prune` look at and trim an HTTP cache. Exit codes: 0 clean, 1 finished degraded (result still written), 2 usage error, 3 an input could not be read, 4 the run failed.
 
-Every run writes a Markdown log and a JSONL log of what happened at each step, including the text the model saw. `uv run python -m andamentum.deep_research.bench experiment losses ...` reads those logs and says, for each wrong answer, at which stage the right one was lost.
+With `-o DIR` a run also writes a Markdown log and a JSONL log of what happened at each step, including the text the model saw. `uv run python -m andamentum.deep_research.bench experiment losses ...` reads those logs and says, for each wrong answer, at which stage the right one was lost.
 
 Notes for contributors: `src/andamentum/deep_research/CLAUDE.md`.

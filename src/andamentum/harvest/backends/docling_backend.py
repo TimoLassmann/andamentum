@@ -21,8 +21,9 @@ exports cleanly to markdown with `##` headings. Two configurations:
     reconstructed from markdown. Figures additionally get a written
     description from whichever model `figure_model` names, marked in the
     output so a generated description never reads as the author's own words.
-    The default reaches a vision model served by a local Ollama; see
-    `DEFAULT_FIGURE_MODEL` for the measured accuracy of the alternatives.
+    There is no default model: the caller names it. ``ollama:<model>`` reaches
+    a vision model served by a local Ollama; see the comment above
+    `_OLLAMA_PREFIX` for the measured accuracy of the alternatives.
 
     ``force_backend_text`` is decided per document by `pdf_probe`: a PDF
     with a text layer keeps its deterministic text and sends only figures
@@ -49,7 +50,7 @@ import urllib.request
 from io import BytesIO
 from typing import TYPE_CHECKING, Literal
 
-from ..errors import ExtractionError
+from ..errors import ExtractionError, FigureModelRequired, OllamaUnavailableError
 from ..pdf_probe import has_text_layer
 
 if TYPE_CHECKING:
@@ -66,7 +67,8 @@ logger = logging.getLogger("andamentum.harvest")
 #: Preset ids from docling's own registries.
 _VLM_CONVERT_PRESET = "granite_docling"
 
-#: Default model that writes the figure descriptions. Either a docling
+#: The model that writes the figure descriptions has no default: the caller
+#: names it (``figure_model``; ``--figure-model`` on the command line). Either a docling
 #: picture-description preset id (`smolvlm`, `granite_vision`, `qwen`,
 #: `pixtral` — weights are downloaded and run in-process) or `ollama:<model>`
 #: to reach a vision model already served by a local Ollama.
@@ -83,12 +85,11 @@ _VLM_CONVERT_PRESET = "granite_docling"
 #: it costs this process LESS memory than the bundled 256M preset, because
 #: the weights live in Ollama rather than here.
 #:
-#: This default is deliberately NOT self-contained. It names a model that
-#: must already be pulled into a running local Ollama, so a machine without
-#: it fails; `_check_ollama_model` makes that failure say exactly what is
-#: wrong and what to do. A caller wanting no external service passes a
-#: preset id instead — at the accuracy shown above.
-DEFAULT_FIGURE_MODEL = "ollama:qwen3.8"
+#: An ``ollama:`` model is not self-contained. It must already be pulled into
+#: a running local Ollama, so a machine without it fails; `_check_ollama_model`
+#: makes that failure say exactly what is wrong and what to do. A caller
+#: wanting no external service passes a preset id instead — at the accuracy
+#: shown above.
 
 _OLLAMA_PREFIX = "ollama:"
 
@@ -128,7 +129,7 @@ async def extract(
     fmt: DoclingFormat = "html",
     mode: ExtractionMode = "fast",
     ocr: bool = True,
-    figure_model: str = DEFAULT_FIGURE_MODEL,
+    figure_model: str | None = None,
 ) -> str:
     """Run Docling on raw bytes; return markdown.
 
@@ -136,10 +137,15 @@ async def extract(
     in the format detected upstream so we don't need to re-sniff here.
     `mode` selects the pipeline — see the module docstring. `ocr` applies to
     fast mode only. `figure_model` names the model that describes figures in
-    accurate mode.
+    accurate mode and is required there (`FigureModelRequired` otherwise).
     """
+    if mode == "accurate" and figure_model is None:
+        raise FigureModelRequired(
+            'mode="accurate" needs figure_model: name the model that describes '
+            "figures (CLI: --figure-model), e.g. 'smolvlm' or 'ollama:<model>'"
+        )
     return await asyncio.to_thread(
-        _extract_sync, data, source_url, fmt, mode, ocr, figure_model
+        _extract_sync, data, source_url, fmt, mode, ocr, figure_model or ""
     )
 
 
@@ -389,10 +395,6 @@ def _picture_description_options(figure_model: str):
     return options
 
 
-class OllamaUnavailableError(ExtractionError):
-    """The figure model names an Ollama model this machine cannot serve."""
-
-
 def _installed_ollama_models() -> set[str]:
     """Names of the models a local Ollama currently has, via its tags endpoint.
 
@@ -418,7 +420,7 @@ def _ollama_name(model: str) -> str:
 def _check_ollama_model(model: str) -> None:
     """Fail early and specifically when Ollama cannot serve `model`.
 
-    `DEFAULT_FIGURE_MODEL` names a model that has to be pulled into a running
+    An ``ollama:`` figure model has to be pulled into a running
     local Ollama, so the common failure here is environmental, not a bug.
     Without this check the run gets as far as docling posting an image and
     dies on a connection refusal or a 404 from inside the enrichment stage,

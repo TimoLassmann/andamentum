@@ -18,8 +18,12 @@ from .backends import (
     extract_with_docling,
     extract_with_trafilatura,
 )
-from .backends.docling_backend import DEFAULT_FIGURE_MODEL
-from .errors import ExtractionError, HarvestError, UnsupportedFormatError
+from .errors import (
+    ExtractionError,
+    FigureModelRequired,
+    HarvestError,
+    UnsupportedFormatError,
+)
 from .fetch import Fetched, resolve
 from .metadata import sniff_html_metadata
 from .scoring import score_markdown
@@ -35,7 +39,7 @@ async def extract(
     *,
     mode: ExtractionMode = "fast",
     ocr: bool = True,
-    figure_model: str = DEFAULT_FIGURE_MODEL,
+    figure_model: str | None = None,
     tdm_allowed_hosts: frozenset[str] = frozenset(),
     preserve_superscripts: bool = False,
 ) -> str:
@@ -67,11 +71,11 @@ async def extract(
         A scan read with ``ocr=False`` produces no text and raises
         `ExtractionError` naming the remedy.
     figure_model:
-        Which model writes the figure descriptions in accurate mode.
+        Which model writes the figure descriptions in accurate mode. No
+        default: ``mode="accurate"`` without it raises `FigureModelRequired`.
         Ignored by ``mode="fast"``, which describes nothing.
 
-        A docling picture-description preset id — ``"smolvlm"`` (256M,
-        default), ``"granite_vision"`` (2B), ``"qwen"`` (3B),
+        A docling picture-description preset id — ``"smolvlm"`` (256M), ``"granite_vision"`` (2B), ``"qwen"`` (3B),
         ``"pixtral"`` (12B) — downloads weights and runs them in-process.
 
         ``"ollama:<model>"`` instead reaches a vision model already served
@@ -113,9 +117,12 @@ async def extract(
         Source format detected but no backend can handle it.
     ExtractionError
         Every applicable backend failed (or returned empty content).
+    FigureModelRequired
+        ``mode="accurate"`` without ``figure_model``.
     ImportError
         ``mode="accurate"`` without the optional ``vlm`` extra installed.
     """
+    _require_figure_model(mode, figure_model)
     fetched = await resolve(source, tdm_allowed_hosts=tdm_allowed_hosts)
     return await _dispatch(
         fetched,
@@ -133,7 +140,7 @@ async def extract_from_bytes(
     source_url: str = "",
     mode: ExtractionMode = "fast",
     ocr: bool = True,
-    figure_model: str = DEFAULT_FIGURE_MODEL,
+    figure_model: str | None = None,
     preserve_superscripts: bool = False,
 ) -> str:
     """Run the same extraction pipeline as `extract`, but on bytes you already have.
@@ -162,6 +169,7 @@ async def extract_from_bytes(
     preserve_superscripts:
         Mark a PDF's raised text and page footnotes — see `extract`.
     """
+    _require_figure_model(mode, figure_model)
     fetched = Fetched(data=data, format=format, source_url=source_url)
     return await _dispatch(
         fetched,
@@ -172,12 +180,20 @@ async def extract_from_bytes(
     )
 
 
+def _require_figure_model(mode: ExtractionMode, figure_model: str | None) -> None:
+    if mode == "accurate" and figure_model is None:
+        raise FigureModelRequired(
+            'mode="accurate" needs figure_model: name the model that describes '
+            "figures (CLI: --figure-model), e.g. 'smolvlm' or 'ollama:<model>'"
+        )
+
+
 async def _dispatch(
     fetched: Fetched,
     *,
     mode: ExtractionMode,
     ocr: bool,
-    figure_model: str,
+    figure_model: str | None,
     preserve_superscripts: bool = False,
 ) -> str:
     """Format-specific routing — shared by ``extract`` and ``extract_from_bytes``."""
@@ -224,7 +240,7 @@ async def _dispatch(
 
 
 async def _extract_html(
-    fetched: Fetched, *, mode: ExtractionMode, ocr: bool, figure_model: str
+    fetched: Fetched, *, mode: ExtractionMode, ocr: bool, figure_model: str | None
 ) -> str:
     """HTML-specific dispatch: sniff metadata, then route or race.
 
@@ -277,7 +293,7 @@ async def _extract_html(
 
 
 async def _race_html_backends(
-    fetched: Fetched, *, mode: ExtractionMode, ocr: bool, figure_model: str
+    fetched: Fetched, *, mode: ExtractionMode, ocr: bool, figure_model: str | None
 ) -> str:
     """Run trafilatura and docling concurrently, score, return the better one."""
     traf_task = asyncio.create_task(

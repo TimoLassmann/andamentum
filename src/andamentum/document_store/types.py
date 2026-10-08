@@ -16,6 +16,15 @@ class DocumentStoreError(Exception):
     """Base class for document store errors."""
 
 
+class SearchUnavailable(DocumentStoreError, RuntimeError):
+    """``search`` cannot answer: the store was opened without a searcher, or
+    some documents could not be indexed so a search would silently miss them."""
+
+
+class SchemaMismatch(DocumentStoreError, RuntimeError):
+    """The file holds a source schema version this code does not read."""
+
+
 class DocumentNotFound(DocumentStoreError, KeyError):
     """No live document has this id."""
 

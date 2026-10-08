@@ -153,7 +153,7 @@ def test_the_cache_option_is_wired_in_the_bench_and_the_command_line() -> None:
     )
     assert run.cache == Path("c.db")
     one = research_cli.build_parser().parse_args(
-        ["q", "--mode", "web", "--model", "m", "--cache", "c.db"]
+        ["ask", "q", "--mode", "web", "--model", "m", "--cache", "c.db"]
     )
     assert one.cache == "c.db"
 

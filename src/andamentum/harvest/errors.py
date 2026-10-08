@@ -19,6 +19,10 @@ class UnsupportedFormatError(HarvestError):
     """Input format detected, but no backend can handle it."""
 
 
+class FigureModelRequired(HarvestError):
+    """``mode="accurate"`` was asked for without naming ``figure_model``."""
+
+
 class ExtractionError(HarvestError):
     """All applicable backends failed (or returned no usable content) on the bytes.
 
@@ -45,6 +49,5 @@ class ExtractionError(HarvestError):
         super().__init__(f"{message}{detail}" if detail else message)
 
 
-# `OllamaUnavailableError` is defined in backends/docling_backend.py, next to
-# the check that raises it, and subclasses ExtractionError — a caller matching
-# on ExtractionError keeps working unchanged.
+class OllamaUnavailableError(ExtractionError):
+    """The figure model names an Ollama model this machine cannot serve."""

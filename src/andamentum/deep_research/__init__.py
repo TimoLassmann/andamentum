@@ -9,17 +9,18 @@ search, choose what to read, read, take notes, reflect (is it answered?), then
 one write and a code-only verify. See ``CLAUDE.md`` for the design.
 """
 
-from .ask import MODEL_ERRORS, Asker, BudgetExhausted
+from .ask import MODEL_ERRORS, Asker, BudgetExhausted  # noqa: F401  (importable, not exported)
 from .engine import research
-from .identity import merge
+from .errors import ResearchError
+from .identity import merge  # noqa: F401  (importable, not exported)
 from .novelty import NoveltyResearch, run_novelty_check
 from .read import locate_quote
 from .sources import (
-    SourceClient,
+    SourceClient,  # noqa: F401  (importable, not exported)
     SourceConfig,
     SourceError,
-    SourceSet,
-    build_sources,
+    SourceSet,  # noqa: F401
+    build_sources,  # noqa: F401
 )
 from .store import ResearchStore, StoreError
 from .write import ReportWriterError
@@ -39,32 +40,26 @@ from .types import (
 )
 
 __all__ = [
-    "MODEL_ERRORS",
-    "Asker",
     "Budget",
-    "BudgetExhausted",
     "Candidate",
     "Finding",
     "LogEvent",
     "Mode",
     "NoveltyResearch",
     "Passage",
-    "ResearchResult",
     "ReportWriterError",
+    "ResearchError",
+    "ResearchResult",
     "ResearchStore",
     "RunLog",
     "RunStats",
-    "SourceClient",
     "SourceConfig",
     "SourceError",
-    "SourceSet",
     "StoreError",
     "SubQuestion",
     "SubQuestionResult",
     "VerifyFlag",
-    "build_sources",
     "locate_quote",
-    "merge",
     "research",
     "run_novelty_check",
 ]

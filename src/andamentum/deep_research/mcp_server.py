@@ -640,45 +640,14 @@ async def serve_stdio(tools: ResearchTools) -> None:
         await tools.aclose()
 
 
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="andamentum-research mcp",
-        description="Serve the research engine and its store over MCP (stdio); "
-        "example: claude mcp add research -- andamentum-research mcp --store research.db",
-    )
-    parser.add_argument(
-        "--store",
-        default=None,
-        metavar="PATH",
-        help="the research store (a SQLite file; blobs go beside it). Without it "
-        "the store lives in memory and nothing persists",
-    )
-    parser.add_argument(
-        "--model",
-        default=None,
-        help="LLM for reading and the research tool",
-    )
-    parser.add_argument(
-        "--searxng-url", default=None, help="SearXNG instance for search_web"
-    )
-    parser.add_argument(
-        "--browser",
-        action="store_true",
-        help="search the web (and read pages the plain fetch cannot) through an "
-        "isolated Chrome in a podman container the server starts and removes, "
-        "instead of SearxNG",
-    )
-    return parser
-
-
-def main(argv: list[str]) -> None:
-    """Run the server on stdio; *argv* is what follows ``mcp``."""
+def run(args: argparse.Namespace) -> int:
+    """Serve on stdio until the client closes; *args* are the parsed ``mcp``
+    flags (``cli.build_parser``). Returns the exit status."""
     import os
 
     from dotenv import load_dotenv
 
     load_dotenv()  # secrets only (API keys, contact mail); configuration is flags
-    args = build_parser().parse_args(argv)
     store = ResearchStore(Path(args.store)) if args.store else ResearchStore.in_memory()
     sources = SourceConfig(
         mailto=os.environ.get("OPENALEX_EMAIL") or None,
@@ -692,6 +661,7 @@ def main(argv: list[str]) -> None:
         anyio.run(serve_stdio, tools)
     finally:
         store.close()
+    return 0
 
 
 __all__ = [
@@ -699,6 +669,6 @@ __all__ = [
     "ResearchTools",
     "build_server",
     "list_tools",
-    "main",
+    "run",
     "serve_stdio",
 ]

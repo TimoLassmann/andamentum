@@ -255,21 +255,51 @@ class Budget(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    # Rounds of search-choose-read-reflect per sub-question.
-    max_rounds: int = Field(default=DEFAULT_MAX_ROUNDS, ge=1)
-    # The most queries the model may write for a round.
-    queries_per_round: int = Field(default=DEFAULT_QUERIES_PER_ROUND, ge=1)
-    # K: pages chosen to be read in full each round (and as many reserves).
-    reads_per_round: int = Field(default=DEFAULT_READS_PER_ROUND, ge=1)
-    # The most characters of one page the notes are taken from.
-    window_chars: int = Field(default=DEFAULT_WINDOW_CHARS, ge=1000)
-    # Scholarly: new candidates one round's citation expansion may add.
-    expand_per_round: int = Field(default=DEFAULT_EXPAND_PER_ROUND, ge=0)
-    # Model calls in flight together (a local model is held to one).
-    concurrency: int = Field(default=DEFAULT_CONCURRENCY, ge=1)
-    max_llm_calls: int = Field(default=DEFAULT_MAX_LLM_CALLS, ge=1)
-    max_wall_s: float = Field(default=DEFAULT_MAX_WALL_S, gt=0)
-    max_fetch_bytes: int = Field(default=DEFAULT_MAX_FETCH_BYTES, ge=1)
+    max_rounds: int = Field(
+        default=DEFAULT_MAX_ROUNDS,
+        ge=1,
+        description="rounds of search, choose, read and reflect per sub-question",
+    )
+    queries_per_round: int = Field(
+        default=DEFAULT_QUERIES_PER_ROUND,
+        ge=1,
+        description="the most search queries the model may write for a round",
+    )
+    reads_per_round: int = Field(
+        default=DEFAULT_READS_PER_ROUND,
+        ge=1,
+        description="pages chosen to be read in full each round (and as many reserves)",
+    )
+    window_chars: int = Field(
+        default=DEFAULT_WINDOW_CHARS,
+        ge=1000,
+        description="the most characters of one page the notes are taken from",
+    )
+    expand_per_round: int = Field(
+        default=DEFAULT_EXPAND_PER_ROUND,
+        ge=0,
+        description="scholarly only: new papers one round's citation expansion may add",
+    )
+    concurrency: int = Field(
+        default=DEFAULT_CONCURRENCY,
+        ge=1,
+        description="model calls in flight together (a local model is held to one)",
+    )
+    max_llm_calls: int = Field(
+        default=DEFAULT_MAX_LLM_CALLS,
+        ge=1,
+        description="stop searching after this many model calls; the report is still written",
+    )
+    max_wall_s: float = Field(
+        default=DEFAULT_MAX_WALL_S,
+        gt=0,
+        description="stop searching after this many seconds; the report is still written",
+    )
+    max_fetch_bytes: int = Field(
+        default=DEFAULT_MAX_FETCH_BYTES,
+        ge=1,
+        description="stop reading after this many bytes have been downloaded; the report is still written",
+    )
 
 
 class RunStats(BaseModel):

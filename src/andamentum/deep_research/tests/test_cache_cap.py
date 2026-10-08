@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from andamentum.deep_research.cache_cli import main as cache_main
+from andamentum.deep_research.cli import main as cache_main
 from andamentum.deep_research.store import (
     HTTP_CACHE_MAX_BYTES,
     ResearchStore,
@@ -149,17 +149,16 @@ def test_cache_info_and_prune_cli(
     with ResearchStore(path) as store:
         put(store, "a", 100)
         put(store, "b", 100, source="openalex")
-    cache_main(["cache-info", "--cache", str(path)])
+    cache_main(["cache", "info", "--cache", str(path)])
     out = capsys.readouterr().out
     assert "rows:  2" in out and "web: 1" in out and "openalex: 1" in out
     assert "oldest fetched:" in out and "newest fetched:" in out
-    cache_main(["cache-prune", "--cache", str(path), "--max-bytes", "100"])
+    cache_main(["cache", "prune", "--cache", str(path), "--max-bytes", "100"])
     assert "1 least recently used" in capsys.readouterr().out
     with ResearchStore(path) as store:
         assert store.cache_bytes() == 100
 
 
 def test_cache_cli_does_not_create_a_missing_file(tmp_path: Path) -> None:
-    with pytest.raises(SystemExit):
-        cache_main(["cache-info", "--cache", str(tmp_path / "none.db")])
+    assert cache_main(["cache", "info", "--cache", str(tmp_path / "none.db")]) == 3
     assert list(tmp_path.iterdir()) == []

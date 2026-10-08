@@ -15,7 +15,7 @@ One SQLite file of documents, searchable. The design rule is **fixed data, flexi
 
 | Script | What it does | LLM? |
 |---|---|---|
-| `andamentum-docstore` | `ingest DB SOURCE...` (harvest → markdown, original bytes kept), `sync DB --embedding-model M`, `search DB QUERY --embedding-model M --reranker-model R`, `get`, `list`, `delete`, `enrich DB NAME` | `ingest`, `get`, `list`, `delete` and the identifiers/facts enrichers need none; `sync` embeds; `search` embeds and reranks; `enrich extract` needs `--model`, `enrich classify` a decision model and `--labels` |
+| `andamentum-docstore` | `ingest DB SOURCE...` (harvest → markdown, original bytes kept), `sync DB --embedding-model M`, `search DB QUERY --embedding-model M --reranker-model R`, `get`, `list`, `delete`, `enrich DB NAME` | `ingest`, `get`, `list`, `delete` and the identifiers/facts enrichers need none; `sync` embeds; `search` embeds and reranks; `enrich extract` needs `--model`, `enrich classify` a decision model, `--labels` and `--max-chars`. `--json` on every command that prints a result; exit 1 when `sync` leaves documents unindexed, 2 usage, 3 missing store/source/document, 4 model or network error. `ingest --mode accurate` needs `--figure-model` |
 
 ## Rules the code relies on
 
@@ -46,6 +46,10 @@ One SQLite file of documents, searchable. The design rule is **fixed data, flexi
 **Opt-in: `AgentSearcher(*, model, inner, budget=AgentBudget(), model_settings=None)`.** Round 0 is the inner searcher's candidates reranked against the request; one structured call decides whether they are enough; otherwise a pydantic-ai tool loop (`list`, `glob`, `grep`, `search`, `outline`, `read`, `note`) runs until the model returns a `Selection` of passages it was shown. The `search` tool is the inner searcher, reranked against the tool's own query. The result order is selected, then seen, then the rest of round 0; every score is the reranker score against the original request. Measured as `v2_agent`: MuSiQue dev 0.625. Use `search_with_run` when several searches run concurrently; `last_run` is per instance.
 
 `group_by_document(hits)` groups passages in the order of each document's first passage (the ranking) and scores a document by its best passage.
+
+## Python entry points
+
+`Store` is the main entry. `await Store.open_with_search(path, *, embedding_model, reranker_model, max_chars=2000)` builds the default searcher (`HybridIndex` + `HybridRerankSearcher`) in one call; neither model has a default. `ingest` (from `pipeline.py`, exported) turns a file or URL into a document (`mode="accurate"` needs `figure_model=`). The enrichers stay under `andamentum.document_store.enrich`. Errors derive from `DocumentStoreError`: `SearchUnavailable` (no searcher, or some documents could not be indexed; also a `RuntimeError`), `SchemaMismatch` (also a `RuntimeError`), `DocumentNotFound`, `KeyExists`. `__all__` holds the store, searchers, result types, `ingest` and the errors; `rerank`, `select_relevant`, `rrf` and `reset_reranker_cache` stay importable from the package but are not exported.
 
 ## Reranking (`reranking.py`)
 
