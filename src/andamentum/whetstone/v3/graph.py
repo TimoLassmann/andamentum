@@ -393,6 +393,7 @@ class Finalize(BaseNode[V3State, V3Deps, ReviewResult]):
                 )
                 for t in ctx.state.novelty_targets
             ],
+            novelty_checked=ctx.deps.check_novelty,
             llm_calls=counters.llm_calls if counters else 0,
             gap_rounds_used=counters.gap_rounds if counters else 0,
             failed_criteria=ctx.state.failed_criteria,

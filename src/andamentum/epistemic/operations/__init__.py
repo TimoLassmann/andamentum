@@ -200,7 +200,7 @@ def create_operations(
     """Create all operation instances.
 
     When evidence_gatherer is not provided, attempts to create a default
-    WebSearchGatherer using deep_research.v2 (if installed). Pass
+    WebSearchGatherer. Pass
     evidence_gatherer=None explicitly and model=None to disable this.
 
     Args:
@@ -220,7 +220,7 @@ def create_operations(
     Returns:
         Dict mapping operation name to instance
     """
-    # Auto-create evidence gatherer if not provided and deep_research.v2 is available
+    # Auto-create evidence gatherer if not provided
     if evidence_gatherer is None and model is not None:
         from ..evidence_gathering import get_default_gatherer
 

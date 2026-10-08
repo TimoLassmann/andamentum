@@ -456,6 +456,7 @@ def combine_reviews(
                 for name in res.failed_criteria
             ],
             "novelty_claims": first.novelty_claims,
+            "novelty_checked": first.novelty_checked,
             "metrics": last.metrics.model_copy(
                 update={
                     "llm_calls": sum(r.metrics.llm_calls for _, r in reviews),

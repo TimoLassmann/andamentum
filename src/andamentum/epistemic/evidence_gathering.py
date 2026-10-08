@@ -426,8 +426,8 @@ def get_default_gatherer(
     providers: Optional[ProviderRegistry] = None,
     use_web_search: bool = True,
     browser_cdp_url: Optional[str] = None,
-) -> Optional[EvidenceGatherer]:
-    """Create a default evidence gatherer if deep_research.v2 is available.
+) -> EvidenceGatherer:
+    """Create the default evidence gatherer.
 
     Args:
         model: LLM model string for web search analysis.
@@ -439,8 +439,8 @@ def get_default_gatherer(
         browser_cdp_url: A Chrome's debugging address; web search goes through
             that browser instead of SearXNG.
 
-    Returns None if deep_research.v2 is not importable, allowing callers
-    to fall back gracefully.
+    Returns a ``CompositeGatherer`` when ``providers`` are given, else a
+    ``WebSearchGatherer``.
     """
     # WEB SEARCH IS OPT-OUT, NOT ABSENT-BY-DEFAULT.
     #
@@ -463,13 +463,7 @@ def get_default_gatherer(
             )
         return CompositeGatherer(None, providers)  # type: ignore[return-value]
 
-    try:
-        import andamentum.deep_research.v2  # noqa: F401
-
-        web = WebSearchGatherer(model=model, browser_cdp_url=browser_cdp_url)
-        if providers:
-            return CompositeGatherer(web, providers)  # type: ignore[return-value]
-        return web
-    except ImportError:
-        logger.info("deep_research.v2 not available — evidence gathering disabled")
-        return None
+    web = WebSearchGatherer(model=model, browser_cdp_url=browser_cdp_url)
+    if providers:
+        return CompositeGatherer(web, providers)  # type: ignore[return-value]
+    return web
