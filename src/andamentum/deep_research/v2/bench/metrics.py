@@ -21,15 +21,12 @@ _MIN_TITLE_CHARS = 15  # as references.works: a shorter title identifies nothing
 # -- retrieval ------------------------------------------------------------------
 
 
-def work_matches(retrieved: Work, gold: Work, *, title_contained: bool = False) -> bool:
+def work_matches(retrieved: Work, gold: Work) -> bool:
     """Is *retrieved* the gold work?
 
     True when the two share a hard identifier key (DOI, arXiv id, PMID, ...,
     canonical URL), or when the gold title (15+ characters once normalised)
-    equals the retrieved title. With *title_contained* it is enough that the
-    gold title occurs in the retrieved one, as a web page's title wraps the
-    paper's (``"<title> - ACL Anthology"``): the web path of the legacy module
-    knows pages, not works.
+    equals the retrieved title.
     """
     if set(retrieved.hard_keys()) & set(gold.hard_keys()):
         return True
@@ -37,9 +34,7 @@ def work_matches(retrieved: Work, gold: Work, *, title_contained: bool = False) 
     if len(wanted) < _MIN_TITLE_CHARS:
         return False
     found = normalise_title(retrieved.title)
-    if found == wanted:
-        return True
-    return title_contained and f" {wanted} " in f" {found} "
+    return found == wanted
 
 
 class RetrievalScore(BaseModel):
@@ -62,7 +57,6 @@ def retrieval_score(
     gold: Sequence[Work],
     *,
     ks: Sequence[int] = DEFAULT_KS,
-    title_contained: bool = False,
 ) -> RetrievalScore:
     """Recall@k and kept-set precision of one ranked result list.
 
@@ -79,7 +73,7 @@ def retrieval_score(
             (
                 position
                 for position, work in enumerate(retrieved, start=1)
-                if work_matches(work, gold_work, title_contained=title_contained)
+                if work_matches(work, gold_work)
             ),
             None,
         )
@@ -87,10 +81,7 @@ def retrieval_score(
     hits = sum(
         1
         for work in retrieved
-        if any(
-            work_matches(work, gold_work, title_contained=title_contained)
-            for gold_work in gold
-        )
+        if any(work_matches(work, gold_work) for gold_work in gold)
     )
     return RetrievalScore(
         n_gold=len(gold),

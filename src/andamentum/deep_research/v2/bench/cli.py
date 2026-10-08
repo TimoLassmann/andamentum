@@ -57,7 +57,7 @@ BENCH_PDF_EXTRACTION: PdfExtraction = "fast"
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m andamentum.deep_research.v2.bench",
-        description="Benchmark harness for deep_research v2.",
+        description="Benchmark harness for deep_research.",
     )
     commands = parser.add_subparsers(dest="command", required=True)
 
@@ -171,7 +171,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="append",
         default=None,
         metavar="NAME",
-        help="only this arm (repeatable); default: the experiment's v2 arms",
+        help="only this arm (repeatable); default: every arm of the experiment",
     )
     losses.add_argument(
         "--only-failed",
@@ -236,18 +236,13 @@ def _open_cache(path: Path | None) -> ResearchStore | None:
 
 def _live_web(exp: Experiment, only_sets: Sequence[str] | None = None) -> bool:
     """Must the web search answer before anything runs? True when an arm that
-    stops on an outage searches the web: the legacy arm (on any set) or a v2 arm
-    on a web set. An arm registered with ``outage: record`` probes before each of
+    stops on an outage runs on a web set. An arm registered with ``outage: record`` probes before each of
     its cells instead and records a blocked one as failed."""
     names = {s.name for s in exp.sets if only_sets is None or s.name in only_sets}
     for arm in exp.arms:
         if arm.outage == "record":
             continue
-        if arm.system == "legacy" and any(arm.runs_on(n) for n in names):
-            return True
-        if arm.system == "v2" and any(
-            arm.runs_on(n) and set_mode(n) == "web" for n in names
-        ):
+        if any(arm.runs_on(n) and set_mode(n) == "web" for n in names):
             return True
     return False
 

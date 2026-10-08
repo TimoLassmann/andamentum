@@ -1,89 +1,49 @@
-"""Quick start examples for andamentum.deep_research.
+"""Quick start for andamentum.deep_research: one question in, a cited report out.
 
-All examples run without external services (no LLM, no SearXNG).
+Needs a language model and a web search. The search goes through a Chrome you
+start yourself with its debugging port open:
 
-Note: novelty checking (``run_novelty_check``) is intentionally not demoed
-here — it drives a live search + LLM pipeline and so cannot run offline.
-See the ``andamentum-research`` CLI / ``run_novelty_check`` docstring for
-that path.
+    chrome --remote-debugging-port=9222 --user-data-dir=/path/to/a/profile/dir
+
+Run:
+
+    uv run python examples/deep_research/quickstart.py \
+        --model ollama:gemma4:31b-cloud \
+        --browser-cdp-url http://127.0.0.1:9222 \
+        "Who wrote the novel Middlemarch?"
+
+Every finding in the report is a verbatim quote that was found in a fetched
+page; the report cites findings by id ([F1]).
 """
 
-from andamentum.deep_research import (
-    ResearchState,
-    CircuitBreaker,
-    CircuitOpenError,
-    verify_sources,
-)
+import argparse
+import asyncio
+
+from andamentum.deep_research.v2 import SourceConfig, research
 
 
-def demo_source_verification():
-    """Verify which cited sources were actually accessed during research."""
-    print("=== Source Verification ===\n")
+async def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Research one question over the web and print the report."
+    )
+    parser.add_argument("question")
+    parser.add_argument("--model", required=True, help="a pydantic-ai model id")
+    parser.add_argument("--browser-cdp-url", required=True)
+    args = parser.parse_args()
 
-    cited = [
-        "https://example.com/paper1",
-        "https://example.com/paper2",
-        "https://example.com/hallucinated",
-    ]
-    searched = {"https://example.com/paper1", "https://example.com/extra"}
-    fetched = {"https://example.com/paper2"}
-
-    result = verify_sources(cited, searched, fetched)
-
-    print(f"Total cited:       {result['total_cited']}")
-    print(f"Verified:          {result['verified_count']}")
-    print(f"Verification rate: {result['verification_rate']:.0%}")
-    print(f"Hallucinated:      {result['unverified']}")
-    print(f"Accessed not cited:{result['accessed_not_cited']}")
-    print()
-
-
-def demo_circuit_breaker():
-    """Show circuit breaker state transitions."""
-    print("=== Circuit Breaker ===\n")
-
-    cb = CircuitBreaker(name="demo_service", failure_threshold=3, recovery_timeout=5.0)
-
-    print(f"Initial state: {cb.state.value}")
-    print(f"Allow request: {cb.allow_request()}")
-
-    # Simulate failures
-    for i in range(3):
-        cb.record_failure()
-        print(
-            f"After failure {i + 1}: state={cb.state.value}, allow={cb.allow_request()}"
-        )
-
-    # Circuit is now open
-    try:
-        if not cb.allow_request():
-            raise CircuitOpenError(cb.name)
-    except CircuitOpenError as e:
-        print(f"Caught: {e}")
-
-    # Reset for demo
-    cb.reset()
-    print(f"After reset: state={cb.state.value}")
-    print()
-
-
-def demo_research_state():
-    """Construct and inspect a ResearchState."""
-    print("=== Research State ===\n")
-
-    # The iteration limit is run configuration (ResearchDeps.max_iterations),
-    # not state, so it is not set here.
-    state = ResearchState(query="What is spaced repetition?")
-
-    print(f"Query:           {state.query}")
-    print(f"Current phase:   {state.current_phase}")
-    print(f"Is complete:     {state.is_complete}")
-    print(f"Iteration count: {state.iteration_count}")
-    print()
+    result = await research(
+        args.question,
+        mode="web",
+        model=args.model,
+        sources=SourceConfig(browser_cdp_url=args.browser_cdp_url),
+        progress=print,
+    )
+    print(result.report_markdown)
+    print(
+        f"\nstop: {result.stop_reason}; {len(result.findings)} findings from "
+        f"{len(result.works)} pages"
+    )
 
 
 if __name__ == "__main__":
-    demo_source_verification()
-    demo_circuit_breaker()
-    demo_research_state()
-    print("All demos completed successfully.")
+    asyncio.run(main())

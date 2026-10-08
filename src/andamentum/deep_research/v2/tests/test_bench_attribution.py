@@ -395,10 +395,10 @@ def small_experiment() -> Experiment:
             "grader": "ollama:invented-grader-cloud",
             "sets": [{"name": "simpleqa", "n": 4, "seed": 0}],
             "arms": [
-                {"name": "legacy", "system": "legacy", "model": "ollama:m"},
+                {"name": "base", "system": "v2", "model": "ollama:m"},
                 {"name": "new-engine", "system": "v2", "model": "ollama:m"},
             ],
-            "baselines": {"simpleqa": "legacy"},
+            "baselines": {"simpleqa": "base"},
         }
     )
 
@@ -422,7 +422,7 @@ async def finished_run(tmp_path: Path) -> tuple[Path, DataDirs, Experiment]:
         return wrong.model_copy(update={"log": log})
 
     arms = {
-        "legacy": ScriptedArm("legacy", correct_behaviour),
+        "base": ScriptedArm("base", correct_behaviour),
         "new-engine": ScriptedArm("new-engine", engine),
     }
     out = tmp_path / "out"
@@ -442,8 +442,8 @@ async def test_collect_losses_reads_the_registry_the_data_and_the_logs(
     tmp_path: Path,
 ) -> None:
     out, dirs, exp = await finished_run(tmp_path)
-    found = collect_losses(exp, out_dir=out, dirs=dirs)
-    [arm] = found.arms  # the v2 arms only: the legacy pipeline writes no log
+    found = collect_losses(exp, out_dir=out, dirs=dirs, arms=["new-engine"])
+    [arm] = found.arms
     assert arm.arm == "new-engine" and arm.simpleqa_items == 4
     assert sorted(row.diagnosis for row in arm.simpleqa) == ["notes", "search_miss"]
     for row in arm.simpleqa:
@@ -453,17 +453,18 @@ async def test_collect_losses_reads_the_registry_the_data_and_the_logs(
     assert notes.stages["fetched_text"] and not notes.stages["findings"]
 
 
-async def test_a_cell_without_a_log_is_no_log_and_legacy_can_be_asked_for(
+async def test_a_cell_without_a_log_is_no_log_and_every_arm_is_read_by_default(
     tmp_path: Path,
 ) -> None:
     out, dirs, exp = await finished_run(tmp_path)
     log_files = sorted((out / "logs" / "new-engine").glob("*-r1.log.jsonl"))
-    assert len(log_files) == 4  # the engine's cells wrote logs, the legacy arm none
-    assert not (out / "logs" / "legacy").exists()
+    assert len(log_files) == 4  # the engine's cells wrote logs, the base arm none
+    assert not (out / "logs" / "base").exists()
     for path in log_files:
         path.unlink()
     again = collect_losses(exp, out_dir=out, dirs=dirs)
-    assert [r.diagnosis for r in again.arms[0].simpleqa] == ["no_log", "no_log"]
+    assert [a.arm for a in again.arms] == ["base", "new-engine"]
+    assert [r.diagnosis for r in again.arms[1].simpleqa] == ["no_log", "no_log"]
 
 
 async def test_an_unknown_arm_or_a_missing_data_folder_is_refused(

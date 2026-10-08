@@ -38,7 +38,7 @@ def small(**changes: object) -> dict[str, object]:
         "grader": "grader-model",
         "sets": [{"name": "simpleqa", "n": 3}],
         "arms": [
-            {"name": "base", "system": "legacy", "model": "m"},
+            {"name": "base", "system": "v2", "model": "m"},
             {"name": "other", "system": "v2", "model": "m"},
         ],
         "baselines": {"simpleqa": "base"},
@@ -138,7 +138,7 @@ def test_the_grader_must_not_be_an_arms_own_model() -> None:
                 "arms": [
                     {
                         "name": "a",
-                        "system": "legacy",
+                        "system": "v2",
                         "model": "m",
                         "sets": ["litsearch"],
                     },
@@ -190,12 +190,6 @@ def test_load_refuses_a_file_that_is_not_a_mapping(tmp_path: Path) -> None:
     path.write_text("- just\n- a list\n", encoding="utf-8")
     with pytest.raises(ValueError, match="mapping"):
         load_experiment(path)
-
-
-def test_the_old_head_to_head_file_is_history_not_a_valid_experiment() -> None:
-    old = Path(__file__).parent.parent / "bench" / "experiments" / "head-to-head.yaml"
-    with pytest.raises(ValueError, match="Extra inputs"):
-        load_experiment(old)
 
 
 # -- skip ---------------------------------------------------------------------------

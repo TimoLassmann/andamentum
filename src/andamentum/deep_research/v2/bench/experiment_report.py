@@ -269,8 +269,7 @@ def _cost_section(exp: Experiment, cells: Cells) -> str:
             ],
             rows,
         )
-        + "\n\nEvery arm runs live, so wall time is end to end. The legacy "
-        "pipeline counts no tokens or calls (n/a)."
+        + "\n\nEvery arm runs live, so wall time is end to end."
     )
 
 
@@ -555,8 +554,7 @@ def _solo_section(exp: Experiment, cells: Cells) -> str | None:
 def _live_note(exp: Experiment) -> str:
     return (
         "Every arm runs Plan and Search itself, live: any web or source drift "
-        "between runs is part of the difference, and a comparison with the "
-        "legacy pipeline is end to end."
+        "between runs is part of the difference."
     )
 
 

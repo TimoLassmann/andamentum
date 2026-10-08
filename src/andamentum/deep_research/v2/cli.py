@@ -1,6 +1,6 @@
-"""``andamentum-research v2``: the evidence-first engine from the command line.
+"""``andamentum-research``: the research engine from the command line.
 
-    andamentum-research v2 "QUESTION" --mode both --model M
+    andamentum-research "QUESTION" --mode both --model M
         [--store PATH] [--cache PATH] [--searxng-url URL | --browser-cdp-url URL]
         [--sources openalex,europepmc,arxiv] [--local-corpus PATH]
         [--openalex-search keyword]
@@ -19,6 +19,10 @@ out file's stem), else in the current directory as
 ``research-<run id prefix>.log.md``; ``--log PATH`` (a ``.md`` path, the
 ``.jsonl`` beside it) puts it elsewhere. A failed run writes the log so far.
 
+Subcommands, picked by the first argument: ``mcp`` (the MCP server over the
+store), ``cache-info`` and ``cache-prune`` (look at, and trim, an HTTP cache).
+Anything else is the question.
+
 Exit status: 0 for a clean run, 4 for a run that finished degraded (a source
 or model failed; the result is still written and the reasons are on stderr),
 1 for an error, 2 for a usage error.
@@ -30,6 +34,7 @@ import argparse
 import asyncio
 import os
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Literal, get_args
 
@@ -54,7 +59,7 @@ def _flag(field: str) -> str:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="andamentum-research v2",
+        prog="andamentum-research",
         description="Research a question over the web and scholarly sources; "
         "the report cites verified findings by id.",
     )
@@ -238,10 +243,22 @@ def _write_log(args: argparse.Namespace, log: RunLog) -> None:
     print(f"log: {md} (and {jsonl.name})", file=sys.stderr)
 
 
-def main(argv: list[str]) -> None:
-    """Run one research question; *argv* is what follows ``v2``."""
+def main(argv: Sequence[str] | None = None) -> None:
+    """Run one research question, or a subcommand; *argv* defaults to the
+    process arguments."""
+    args_in = list(sys.argv[1:] if argv is None else argv)
+    if args_in and args_in[0] == "mcp":
+        from .mcp_server import main as mcp_main
+
+        mcp_main(args_in[1:])
+        return
+    if args_in and args_in[0] in ("cache-info", "cache-prune"):
+        from ..cache_cli import main as cache_main
+
+        cache_main(args_in)
+        return
     load_dotenv()  # secrets only (API keys, contact mail); configuration is flags
-    args = build_parser().parse_args(argv)
+    args = build_parser().parse_args(args_in)
     try:
         result = asyncio.run(_run(args))
     except KeyboardInterrupt as stop:

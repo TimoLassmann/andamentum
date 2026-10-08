@@ -12,8 +12,8 @@ metrics are zero), never dropped. Arms with ``solo`` set (clean-timing re-runs
 of a few items) run last, one cell at a time whatever the concurrency, so
 nothing else of the experiment shares their wall time.
 
-Every cell is live. The web is probed before each cell that searches it (the
-legacy arm on any set, v2 on a web set), and a cell whose search reports failed
+Every cell is live. The web is probed before each cell that searches it (a
+web set), and a cell whose search reports failed
 searches is not a result. By default the run stops with an ``InfrastructureDown``
 error before that cell is recorded, so a resume runs it again once the outage
 is over. An arm registered with ``outage: record`` goes on instead: the cell is
@@ -36,7 +36,7 @@ from ..runlog import write_log
 from ..sources.base import SourceConfig
 from ..store import ResearchStore
 from ..types import Mode, RunLog
-from .arms import AnswerArm, ArmOutput, LegacyArm, V2Arm
+from .arms import AnswerArm, ArmOutput, V2Arm
 from .concurrency import resolve_concurrency, run_bounded
 from .experiment import ArmSpec, Experiment, SetSpec
 from .health import SearxDown, SearxHealth
@@ -144,11 +144,9 @@ def cost_metrics(cost: Cost | None) -> dict[str, float | None]:
 
 
 def litsearch_metrics(
-    output: ArmOutput, item: LitSearchItem, *, returns_pages: bool
+    output: ArmOutput, item: LitSearchItem
 ) -> dict[str, float | None]:
-    score = retrieval_score(
-        output.works, item.gold, ks=DEFAULT_KS, title_contained=returns_pages
-    )
+    score = retrieval_score(output.works, item.gold, ks=DEFAULT_KS)
     metrics: dict[str, float | None] = {
         f"recall_at_{k}": score.recall_at[k] for k in DEFAULT_KS
     }
@@ -197,18 +195,6 @@ class Services:
 def build_answer_arm(spec: ArmSpec, mode: Mode, services: Services) -> AnswerArm:
     if services.answer_arm is not None:
         return services.answer_arm(spec, mode)
-    if spec.system == "legacy":
-        sources = services.source_config
-        if not sources.searxng_url and not sources.browser_cdp_url:
-            raise ValueError(
-                f"arm {spec.name}: the legacy arm needs --searxng-url or --browser-cdp-url"
-            )
-        return LegacyArm(
-            model=spec.model,
-            searxng_url=sources.searxng_url or "",
-            browser_cdp_url=sources.browser_cdp_url,
-            pdf_extraction=sources.pdf_extraction,
-        )
     return V2Arm(
         mode=mode,
         model=spec.model,
@@ -256,9 +242,7 @@ async def _answer_cell(
     output = await arm.run(item.question)
     metrics: dict[str, float | None]
     if item.litsearch is not None:
-        metrics = litsearch_metrics(
-            output, item.litsearch, returns_pages=arm.returns_pages
-        )
+        metrics = litsearch_metrics(output, item.litsearch)
     elif item.simpleqa is not None:
         if services.grader is None:
             raise ValueError("the simpleqa set needs the experiment's grader")
@@ -434,8 +418,8 @@ async def _run_cell(
     failed search) is not recorded and propagates (the other cells in flight are
     cancelled).
     """
-    # the legacy pipeline searches the web whatever the set; v2 only in web mode
-    searches_web = spec.system == "legacy" or mode_is_web(item.set_name)
+    # the engine searches the web only in web mode
+    searches_web = mode_is_web(item.set_name)
     progress(f"{spec.name} {item.set_name}/{item.item_id} repeat {repeat}")
     record = RunRecord(
         experiment=exp.name,

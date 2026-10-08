@@ -20,7 +20,7 @@ import json
 import re
 import sys
 from pathlib import Path
-from typing import Any, Callable, Literal
+from typing import Callable, Literal, Protocol
 from urllib.parse import urljoin, urlparse
 
 from dotenv import load_dotenv
@@ -36,8 +36,9 @@ from andamentum.chunker.extractor import (
 )
 from andamentum.chunker.validation import find_anchor
 from andamentum.core.agents import AgentRunner
-from andamentum.deep_research.backends import HttpxSearchBackend, SearchBackend
-from andamentum.deep_research.searxng import SearxngManager
+from andamentum.deep_research.v2 import ResearchStore
+from andamentum.deep_research.v2.sources import SourceClient, SourceError, WebSource
+from andamentum.deep_research.v2.types import Candidate
 
 STATIC_DIR = Path(__file__).parent / "static"
 CASES_DIR = Path(__file__).resolve().parents[1] / "cases"
@@ -77,36 +78,47 @@ def _cases_dir() -> Path:
     return _cases_dir_override if _cases_dir_override is not None else CASES_DIR
 
 
-# ---------- Search backend + SearXNG manager (overridable for tests) ------
+# ---------- Web search (overridable for tests) ----------------------------
 
-SEARXNG_PORT = 4070
-SEARXNG_URL = f"http://127.0.0.1:{SEARXNG_PORT}"
-
-
-def _default_search_backend_factory() -> SearchBackend:
-    return HttpxSearchBackend(searxng_url=SEARXNG_URL)
+# The Chrome that answers the searches: start it with
+# --remote-debugging-port=9222 and its own --user-data-dir.
+BROWSER_CDP_URL = "http://127.0.0.1:9222"
 
 
-def _default_searxng_manager_factory() -> SearxngManager:
-    return SearxngManager(host_port=SEARXNG_PORT)
+class WebSearch(Protocol):
+    async def search(self, query: str, *, limit: int) -> list[Candidate]: ...
+
+    async def close(self) -> None: ...
 
 
-_search_backend_factory: Callable[[], SearchBackend] = _default_search_backend_factory
-_searxng_manager_factory: Callable[[], SearxngManager] = (
-    _default_searxng_manager_factory
-)
+class _BrowserSearch:
+    """deep_research's web search through a Chrome, with a throwaway in-memory
+    store (nothing is kept between searches)."""
+
+    def __init__(self, cdp_url: str) -> None:
+        self._store = ResearchStore.in_memory()
+        self._client = SourceClient.for_store(self._store)
+        self._source = WebSource(browser_cdp_url=cdp_url, client=self._client)
+
+    async def search(self, query: str, *, limit: int) -> list[Candidate]:
+        return await self._source.search(query, limit=limit)
+
+    async def close(self) -> None:
+        await self._client.aclose()
+        self._store.close()
 
 
-def _set_search_backend_factory(factory: Callable[[], SearchBackend]) -> None:
-    """Test hook: swap the search-backend factory for fakes."""
-    global _search_backend_factory
-    _search_backend_factory = factory
+def _default_web_search_factory() -> WebSearch:
+    return _BrowserSearch(BROWSER_CDP_URL)
 
 
-def _set_searxng_manager_factory(factory: Callable[[], SearxngManager]) -> None:
-    """Test hook: swap the SearxngManager factory for fakes."""
-    global _searxng_manager_factory
-    _searxng_manager_factory = factory
+_web_search_factory: Callable[[], WebSearch] = _default_web_search_factory
+
+
+def _set_web_search_factory(factory: Callable[[], WebSearch]) -> None:
+    """Test hook: swap the web-search factory for fakes."""
+    global _web_search_factory
+    _web_search_factory = factory
 
 
 # ---------- /api/chunk models ---------------------------------------------
@@ -461,13 +473,7 @@ def _extract_pdf_links(markdown: str, base_url: str) -> list[dict[str, str]]:
     return out
 
 
-# ---------- /api/searxng-* + /api/search + /api/fetch models --------------
-
-
-class SearxngStatusResponse(BaseModel):
-    state: Literal["running", "stopped", "podman-missing", "error"]
-    message: str
-    url: str = SEARXNG_URL
+# ---------- /api/search + /api/fetch models --------------------------------
 
 
 class SearchHit(BaseModel):
@@ -507,95 +513,35 @@ class FetchResponse(BaseModel):
     is_pdf: bool
 
 
-# ---------- /api/searxng-* + /api/search + /api/fetch endpoints -----------
-
-
-@app.get("/api/searxng-status", response_model=SearxngStatusResponse)
-async def searxng_status() -> SearxngStatusResponse:
-    """Read-only status check for the local SearXNG container."""
-    try:
-        manager = _searxng_manager_factory()
-    except Exception as exc:
-        return SearxngStatusResponse(state="error", message=str(exc))
-    try:
-        running = manager.is_running()
-    except RuntimeError as exc:
-        # SearxngManager raises RuntimeError when podman is not on PATH.
-        msg = str(exc)
-        if "podman" in msg.lower():
-            return SearxngStatusResponse(state="podman-missing", message=msg)
-        return SearxngStatusResponse(state="error", message=msg)
-    except Exception as exc:
-        return SearxngStatusResponse(state="error", message=str(exc))
-    if running:
-        return SearxngStatusResponse(state="running", message="container up")
-    return SearxngStatusResponse(state="stopped", message="container not running")
-
-
-@app.post("/api/searxng-start", response_model=SearxngStatusResponse)
-async def searxng_start() -> SearxngStatusResponse:
-    """Pull image (if needed) and start the SearXNG container.
-
-    Slow on first invocation — pulls the image (~30-60s).
-    """
-    import asyncio
-
-    try:
-        manager = _searxng_manager_factory()
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"manager init failed: {exc}")
-
-    try:
-        # ensure_running is blocking (shells out to podman) — run in a thread
-        # so the event loop stays responsive for the status pill.
-        await asyncio.to_thread(manager.ensure_running)
-    except RuntimeError as exc:
-        msg = str(exc)
-        if "podman" in msg.lower():
-            raise HTTPException(
-                status_code=503,
-                detail=(
-                    f"podman is not installed or not on PATH — install it first "
-                    f"(`brew install podman`) and run `podman machine init && "
-                    f"podman machine start`. Error: {msg}"
-                ),
-            )
-        raise HTTPException(status_code=500, detail=msg)
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
-
-    return SearxngStatusResponse(state="running", message="started")
+# ---------- /api/search + /api/fetch endpoints ----------------------------
 
 
 @app.post("/api/search", response_model=SearchResponse)
 async def search(req: SearchRequest) -> SearchResponse:
-    """Query SearXNG via the HttpxSearchBackend.
+    """Search the web through the Chrome at ``BROWSER_CDP_URL``.
 
-    Returns 503 with a clear message if SearXNG isn't running, instead of
-    silently returning an empty list (the backend's default behaviour).
+    Returns 503 with the reason when the search cannot be made (no Chrome
+    answering, every engine showing a bot check) instead of an empty list.
     """
-    backend = _search_backend_factory()
+    backend = _web_search_factory()
     try:
-        hits = await backend.search(req.query, max_results=req.max_results)
+        found = await backend.search(req.query, limit=req.max_results)
+    except SourceError as exc:
+        raise HTTPException(status_code=503, detail=f"web search failed: {exc}")
     finally:
-        await _maybe_close(backend)
+        await backend.close()
 
-    if not hits:
-        # Distinguish empty results from "SearXNG isn't reachable" by checking
-        # status now — a stopped container is the most common cause.
-        try:
-            manager = _searxng_manager_factory()
-            if not manager.is_running():
-                raise HTTPException(
-                    status_code=503,
-                    detail="SearXNG is not running — start it first.",
-                )
-        except RuntimeError:
-            # podman missing → just return empty hits, surface the truth via
-            # /api/searxng-status which the UI already polls.
-            pass
-
-    return SearchResponse(hits=[SearchHit(**h.model_dump()) for h in hits])
+    return SearchResponse(
+        hits=[
+            SearchHit(
+                title=c.work.title,
+                url=c.work.url or "",
+                snippet=c.snippet,
+                domain=c.work.venue or "",
+            )
+            for c in found
+        ]
+    )
 
 
 @app.post("/api/fetch", response_model=FetchResponse)
@@ -648,16 +594,6 @@ def _infer_title(markdown: str) -> str:
         if line.startswith("#"):
             return line.lstrip("#").strip()
     return ""
-
-
-async def _maybe_close(backend: Any) -> None:
-    """Close the backend if it owns its HTTP client (HttpxSearchBackend)."""
-    close = getattr(backend, "close", None)
-    if callable(close):
-        try:
-            await close()
-        except Exception:  # nosec  — best effort
-            pass
 
 
 # ---------- Standalone launcher -------------------------------------------

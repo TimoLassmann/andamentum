@@ -113,7 +113,7 @@ def cloud_experiment() -> Experiment:
     return small_experiment(
         repeats=2,
         arms=[
-            {"name": "base", "system": "legacy", "model": CLOUD},
+            {"name": "base", "system": "v2", "model": CLOUD},
             {"name": "other", "system": "v2", "model": CLOUD},
         ],
     ).model_copy(update={"grader": "ollama:invented-grader-cloud"})

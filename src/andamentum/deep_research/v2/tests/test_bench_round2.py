@@ -93,7 +93,7 @@ def _two_arm_experiment(**extra: object) -> dict[str, object]:
         "sets": [{"name": "simpleqa", "n": 2}],
         "arms": [
             {"name": "a", "system": "v2", "model": CLOUD},
-            {"name": "b", "system": "legacy", "model": CLOUD},
+            {"name": "b", "system": "v2", "model": CLOUD},
         ],
         "baselines": {"simpleqa": "b"},
         **extra,

@@ -18,7 +18,7 @@ correct. The events and their fields are those of the run log catalogue
 
 Diagnoses, first match in this order (for a failed SimpleQA item):
 
-- ``no_log``: the cell left no run log (the legacy pipeline writes none);
+- ``no_log``: the cell left no run log (a cell whose log was not kept);
 - ``search_miss``: the gold is in no search snippet or title and in no fetched text;
 - ``not_chosen``: the gold is in a snippet of a page that no ``choice`` picked or reserved;
 - ``unreadable``: such a page was chosen, but its text did not give the gold (the
@@ -363,8 +363,7 @@ def collect_losses(
     """Read the registry, the data and the run logs of *out_dir* and attribute
     every SimpleQA failure and every LitSearch gold work of the chosen arms.
 
-    *arms* defaults to the experiment's v2 arms (the legacy pipeline writes no
-    run log). A set is read only when some chosen arm has cells on it; then its
+    *arms* defaults to every arm of the experiment. A set is read only when some chosen arm has cells on it; then its
     data directory is required.
     """
     path = registry_path(out_dir)
@@ -377,7 +376,7 @@ def collect_losses(
             raise ValueError(f"not arms of this experiment: {', '.join(unknown)}")
         chosen = list(arms)
     else:
-        chosen = [a.name for a in exp.arms if a.system == "v2"]
+        chosen = [a.name for a in exp.arms]
     runs = runs_of(path, experiment_hash=exp.config_hash())
     items: dict[str, dict[str, Item]] = {}
     for set_spec in exp.sets:

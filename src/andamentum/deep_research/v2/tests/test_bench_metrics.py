@@ -32,10 +32,9 @@ def test_match_on_equal_normalised_title_only_when_long_enough() -> None:
     assert not work_matches(Work(title="Short"), gold(title="Short"))
 
 
-def test_a_page_title_matches_only_when_titles_may_be_contained() -> None:
+def test_a_title_that_only_contains_the_gold_title_does_not_match() -> None:
     page = Work(title="SaltLog and brine loss in Apollo kilns - Invented Archive")
     assert not work_matches(page, gold())
-    assert work_matches(page, gold(), title_contained=True)
 
 
 def test_a_different_doi_and_title_do_not_match() -> None:

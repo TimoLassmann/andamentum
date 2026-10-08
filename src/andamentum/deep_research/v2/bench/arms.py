@@ -2,9 +2,8 @@
 
 An answer arm takes a question and returns an :class:`ArmOutput`: the answer
 text, the claims with the evidence behind them, the links, the ranked works,
-and what the run cost. Two arms exist: the legacy ``run_research`` (web only)
-and v2's ``research()``. Both are mapped onto the same record, so every metric
-is computed by one piece of code from the same fields.
+and what the run cost. The arm is ``research()``, mapped onto this record, so
+every metric is computed by one piece of code from the same fields.
 
 The v2 arm calls ``research()`` with ``store=None``, so nothing persists
 between questions and every question pays for its own searches.
@@ -13,24 +12,18 @@ between questions and every question pays for its own searches.
 from __future__ import annotations
 
 import re
-import time
 from typing import Protocol
 
 from pydantic import BaseModel, Field
 from pydantic_ai.models import Model
 
-from andamentum.deep_research.backends import HttpxSearchBackend
-from andamentum.deep_research.models import ResearchResult as LegacyResult
-from andamentum.deep_research.orchestrator import run_research
 from andamentum.references import Work
-from andamentum.references.works import canonical_url
 
 from ..engine import research
 from ..sources.base import SourceConfig
-from ..sources.extraction import DEFAULT_PDF_EXTRACTION, PdfExtraction, extract_body
 from ..store import ResearchStore
 from ..types import _FINDING_REFERENCE, Budget, Mode, ResearchResult, RunLog
-from .judging import ClaimEvidence, best_window
+from .judging import ClaimEvidence
 from .metrics import Cost, extract_urls
 
 MIN_SENTENCE_WORDS = 4
@@ -74,138 +67,8 @@ class AnswerArm(Protocol):
     """A system that answers a question."""
 
     name: str
-    # True when ``works`` are web pages (a page title wraps a paper's), not works.
-    returns_pages: bool
 
     async def run(self, question: str) -> ArmOutput: ...
-
-
-# -- legacy -------------------------------------------------------------------------
-
-
-def _web_work(url: str, title: str) -> Work | None:
-    """A page as a ``Work``, or None for a URL that is not one."""
-    try:
-        return Work(url=url, title=title)
-    except ValueError:
-        return None
-
-
-def map_legacy(result: LegacyResult, *, wall_s: float) -> ArmOutput:
-    """The legacy result as an :class:`ArmOutput`.
-
-    A claim is an evidence item (else a key finding); its evidence is the window
-    of a fetched page that shares most with it. An evidence item whose source
-    page was never fetched has nothing to check against and is counted
-    ``unsourced``. The legacy pipeline counts no tokens or calls: those costs
-    are None.
-    """
-    output = result.output
-    pages = {(canonical_url(p.url) or p.url): p for p in result.fetched_pages}
-    claims: list[ClaimEvidence] = []
-    unsourced = 0
-    if output.evidence_items:
-        for item in output.evidence_items:
-            page = pages.get(canonical_url(item.source_url) or item.source_url)
-            if page is None:
-                unsourced += 1
-                continue
-            claims.append(
-                ClaimEvidence(
-                    claim=item.finding,
-                    evidence=best_window(item.finding, [page.content]),
-                )
-            )
-    else:
-        contents = [p.content for p in result.fetched_pages]
-        for finding in output.key_findings:
-            if not contents:
-                unsourced += 1
-                continue
-            claims.append(
-                ClaimEvidence(claim=finding, evidence=best_window(finding, contents))
-            )
-    answer = "\n".join([output.evidence_summary, *output.key_findings])
-    cited = [*output.sources, *(i.source_url for i in output.evidence_items)]
-    urls = list(dict.fromkeys([*cited, *extract_urls(answer)]))
-    titles = {key: p.title for key, p in pages.items()}
-    works: list[Work] = []
-    seen: set[str] = set()
-    for url in [*output.sources, *pages]:
-        key = canonical_url(url) or url
-        if key in seen:
-            continue
-        seen.add(key)
-        work = _web_work(url, titles.get(key, ""))
-        if work is not None:
-            works.append(work)
-    degraded = [output.degraded_reason] if output.degraded else []
-    return ArmOutput(
-        answer_text=answer,
-        claims=claims,
-        n_unsourced=unsourced,
-        urls=urls,
-        works=works,
-        degraded=degraded,
-        stop_reason=f"iterations:{result.iterations}",
-        cost=Cost(wall_s=wall_s),
-    )
-
-
-class LegacyArm:
-    """The legacy ``run_research`` pipeline, web only.
-
-    ``pdf_extraction`` is how a fetched PDF becomes text, as for the v2 arm
-    (``SourceConfig.pdf_extraction``), so both arms read a PDF the same way;
-    ``browser_cdp_url`` makes it search through that Chrome, as the v2 arm
-    does with the same ``SourceConfig`` field."""
-
-    name = "legacy"
-    returns_pages = True
-
-    def __init__(
-        self,
-        *,
-        model: str,
-        searxng_url: str,
-        max_iterations: int = 3,
-        max_results: int = 10,
-        max_pages: int = 5,
-        pdf_extraction: PdfExtraction = DEFAULT_PDF_EXTRACTION,
-        browser_cdp_url: str | None = None,
-    ) -> None:
-        self.browser_cdp_url = browser_cdp_url
-        self.pdf_extraction: PdfExtraction = pdf_extraction
-        self.model = model
-        self.searxng_url = searxng_url
-        self.max_iterations = max_iterations
-        self.max_results = max_results
-        self.max_pages = max_pages
-
-    async def run(self, question: str) -> ArmOutput:
-        started = time.monotonic()
-        pdf_extraction = self.pdf_extraction
-
-        async def extract(data: bytes, content_type: str, url: str) -> str:
-            return await extract_body(
-                data, content_type, url, pdf_extraction=pdf_extraction
-            )
-
-        async with HttpxSearchBackend(
-            searxng_url=self.searxng_url,
-            extract=extract,
-            browser_cdp_url=self.browser_cdp_url,
-        ) as backend:
-            result = await run_research(
-                question,
-                model=self.model,
-                searxng_url=self.searxng_url,
-                max_iterations=self.max_iterations,
-                max_results=self.max_results,
-                max_pages=self.max_pages,
-                backend=backend,
-            )
-        return map_legacy(result, wall_s=time.monotonic() - started)
 
 
 # -- v2 -----------------------------------------------------------------------------
@@ -287,8 +150,6 @@ class V2Arm:
     The run keeps nothing between questions (``store=None``). ``http_cache`` is
     a shared read-through HTTP cache for the runs.
     """
-
-    returns_pages = False
 
     def __init__(
         self,

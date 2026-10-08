@@ -1,7 +1,6 @@
-"""The two answer arms: how each result is reduced to what the metrics read.
+"""The answer arm: how a result is reduced to what the metrics read.
 
-The legacy pipeline and v2's ``research()`` are replaced by functions that
-return invented results; nothing here reaches a model or the network.
+``research()`` is replaced by a function that returns invented results; nothing here reaches a model or the network.
 """
 
 from __future__ import annotations
@@ -10,18 +9,9 @@ from typing import Any
 
 import pytest
 
-from andamentum.deep_research.models import (
-    EvidenceItem,
-    EvidenceReport,
-    FetchedPage,
-    ResearchErrors,
-)
-from andamentum.deep_research.models import ResearchResult as LegacyResult
 from andamentum.deep_research.v2.bench import arms
 from andamentum.deep_research.v2.bench.arms import (
-    LegacyArm,
     V2Arm,
-    map_legacy,
     map_v2,
     report_claims,
 )
@@ -35,105 +25,6 @@ from andamentum.deep_research.v2.types import (
     RunStats,
 )
 from andamentum.references import Work
-
-PAGE_A = (
-    "Filler about kilns. " * 200
-    + "SaltLog cut brine loss by forty percent in the Apollo kiln trial. "
-    + "More filler about pottery. " * 200
-)
-PAGE_B = "A page about something else entirely, with nothing on salt. " * 30
-
-
-def legacy_result(*, evidence_items: list[EvidenceItem]) -> LegacyResult:
-    return LegacyResult(
-        output=EvidenceReport(
-            evidence_summary="SaltLog works. See https://kilns.example.org/trial.",
-            key_findings=["SaltLog cut brine loss by forty percent."],
-            sources=["https://kilns.example.org/trial", "https://other.example.org/x"],
-            evidence_items=evidence_items,
-            total_searches_performed=2,
-            total_pages_fetched=2,
-            iterations_required=1,
-            degraded=True,
-            degraded_reason="3 of 8 fetches failed",
-        ),
-        fetched_pages=[
-            FetchedPage(
-                url="https://kilns.example.org/trial/",
-                title="Kiln trial",
-                content=PAGE_A,
-                word_count=10,
-                relevance_score=0.9,
-                is_relevant=True,
-            ),
-            FetchedPage(
-                url="https://pots.example.org/other",
-                title="Other",
-                content=PAGE_B,
-                word_count=10,
-                relevance_score=0.1,
-                is_relevant=False,
-            ),
-        ],
-        iterations=1,
-        searches=2,
-        pages_fetched=2,
-        verification={
-            "total_cited": 2,
-            "verified_count": 1,
-            "verified": [],
-            "unverified": [],
-            "accessed_not_cited": [],
-            "verification_rate": 0.5,
-        },
-        errors=ResearchErrors(search_errors=0, fetch_errors=3),
-    )
-
-
-def test_legacy_claims_are_checked_against_the_window_of_their_source_page() -> None:
-    result = legacy_result(
-        evidence_items=[
-            EvidenceItem(
-                finding="SaltLog cut brine loss by forty percent",
-                source_url="https://kilns.example.org/trial",
-                source_title="Kiln trial",
-            ),
-            EvidenceItem(
-                finding="A claim citing a page that was never fetched",
-                source_url="https://never.example.org/fetched",
-                source_title="Ghost",
-            ),
-        ]
-    )
-    out = map_legacy(result, wall_s=4.5)
-    [claim] = out.claims
-    assert "cut brine loss by forty percent" in claim.evidence
-    assert len(claim.evidence) <= 2400  # a window, not the whole page
-    assert out.n_unsourced == 1
-    assert out.cost.wall_s == 4.5 and out.cost.llm_calls is None
-    assert out.degraded == ["3 of 8 fetches failed"]
-    assert out.stop_reason == "iterations:1"
-
-
-def test_legacy_key_findings_are_the_claims_when_there_are_no_evidence_items() -> None:
-    out = map_legacy(legacy_result(evidence_items=[]), wall_s=1.0)
-    [claim] = out.claims
-    assert "forty percent" in claim.evidence
-    assert out.n_unsourced == 0
-
-
-def test_legacy_urls_and_works_are_the_cited_sources_then_the_other_pages() -> None:
-    out = map_legacy(legacy_result(evidence_items=[]), wall_s=1.0)
-    assert out.urls == [
-        "https://kilns.example.org/trial",
-        "https://other.example.org/x",
-    ]
-    assert [w.url for w in out.works] == [
-        "https://kilns.example.org/trial",
-        "https://other.example.org/x",
-        "https://pots.example.org/other",
-    ]
-    assert out.works[0].title == "Kiln trial"  # the title of the page that was fetched
 
 
 def finding(n: int, quote: str, work_id: str) -> Finding:
@@ -234,7 +125,7 @@ async def test_the_v2_arm_calls_research_with_the_new_signature(
         budget=Budget(max_rounds=1),
     )
     out = await arm.run("Does SaltLog work?")
-    assert arm.name == "v2-both" and not arm.returns_pages
+    assert arm.name == "v2-both"
     assert seen == {
         "question": "Does SaltLog work?",
         "mode": "both",
@@ -280,22 +171,3 @@ def test_the_run_log_is_kept_out_of_the_registry_dump() -> None:
     assert out.log is not None
     assert "log" not in out.model_dump()
     assert out.result is not None and out.result.log.events == []
-
-
-async def test_the_legacy_arm_calls_run_research_and_times_it(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    seen: dict[str, Any] = {}
-
-    async def run_research(question: str, **kwargs: Any) -> LegacyResult:
-        seen.update(question=question, **kwargs)
-        return legacy_result(evidence_items=[])
-
-    monkeypatch.setattr(arms, "run_research", run_research)
-    out = await LegacyArm(model="ollama:stub", searxng_url="http://127.0.0.1:4070").run(
-        "Does SaltLog work?"
-    )
-    assert seen["model"] == "ollama:stub"
-    assert seen["searxng_url"] == "http://127.0.0.1:4070"
-    assert "decision_model" not in seen
-    assert out.cost.wall_s >= 0 and out.cost.llm_calls is None

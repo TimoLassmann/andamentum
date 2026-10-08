@@ -6,8 +6,8 @@ the live runs need models and a web search (a Chrome over CDP, or SearxNG), so
 the tests of this package use tiny synthetic fixtures and stub arms.
 
 - ``experiment``, ``experiment_run``, ``registry``, ``verdicts``: the
-  pre-registered comparison of arms (legacy ``run_research`` and v2's
-  ``research()``) on the same items, and its rules.
+  pre-registered comparison of arms (runs of ``research()``) on the same items,
+  and its rules.
 - ``simpleqa``, ``litsearch_local``, ``metrics``: the sets and their metrics.
 - ``attribution``: where a lost answer was lost, from the run logs.
 """

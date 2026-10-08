@@ -172,8 +172,6 @@ def make_result(question: str, kept: list[Work]) -> ResearchResult:
 class ScriptedArm:
     """An answer arm that reads its behaviour from a callable."""
 
-    returns_pages = False
-
     def __init__(self, name: str, behave: Callable[[str, int], ArmOutput]) -> None:
         self.name = name
         self.behave = behave
@@ -216,7 +214,7 @@ def small_experiment(*, repeats: int = 2, arms: list[dict] | None = None) -> Exp
             "sets": [{"name": "simpleqa", "n": 4, "seed": 0}],
             "arms": arms
             or [
-                {"name": "base", "system": "legacy", "model": "ollama:m"},
+                {"name": "base", "system": "v2", "model": "ollama:m"},
                 {"name": "other", "system": "v2", "model": "ollama:m"},
             ],
             "baselines": {"simpleqa": "base"},
@@ -283,7 +281,7 @@ def test_each_set_needs_its_directory() -> None:
             "registered": "2026-10-08",
             "grader": "g",
             "sets": [{"name": "simpleqa", "n": 2}, {"name": "litsearch-web", "n": 2}],
-            "arms": [{"name": "a", "system": "legacy", "model": "m"}],
+            "arms": [{"name": "a", "system": "v2", "model": "m"}],
             "baselines": {"simpleqa": "a"},
         }
     )
@@ -545,7 +543,7 @@ async def test_an_arm_that_records_outages_goes_on_and_has_no_metrics(
     exp = small_experiment(
         repeats=1,
         arms=[
-            {"name": "base", "system": "legacy", "model": "ollama:m"},
+            {"name": "base", "system": "v2", "model": "ollama:m"},
             {"name": "other", "system": "v2", "model": "ollama:m", "outage": "record"},
         ],
     )
@@ -633,7 +631,7 @@ def litsearch_experiment() -> Experiment:
             "resamples": 200,
             "sets": [{"name": "litsearch-web", "n": 3, "seed": 0}],
             "arms": [
-                {"name": "base", "system": "legacy", "model": "ollama:m"},
+                {"name": "base", "system": "v2", "model": "ollama:m"},
                 {"name": "other", "system": "v2", "model": "ollama:m"},
             ],
             "baselines": {"litsearch-web": "base"},
@@ -730,23 +728,11 @@ async def test_a_failed_cell_writes_the_partial_log_its_error_carries(
 # -- building the arms ---------------------------------------------------------------
 
 
-def test_the_legacy_arm_needs_a_web_search() -> None:
-    spec = ArmSpec(name="legacy", system="legacy", model="ollama:m")
-    with pytest.raises(ValueError, match="--browser-cdp-url"):
-        build_answer_arm(spec, "web", Services())
-    arm = build_answer_arm(
-        spec,
-        "web",
-        Services(source_config=SourceConfig(browser_cdp_url="http://127.0.0.1:9222")),
-    )
-    assert arm.returns_pages and arm.name == "legacy"
-
-
 def test_the_v2_arm_takes_the_mode_the_sources_and_the_arms_name() -> None:
     spec = ArmSpec(name="new-engine", system="v2", model="ollama:m")
     sources = SourceConfig(browser_cdp_url="http://127.0.0.1:9222")
     arm = build_answer_arm(spec, "scholarly", Services(source_config=sources))
-    assert arm.name == "new-engine" and not arm.returns_pages
+    assert arm.name == "new-engine"
     assert getattr(arm, "mode") == "scholarly" and getattr(arm, "sources") is sources
 
 
@@ -900,14 +886,17 @@ def test_a_keyless_source_configuration_never_looks_a_key_up(
 
 def test_a_web_probe_is_needed_only_when_an_arm_that_stops_searches_the_web() -> None:
     exp = small_experiment()
-    assert bench_cli._live_web(exp)  # type: ignore[attr-defined]
+    assert bench_cli._live_web(exp)  # type: ignore[attr-defined]  # a web set
     lit = litsearch_experiment()
-    assert bench_cli._live_web(lit)  # type: ignore[attr-defined]  # legacy searches the web
-    only_v2 = Experiment.model_validate(
+    assert not bench_cli._live_web(lit)  # type: ignore[attr-defined]  # scholarly
+    recording = Experiment.model_validate(
         {
-            **lit.model_dump(mode="json"),
-            "arms": [{"name": "other", "system": "v2", "model": "ollama:m"}],
-            "baselines": {"litsearch-web": "other"},
+            **exp.model_dump(mode="json"),
+            "rules": [],
+            "arms": [
+                {"name": "other", "system": "v2", "model": "ollama:m", "outage": "record"}
+            ],
+            "baselines": {"simpleqa": "other"},
         }
     )
-    assert not bench_cli._live_web(only_v2)  # type: ignore[attr-defined]
+    assert not bench_cli._live_web(recording)  # type: ignore[attr-defined]

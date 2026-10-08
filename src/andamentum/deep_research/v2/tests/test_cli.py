@@ -1,4 +1,4 @@
-"""``andamentum-research v2``: flags to arguments, output, exit status."""
+"""``andamentum-research``: flags to arguments, output, exit status."""
 
 from __future__ import annotations
 
@@ -168,15 +168,35 @@ def test_usage_errors_exit_2(
     assert exited.value.code == 2 and calls == []
 
 
-def test_the_research_cli_dispatches_the_v2_subcommand(
+def test_the_question_is_the_first_argument_and_argv_defaults_to_the_process(
+    calls: list[dict[str, Any]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["andamentum-research", "Why Apollo?", "--mode", "web", "--model", "m"],
+    )
+    cli.main()
+    assert [c["question"] for c in calls] == ["Why Apollo?"]
+
+
+def test_the_mcp_subcommand_goes_to_the_mcp_server(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from andamentum.deep_research import cli as research_cli
+    from .. import mcp_server
 
     seen: list[list[str]] = []
-    monkeypatch.setattr(cli, "main", seen.append)
-    monkeypatch.setattr(
-        sys, "argv", ["andamentum-research", "v2", "q", "--mode", "web"]
-    )
-    research_cli.main()
-    assert seen == [["q", "--mode", "web"]]
+    monkeypatch.setattr(mcp_server, "main", seen.append)
+    cli.main(["mcp", "--store", "s.db"])
+    assert seen == [["--store", "s.db"]]
+
+
+def test_the_cache_subcommands_go_to_the_cache_cli(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ... import cache_cli
+
+    seen: list[list[str]] = []
+    monkeypatch.setattr(cache_cli, "main", seen.append)
+    cli.main(["cache-info", "--cache", "c.db"])
+    assert seen == [["cache-info", "--cache", "c.db"]]

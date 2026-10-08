@@ -3,8 +3,7 @@
     andamentum-research cache-info --cache PATH
     andamentum-research cache-prune --cache PATH [--max-bytes N]
 
-``PATH`` is a research store file (the ``--cache`` of ``v2`` and of the legacy
-run). The cache is capped on every write (``store.HTTP_CACHE_MAX_BYTES``);
+``PATH`` is a research store file (the ``--cache`` of ``andamentum-research``). The cache is capped on every write (``store.HTTP_CACHE_MAX_BYTES``);
 ``cache-prune`` applies a cap by hand, for example a smaller one. A missing file is an error
 and is never created.
 """
