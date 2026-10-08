@@ -31,7 +31,7 @@ Fetch a dataset with the command named below; each command writes its `PROVENANC
   Scientific Literature Search. Empirical Methods in Natural Language Processing (EMNLP),
   2024. The S2ORC authors ask for Lo, Wang, Neumann, Kinney, Weld. S2ORC: The Semantic
   Scholar Open Research Corpus. ACL 2020, https://doi.org/10.18653/v1/2020.acl-main.447.
-- Fetch: `uv run python -m andamentum.deep_research.v2.bench download litsearch-local
+- Fetch: `uv run python -m andamentum.deep_research.bench download litsearch-local
   --dir data/benchmarks/litsearch` (needs the `bench-data` extra: pyarrow).
-- Used by: `deep_research` v2, the `litsearch-local` set of the bench and the
+- Used by: `deep_research`, the `litsearch-local` set of the bench and the
   `local_corpus` source.

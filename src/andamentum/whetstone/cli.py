@@ -2303,8 +2303,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     ``... proofread draft.md`` / ``... apply-patches draft.docx --patches
     p.json --out r.docx`` / ``... verify-provenance reviewed.docx`` /
     ``... references draft.docx --out r.docx``)."""
-    # Secrets only (API keys), here in the CLI and never in the library; the
-    # novelty check used to get them from deep_research.run_research.
+    # Secrets only (API keys), here in the CLI and never in the library.
     load_dotenv()
     raw = list(sys.argv[1:] if argv is None else argv)
     if raw and raw[0] == "proofread":

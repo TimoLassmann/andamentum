@@ -47,7 +47,7 @@ Four roles name the model for each job: `drafter`, `critic`, `judge`, `reader`. 
 
 ## Layering
 
-compose depends on `core`, `compose.bundle`, `whetstone` (public API), `proofread`, `llm_judge`, `harvest`, `figures`; `deep_research` only behind `--research` (deferred import; v2 only, no use of the legacy `run_research`). Nothing depends on compose except `figures.bundle_glue`, which imports the model-free `compose.bundle` only. It MUST NOT depend on `epistemic` or `document_store`. Only `graph.py` imports `pydantic_graph`; workers are plain async functions with a keyword-only `model=`. `tests/test_dialect_conformance.py` enforces this and runs the dialect check in strict mode.
+compose depends on `core`, `compose.bundle`, `whetstone` (public API), `proofread`, `llm_judge`, `harvest`, `figures`; `deep_research` only behind `--research` (deferred import). Nothing depends on compose except `figures.bundle_glue`, which imports the model-free `compose.bundle` only. It MUST NOT depend on `epistemic` or `document_store`. Only `graph.py` imports `pydantic_graph`; workers are plain async functions with a keyword-only `model=`. `tests/test_dialect_conformance.py` enforces this and runs the dialect check in strict mode.
 
 The writing harness (`harness/`: a format-neutral kernel, `.docx` and markdown adapters, deterministic and model-assisted checks, the `check FILE.docx` verb and the planted-defect benchmark) is documented in `harness/CLAUDE.md`; the CLI's `check-bundle DIR` is the bundle's own one-pass check, `check FILE.docx` is the harness verb. Nothing outside compose imports `compose.harness`.
 

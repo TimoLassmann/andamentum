@@ -120,8 +120,8 @@ machine-checkable via grep and are enforced by code review.
   may depend on chunker.
 - **`document_store`** is foundational. Depends on `core`, `chunker`,
   `httpx`. Other modules may depend on it.
-- **`deep_research`** depends on `core`, `harvest`. MUST NOT depend on
-  `document_store`.
+- **`deep_research`** depends on `core`, `references`, `harvest`. MUST NOT
+  depend on `epistemic`, `document_store`, `compose` or `whetstone`.
 - **`typeset`** is a leaf. Used by `whetstone`, `compose.bundle`,
   `deep_research` for HTML/PDF output.
 - **`whetstone`** depends on `core`, `typeset`, `chunker`, `harvest`,
@@ -157,7 +157,7 @@ src/andamentum/
 ├── harvest/          — universal source → markdown extraction
 ├── chunker/          — structural-first semantic markdown chunking
 ├── document_store/   — SQLite + FTS5 + sqlite-vec personal knowledge base
-├── deep_research/    — web research: the legacy pipeline, and `v2`, the research loop (plan → queries → search → choose → read → reflect → write)
+├── deep_research/    — the research loop (plan → queries → search → choose → read → reflect → write) over web and scholarly sources
 ├── typeset/          — typesetting system (HTML + PDF output)
 ├── compose/          — a task in, a finished document out (brief → evidence → draft → checks → revise); `compose/bundle/` is the model-free folder-bundle layer → .docx / .md / .html / .txt
 ├── figures/          — publication-quality figure rendering
@@ -178,7 +178,7 @@ installed but is not described in this overview — see the
 - `RESPONSIBLE_USE.md` — intended use, out-of-scope uses, AI-disclosure
   guidance, source-access expectations, and the in-code protection
   surface.
-- `docs/deep_research/overview.md` — long-form deep_research walkthrough.
+- `docs/deep_research/overview.md` — deep_research walkthrough.
 - `docs/document_store/overview.md` — document_store search and ingestion.
 - `docs/design/` — the andamentum visual design system (cream paper,
   serif body, hairline rules) shared by `typeset`, `whetstone`'s HTML

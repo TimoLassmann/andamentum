@@ -17,7 +17,7 @@ Andamentum is a single Python package of tightly-scoped sub-modules covering the
 | **chunker** | Structural-first semantic chunking of long markdown into 2k–10k char self-contained units. |
 | [**llm_judge**](./llm_judge.html) | LLM-as-judge: score one output against criteria, or compare two. Derived confidence + doubt, and a panel agreement gate that flags shaky verdicts rather than blocking. |
 | [**document_store**](./document_store/overview.md) | SQLite + FTS5 + sqlite-vec personal knowledge base with 4-signal RRF search and LLM metadata extraction. |
-| [**deep_research**](./deep_research/overview.md) | Web research pipeline (search → fetch → extract → verify → synthesize) over a local SearXNG instance. |
+| [**deep_research**](./deep_research/overview.md) | Evidence-first research loop over the web and scholarly sources: a report that cites findings, each a verbatim quote that code found in the page. |
 | **core** | Shared model resolution, agent runners, fetch gate, audit log, and embedding clients. |
 
 An additional experimental sub-module ships installed but is not yet publicly documented; see the *Pre-release / experimental* section of [`../README.md`](../README.md).
@@ -42,7 +42,7 @@ from andamentum.proofread import analyze
 from andamentum.harvest import extract
 from andamentum.chunker import extract_units
 from andamentum.document_store import ingest, search
-from andamentum.deep_research import ResearchState
+from andamentum.deep_research import research
 from andamentum.vision_critique import critique_figure
 from andamentum.llm_judge import judge_score, judge_compare
 ```
@@ -60,7 +60,7 @@ Ten scripts installed by the package. Run `--help` on any binary for full flag r
 | `andamentum-harvest` | Universal source → markdown extraction. | none |
 | `andamentum-chunker` | Structural-first semantic chunking. | required |
 | `andamentum-vision-critique` | Vision-critique of a rendered figure → bounded JSON. | required (multimodal) |
-| `andamentum-research` | Web research over local SearXNG. | required |
+| `andamentum-research` | Research a question over the web (a Chrome or SearxNG) and scholarly sources; the report cites verified findings. | required |
 | `andamentum-llm-judge` | LLM-as-judge → JSON. `score <output>` or `compare <a> <b>`. One `--model` = fast single judge; repeated = sequential panel with an agreement gate. | required |
 
 The LLM-using CLIs resolve their model via `--model anthropic:claude-haiku-4-5` or `$ANDAMENTUM_MAIN_LLM_MODEL`. The CLI exits with a clear error if neither is set — no hidden defaults.
