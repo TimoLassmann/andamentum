@@ -33,7 +33,7 @@ from typing import TYPE_CHECKING
 from pydantic import JsonValue
 
 if TYPE_CHECKING:
-    from .v2.sources.base import SourceClient
+    from .sources.base import SourceClient
 
 SEARXNG_SOURCE = "web"  # the spacing key and cache source name of SearxNG queries
 SEARXNG_MIN_INTERVAL_S = 1.5  # one query per this many seconds, per process
@@ -190,7 +190,7 @@ async def searxng_query(
         try:
             return parse_page(result.body, from_cache=result.from_cache)
         except ValueError as exc:
-            from .v2.sources.base import SourceError
+            from .sources.base import SourceError
 
             raise SourceError(
                 SEARXNG_SOURCE,

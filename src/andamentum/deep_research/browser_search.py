@@ -50,7 +50,7 @@ from .searxng_search import (
 )
 
 if TYPE_CHECKING:
-    from .v2.sources.base import SourceClient
+    from .sources.base import SourceClient
 
 PAGE_LOAD_TIMEOUT_S = 30.0  # a search page that has not loaded by then is a failure
 BOT_CHECK = "captcha or bot check: no result list on the page"
@@ -166,7 +166,7 @@ async def _evaluate_in_new_tab(
     failure is a ``SourceError`` named *source*."""
     import websockets
 
-    from .v2.sources.base import SourceError
+    from .sources.base import SourceError
 
     base = cdp_url.rstrip("/")
     try:
@@ -249,8 +249,8 @@ async def browser_query(
     and ``SourceError`` when Chrome does not answer, a page fails to load or
     its reading is not usable (``kind='offline'`` for an offline client's miss).
     """
-    from .v2.sources.base import SourceError
-    from .v2.store import cache_key
+    from .sources.base import SourceError
+    from .store import cache_key
 
     unresponsive: list[UnresponsiveEngine] = []
     use_cache = cache or client.offline

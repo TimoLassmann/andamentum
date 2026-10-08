@@ -2,7 +2,7 @@
 
 That must never read as "no results": it raises, is retried with backoff when
 the engines were rate-limited, throttled, cached only on request, and recorded
-by both the legacy backend and the v2 web source. No network: MockTransport.
+by the web source. No network: an httpx MockTransport behind a SourceClient.
 """
 
 from __future__ import annotations
@@ -13,18 +13,20 @@ from pathlib import Path
 import httpx
 import pytest
 
-from andamentum.deep_research.backends import HttpxSearchBackend
-from andamentum.deep_research.run_searches import run_searches
 from andamentum.deep_research.searxng_search import (
     SEARXNG_MIN_INTERVAL_S,
     SEARXNG_RETRIES,
     SEARXNG_RETRY_DELAYS_S,
     SearchEnginesBlocked,
     parse_unresponsive,
+    searxng_query,
 )
-from andamentum.deep_research.synthesize_report import _stamp_degradation
-from andamentum.deep_research.store import ResearchStore
+from andamentum.deep_research.sources import SourceError, WebSource
+from andamentum.deep_research.sources.base import DEFAULT_INTERVAL_S
 
+from .source_stub import SourceKit
+
+ENDPOINT = "http://searx.test/search"
 BLOCKED = {
     "results": [],
     "unresponsive_engines": [
@@ -40,38 +42,24 @@ PARTIAL = {
 HEALTHY = {"results": [{"url": "https://a.test/x", "title": "A", "content": "c"}]}
 
 
-class Time:
-    def __init__(self) -> None:
-        self.now = 100.0
-        self.sleeps: list[float] = []
+def kit_for(replies: list[dict], *, spaced: bool = False) -> SourceKit:
+    """A kit whose SearxNG answers *replies* in turn (the last one repeats)."""
+    count = {"n": 0}
 
-    def clock(self) -> float:
-        return self.now
+    def handler(_request: httpx.Request) -> httpx.Response:
+        count["n"] += 1
+        return httpx.Response(200, json=replies[min(count["n"], len(replies)) - 1])
 
-    async def sleep(self, seconds: float) -> None:
-        self.sleeps.append(seconds)
-        self.now += seconds
+    intervals = {"web": SEARXNG_MIN_INTERVAL_S} if spaced else None
+    return SourceKit(handler, intervals=intervals)
 
 
-def backend(replies, *, cache: ResearchStore | None = None):
-    """A backend whose SearxNG answers *replies* in turn (the last one repeats)."""
-    seen: list[httpx.Request] = []
-    fake = Time()
+def searches(kit: SourceKit) -> list[httpx.Request]:
+    return [r for r in kit.requests if r.url.path == "/search"]
 
-    def handler(request: httpx.Request) -> httpx.Response:
-        seen.append(request)
-        body = replies[min(len(seen), len(replies)) - 1]
-        return httpx.Response(200, json=body)
 
-    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
-    made = HttpxSearchBackend(
-        searxng_url="http://searx.test",
-        http_client=client,
-        cache=cache,
-        clock=fake.clock,
-        sleep=fake.sleep,
-    )
-    return made, seen, fake
+def web(kit: SourceKit) -> WebSource:
+    return WebSource(searxng_url="http://searx.test", client=kit.client)
 
 
 def test_parse_unresponsive_reads_engine_reason_pairs() -> None:
@@ -87,125 +75,111 @@ def test_parse_unresponsive_reads_engine_reason_pairs() -> None:
 async def test_blocked_raises_typed_error_with_the_engines_and_never_returns_empty() -> (
     None
 ):
-    searx, seen, _ = backend([BLOCKED])
+    kit = kit_for([BLOCKED])
     with pytest.raises(SearchEnginesBlocked) as caught:
-        await searx.search("apollo")
+        await searxng_query(kit.client, ENDPOINT, {"q": "apollo", "format": "json"})
     assert [(e.engine, e.reason) for e in caught.value.engines] == [
         ("brave", "Suspended: too many requests"),
         ("duckduckgo", "CAPTCHA"),
     ]
-    assert caught.value.attempts == SEARXNG_RETRIES == len(seen)
+    assert caught.value.attempts == SEARXNG_RETRIES == len(searches(kit))
 
 
-async def test_blocked_is_a_search_failure_and_degrades_the_run() -> None:
-    searx, _, _ = backend([BLOCKED])
-    [outcome] = await run_searches(["apollo"], backend=searx, max_results=5)
-    assert outcome.results == []
-    assert outcome.error and "brave (Suspended: too many requests)" in outcome.error
-
-    from andamentum.deep_research.models import EvidenceReport
-
-    report = _stamp_degradation(
-        EvidenceReport(
-            evidence_summary="x",
-            key_findings=["none"],
-            sources=["none"],
-            total_searches_performed=1,
-            total_pages_fetched=0,
-            iterations_required=1,
-        ),
-        search_attempts=1,
-        search_failures=1,
-        fetch_attempts=0,
-        fetch_failures=0,
-        summary_attempts=0,
-        summary_failures=0,
-        threshold=0.5,
-    )
-    assert report.degraded and "1/1 searches failed" in report.degraded_reason
+async def test_blocked_is_a_search_failure_of_the_web_source() -> None:
+    kit = kit_for([BLOCKED])
+    with pytest.raises(SourceError) as caught:
+        await web(kit).search("apollo", limit=5)
+    assert caught.value.kind == "rate_limited"
+    assert "brave (Suspended: too many requests)" in caught.value.reason
 
 
 async def test_retry_sequence_backs_off_5_15_then_raises_after_three_attempts() -> None:
-    searx, seen, fake = backend([BLOCKED])
+    kit = kit_for([BLOCKED])
     with pytest.raises(SearchEnginesBlocked):
-        await searx.search("apollo")
-    assert len(seen) == 3
+        await searxng_query(kit.client, ENDPOINT, {"q": "apollo"})
+    assert len(searches(kit)) == 3
     assert SEARXNG_RETRY_DELAYS_S == (5.0, 15.0, 45.0)
-    # the backoff waits are the first two delays; the throttle's own waits are
-    # the 1.5 s spacing and are covered by test_queries_are_spaced
-    backoffs = [s for s in fake.sleeps if s >= SEARXNG_RETRY_DELAYS_S[0]]
-    assert backoffs == [5.0, 15.0]
+    # the backoff waits are the first two delays; spacing is covered below
+    assert kit.time.sleeps == [5.0, 15.0]
 
 
 async def test_a_blocked_query_that_recovers_returns_its_results() -> None:
-    searx, seen, fake = backend([BLOCKED, HEALTHY])
-    results = await searx.search("apollo")
-    assert [r.url for r in results] == ["https://a.test/x"]
-    assert len(seen) == 2 and 5.0 in fake.sleeps
+    kit = kit_for([BLOCKED, HEALTHY])
+    page = await searxng_query(kit.client, ENDPOINT, {"q": "apollo"})
+    assert [r["url"] for r in page.results] == ["https://a.test/x"]
+    assert len(searches(kit)) == 2 and 5.0 in kit.time.sleeps
 
 
 async def test_a_timeout_is_not_retried() -> None:
-    searx, seen, fake = backend([TIMEOUT])
+    kit = kit_for([TIMEOUT])
     with pytest.raises(SearchEnginesBlocked) as caught:
-        await searx.search("apollo")
-    assert len(seen) == 1 and caught.value.attempts == 1
+        await searxng_query(kit.client, ENDPOINT, {"q": "apollo"})
+    assert len(searches(kit)) == 1 and caught.value.attempts == 1
     assert not caught.value.retryable
-    assert fake.sleeps == []
+    assert kit.time.sleeps == []
 
 
 async def test_partial_answer_returns_results_and_a_warning() -> None:
-    searx, seen, _ = backend([PARTIAL])
-    results = await searx.search("apollo")
-    assert [r.url for r in results] == ["https://a.test/x"]
-    assert len(seen) == 1
-    [warning] = results.warnings  # type: ignore[attr-defined]
+    kit = kit_for([PARTIAL])
+    source = web(kit)
+    found = await source.search("apollo", limit=5)
+    assert [c.work.url for c in found] == ["https://a.test/x"]
+    [warning] = source.take_warnings()
     assert "brave (Suspended: too many requests)" in warning
+    assert source.take_warnings() == []
 
-    [outcome] = await run_searches(["apollo"], backend=searx, max_results=5)
-    assert outcome.error is None and outcome.warnings == [warning]
+    page = await searxng_query(kit.client, ENDPOINT, {"q": "apollo"})
+    assert page.warning and "brave" in page.warning
 
 
 async def test_queries_are_spaced_by_the_shared_interval() -> None:
-    searx, _, fake = backend([HEALTHY])
-    await searx.search("one")
-    await searx.search("two")
-    await searx.search("three")
-    assert fake.sleeps == [SEARXNG_MIN_INTERVAL_S, SEARXNG_MIN_INTERVAL_S]
-    assert SEARXNG_MIN_INTERVAL_S == 1.5
+    assert DEFAULT_INTERVAL_S["web"] == SEARXNG_MIN_INTERVAL_S == 1.5
+    kit = kit_for([HEALTHY], spaced=True)
+    for q in ("one", "two", "three"):
+        await searxng_query(kit.client, ENDPOINT, {"q": q})
+    assert kit.time.sleeps == [SEARXNG_MIN_INTERVAL_S, SEARXNG_MIN_INTERVAL_S]
 
 
-async def test_a_repeated_search_is_served_from_an_explicit_cache() -> None:
-    store = ResearchStore.in_memory()
-    searx, seen, _ = backend([HEALTHY], cache=store)
-    await searx.search("apollo")
-    await searx.search("apollo")
-    assert len(seen) == 1
-    assert store.cache_hits == 1
-    [row] = list(store.iter_cache())
+async def test_a_repeated_search_is_served_from_the_store_cache() -> None:
+    kit = kit_for([HEALTHY])
+    await searxng_query(kit.client, ENDPOINT, {"q": "apollo"})
+    page = await searxng_query(kit.client, ENDPOINT, {"q": "apollo"})
+    assert len(searches(kit)) == 1 and page.from_cache
+    assert kit.store.cache_hits == 1
+    [row] = list(kit.store.iter_cache())
     assert row.ttl_s == 7 * 86_400
 
 
 async def test_a_blocked_answer_is_not_cached() -> None:
-    store = ResearchStore.in_memory()
-    searx, _, _ = backend([BLOCKED], cache=store)
+    kit = kit_for([BLOCKED])
     with pytest.raises(SearchEnginesBlocked):
-        await searx.search("apollo")
-    assert list(store.iter_cache()) == []
+        await searxng_query(kit.client, ENDPOINT, {"q": "apollo"})
+    assert list(kit.store.iter_cache()) == []
 
 
-async def test_without_a_store_nothing_is_cached_or_written(
+async def test_cache_false_reads_and_writes_nothing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.chdir(tmp_path)
-    searx, seen, _ = backend([HEALTHY])
-    await searx.search("apollo")
-    await searx.search("apollo")
-    assert len(seen) == 2  # asked twice: no cache
+    kit = kit_for([HEALTHY])
+    for _ in range(2):
+        await searxng_query(kit.client, ENDPOINT, {"q": "apollo"}, cache=False)
+    assert len(searches(kit)) == 2  # asked twice: no cache
+    assert list(kit.store.iter_cache()) == []
     assert list(tmp_path.iterdir()) == []
 
 
+def test_the_web_source_needs_a_store_or_a_client() -> None:
+    with pytest.raises(SourceError) as caught:
+        WebSource(searxng_url="http://searx.test")
+    assert caught.value.kind == "config"
+
+
 async def test_concurrent_queries_share_one_gate() -> None:
-    searx, _, fake = backend([HEALTHY])
-    await asyncio.gather(*(searx.search(q) for q in ("a", "b", "c")))
+    kit = kit_for([HEALTHY], spaced=True)
+    await asyncio.gather(
+        *(searxng_query(kit.client, ENDPOINT, {"q": q}) for q in ("a", "b", "c"))
+    )
     # the first starts at once; the other two wait for their turn at the gate
-    assert len(fake.sleeps) == 2 and sum(fake.sleeps) == 2 * SEARXNG_MIN_INTERVAL_S
+    assert len(kit.time.sleeps) == 2
+    assert sum(kit.time.sleeps) == 2 * SEARXNG_MIN_INTERVAL_S
