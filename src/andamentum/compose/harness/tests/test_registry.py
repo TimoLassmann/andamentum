@@ -222,10 +222,9 @@ def test_unsupported_field_type_fails_loud(clean_verbs: None) -> None:
         _parser()
 
 
-def test_registered_verbs_appear_in_compose_cli(clean_verbs: None) -> None:
-    from andamentum.compose.cli import build_parser, main
-
+def test_registered_verbs_become_subcommands(clean_verbs: None) -> None:
     verbs.register_verb(verbs.Verb("demo-harness", "demo", _Params, lambda p: 7))
-    parser = build_parser()
-    assert parser.parse_args(["demo-harness", "f.docx"]).verb == "demo-harness"
-    assert main(["demo-harness", "f.docx"]) == 7
+    parser = _parser()
+    args = parser.parse_args(["demo-harness", "f.docx"])
+    assert args.verb == "demo-harness"
+    assert verbs.dispatch_verb(args) == 7

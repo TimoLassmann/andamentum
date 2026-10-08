@@ -23,7 +23,7 @@ from andamentum.deep_research import SourceConfig
 from andamentum.references import ReferenceHttp
 
 from ..draft.run import DraftResult
-from ..draft.verb import WriteParams, run_write
+from ..draft.verb import DraftParams, run_draft
 from ..tests._draft_helpers import (
     ROLES,
     WORK_CSL,
@@ -83,7 +83,7 @@ async def test_a_verified_research_work_is_cited_from_its_finding(
 
     (task, genre, database) = calls[0]
     assert task == TASK and genre.name == "article"
-    assert database == tmp_path / "paper.harness" / "research.db"
+    assert database == tmp_path / "state" / "research.db"
     # [[f3]] is the research fact (after the notes and the scores file)
     text = open_docx(tmp_path / "paper.docx").text()
     assert "(Okafor 2020)" in text
@@ -111,7 +111,7 @@ async def test_an_unverified_research_work_is_an_author_question(
     line = "A study that does not exist (2019): no such work in Crossref"
     result = await _write(tmp_path, _run_with(_finding(unverified=[line]), []))
     assert any(line in q for q in result.author_questions)
-    assert result.exit_code == 4
+    assert result.exit_code == 1
 
 
 async def test_the_statement_says_what_searched(
@@ -222,8 +222,8 @@ async def test_the_word_verb_replaces_crossref_discovery_with_research(
             crossref_search_calls.append(str(request.url))
         return _crossref(True).handler(request)  # type: ignore[attr-defined,return-value]
 
-    result = await run_write(
-        WriteParams(
+    result = await run_draft(
+        DraftParams(
             task=TASK,
             out=tmp_path / "paper.docx",
             model="stub:model",

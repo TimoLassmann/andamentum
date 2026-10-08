@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 from pydantic_ai.usage import RunUsage
 
-from andamentum.compose import cli
+from andamentum.word import cli
 from andamentum.compose.harness.bindings import bind as bind_module
 from andamentum.compose.harness.bindings.bind import (
     BindParams,
@@ -22,6 +22,7 @@ from andamentum.compose.harness.bindings.ledger import Ledger
 from andamentum.compose.harness.docx.reader import open_docx
 from andamentum.compose.harness.kernel import ProjectStore
 
+from ._helpers import copy_of
 from ._bindings_helpers import (
     EFFECT,
     SAMPLE,
@@ -87,7 +88,7 @@ async def test_binds_verified_numbers_and_writes_ledger(
 ):
     install(monkeypatch, StubModel(PICKS))
     before = sha(manuscript)
-    run = await run_bind(BindParams(file=manuscript, results=results, model="stub:m"))
+    run = await run_bind(BindParams(out=copy_of(manuscript, "bound"), file=manuscript, results=results, model="stub:m"))
     assert sha(manuscript) == before  # the input is never modified
     assert run.output == manuscript.with_name("paper.bound.docx")
 
@@ -135,7 +136,7 @@ async def test_a_value_that_does_not_match_is_not_bound(
     # The file says 0.251; the text says 23.4%: the model picks it, code refuses.
     results = make_results(tmp_path / "other", effect="0.251")
     install(monkeypatch, StubModel({EFFECT: [("23.4%", "effect")]}))
-    run = await run_bind(BindParams(file=manuscript, results=results, model="stub:m"))
+    run = await run_bind(BindParams(out=copy_of(manuscript, "bound"), file=manuscript, results=results, model="stub:m"))
     assert run.report.bound == []
     assert open_docx(run.output).anchors == []
     (item,) = [u for u in run.report.unmatched if u.written == "23.4%"]
@@ -160,7 +161,7 @@ async def test_a_candidate_the_model_made_up_is_refused(
             )
 
     monkeypatch.setattr(bind_module, "run_agent_with_usage", Inventor())
-    run = await run_bind(BindParams(file=manuscript, results=results, model="stub:m"))
+    run = await run_bind(BindParams(out=copy_of(manuscript, "bound"), file=manuscript, results=results, model="stub:m"))
     assert run.report.bound == []
     assert "not one of the candidates" in run.report.unmatched[0].reason
 
@@ -169,7 +170,7 @@ async def test_a_value_the_text_does_not_hold_is_ignored_and_counted(
     monkeypatch, manuscript: Path, results: Path
 ):
     install(monkeypatch, StubModel({EFFECT: [("77%", "effect")]}))
-    run = await run_bind(BindParams(file=manuscript, results=results, model="stub:m"))
+    run = await run_bind(BindParams(out=copy_of(manuscript, "bound"), file=manuscript, results=results, model="stub:m"))
     assert run.report.bound == []
     # the ignored proposal is not a row of its own; the number is still listed
     assert [u.reason for u in run.report.unmatched if u.written == "23.4%"] == [
@@ -182,7 +183,7 @@ async def test_binding_twice_binds_nothing_new(
     monkeypatch, manuscript: Path, results: Path, tmp_path: Path
 ):
     install(monkeypatch, StubModel(PICKS))
-    first = await run_bind(BindParams(file=manuscript, results=results, model="stub:m"))
+    first = await run_bind(BindParams(out=copy_of(manuscript, "bound"), file=manuscript, results=results, model="stub:m"))
     second = await run_bind(
         BindParams(
             file=first.output,
@@ -202,23 +203,23 @@ async def test_binding_twice_binds_nothing_new(
 async def test_other_ledger_entries_survive(
     monkeypatch, manuscript: Path, results: Path
 ):
-    store_dir = manuscript.with_name("paper.harness")
+    store_dir = manuscript.with_name("state")
     store_dir.mkdir()
     (store_dir / "claims.yaml").write_text(
         "claims:\n- id: c-other\n  text: kept\n  kind: method\n", "utf-8"
     )
     install(monkeypatch, StubModel(PICKS))
-    await run_bind(BindParams(file=manuscript, results=results, model="stub:m"))
+    await run_bind(BindParams(out=copy_of(manuscript, "bound"), file=manuscript, results=results, model="stub:m"))
     text = (store_dir / "claims.yaml").read_text("utf-8")
     assert "c-other" in text and "kind: result" in text
 
 
 async def test_needs_a_model_and_a_results_folder(manuscript: Path, results: Path):
     with pytest.raises(UsageError, match="--model"):
-        await run_bind(BindParams(file=manuscript, results=results))
+        await run_bind(BindParams(out=copy_of(manuscript, "bound"), file=manuscript, results=results))
     with pytest.raises(UsageError, match="--results"):
         await run_bind(
-            BindParams(file=manuscript, results=results / "nope", model="stub:m")
+            BindParams(out=copy_of(manuscript, "bound"), file=manuscript, results=results / "nope", model="stub:m")
         )
     with pytest.raises(UsageError, match="never edited"):
         await run_bind(
@@ -232,7 +233,7 @@ async def test_answers_are_cached_in_the_project(
     stub = install(monkeypatch, StubModel(PICKS))
     project = tmp_path / "proj"
     await run_bind(
-        BindParams(file=manuscript, results=results, model="m", project=project)
+        BindParams(out=copy_of(manuscript, "bound"), file=manuscript, results=results, model="m", project=project)
     )
     calls = len(stub.calls)
     await run_bind(
@@ -256,7 +257,7 @@ def test_the_verbs_are_registered_and_in_the_cli(tmp_path: Path, capsys):
     with pytest.raises(SystemExit) as exit_info:
         cli.main(["bind-numbers", "--help"])
     assert exit_info.value.code == 0
-    assert "bind-numbers paper.docx --results" in " ".join(
+    assert "bind-numbers collaborator.docx --results" in " ".join(
         capsys.readouterr().out.split()
     )
 
@@ -266,7 +267,7 @@ async def test_a_number_the_model_leaves_out_is_still_listed(
 ):
     # The model proposes nothing for the sample paragraph; code lists its numbers.
     install(monkeypatch, StubModel({EFFECT: [("23.4%", "effect")]}))
-    run = await run_bind(BindParams(file=manuscript, results=results, model="stub:m"))
+    run = await run_bind(BindParams(out=copy_of(manuscript, "bound"), file=manuscript, results=results, model="stub:m"))
     listed = {(u.written, u.reason) for u in run.report.unmatched if u.paragraph == 2}
     assert listed == {
         ("1,234", "not proposed by the model; not bound"),
@@ -316,7 +317,7 @@ async def test_a_number_with_a_unit_or_label_binds_only_the_number(
         "utf-8",
     )
     install(monkeypatch, StubModel(UNIT_PICKS))
-    run = await run_bind(BindParams(file=manuscript, results=folder, model="stub:m"))
+    run = await run_bind(BindParams(out=copy_of(manuscript, "bound"), file=manuscript, results=folder, model="stub:m"))
 
     copy = open_docx(run.output)
     texts = {p.id: p.text for p in copy.paragraphs}

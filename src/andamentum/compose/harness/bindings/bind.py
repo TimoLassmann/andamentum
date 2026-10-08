@@ -1,6 +1,6 @@
 """``bind-numbers``: bind the numbers in a document to the result files that state them.
 
-``andamentum-compose bind-numbers FILE.docx --results DIR --model M`` never
+``andamentum-word bind-numbers FILE.docx --results DIR --model M`` never
 modifies FILE. For each paragraph that holds numbers:
 
 1. code lists the *candidates*: result numbers that equal a number of the
@@ -96,14 +96,12 @@ class BindParams(BaseModel):
     model: str | None = Field(
         default=None, description="model id that proposes the matches (required)"
     )
-    out: Path | None = Field(
-        default=None, description="the bound copy (default: <stem>.bound.docx)"
-    )
+    out: Path = Field(description="the bound copy to write (a .docx path)")
     report: Path | None = Field(
         default=None, description="markdown report (default: beside --out)"
     )
     project: Path | None = Field(
-        default=None, description="project folder (default: <stem>.harness/)"
+        default=None, description="folder that keeps the ledger and logs (default: state/ beside the output)"
     )
 
 
@@ -415,9 +413,9 @@ async def run_bind(params: BindParams) -> BindRun:
     if not params.model:
         raise UsageError("bind-numbers needs --model (the model proposes the matches)")
     adapter, view, store, project_id = open_document(
-        params.file, project=params.project, results=params.results
+        params.file, out=params.out, project=params.project, results=params.results
     )
-    out = output_path(params.file, params.out, suffix="bound")
+    out = output_path(params.file, params.out)
     catalogue = load_catalogue(params.results)
     if not catalogue.entries:
         raise UsageError(f"no numbers found in the result files under {params.results}")

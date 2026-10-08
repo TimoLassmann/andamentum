@@ -25,7 +25,7 @@ Report: `<out>.md` and `.json` (changes, flips, problems, unchanged, unbound con
 
 ## Pitfalls
 
-- The default project folder is `<stem>.harness`; `bind-numbers paper.docx` writes `paper.bound.docx`, so `harness/project.py:project_dir` (used by every verb) finds the folder from the project id the copy carries. Pass `--project` to be explicit.
+- The project folder is `state/` in the output folder (`harness/project.py:project_dir(out, project)`, used by every verb); `bind-numbers paper.docx -o DIR` writes `DIR/paper.bound.docx` and the ledger in `DIR/state/`, and `refresh DIR/paper.bound.docx -o DIR` finds it there. A different output folder has no ledger.
 - Tests stub `bindings.bind.run_agent_with_usage`; synthetic data only (`tests/_bindings_helpers.py`).
 
 ## Catalogue exclusions and zero (found in the first live run)

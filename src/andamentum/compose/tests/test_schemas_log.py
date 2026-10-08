@@ -56,7 +56,7 @@ def test_result_roundtrip(tmp_path):
         goal_met=False,
     )
     res = ComposeResult(
-        bundle=tmp_path,
+        folder=tmp_path,
         outputs=[tmp_path / "out" / "email.txt"],
         goal_met=False,
         stop_reason="cap_reached",

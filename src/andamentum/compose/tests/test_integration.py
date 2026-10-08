@@ -208,7 +208,7 @@ async def test_real_workers_through_the_real_graph(tmp_path, monkeypatch):
 
 
 async def test_resuming_a_finished_bundle_makes_no_early_calls(tmp_path, monkeypatch):
-    from andamentum.compose import compose_bundle
+    from andamentum.compose import continue_document
 
     script = Script()
     monkeypatch.setattr("andamentum.compose._call.run_agent_with_usage", script)
@@ -245,7 +245,7 @@ async def test_resuming_a_finished_bundle_makes_no_early_calls(tmp_path, monkeyp
         formats=["txt"],
     )
     drafts_before = script.draft_calls
-    again = await compose_bundle(first.bundle, roles=roles, formats=["txt"])
+    again = await continue_document(first.folder, roles=roles, formats=["txt"])
     assert again.stop_reason == "goal_met"
     assert script.draft_calls == drafts_before
     assert len(again.rounds) == len(first.rounds) + 2

@@ -1,6 +1,6 @@
 """``refresh``: recompute the bound numbers of a document from the result files.
 
-``andamentum-compose refresh FILE.docx --results DIR`` never modifies FILE. For
+``andamentum-word refresh FILE.docx --results DIR`` never modifies FILE. For
 every number bound by ``bind-numbers`` (a hidden content control plus a ledger
 entry in ``claims.yaml``) it reads the stored value again and writes it in the
 shape the text has: the decimals, percent sign, thousands separator and minus
@@ -57,14 +57,12 @@ class RefreshParams(BaseModel):
         json_schema_extra={"positional": True}, description="the .docx to refresh"
     )
     results: Path = Field(description="folder of result files (csv, tsv, json)")
-    out: Path | None = Field(
-        default=None, description="the refreshed copy (default: <stem>.refreshed.docx)"
-    )
+    out: Path = Field(description="the refreshed copy to write (a .docx path)")
     report: Path | None = Field(
         default=None, description="markdown report (default: beside --out)"
     )
     project: Path | None = Field(
-        default=None, description="project folder (default: <stem>.harness/)"
+        default=None, description="folder that keeps the ledger and logs (default: state/ beside the output)"
     )
 
 
@@ -135,9 +133,9 @@ def run_refresh(params: RefreshParams) -> RefreshRun:
     """Run ``refresh``; the programmatic entry the verb handler wraps."""
     started = time.monotonic()
     adapter, view, store, project_id = open_document(
-        params.file, project=params.project, results=params.results
+        params.file, out=params.out, project=params.project, results=params.results
     )
-    out = output_path(params.file, params.out, suffix="refreshed")
+    out = output_path(params.file, params.out)
     catalogue = load_catalogue(params.results)
     ledger = Ledger(store)
     bindings = ledger.bindings()

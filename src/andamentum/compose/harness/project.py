@@ -2,7 +2,7 @@
 
 Every verb that opens a ``.docx`` finds its project folder here, and every verb
 that writes a copy writes it here, so a copy always carries the project id and
-a later run on that copy finds the same ledger, event log and snapshots.
+a later run into the same folder finds the same ledger, event log and snapshots.
 """
 
 from __future__ import annotations
@@ -10,29 +10,20 @@ from __future__ import annotations
 from pathlib import Path
 
 from .docx.writer import DocxAdapter
-from .kernel import ApplyResult, DocumentView, ProjectStore, Transaction
+from .kernel import ApplyResult, DocumentView, Transaction
 
 
-def project_dir(file: Path, view: DocumentView, project: Path | None) -> Path:
-    """``--project``, else ``<stem>.harness`` beside the file, else the sibling
-    project folder whose id the document carries.
+STATE_DIR = "state"
 
-    ``bind-numbers`` writes ``paper.bound.docx`` and the ledger lives with the
-    project of ``paper.docx``; looking the id up lets any verb run on
-    ``paper.bound.docx`` find it without a flag.
+
+def project_dir(out: Path, project: Path | None) -> Path:
+    """The project folder: *project* when given, else ``state/`` in the folder
+    that holds the written copy (*out*). Nothing is ever kept beside the input.
+
+    A later run that is given the same output folder finds the ledger, event
+    log and snapshots of the earlier one there.
     """
-    if project is not None:
-        return project
-    default = file.with_name(f"{file.stem}.harness")
-    if default.exists() or view.project_id is None:
-        return default
-    for sibling in sorted(file.parent.glob("*.harness")):
-        try:
-            if ProjectStore(sibling).meta().id == view.project_id:
-                return sibling
-        except (FileNotFoundError, ValueError):
-            continue
-    return default
+    return project if project is not None else out.parent / STATE_DIR
 
 
 def write_copy(

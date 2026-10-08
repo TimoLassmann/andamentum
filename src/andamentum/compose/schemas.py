@@ -120,7 +120,7 @@ class RoundRecord(BaseModel):
 
 
 class ComposeResult(BaseModel):
-    bundle: Path
+    folder: Path
     outputs: list[Path]
     goal_met: bool
     stop_reason: StopReason
@@ -130,12 +130,12 @@ class ComposeResult(BaseModel):
     usage: dict[str, int]  # tokens per role
 
     def summary_lines(self) -> list[str]:
-        """What the CLI prints after a bundle run."""
+        """What the CLI prints after a run."""
         lines = [
-            f"bundle: {self.bundle}",
+            f"folder: {self.folder}",
             f"goal met: {'yes' if self.goal_met else 'no'} ({self.stop_reason})",
         ]
         lines += [f"output: {path}" for path in self.outputs]
-        lines.append(f"report: {self.bundle / 'report.md'}")
+        lines.append(f"report: {self.folder / 'report.md'}")
         lines += [f"open: {question}" for question in self.open_questions]
         return lines

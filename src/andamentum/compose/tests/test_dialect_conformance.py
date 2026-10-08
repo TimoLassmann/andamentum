@@ -92,6 +92,10 @@ def test_nothing_else_in_the_package_imports_compose():
         relative = path.relative_to(package_root)
         if relative.parts[0] == "compose":
             continue
+        # the tool list names the tool; the Word tool is the public face of
+        # compose.harness
+        if relative.parts[0] == "word" or relative.name == "tools.py":
+            continue
         text = path.read_text(encoding="utf-8")
         # figures.bundle_glue is the one sanctioned user of the model-free bundle
         text = text.replace("andamentum.compose.bundle", "")
@@ -103,18 +107,13 @@ def test_public_surface_matches_documented_set():
 
     expected = {
         "write_document",
-        "compose_bundle",
-        "compile_brief",
+        "continue_document",
         "ComposeResult",
-        "Brief",
         "Roles",
         "ResearchSetup",
-        "Genre",
-        "GENRES",
-        "genre_for",
-        "StopReason",
-        "Bundle",
-        "Section",
+        "ComposeError",
+        "ComposeUsageError",
+        "ComposeInputError",
     }
     assert set(compose.__all__) == expected
     for name in expected:
@@ -124,7 +123,7 @@ def test_public_surface_matches_documented_set():
 def test_entry_points_are_coroutines_with_keyword_only_roles():
     import andamentum.compose as compose
 
-    for fn in (compose.write_document, compose.compose_bundle):
+    for fn in (compose.write_document, compose.continue_document):
         assert inspect.iscoroutinefunction(fn)
         assert inspect.signature(fn).parameters["roles"].kind is (
             inspect.Parameter.KEYWORD_ONLY

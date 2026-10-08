@@ -215,7 +215,12 @@ async def harness_arm(
     for docx, truth in files:
         copy = work / docx.name
         shutil.copy(docx, copy)
-        params = CheckParams(file=copy, mailto=mailto)
+        # one output folder per document: each keeps its own state/
+        params = CheckParams(
+            file=copy,
+            out=work / "checked" / docx.stem / f"{docx.stem}.checked.docx",
+            mailto=mailto,
+        )
         started = time.monotonic()
         run = await run_check(
             params,

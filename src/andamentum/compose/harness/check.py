@@ -1,9 +1,9 @@
 """The ``check`` verb: open a ``.docx``, run the checks, write a commented copy and a report.
 
-``andamentum-compose check FILE.docx`` never modifies FILE. It
+``andamentum-word check FILE.docx`` never modifies FILE. It
 
 1. opens the document through the docx adapter and the project folder
-   (``<stem>.harness/`` next to the file, or ``--project DIR``);
+   (``state/`` beside the output copy, or ``--project DIR``);
 2. runs the selected checks one after another (default: every registered check
    whose needs are met by the flags: network checks unless ``--offline``, the
    numbers check only with ``--results`` and ``--model``, the citation pre-gate
@@ -42,6 +42,7 @@ from andamentum.core.decisions import DecisionModel, DecisionModelUnavailable
 from andamentum.references import ReferenceHttp
 
 from .docx.reader import DocxReadError
+from .errors import WordUsageError
 from .docx.writer import DocxAdapter
 from .kernel import (
     CheckContext,
@@ -84,7 +85,7 @@ _SEVERITY_ORDER = {"error": 0, "warning": 1, "info": 2}
 _PRECISION_FILE = "precision.json"
 
 
-class CheckUsageError(Exception):
+class CheckUsageError(WordUsageError):
     """A bad invocation (missing file, unknown check, unmet need): exit code 2."""
 
 
@@ -104,14 +105,12 @@ class CheckParams(BaseModel):
     decision_model: str | None = Field(
         default=None, description="ollama decision model for the citation pre-gate"
     )
-    out: Path | None = Field(
-        default=None, description="the commented copy (default: <stem>.checked.docx)"
-    )
+    out: Path = Field(description="the commented copy to write (a .docx path)")
     report: Path | None = Field(
         default=None, description="markdown report (default: beside --out)"
     )
     project: Path | None = Field(
-        default=None, description="project folder (default: <stem>.harness/)"
+        default=None, description="folder that keeps the ledger and logs (default: state/ beside the output)"
     )
     mailto: str | None = Field(
         default=None, description="contact address for Crossref's polite pool"
@@ -260,9 +259,9 @@ def comment_ops(view: DocumentView, diagnostics: list[Diagnostic]) -> list[Comme
 
 def _outputs(params: CheckParams) -> tuple[Path, Path]:
     source = params.file
-    out = params.out or source.with_name(f"{source.stem}.checked.docx")
+    out = params.out
     if out.resolve() == source.resolve():
-        raise CheckUsageError("--out must not be the input file; check never edits it")
+        raise CheckUsageError("the output must not be the input file; check never edits it")
     report = params.report or out.with_suffix(".md")
     return out, report
 
@@ -321,7 +320,7 @@ async def run_check(
         view = adapter.open(params.file)
     except DocxReadError as exc:
         raise CheckUsageError(str(exc)) from exc
-    store = ProjectStore(project_dir(params.file, view, params.project))
+    store = ProjectStore(project_dir(out, params.project))
     try:
         meta = store.init(params.file, project_id=view.project_id)
     except ValueError as exc:
@@ -557,7 +556,7 @@ CHECK_VERB = Verb(
     name="check",
     summary="check a .docx (citations, cross-references, statistics, numbers); "
     "writes a commented copy and a report. "
-    "Example: andamentum-compose check collaborator.docx --results results",
+    "Example: andamentum-word check collaborator.docx --results results",
     params=CheckParams,
     handler=_handle,
 )

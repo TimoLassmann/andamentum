@@ -215,7 +215,7 @@ async def test_provenance_and_project_id(written: tuple[DraftResult, Path]) -> N
 async def test_the_report_and_exit_code(written: tuple[DraftResult, Path]) -> None:
     result, out = written
     # the scripted draft leaves a question for the authors, so it exits 4
-    assert result.author_questions and result.exit_code == 4
+    assert result.author_questions and result.exit_code == 1
     report = result.report.read_text()
     assert result.report == out.with_name("paper.report.md")
     for expected in (
@@ -431,7 +431,7 @@ async def test_an_error_in_a_drafted_paragraph_sends_the_section_to_the_reviser(
         (0, 1, []),
         (1, 0, ["Results"]),
     ]
-    assert result.open_errors == [] and result.exit_code == 4  # author questions remain
+    assert result.open_errors == [] and result.exit_code == 1  # author questions remain
     text = open_docx(tmp_path / "paper.docx").text()
     assert "p = .62" in text and "p = .01" not in text
     assert (
@@ -449,7 +449,7 @@ async def test_an_error_that_stays_is_a_comment_and_exit_4(
 ) -> None:
     install_script(monkeypatch, results_with(FLIPPED, fixed=None))
     result = await write(tmp_path)
-    assert result.exit_code == 4
+    assert result.exit_code == 1
     assert len(result.open_errors) == 1 and result.open_errors[0].startswith(
         "statistics:"
     )
@@ -482,7 +482,7 @@ async def test_max_rounds_bounds_the_repair(
     result = await write(tmp_path, max_rounds=2)
     assert calls["n"] == 2
     assert [r.round for r in result.rounds] == [0, 1, 2]
-    assert result.exit_code == 4
+    assert result.exit_code == 1
 
 
 async def test_max_rounds_zero_only_checks(
@@ -490,7 +490,7 @@ async def test_max_rounds_zero_only_checks(
 ) -> None:
     script = install_script(monkeypatch, results_with(FLIPPED, fixed=FIXED))
     result = await write(tmp_path, max_rounds=0)
-    assert result.exit_code == 4
+    assert result.exit_code == 1
     assert not any(
         "ISSUES TO RESOLVE" in m for t, m in script.calls if t is SectionBody
     )
@@ -541,7 +541,7 @@ async def test_a_typed_citation_that_stays_is_an_error_comment_and_never_support
 ) -> None:
     install_script(monkeypatch, typed_citation_script(fixed=False))
     result = await write(tmp_path)
-    assert result.exit_code == 4
+    assert result.exit_code == 1
     assert any("Marlowe and Idris (2021)" in e for e in result.open_errors)
     assert any("typed citation" in q for q in result.author_questions)
     view = open_docx(tmp_path / "paper.docx")
@@ -668,7 +668,7 @@ async def test_into_only_errors_in_new_text_count(
         sources=[str(notes)],
         offline=True,
     )
-    assert result.open_errors == [] and result.exit_code == 4  # author questions remain
+    assert result.open_errors == [] and result.exit_code == 1  # author questions remain
     assert (
         result.counts["error"] == 1
     )  # the check saw the author's error; it is not ours
@@ -753,7 +753,7 @@ async def test_into_a_zotero_document_the_citation_is_a_zotero_field(
     zotero = [f for f in view.fields if f.kind == "citation" and f.manager == "zotero"]
     assert [f.display for f in zotero] == ["(Doe, 2020)", "(Okafor, 2020)"]
     assert any(f.kind == "bibliography" and "Okafor" in f.display for f in view.fields)
-    assert result.citations == 1 and result.exit_code == 4  # author questions remain
+    assert result.citations == 1 and result.exit_code == 1  # author questions remain
 
 
 async def test_write_never_overwrites_a_file(tmp_path: Path) -> None:
@@ -781,7 +781,7 @@ async def test_a_second_pass_appends_to_the_section_and_the_statement(
     notes, _ = tmp_path / "notes.md", None
     second = await draft_document(
         "Rewrite the discussion",
-        out=tmp_path / "second.docx",
+        out=tmp_path / "second" / "second.docx",
         into=first.output,
         roles=ROLES,
         sources=[str(notes)],
@@ -803,7 +803,7 @@ async def test_a_second_pass_appends_to_the_section_and_the_statement(
     assert first.project != second.project
 
 
-async def test_the_exit_code_is_4_while_anything_is_left_for_the_authors(
+async def test_the_exit_code_is_1_while_anything_is_left_for_the_authors(
     written: tuple[DraftResult, Path],
 ) -> None:
     result, _ = written
@@ -817,4 +817,4 @@ async def test_the_exit_code_is_4_while_anything_is_left_for_the_authors(
         {"open_errors": ["numbers: p changed"]},
         {"refused": ["insert p0@999: range ends past the paragraph"]},
     ):
-        assert clean.model_copy(update=update).exit_code == 4
+        assert clean.model_copy(update=update).exit_code == 1

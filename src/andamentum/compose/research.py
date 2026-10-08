@@ -22,11 +22,13 @@ on it only behind ``--research``); the types it supplies appear here as strings.
 from __future__ import annotations
 
 import hashlib
+import os
 from collections.abc import Callable, Collection
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
+from .bundle import ComposeError
 from .evidence import find_quote, stored_source_path
 from .genres import Genre, ResearchMode
 from .schemas import Fact, Source
@@ -40,7 +42,7 @@ MAX_LABEL_AUTHORS = 3
 ATTRIBUTION = "Another published work ({title}) reports, not this study: {claim}"
 
 
-class ResearchSetupError(ValueError):
+class ResearchSetupError(ComposeError, ValueError):
     """``--research`` was asked for without what its mode needs."""
 
 
@@ -239,3 +241,26 @@ def degraded_notes(result: ResearchResult) -> list[str]:
             f"Research found no usable passages (stopped: {result.stop_reason or 'unknown'})."
         )
     return notes
+
+
+def research_setup(
+    *,
+    mailto: str | None,
+    searxng_url: str | None,
+    browser: bool,
+    mode: Literal["web", "scholarly", "both"] | None,
+) -> ResearchSetup:
+    """The research settings from CLI flags; credentials come from the
+    environment (``.env`` is loaded by the CLI), never from flags."""
+    from andamentum.deep_research import SourceConfig
+
+    return ResearchSetup(
+        sources=SourceConfig(
+            mailto=mailto or os.environ.get("OPENALEX_EMAIL") or None,
+            openalex_api_key=os.environ.get("OPENALEX_API_KEY") or None,
+            semantic_scholar_api_key=os.environ.get("SEMANTIC_SCHOLAR_API_KEY") or None,
+            searxng_url=searxng_url,
+            browser=browser,
+        ),
+        mode=mode,
+    )

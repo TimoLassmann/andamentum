@@ -9,7 +9,7 @@ cited, and the unverified ones with the reason, which may not.
 for an item of ``--library`` / ``--zotero``) resolves each work and, only when
 every one is verified, writes the citation and the bibliography entry as
 tracked changes to a copy (``<stem>.cited.docx``). It never edits FILE. A work
-that does not verify refuses the whole call (exit 4) and nothing is written.
+that does not verify refuses the whole call (exit 1) and nothing is written.
 The citation is inserted verbatim at character offset ``--at`` of the paragraph
 text: the caller chooses the spacing and the full stop.
 """
@@ -56,7 +56,7 @@ from . import (
 )
 from .access import open_literature
 
-EXIT_OPEN = 4
+EXIT_OPEN = 1
 AUTHOR = "andamentum insert-citation"
 
 
@@ -101,11 +101,9 @@ class InsertParams(BaseModel):
     locator: str | None = Field(default=None, description="for example 'p. 12'")
     prefix: str | None = Field(default=None, description="text before the citation")
     suffix: str | None = Field(default=None, description="text after the citation")
-    out: Path | None = Field(
-        default=None, description="the cited copy (default: <stem>.cited.docx)"
-    )
+    out: Path = Field(description="the cited copy to write (a .docx path)")
     project: Path | None = Field(
-        default=None, description="project folder (default: <stem>.harness/)"
+        default=None, description="folder that keeps the ledger and logs (default: state/ beside the output)"
     )
     mailto: str | None = Field(
         default=None, description="your email, for Crossref's polite pool"
@@ -215,8 +213,8 @@ async def run_insert(
         raise UsageError(
             f"--at {params.at} is outside the paragraph (0 to {len(paragraph.text)})"
         )
-    out = output_path(file, params.out, suffix="cited")
-    store = ProjectStore(project_dir(file, view, params.project))
+    out = output_path(file, params.out)
+    store = ProjectStore(project_dir(out, params.project))
     try:
         project_id = store.init(file, project_id=view.project_id).id
     except ValueError as exc:

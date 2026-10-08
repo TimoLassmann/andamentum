@@ -3,7 +3,7 @@
 For every synthetic task under ``evals/briefs/<genre>/<name>/`` arm A runs the
 full ``write_document`` pipeline and arm B has one model call write the whole
 document. The brief compiled in arm A is shared with arm B, and both final
-documents get the same check pass (``check_bundle``, no revision), so the arms
+documents get the same check pass (``check_folder``, no revision), so the arms
 differ only in how the text was produced. A judge then compares the two
 documents in both presentation orders. Everything runs sequentially.
 
@@ -24,7 +24,7 @@ from andamentum.llm_judge import judge_compare
 from andamentum.compose.bundle import Bundle
 
 from .. import store
-from ..api import check_bundle, write_document
+from ..api import check_folder, write_document
 from ..assess import Assessment
 from ..evidence import is_tabular, stored_source_path
 from ..genres import GENRES, genre_for
@@ -229,16 +229,16 @@ async def run_eval(
             max_rounds=max_rounds,
             progress=progress,
         )
-        compose_bundle = Bundle.open(written.bundle)
+        compose_bundle = Bundle.open(written.folder)
         baseline_bundle = await _baseline_arm(
             task,
-            compose_dir=written.bundle,
+            compose_dir=written.folder,
             out=base / "baseline",
             roles=roles,
             progress=progress,
         )
-        arm_a = await check_bundle(compose_bundle.path, roles=roles, progress=progress)
-        arm_b = await check_bundle(baseline_bundle.path, roles=roles, progress=progress)
+        arm_a = await check_folder(compose_bundle.path, roles=roles, progress=progress)
+        arm_b = await check_folder(baseline_bundle.path, roles=roles, progress=progress)
         verdict = await judge_compare(
             plain_text(compose_bundle.sections(), title=compose_bundle.title),
             plain_text(baseline_bundle.sections(), title=baseline_bundle.title),

@@ -1,20 +1,16 @@
-"""The ``write`` verb: a task in, a finished document out.
+"""The ``draft`` verb: a task drafted into Word.
 
-One verb, two destinations. When ``--out`` ends in ``.docx`` or ``--into`` is
-given, the document is drafted into Word (``draft_document``: tracked changes,
-comments, citations, bound numbers; the file named by ``--into`` is only read).
-Otherwise the compose bundle path runs: a folder bundle plus rendered outputs
-(``write_document``). Flags that only one destination understands are refused
-for the other instead of being ignored.
+The document is drafted as tracked changes, comments, citations and bound
+numbers (``draft_document``); the file named by ``--into`` is only read.
+The folder-document pipeline is a different tool (``andamentum-compose``).
 
-Exit codes: 0 done, 4 written but open issues remain, 2 usage, 3 crash (the CLI
+Exit codes: 0 done, 1 written but open issues remain, 2 usage, 3 crash (the CLI
 and the MCP server turn an uncaught exception into 3 and a tool error).
 """
 
 from __future__ import annotations
 
 import asyncio
-import os
 import sys
 from collections.abc import Callable
 from dataclasses import replace
@@ -24,30 +20,27 @@ from typing import Literal
 import httpx
 from pydantic import BaseModel, Field
 
-from andamentum.compose.api import VALID_FORMATS, write_document
-from andamentum.compose.research import ResearchSetup
+from andamentum.compose.research import ResearchSetup, research_setup
 from andamentum.compose.schemas import ROLE_NAMES, Roles
 
 from ..kernel import Verb
 from ..literature.access import open_literature
+from ..project import project_dir
 from .run import DraftResult, DraftUsageError, draft_document
 from .search import literature_search, research_literature
 from .works import LiteratureSearch, ResearchRun
 
-EXIT_OK, EXIT_USAGE, EXIT_OPEN = 0, 2, 4
-HARNESS_ROUNDS, BUNDLE_ROUNDS = 2, 4
+EXIT_OK, EXIT_USAGE, EXIT_OPEN = 0, 2, 1
+WORD_ROUNDS = 2
 WORD_ROLES = ("drafter", "judge")  # the critic and the reader are not used
 
 
-class WriteParams(BaseModel):
+class DraftParams(BaseModel):
     task: str = Field(
         json_schema_extra={"positional": True},
         description="what to write, in your own words",
     )
-    out: Path = Field(
-        description="the new .docx to write (a folder for a bundle: a --out "
-        "without .docx and no --into)"
-    )
+    out: Path = Field(description="the new .docx to write (a path, never the input)")
     into: Path | None = Field(
         default=None,
         description="draft into a copy of this .docx as tracked changes; it is never edited",
@@ -78,8 +71,7 @@ class WriteParams(BaseModel):
     reader: str | None = Field(default=None, description="model for the reader")
     max_rounds: int | None = Field(
         default=None,
-        description=f"most revise rounds (default {HARNESS_ROUNDS} for Word, "
-        f"{BUNDLE_ROUNDS} for a bundle)",
+        description=f"most revise rounds (default {WORD_ROUNDS})",
     )
     offline: bool = Field(
         default=False,
@@ -87,6 +79,10 @@ class WriteParams(BaseModel):
     )
     confirm_own_sources: bool = Field(
         default=False, description="proceed although a source looks confidential"
+    )
+    project: Path | None = Field(
+        default=None,
+        description="folder that keeps the ledger and logs (default: state/ beside the output)",
     )
     mailto: str | None = Field(
         default=None,
@@ -113,24 +109,13 @@ class WriteParams(BaseModel):
         "isolated Chrome in a podman container (started for the research, "
         "removed after) instead of SearxNG",
     )
-    format: list[str] = Field(
-        default=[], description="bundle only: output format (repeatable)"
-    )
-    no_provenance: bool = Field(
-        default=False, description="bundle only: leave out provenance markers"
-    )
 
 
 def _progress(line: str) -> None:
     print(line, file=sys.stderr, flush=True)
 
 
-def to_word(params: WriteParams) -> bool:
-    """True when the document goes into Word, False for the bundle path."""
-    return params.into is not None or params.out.suffix.lower() == ".docx"
-
-
-def _roles(params: WriteParams, *, needed: tuple[str, ...] = ROLE_NAMES) -> Roles:
+def _roles(params: DraftParams, *, needed: tuple[str, ...] = ROLE_NAMES) -> Roles:
     """Roles from the flags. *needed* must have a model; the others (unused by the
     Word path) take the drafter's."""
     chosen: dict[str, str] = {}
@@ -151,30 +136,7 @@ def _roles(params: WriteParams, *, needed: tuple[str, ...] = ROLE_NAMES) -> Role
     return Roles(**chosen)
 
 
-def research_setup(
-    *,
-    mailto: str | None,
-    searxng_url: str | None,
-    browser: bool,
-    mode: Literal["web", "scholarly", "both"] | None,
-) -> ResearchSetup:
-    """The research settings from CLI flags; credentials come from the
-    environment (``.env`` is loaded by the CLI), never from flags."""
-    from andamentum.deep_research import SourceConfig
-
-    return ResearchSetup(
-        sources=SourceConfig(
-            mailto=mailto or os.environ.get("OPENALEX_EMAIL") or None,
-            openalex_api_key=os.environ.get("OPENALEX_API_KEY") or None,
-            semantic_scholar_api_key=os.environ.get("SEMANTIC_SCHOLAR_API_KEY") or None,
-            searxng_url=searxng_url,
-            browser=browser,
-        ),
-        mode=mode,
-    )
-
-
-def _research_setup(params: WriteParams) -> ResearchSetup | None:
+def _research_setup(params: DraftParams) -> ResearchSetup | None:
     if not params.research:
         return None
     return research_setup(
@@ -185,7 +147,7 @@ def _research_setup(params: WriteParams) -> ResearchSetup | None:
     )
 
 
-def _refuse_foreign_flags(params: WriteParams, *, word: bool) -> None:
+def _refuse_idle_flags(params: DraftParams) -> None:
     if not params.research:
         idle = [
             flag
@@ -200,53 +162,20 @@ def _refuse_foreign_flags(params: WriteParams, *, word: bool) -> None:
             raise DraftUsageError(f"{', '.join(idle)} need --research")
     if params.research and params.offline:
         raise DraftUsageError("--research searches the network; drop --offline")
-    if word:
-        used = [
-            flag
-            for flag, on in (
-                ("--format", bool(params.format)),
-                ("--no-provenance", params.no_provenance),
-            )
-            if on
-        ]
-        if used:
-            raise DraftUsageError(
-                f"{', '.join(used)} only apply to a bundle (an --out without .docx)"
-            )
-        if params.offline and (params.library or params.zotero):
-            raise DraftUsageError(
-                "--library and --zotero need the network to verify works; "
-                "drop --offline"
-            )
-        return
-    used = [
-        flag
-        for flag, on in (
-            ("--results", params.results is not None),
-            ("--library", params.library is not None),
-            ("--zotero", params.zotero),
-            ("--template", params.template is not None),
-            ("--offline", params.offline),
-            ("--mailto", params.mailto is not None and not params.research),
-        )
-        if on
-    ]
-    if used:
-        raise DraftUsageError(
-            f"{', '.join(used)} only apply when writing into Word "
-            "(--out FILE.docx or --into)"
-        )
 
 
-async def run_write(
-    params: WriteParams,
+async def run_draft(
+    params: DraftParams,
     *,
     transport: httpx.AsyncBaseTransport | None = None,
     url_check: Callable[[str], tuple[bool, str]] | None = None,
+    progress: Callable[[str], None] | None = None,
 ) -> DraftResult:
-    """The Word path; the seams (*transport*, *url_check*) are for tests."""
+    """Draft into Word; the seams (*transport*, *url_check*) are for tests."""
+    _refuse_idle_flags(params)
+    say = progress or _progress
     roles = _roles(params, needed=WORD_ROLES)
-    project = params.out.with_name(f"{params.out.stem}.harness")
+    project = project_dir(params.out, params.project)
 
     async def draft(
         literature: LiteratureSearch | None, research: ResearchRun | None = None
@@ -262,11 +191,12 @@ async def run_write(
             literature=literature,
             research=research,
             template=params.template,
-            max_rounds=_rounds(params, HARNESS_ROUNDS),
+            max_rounds=_rounds(params, WORD_ROUNDS),
             offline=params.offline,
             confirm_own_sources=params.confirm_own_sources,
             mailto=params.mailto,
-            progress=_progress,
+            project=project,
+            progress=say,
             transport=transport,
             url_check=url_check,
         )
@@ -292,12 +222,12 @@ async def run_write(
         return await draft(
             literature_search(sources=discovery, http=http) if own else None,
             research_literature(
-                setup=setup, model=roles.drafter, http=http, progress=_progress
+                setup=setup, model=roles.drafter, http=http, progress=say
             ),
         )
 
 
-def _rounds(params: WriteParams, default: int) -> int:
+def _rounds(params: DraftParams, default: int) -> int:
     return default if params.max_rounds is None else params.max_rounds
 
 
@@ -318,53 +248,24 @@ def _print_word(result: DraftResult) -> None:
         print(f"question: {line}")
 
 
-async def _write_bundle(params: WriteParams) -> int:
-    formats = list(params.format)
-    bad = [f for f in formats if f not in VALID_FORMATS]
-    if bad:
-        raise DraftUsageError(
-            f"unknown --format {bad[0]!r}; valid: {', '.join(VALID_FORMATS)}"
-        )
-    result = await write_document(
-        params.task,
-        out=params.out,
-        roles=_roles(params),
-        genre=params.genre,
-        sources=params.source,
-        max_rounds=_rounds(params, BUNDLE_ROUNDS),
-        research=_research_setup(params),
-        confirm_own_sources=params.confirm_own_sources,
-        provenance=not params.no_provenance,
-        formats=formats or None,
-        progress=_progress,
-    )
-    for line in result.summary_lines():
-        print(line)
-    return EXIT_OK if result.goal_met else EXIT_OPEN
-
-
-def _handle(params: WriteParams) -> int:
-    word = to_word(params)
+def _handle(params: DraftParams) -> int:
     try:
-        _refuse_foreign_flags(params, word=word)
-        if word:
-            result = asyncio.run(run_write(params))
-            _print_word(result)
-            return result.exit_code
-        return asyncio.run(_write_bundle(params))
+        result = asyncio.run(run_draft(params))
+        _print_word(result)
+        return result.exit_code
     except DraftUsageError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return EXIT_USAGE
 
 
-WRITE_VERB = Verb(
-    name="write",
-    summary="write a document from a task: into Word as tracked changes (--out FILE.docx, "
-    "optionally --into) or as a bundle folder. "
-    'Example: write "Results section" --out paper.docx --into draft.docx '
+DRAFT_VERB = Verb(
+    name="draft",
+    summary="draft a document from a task into Word as tracked changes, comments, "
+    "citations and bound numbers. "
+    'Example: draft "Results section" --out paper.docx --into draft.docx '
     "--results results --library refs.json --model M",
-    params=WriteParams,
+    params=DraftParams,
     handler=_handle,
 )
 
-VERBS: tuple[Verb, ...] = (WRITE_VERB,)
+VERBS: tuple[Verb, ...] = (DRAFT_VERB,)

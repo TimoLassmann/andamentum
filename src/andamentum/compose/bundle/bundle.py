@@ -145,7 +145,7 @@ class Bundle:
         root = Path(path)
         manifest = root / "bundle.yaml"
         if not manifest.is_file():
-            raise BundleError(f"{root} is not a bundle (no bundle.yaml)")
+            raise BundleError(f"{root} is not a document folder (no bundle.yaml)")
         data = yaml.safe_load(manifest.read_text(encoding="utf-8"))
         if not isinstance(data, dict) or "title" not in data:
             raise BundleError(f"{manifest} is malformed (needs a title)")

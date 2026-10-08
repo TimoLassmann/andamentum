@@ -1,6 +1,6 @@
 """The ``respond`` verb: comments and reviews as a work queue.
 
-``andamentum-compose respond FILE.docx [--reviews FILE] [--model M]`` never
+``andamentum-word respond FILE.docx [--reviews FILE] [--model M]`` never
 modifies FILE. It
 
 1. collects the items: every unresolved comment thread not started by the
@@ -56,6 +56,7 @@ from ..kernel import (
     Verb,
 )
 from ..kernel.models import open_decision_model
+from ..errors import WordUsageError
 from ..project import project_dir, write_copy
 from .collab import changed_paragraph_ids, previous_texts
 from .edits import EditRefused, SpanOp, span_ops
@@ -73,11 +74,11 @@ from .triage import (
 )
 
 AUTHOR = "andamentum respond"
-EXIT_OK, EXIT_OPEN, EXIT_USAGE = 0, 4, 2
+EXIT_OK, EXIT_OPEN, EXIT_USAGE = 0, 1, 2
 _GATE_DIR = "respond-gate"
 
 
-class RespondUsageError(Exception):
+class RespondUsageError(WordUsageError):
     """A bad invocation (missing file, no model for the work): exit code 2."""
 
 
@@ -95,14 +96,12 @@ class RespondParams(BaseModel):
         default=None,
         description="ollama decision model that triages instead of the language model",
     )
-    out: Path | None = Field(
-        default=None, description="the copy to write (default: <stem>.responded.docx)"
-    )
+    out: Path = Field(description="the responded copy to write (a .docx path)")
     report: Path | None = Field(
         default=None, description="markdown report (default: beside --out)"
     )
     project: Path | None = Field(
-        default=None, description="project folder (default: <stem>.harness/)"
+        default=None, description="folder that keeps the ledger and logs (default: state/ beside the output)"
     )
     results: Path | None = Field(
         default=None, description="folder of result files, for the numbers check"
@@ -349,10 +348,10 @@ class _Gate:
 
 def _outputs(params: RespondParams) -> tuple[Path, Path]:
     source = params.file
-    out = params.out or source.with_name(f"{source.stem}.responded.docx")
+    out = params.out
     if out.resolve() == source.resolve():
         raise RespondUsageError(
-            "--out must not be the input file; respond never edits it"
+            "the output must not be the input file; respond never edits it"
         )
     return out, params.report or out.with_suffix(".md")
 
@@ -417,7 +416,7 @@ async def _respond(
         view = adapter.open(params.file)
     except DocxReadError as exc:
         raise RespondUsageError(str(exc)) from exc
-    store = ProjectStore(project_dir(params.file, view, params.project))
+    store = ProjectStore(project_dir(out, params.project))
     try:
         meta = store.init(params.file, project_id=view.project_id)
     except ValueError as exc:

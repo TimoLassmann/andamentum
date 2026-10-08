@@ -16,7 +16,7 @@ from mcp import ClientSession, types
 from mcp.shared.memory import create_connected_server_and_client_session
 from pydantic import BaseModel, Field
 
-from andamentum.compose import cli
+from andamentum.word import cli
 from andamentum.compose.harness import mcp_server
 from andamentum.compose.harness.bench.planted import generate
 from andamentum.compose.harness.docx.reader import open_docx
@@ -28,7 +28,7 @@ ALL_TOOLS = {
     "show_section",
     "apply_edits",
     "check",
-    "write",
+    "draft",
     "refresh",
     "respond",
     "find_citation",
@@ -313,7 +313,14 @@ async def test_check_tool_runs_the_verb_and_the_report_is_a_resource(
 
     before = sha(manuscript)
     run = data(
-        await client.call_tool("check", {"file": str(manuscript), "offline": True})
+        await client.call_tool(
+            "check",
+            {
+                "file": str(manuscript),
+                "offline": True,
+                "out": str(manuscript.with_name("paper.checked.docx")),
+            },
+        )
     )
     assert (
         run["verb"] == "check" and run["exit_code"] == 1
@@ -332,7 +339,12 @@ async def test_check_tool_usage_error_is_a_tool_error(
     client: ClientSession, tmp_path: Path
 ):
     result = await client.call_tool(
-        "check", {"file": str(tmp_path / "missing.docx"), "offline": True}
+        "check",
+        {
+            "file": str(tmp_path / "missing.docx"),
+            "offline": True,
+            "out": str(tmp_path / "checked.docx"),
+        },
     )
     assert result.isError and data(result)["exit_code"] == 2
 
@@ -426,7 +438,7 @@ async def test_unknown_tool(client: ClientSession):
 
 def test_the_mcp_verb_is_a_subcommand():
     args = cli.build_parser().parse_args(["mcp"])
-    assert args.verb == "mcp"
+    assert args.command == "mcp"
 
 
 async def test_the_stdio_server_answers_and_keeps_stdout_clean(manuscript: Path):
@@ -435,7 +447,7 @@ async def test_the_stdio_server_answers_and_keeps_stdout_clean(manuscript: Path)
 
     server = StdioServerParameters(
         command=sys.executable,
-        args=["-m", "andamentum.compose.cli", "mcp"],
+        args=["-m", "andamentum.word.cli", "mcp"],
     )
     async with stdio_client(server) as (read, write):
         async with ClientSession(read, write) as session:
@@ -443,7 +455,12 @@ async def test_the_stdio_server_answers_and_keeps_stdout_clean(manuscript: Path)
             names = {t.name for t in (await session.list_tools()).tools}
             assert ALL_TOOLS <= names
             result = await session.call_tool(
-                "check", {"file": str(manuscript), "offline": True}
+                "check",
+                {
+                    "file": str(manuscript),
+                    "offline": True,
+                    "out": str(manuscript.with_name("checked.docx")),
+                },
             )
             assert data(result)["exit_code"] == 1
 

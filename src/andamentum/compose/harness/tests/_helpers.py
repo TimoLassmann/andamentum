@@ -54,3 +54,8 @@ def field(
         display=display,
         data=data or {},
     )
+
+
+def copy_of(path: Path, suffix: str) -> Path:
+    """Where a verb writes its copy of *path*: next to it, ``<stem>.<suffix>.docx``."""
+    return path.with_name(f"{path.stem}.{suffix}.docx")

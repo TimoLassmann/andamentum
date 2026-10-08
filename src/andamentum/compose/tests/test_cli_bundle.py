@@ -1,4 +1,4 @@
-"""The no-model bundle verbs of ``andamentum-compose`` against a bundle directory."""
+"""The no-model folder commands of ``andamentum-compose`` against a document folder."""
 
 import io
 
@@ -9,7 +9,7 @@ from andamentum.compose.cli import main
 
 def test_full_flow(tmp_path, capsys, monkeypatch):
     path = str(tmp_path / "b")
-    assert main(["new", path, "--title", "Apollo", "--scaffold", "article"]) == 0
+    assert main(["new", "-o", path, "--title", "Apollo", "--scaffold", "article"]) == 0
     capsys.readouterr()
 
     assert main(["sections", path]) == 0
@@ -37,22 +37,22 @@ def test_full_flow(tmp_path, capsys, monkeypatch):
 
     out_file = tmp_path / "o.docx"
     assert (
-        main(["render", path, "--raw", "--format", "docx", "--out", str(out_file)]) == 0
+        main(["render", path, "--plain", "--format", "docx", "-o", str(out_file)]) == 0
     )
     assert out_file.is_file()
 
 
-def test_raw_render_needs_one_format_and_out(tmp_path):
+def test_plain_render_needs_one_format_and_out(tmp_path):
     path = str(tmp_path / "b")
-    main(["new", path, "--title", "T"])
+    main(["new", "-o", path, "--title", "T"])
     with pytest.raises(SystemExit) as exc:
-        main(["render", path, "--raw"])
+        main(["render", path, "--plain"])
     assert exc.value.code == 2
 
 
 def test_stale_revision_is_reported_exit_2(tmp_path, capsys):
     path = str(tmp_path / "b")
-    main(["new", path, "--title", "T", "--scaffold", "article"])
+    main(["new", "-o", path, "--title", "T", "--scaffold", "article"])
     body = tmp_path / "b.md"
     body.write_text("x", encoding="utf-8")
     capsys.readouterr()
@@ -62,7 +62,7 @@ def test_stale_revision_is_reported_exit_2(tmp_path, capsys):
 
 def test_validate_exit_1_on_error(tmp_path, capsys):
     path = str(tmp_path / "b")
-    main(["new", path, "--title", "T"])
+    main(["new", "-o", path, "--title", "T"])
     main(["add", path, "--title", "A"])
     main(["add", path, "--title", "A"])
     capsys.readouterr()
@@ -70,12 +70,17 @@ def test_validate_exit_1_on_error(tmp_path, capsys):
     assert "error" in capsys.readouterr().out
 
 
-def test_open_missing_bundle_exit_2(tmp_path, capsys):
-    assert main(["sections", str(tmp_path / "nope")]) == 2
-    assert "not a bundle" in capsys.readouterr().err
+def test_open_missing_folder_exit_3(tmp_path, capsys):
+    assert main(["sections", str(tmp_path / "nope")]) == 3
+    assert "not a folder" in capsys.readouterr().err
+
+
+def test_a_folder_without_a_document_exit_3(tmp_path, capsys):
+    assert main(["sections", str(tmp_path)]) == 3
+    assert "not a document folder" in capsys.readouterr().err
 
 
 def test_new_refuses_existing_non_empty(tmp_path):
     (tmp_path / "x").mkdir()
     (tmp_path / "x" / "f").write_text("a")
-    assert main(["new", str(tmp_path / "x"), "--title", "T"]) == 2
+    assert main(["new", "-o", str(tmp_path / "x"), "--title", "T"]) == 2

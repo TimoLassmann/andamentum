@@ -14,7 +14,7 @@ def run(argv: list[str]) -> int:
 
 def test_missing_role_model_exits_2_and_names_the_roles(tmp_path, capsys):
     code = run(
-        ["write", "Write to Jane Doe", "--out", str(tmp_path / "d"), "--drafter", "m"]
+        ["write", "Write to Jane Doe", "-o", str(tmp_path / "d"), "--drafter", "m"]
     )
     assert code == 2
     err = capsys.readouterr().err
@@ -24,25 +24,7 @@ def test_missing_role_model_exits_2_and_names_the_roles(tmp_path, capsys):
 
 
 def test_no_models_at_all_exits_2(tmp_path):
-    assert run(["write", "Write to Jane Doe", "--out", str(tmp_path / "d")]) == 2
-
-
-def test_word_write_needs_only_the_drafter_and_the_judge(tmp_path, capsys):
-    out = str(tmp_path / "paper.docx")
-    assert run(["write", "t", "--out", out, "--drafter", "m"]) == 2
-    err = capsys.readouterr().err
-    assert "judge" in err and "critic" not in err and "reader" not in err
-
-
-def test_flags_of_the_other_destination_are_refused(tmp_path, capsys):
-    bundle = ["write", "t", "--out", str(tmp_path / "d"), "--model", "m"]
-    assert run([*bundle, "--library", "refs.json"]) == 2
-    assert "--library" in capsys.readouterr().err
-    word = ["write", "t", "--out", str(tmp_path / "p.docx"), "--model", "m"]
-    assert run([*word, "--format", "md"]) == 2
-    assert "--format" in capsys.readouterr().err
-    assert run([*word, "--offline", "--library", "refs.json"]) == 2
-    assert "--offline" in capsys.readouterr().err
+    assert run(["write", "Write to Jane Doe", "-o", str(tmp_path / "d")]) == 2
 
 
 def test_missing_required_arguments_exit_2():
@@ -55,22 +37,24 @@ def test_missing_required_arguments_exit_2():
 
 
 def test_unknown_format_exits_2(tmp_path):
-    argv = ["write", "t", "--out", str(tmp_path), "--model", "m", "--format", "pdf"]
-    assert run(argv) == 2
+    argv = ["write", "t", "-o", str(tmp_path), "--model", "m", "--format", "pdf"]
+    with pytest.raises(SystemExit) as exc:
+        run(argv)  # not one of the formats argparse offers
+    assert exc.value.code == 2
 
 
 def test_resolve_roles_model_fills_the_gaps():
     parser = cli.build_parser()
-    args = parser.parse_args(["run", "bundle", "--model", "base", "--critic", "big"])
-    roles = cli.resolve_roles(args, parser)
+    args = parser.parse_args(["continue", "folder", "--model", "base", "--critic", "big"])
+    roles = cli.resolve_roles(args)
     assert roles == Roles(drafter="base", critic="big", judge="base", reader="base")
 
 
 def test_resolve_roles_falls_back_to_recorded_models():
     parser = cli.build_parser()
-    args = parser.parse_args(["check-bundle", "bundle", "--judge", "j"])
+    args = parser.parse_args(["check", "folder", "--judge", "j"])
     recorded = Roles.all("old")
-    roles = cli.resolve_roles(args, parser, fallback=recorded)
+    roles = cli.resolve_roles(args, fallback=recorded)
     assert roles.judge == "j" and roles.drafter == "old"
 
 
@@ -91,8 +75,8 @@ def test_status_of_a_fresh_bundle(tmp_path, capsys):
     assert "Apollo" in out and "Body" in out and "brief: missing" in out
 
 
-def test_a_crash_exits_3(tmp_path, capsys):
-    # Not a bundle: opening it raises, which the CLI reports with exit 3.
+def test_a_folder_that_is_not_a_document_exits_3(tmp_path, capsys):
+    # Not a document folder: an input that cannot be read, exit 3.
     assert run(["status", str(tmp_path)]) == 3
     assert "error" in capsys.readouterr().err
 
@@ -128,7 +112,7 @@ async def test_write_validates_arguments_before_creating_anything(tmp_path):
 
 
 def test_research_flags_need_research(tmp_path, capsys):
-    base = ["write", "t", "--out", str(tmp_path / "d"), "--model", "m"]
+    base = ["write", "t", "-o", str(tmp_path / "d"), "--model", "m"]
     for flag, value in (
         ("--research-mode", ["web"]),
         ("--browser", []),
@@ -139,13 +123,75 @@ def test_research_flags_need_research(tmp_path, capsys):
         assert flag in err and "need --research" in err
 
 
-def test_research_needs_the_network(tmp_path, capsys):
-    word = ["write", "t", "--out", str(tmp_path / "p.docx"), "--model", "m"]
-    assert run([*word, "--research", "--offline"]) == 2
-    assert "--offline" in capsys.readouterr().err
-
-
-def test_a_bundle_accepts_mailto_only_for_research(tmp_path, capsys):
-    base = ["write", "t", "--out", str(tmp_path / "d"), "--model", "m"]
+def test_mailto_is_a_research_flag_only(tmp_path, capsys):
+    base = ["write", "t", "-o", str(tmp_path / "d"), "--model", "m"]
     assert run([*base, "--mailto", "jane@example.org"]) == 2
     assert "--mailto" in capsys.readouterr().err
+
+
+def test_write_puts_files_only_into_the_out_folder(tmp_path, monkeypatch):
+    """A (stubbed) write creates files only inside the folder named by --out."""
+    from andamentum.compose import api
+    from andamentum.compose.schemas import ComposeResult
+
+    async def fake_graph(deps):
+        (deps.bundle_dir / "report.md").write_text("report", encoding="utf-8")
+        return ComposeResult.model_construct(
+            folder=deps.bundle_dir,
+            outputs=[],
+            goal_met=True,
+            stop_reason="goal_met",
+            rounds=[],
+            open_questions=[],
+            brief=None,
+            usage={},
+        )
+
+    monkeypatch.setattr(api, "run_graph", fake_graph)
+    work = tmp_path / "cwd"
+    work.mkdir()
+    monkeypatch.chdir(work)
+    out = tmp_path / "elsewhere" / "doc"
+    before = {p for p in tmp_path.rglob("*")}
+    assert run(["write", "A memo", "-o", str(out), "--model", "m"]) == 0
+    created = {p for p in tmp_path.rglob("*")} - before
+    assert created and all(out == p or out in p.parents or p == out.parent for p in created)
+    assert list(work.iterdir()) == []
+
+
+def test_exit_one_when_the_goal_is_not_met(tmp_path, monkeypatch):
+    from andamentum.compose import api
+    from andamentum.compose.schemas import ComposeResult
+
+    async def fake_graph(deps):
+        return ComposeResult.model_construct(
+            folder=deps.bundle_dir,
+            outputs=[],
+            goal_met=False,
+            stop_reason="cap_reached",
+            rounds=[],
+            open_questions=[],
+            brief=None,
+            usage={},
+        )
+
+    monkeypatch.setattr(api, "run_graph", fake_graph)
+    assert run(["write", "A memo", "-o", str(tmp_path / "d"), "--model", "m"]) == 1
+
+
+def test_a_missing_source_exits_3(tmp_path, capsys):
+    argv = ["write", "t", "-o", str(tmp_path / "d"), "--model", "m"]
+    assert run([*argv, "--source", str(tmp_path / "nope.md")]) == 3
+    assert "does not exist" in capsys.readouterr().err
+    assert not (tmp_path / "d").exists()
+
+
+def test_a_crash_exits_4(tmp_path, monkeypatch, capsys):
+    from andamentum.compose import api
+
+    async def boom(deps):
+        raise RuntimeError("model unreachable")
+
+    monkeypatch.setattr(api, "run_graph", boom)
+    assert run(["write", "t", "-o", str(tmp_path / "d"), "--model", "m"]) == 4
+    assert "error: RuntimeError: model unreachable" in capsys.readouterr().err

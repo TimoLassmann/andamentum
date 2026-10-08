@@ -1,7 +1,7 @@
-"""Public entry points: ``write_document`` and ``compose_bundle``.
+"""Public entry points: ``write_document`` and ``continue_document``.
 
 A run is a function of its inputs: a task (and sources) in, a finished document
-in a bundle folder out. Nothing is sent anywhere.
+in a document folder out. Nothing is sent anywhere.
 """
 
 from __future__ import annotations
@@ -13,6 +13,7 @@ from andamentum.compose.bundle import Bundle
 
 from . import store
 from .assess import Assessment, assess
+from .errors import ComposeUsageError
 from .genres import genre_for
 from .graph import (
     DEFAULT_MAX_ROUNDS,
@@ -38,7 +39,7 @@ def _check_formats(formats: Sequence[str] | None) -> tuple[str, ...] | None:
         return None
     for fmt in formats:
         if fmt not in VALID_FORMATS:
-            raise ValueError(
+            raise ComposeUsageError(
                 f"unknown output format {fmt!r}; valid: {', '.join(VALID_FORMATS)}"
             )
     return tuple(formats)
@@ -46,7 +47,7 @@ def _check_formats(formats: Sequence[str] | None) -> tuple[str, ...] | None:
 
 def _check_rounds(max_rounds: int) -> None:
     if max_rounds < 1:
-        raise ValueError(f"max_rounds must be at least 1, got {max_rounds}")
+        raise ComposeUsageError(f"max_rounds must be at least 1, got {max_rounds}")
 
 
 def _source_ref(source: str) -> str:
@@ -109,9 +110,9 @@ async def write_document(
 ) -> ComposeResult:
     """Write a finished document from a task. No approval step.
 
-    The brief is compiled, frozen and saved in the bundle so it can be
+    The brief is compiled, frozen and saved in the folder so it can be
     inspected afterwards. *out* must not exist or must be empty; use
-    ``compose_bundle`` to continue an existing bundle. *genre* is a pack name or
+    ``continue_document`` to continue an existing folder. *genre* is a pack name or
     a YAML path; ``None`` lets the brief compiler choose.
 
     *research* turns on research: ``deep_research`` runs once, in the mode
@@ -120,7 +121,7 @@ async def write_document(
     runs no research. See ``compose.research``.
     """
     if not task.strip():
-        raise ValueError("task is empty")
+        raise ComposeUsageError("task is empty")
     _check_rounds(max_rounds)
     wanted = _check_formats(formats)
     if genre is not None:
@@ -150,8 +151,8 @@ async def write_document(
     )
 
 
-async def compose_bundle(
-    bundle: str | Path,
+async def continue_document(
+    folder: str | Path,
     *,
     roles: Roles,
     max_rounds: int = DEFAULT_MAX_ROUNDS,
@@ -161,14 +162,14 @@ async def compose_bundle(
     progress: Callable[[str], None] | None = None,
     research: ResearchSetup | None = None,
 ) -> ComposeResult:
-    """Continue an existing bundle: finished steps are skipped, checks resume.
+    """Continue an existing document folder: finished steps are skipped, checks resume.
 
     *max_rounds* counts the check rounds of this run, not of earlier runs.
-    *research* is needed only when the bundle was started with research and it
+    *research* is needed only when the folder was started with research and it
     did not finish; a finished research result is reused as it is.
     """
     _check_rounds(max_rounds)
-    opened = Bundle.open(bundle)
+    opened = Bundle.open(folder)
     opened.set_metadata(models=roles.model_dump())
     return await run_graph(
         _deps(
@@ -184,20 +185,20 @@ async def compose_bundle(
     )
 
 
-def recorded_roles(bundle: str | Path) -> Roles | None:
-    """The models the bundle's last run used, if it recorded them."""
-    models = Bundle.open(bundle).metadata.get("models")
+def recorded_roles(folder: str | Path) -> Roles | None:
+    """The models the folder's last run used, if it recorded them."""
+    models = Bundle.open(folder).metadata.get("models")
     return Roles.model_validate(models) if models else None
 
 
-async def check_bundle(
-    bundle: str | Path,
+async def check_folder(
+    folder: str | Path,
     *,
     roles: Roles,
     progress: Callable[[str], None] | None = None,
 ) -> Assessment:
-    """One check pass over a bundle, no revision (``andamentum-compose check``)."""
-    opened = Bundle.open(bundle)
+    """One check pass over a document folder, no revision (``andamentum-compose check``)."""
+    opened = Bundle.open(folder)
     brief = store.load_brief(opened.path)
     genre = genre_for(str(opened.metadata.get("genre") or brief.genre))
     log = ActionLog(opened.path)
@@ -223,15 +224,15 @@ async def check_bundle(
     )
 
 
-def render_bundle(
-    bundle: str | Path,
+def render_folder(
+    folder: str | Path,
     *,
     model: str,
     formats: Sequence[str] | None = None,
     provenance: bool = True,
 ) -> list[Path]:
-    """Render a bundle's current text to ``out/`` again (no model calls)."""
-    opened = Bundle.open(bundle)
+    """Render a document folder's current text to ``out/`` again (no model calls)."""
+    opened = Bundle.open(folder)
     brief = store.load_brief(opened.path)
     genre = genre_for(str(opened.metadata.get("genre") or brief.genre))
     require_provenance(genre, provenance=provenance)
@@ -251,9 +252,9 @@ def render_bundle(
     )
 
 
-def bundle_status(bundle: str | Path) -> str:
-    """A short human summary of where a bundle stands."""
-    opened = Bundle.open(bundle)
+def folder_status(folder: str | Path) -> str:
+    """A short human summary of where a document folder stands."""
+    opened = Bundle.open(folder)
     lines = [f"{opened.title}  ({opened.path})"]
     for name, label in (
         (store.SOURCES, "sources"),

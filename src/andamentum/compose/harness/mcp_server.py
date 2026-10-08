@@ -1,4 +1,4 @@
-"""The MCP server: ``andamentum-compose mcp`` lets Claude Code or Claude for Word drive the harness.
+"""The MCP server: ``andamentum-word mcp`` lets Claude Code or Claude for Word drive the harness.
 
 A stdio server over the ``mcp`` SDK. Every tool writes to a COPY of the
 document and never to the file it was given.
@@ -10,7 +10,7 @@ Tools:
 - ``apply_edits`` applies a ``Transaction`` through the safe writer, to ``out``;
   it refuses citation operations (those go through ``insert_citation``, which
   verifies the work first).
-- ``check``, ``write``, ``refresh``, ``respond``, ``find_citation`` and
+- ``check``, ``draft``, ``refresh``, ``respond``, ``find_citation`` and
   ``insert_citation`` are the verbs of the same names (``find-citation`` and
   ``insert-citation`` for the last two). Their input schema is the verb's
   params model, and the verb is looked up in the registry at call time, so a
@@ -19,7 +19,7 @@ Tools:
 
 A verb tool runs the verb's handler as the CLI would, with its output captured.
 Exit code 2 (usage) is a tool error and so is a crash (the traceback is in the
-error text); the other codes (1 errors found, 4 open issues) are results the
+error text); the other codes (1 errors found or items left for the authors) are results the
 caller reads. The input ``.docx`` files a
 call names are hashed before and after, and a call that changed one fails
 loudly; an ``out`` that is also an input is refused up front.
@@ -61,14 +61,14 @@ from .kernel import (
 from .kernel.verbs import load_builtin_verbs
 from .project import project_dir, write_copy
 
-SERVER_NAME = "andamentum-compose"
+SERVER_NAME = "andamentum-word"
 REPORT_URI = "compose://report/last"
 EXIT_USAGE = 2
 
 # tool name -> verb name; the verbs that exist as tools of their own
 VERB_TOOLS: dict[str, str] = {
     "check": "check",
-    "write": "write",
+    "draft": "draft",
     "refresh": "refresh",
     "respond": "respond",
     "find_citation": "find-citation",
@@ -103,7 +103,7 @@ class ApplyEditsParams(_Params):
         description="the operations (tracked edits, comments, replies, binds)"
     )
     project: Path | None = Field(
-        default=None, description="project folder (default: <stem>.harness/)"
+        default=None, description="folder that keeps the ledger and logs (default: state/ beside the output)"
     )
 
 
@@ -214,7 +214,7 @@ def apply_edits(params: ApplyEditsParams) -> dict[str, object]:
         )
     adapter = DocxAdapter()
     view = _open(params.path)
-    store = ProjectStore(project_dir(params.path, view, params.project))
+    store = ProjectStore(project_dir(params.out, params.project))
     project_id = store.init(params.path, project_id=view.project_id).id
     result = write_copy(
         adapter, view, params.transaction, out=params.out, project_id=project_id
@@ -493,7 +493,7 @@ def _handle(params: McpParams) -> int:
 MCP_VERB = Verb(
     name="mcp",
     summary="serve the harness to Claude Code or Claude for Word over MCP (stdio); "
-    "example: claude mcp add compose -- andamentum-compose mcp",
+    "example: claude mcp add word -- andamentum-word mcp",
     params=McpParams,
     handler=_handle,
 )

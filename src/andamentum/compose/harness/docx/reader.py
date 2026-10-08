@@ -38,6 +38,7 @@ from andamentum.whetstone import (
 )
 
 from ..kernel.view import Anchor, Comment, DocumentView, FieldToken, Paragraph
+from ..errors import WordInputError
 from .anchors import read_project_id, sdt_anchor
 from .fields import classify_field
 from .ooxml import (
@@ -96,7 +97,7 @@ class _Located:
     end: int
 
 
-class DocxReadError(ValueError):
+class DocxReadError(WordInputError, ValueError):
     """The file is not a readable ``.docx``."""
 
 

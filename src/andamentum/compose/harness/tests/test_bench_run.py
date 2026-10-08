@@ -19,6 +19,8 @@ import json
 from pathlib import Path
 
 import pytest
+
+from ._helpers import copy_of
 from pydantic_ai.usage import RunUsage
 
 from andamentum.compose.harness.bench import run as bench
@@ -109,7 +111,7 @@ async def test_leaving_a_check_out_drops_its_kinds_to_zero(
         copy = tmp_path / docx.name
         shutil.copy(docx, copy)
         run = await run_check(
-            CheckParams(file=copy, checks=["crossrefs"]),
+            CheckParams(out=copy_of(copy, "checked"), file=copy, checks=["crossrefs"]),
             transport=fixture_transport(),
             url_check=scheme_only_url_check,
         )

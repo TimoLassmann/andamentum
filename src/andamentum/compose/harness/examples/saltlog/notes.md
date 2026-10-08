@@ -1,6 +1,6 @@
 # SaltLog pilot: working notes
 
-SaltLog is an invented study, used only to demonstrate andamentum-compose.
+SaltLog is an invented study, used only to demonstrate andamentum-word.
 
 ## Question
 

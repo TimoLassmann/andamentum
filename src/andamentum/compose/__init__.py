@@ -2,8 +2,12 @@
 
 ``await write_document("<task>", out=..., roles=Roles.all(model))`` compiles a
 brief, extracts evidence from the sources, plans, drafts section by section and
-revises against independent checks until the goal holds twice running. Every
-artefact lives in a plain folder bundle (``andamentum.compose.bundle.Bundle``, model-free).
+revises against independent checks until the goal holds twice running. The
+result is a plain document folder: markdown sections, the evidence, a report
+and the rendered files in ``out/``. ``continue_document`` picks a folder up
+again. (The folder is a ``andamentum.compose.bundle.Bundle``, model-free.)
+
+Working on an existing Word file is the separate ``andamentum.word`` tool.
 
 compose never sends anything. Public names resolve lazily so that importing the
 package stays cheap (whetstone and pydantic-graph load on first use).
@@ -15,37 +19,34 @@ import importlib
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from .api import compose_bundle, write_document
-    from .brief import compile_brief
-    from .bundle import Bundle, Section
-    from .genres import GENRES, Genre, genre_for
+    from .api import continue_document, write_document
+    from .errors import ComposeError, ComposeInputError, ComposeUsageError
     from .research import ResearchSetup
-    from .schemas import Brief, ComposeResult, Roles, StopReason
+    from .schemas import ComposeResult, Roles
 
 __all__ = [
     "write_document",
-    "compose_bundle",
-    "compile_brief",
+    "continue_document",
     "ComposeResult",
-    "Brief",
     "Roles",
     "ResearchSetup",
-    "Genre",
-    "GENRES",
-    "genre_for",
-    "StopReason",
-    "Bundle",
-    "Section",
+    "ComposeError",
+    "ComposeUsageError",
+    "ComposeInputError",
 ]
 
+# Not in __all__ but still importable from here: internals other modules use.
 _HOME = {
     "write_document": "api",
-    "compose_bundle": "api",
+    "continue_document": "api",
     "compile_brief": "brief",
     "ComposeResult": "schemas",
     "Brief": "schemas",
     "Roles": "schemas",
     "ResearchSetup": "research",
+    "ComposeError": "errors",
+    "ComposeUsageError": "errors",
+    "ComposeInputError": "errors",
     "StopReason": "schemas",
     "Genre": "genres",
     "GENRES": "genres",

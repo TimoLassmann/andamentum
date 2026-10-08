@@ -1,8 +1,10 @@
-# andamentum-compose: writing into Word
+# andamentum-compose: a task in, a finished document out
 
-`andamentum-compose` drafts, checks and maintains a document as a Word file. It writes new text, citations and numbers as tracked changes and comments in a copy of your `.docx`; the file you give it is never modified. It checks citations (they exist, match their record, are not retracted), cross-references, statistics and the numbers in the text against your result files; it keeps those numbers in sync when the results change; and it works through collaborators' and reviewers' comments, replying in the thread and changing the text where a change is asked for. Claude Code and Claude for Word can drive the same operations over MCP. Nothing is ever sent anywhere by the tool itself.
+`andamentum-compose` writes a document from a task. You give it what to write (and optionally files or URLs to draw on); it compiles a brief, extracts evidence from the sources, plans an outline, drafts section by section and revises against independent checks until the goal holds twice running. There is no approval step and nothing is sent anywhere: an email is written as a text file.
 
-All examples below use the synthetic SaltLog project that ships with the package (an invented pilot study; every name and DOI is made up).
+The result is a plain **document folder** in the folder you name with `-o/--out`: markdown sections you can read and edit, the evidence, a report, and the rendered files (`.docx`, `.md`, `.html`, `.txt`) in `out/`. The tool writes only into that folder.
+
+Working on an existing Word file (checking it, answering reviewers' comments, refreshing numbers, inserting citations) is the separate tool `andamentum-word`; see `docs/word.md`.
 
 ## Install
 
@@ -11,162 +13,100 @@ uv tool install andamentum          # or: uv add andamentum
 andamentum-compose --help
 ```
 
-The commands that call a model take `--model` (any pydantic-ai model id, for example `anthropic:claude-haiku-4-5` or an Ollama model); there is no hidden default. `check` needs no model for its default checks.
+Every command that calls a model takes `--model` (any pydantic-ai model id, for example `anthropic:claude-haiku-4-5` or an Ollama model); there is no hidden default. Four jobs are done by a model: the `drafter` writes, the `critic` reviews, the `judge` checks that claims rest on the evidence, and the `reader` answers questions about the finished text. `--model M` serves all four; `--drafter`, `--critic`, `--judge` and `--reader` override it for one job. Using one model for all four works but weakens the independence of the checks.
 
-## The example project
+## Write a document
 
 ```bash
-uv run python -m andamentum.compose.harness.examples saltlog-demo
-cd saltlog-demo
-ls
-# collaborator.docx  notes.md  refs.json  results/  reviews.txt
+andamentum-compose write "A one-page memo on the SaltLog pilot for the steering group" \
+  --out memo --genre memo --source notes.md \
+  --model anthropic:claude-haiku-4-5
 ```
 
-| file | what it is |
+`--genre` picks the kind of document: `email`, `memo`, `report`, `article`, `howto`, `proposal` or `grant` (list them with `andamentum-compose genres`, or pass your own `.yaml` file). Without it, the brief compiler chooses. `--source` is repeatable and takes a file (PDF, Word, HTML, markdown, text) or a URL. A source that looks confidential is refused unless you pass `--confirm-own-sources`. The folder named by `--out` must not exist or must be empty.
+
+What you get in `memo/`:
+
+| path | what it is |
 |---|---|
-| `notes.md` | the author's working notes: design, results, open points |
-| `results/summary.csv`, `results/intake.csv` | the numbers the paper reports |
-| `refs.json` | three invented works as CSL JSON (a reference library) |
-| `collaborator.docx` | a draft with Zotero citations, a threaded comment, a resolved comment, two open questions, and a hand-edited number (48 participants changed to 52) |
-| `reviews.txt` | two invented reviewers' numbered points |
+| `out/` | the finished document, in the genre's formats (`--format docx --format md ...` to choose) |
+| `report.md` | what happened: rounds, the checks, open questions (`[TO FILL: ...]` markers and unmet checks) |
+| `sections/*.md` | the sections, one markdown file each, with revision and status in the front matter |
+| `brief.json`, `outline.json`, `rounds.json` | the frozen brief, the outline and the check rounds |
+| `evidence/` | the sources as read, and the facts extracted from them (each with its verbatim quote) |
+| `log.jsonl` | every model call: role, model, tokens |
+| `bundle.yaml` | the folder's manifest |
 
-## The six everyday commands
+The drafter marks each use of a fact as `[[f12]]`; the finished document turns these into numbered citations and a Sources list. Every fact carries a quote that the code found in the source; a fact whose quote is not in the source is dropped. Provenance (which model wrote which sections, which checks ran) is stamped into the output; `--no-provenance` leaves it out, but is refused for genres that require it (`grant`).
 
-Every command writes a copy; none edits the input. Exit codes: 0 done and clean, 1 or 4 findings or open issues remain (see each command), 2 usage error, 3 crash. `andamentum-compose --help` lists every command with an example, and each command's `--help` shows its flags.
+Exit 0 when the goal was met, 1 when the run finished but the goal was not (the stop reason and the open questions are in `report.md`; the files are written), 2 usage error, 3 an input could not be read, 4 the run failed.
 
-### check
+### The goal and when a run stops
 
-Run the checks on a Word file and get a commented copy plus a report.
+A round meets the goal when no error-level check failed, the reader got every question right and the critic reported no major finding. It is accepted only when the next check pass over the same text meets it too. The run stops at `goal_met`, at `no_progress` (a revision changed nothing), at `cap_reached` (`--max-rounds`, default 4) or at `unresolvable` (no section got any text).
 
-```bash
-andamentum-compose check collaborator.docx --results results
-# commented copy: collaborator.checked.docx
-# report: collaborator.checked.md and collaborator.checked.json
-```
+### Research
 
-The default checks are deterministic and need no model: cross-references, statistics (recomputes p from the stated test statistic), abstract numbers against the body, citations (existence, metadata, retraction notices, URL health) and structure limits from the project `checks.yaml`. `--results DIR --model M` adds the numbers check; `--decision-model M` adds the uncited-claim check (advisory). `--offline` drops everything that needs the network. On the example, the report flags that `52` appears in the abstract and nowhere else: the hand edit.
+`--research` runs a literature or web search for the task and lets the document cite what it finds. The genre picks where it looks: scholarly databases for `article`, `grant` and `report`; the web for `memo`, `email` and `howto`; both for `proposal`. `--research-mode web|scholarly|both` overrides that. Web search needs `--searxng-url ADDRESS` or `--browser` (an isolated Chrome in a podman container that the run starts and removes). Every finding is a claim with a quote copied word for word from a real passage and checked by code; the findings become sources. The search sends your task text (never text from your sources) to the sources and keeps what it learns in `research.db` in the document folder. Contact addresses and keys come from the environment (`OPENALEX_EMAIL`, `OPENALEX_API_KEY`, `SEMANTIC_SCHOLAR_API_KEY`, read from `.env`); `--mailto` sets the address.
 
-Exit 0 no errors, 1 errors found.
-
-### write
-
-Draft a document, or sections of one, into Word.
+## Continue, check, render
 
 ```bash
-andamentum-compose write "Results and discussion for the SaltLog pilot" \
-  --out paper.docx --genre article \
-  --source notes.md --results results --library refs.json \
-  --model anthropic:claude-haiku-4-5
+andamentum-compose continue memo --model anthropic:claude-haiku-4-5   # pick up where a run stopped
+andamentum-compose status memo                                          # where does it stand?
+andamentum-compose check memo --model anthropic:claude-haiku-4-5        # the checks once, no revision
+andamentum-compose render memo --format docx                            # render the sections again into memo/out/
 ```
 
-Without `--into` it creates a new `.docx` (from `--template journal.dotx` when given). With `--into draft.docx` it drafts the sections named in the task, or the missing ones, as tracked changes and leaves existing text untouched. Facts that came from a literature work become citations (a Zotero field when the document or `--zotero` says so, otherwise formatted text plus a References section); numbers from `--results` are bound to their result file so `refresh` can keep them current. Every work that enters the document must resolve to a real, non-retracted DOI; one that does not is never cited and becomes a question to you. After drafting it runs `check`, revises the sections with errors (at most `--max-rounds`, default 2) and anchors the rest as comments. A closing paragraph under "Statement on the use of AI" says which sections were drafted by which model and which checks ran.
+`continue` skips finished steps and resumes the checks; it takes the models recorded in the folder unless you name others. `--max-rounds` counts the rounds of this run. `check` prints each check as pass or FAIL and exits 1 when the goal is not met. `render` needs no model call; it names the model in the provenance from the folder (or `--model`). `render --plain --format docx -o notes.docx` renders the bare text, with no citations, Sources list or provenance, to one file.
 
-The works in the example `refs.json` have invented DOIs, so a live `write` finds them unverifiable and cites nothing; it lists each as a question. A library with real DOIs is cited. `--zotero` reads your library from the local Zotero API (`http://127.0.0.1:23119/api/`, read only); the tool never writes to Zotero. `--offline` makes no network call, so nothing can be verified and nothing is cited. `--confirm-own-sources` is needed when the text of `--into` or a source looks confidential. Only one model is needed for Word: `--model M` (or `--drafter` and `--judge`). A `--out` that does not end in `.docx` and has no `--into` writes a compose bundle folder instead (see `andamentum-compose write --help`). Exit 0 when nothing is left for you, 4 when the file is written but a check error, a refused operation, or a question remains (an unverified work, a `[TO FILL]` placeholder, an interpretation claim), 2 usage error. `--out` must not exist: the tool never overwrites a file.
+## Read and edit a folder without a model
 
-#### Research
-
-`--research` runs a literature or web search for the task (`deep_research`) and lets the draft cite what it finds. The genre picks where it looks: scholarly databases (OpenAlex, Europe PMC, arXiv) for `article`, `grant` and `report`; the web (your SearxNG, `--searxng-url`, or `--browser`, an isolated Chrome in a podman container that the research starts and removes) for `memo`, `email` and `howto`; both for `proposal`. `--research-mode web|scholarly|both` overrides the genre. The language model plans the search, chooses the pages to read and notes findings; only findings whose quote the engine found in the page are used, and the report says how many were left out.
-
-What the draft gets is not a summary. Every finding is a claim with a quote copied word for word from a passage of a real work, checked by code against the text that was fetched; the quote is looked up again in the source file the draft reads, so a `[[f12]]` marker leads to words on a page. Each work that has a finding becomes a source, and its citation is the label in the Sources list. In Word a work is cited only when it has a DOI that resolves in Crossref, matches its record and is not retracted (the same check as a `--library` work); a work with no DOI (a web page) is listed in the report notes and not cited. With `--research` the new works come from the search and not from a Crossref text search; `--library` and `--zotero` are still searched first. `--research` cannot be combined with `--offline`.
-
-The search sends your task text (what you typed, never text from your sources) to the sources, and keeps everything it learns in `research.db` in the project folder (`<name>.harness/research.db`, or `research.db` inside a bundle folder) with a `blobs/` folder beside it: repeat runs reuse pages and answers. Contact addresses and keys come from the environment (`OPENALEX_EMAIL`, `OPENALEX_API_KEY`, `SEMANTIC_SCHOLAR_API_KEY`, read from `.env`), `--mailto` sets the address. A keyless OpenAlex account has 1000 free credits a day and one scholarly run can use around half of them; a free key lifts the limit.
-
-### refresh
-
-Bring the numbers in a document up to date after the results change.
+These commands call no model; an agent or a person can use them to work on the sections directly.
 
 ```bash
-andamentum-compose refresh paper.docx --results results
+andamentum-compose new --out paper --title "SaltLog pilot" --scaffold article   # an empty folder with the article sections
+andamentum-compose sections paper                    # id, revision, status, words, title
+andamentum-compose show paper s01                    # one section in full
+andamentum-compose edit paper s01 --from body.md --revision 1   # replace a body (or --from - for stdin)
+andamentum-compose add paper --title "Limitations" --after s03
+andamentum-compose validate paper                    # structural checks; exit 1 on an error
 ```
 
-Every bound number is recomputed from the result files. A changed value becomes a tracked change in the original precision and units, and the claim that cites it gets a comment ("value changed 48 -> 52; check the claim still holds"). A change that flips a significance statement (p crossing .05, a confidence interval crossing 0 or 1) is flagged as an error. Numbers that are not bound are left alone. The report lists every change. Writes `paper.refreshed.docx` and a report. Exit 0 no errors, 1 when a change flips a significance statement or a bound number cannot be found any more.
+`edit` names the revision you read and is refused if the section has moved on, so two editors cannot overwrite each other.
 
-### bind-numbers
-
-Bind the numbers in an existing document to your result files, so `refresh` can maintain them.
+## Compare with a single model call
 
 ```bash
-andamentum-compose bind-numbers collaborator.docx --results results \
-  --model anthropic:claude-haiku-4-5
+andamentum-compose eval --genre memo --out eval-out --model anthropic:claude-haiku-4-5
 ```
 
-A model proposes which sentence number comes from which result file and key; code then checks that the value matches at the written precision before anything is bound. Every other number of the paragraphs it looks at is listed as not bound, with the reason; none is guessed. Writes `collaborator.bound.docx` (the numbers sit in hidden content controls) and a report.
+Runs the synthetic tasks that ship with the package, once through compose and once as one model call, checks both with the same checks and has a judge compare them. Writes `eval.json` and `eval.md` into the folder. It calls a model many times; use a cheap one.
 
-### respond
+## Python
 
-Work through the comments in a document, and through a reviews file.
+```python
+import asyncio
+from andamentum.compose import Roles, write_document
 
-```bash
-andamentum-compose respond collaborator.docx --reviews reviews.txt \
-  --model anthropic:claude-haiku-4-5
+result = asyncio.run(
+    write_document("A one-page memo on the SaltLog pilot", out="memo", roles=Roles.all("anthropic:claude-haiku-4-5"))
+)
+print(result.goal_met, result.outputs)
 ```
 
-Each unresolved comment thread (the tool's own comments excluded) and each numbered reviewer point is sorted into one of four kinds: `edit` (a concrete change is requested: the text is revised as a tracked change, checked, and the thread gets a reply saying what changed and why), `answer` (a reply with the answer and where in the document or evidence it comes from), `author` (a reply "Needs the authors: ..." and an entry in the report: judgement or new work is required) and `done` (already addressed). It never resolves or closes a human comment. `--model` is always needed when there is something to answer. `--decision-model M` uses a small local Ollama decision model to choose the kind instead of the language model. When it chooses `author` or `done` the language-model triage call is saved (the reply is templated; a `done` points at the best matching sentence of the document, or becomes `author` when none matches); `edit` and `answer` still use the language model for the quote and the text. A reviews file (`.txt`, `.docx` or `.pdf`) also produces `response-letter.docx` and `response-letter.md` beside the output (the command refuses to run when either already exists, because you may have edited it; move or rename it first): one entry per point, with the point quoted, the response and where the tracked change is. It also re-checks paragraphs a collaborator changed since the last snapshot. Writes `collaborator.responded.docx` and a report. Exit 0 everything handled, 4 written but items for the authors remain.
-
-### find-citation and insert-citation
-
-Find a work for a claim and cite it, with the work verified first.
-
-```bash
-andamentum-compose find-citation "smartphone food diaries reporting accuracy" --library refs.json
-andamentum-compose insert-citation collaborator.docx --paragraph-id p9-10000009 --at 105 --key lindqvist2022 --library refs.json
-```
-
-`find-citation` prints JSON: the verified works, which may be cited, and the others with the reason they may not. `insert-citation` verifies each work (it exists in Crossref, its details agree, it is not retracted), then writes the citation and its reference-list entry as tracked changes in `collaborator.cited.docx`. If any work does not verify, or the writer refuses the place, nothing is written (exit 4); an `--at` outside the paragraph is a usage error (exit 2). A reviewer point that asks for a new citation is left to the authors by `respond`: cite with `insert-citation`, which verifies first. The citation goes in verbatim at character offset `--at` of the paragraph text, so you choose the spacing; paragraph ids come from `open_document` over MCP.
-
-### mcp
-
-Let Claude Code or Claude for Word drive the same operations.
-
-```bash
-andamentum-compose mcp
-```
-
-This serves nine tools over stdio: `open_document`, `show_section`, `apply_edits` (the safe writer; it does not write citations), `check`, `write`, `refresh`, `respond`, `find_citation` and `insert_citation`; the last report is a resource. Every tool writes to a copy, and a call that would change its input file fails.
-
-## Connect Claude Code
-
-```bash
-claude mcp add compose -- andamentum-compose mcp
-```
-
-Then, in a Claude Code session, ask in plain words: "Open collaborator.docx, check it against the results folder, and fix what you can as tracked changes." Claude calls the tools above; you review the result in Word.
-
-## Output files
-
-| file | made by | what it is |
-|---|---|---|
-| `<name>.checked.docx` | check | copy of your file with one comment per finding, signed "andamentum check" |
-| `<name>.checked.md`, `<name>.checked.json` | check | the report: counts, checks run, skipped checks and why, network calls, tokens, time |
-| `paper.docx` (the `--out` file) | write | the new document: every paragraph a tracked insertion, comments signed "andamentum compose", a "Statement on the use of AI" |
-| `<name>.bound.docx` | bind-numbers | copy with the numbers bound, signed "andamentum bind-numbers" |
-| `<name>.refreshed.docx` | refresh | copy with changed numbers as tracked changes and comments signed "andamentum refresh" |
-| `<name>.responded.docx` | respond | copy with tracked edits and replies signed "andamentum respond" |
-| `<name>.cited.docx` | insert-citation | copy with the citation and bibliography entry as tracked changes |
-| `<name>.bound.md`, `<name>.refreshed.md`, `<name>.responded.md` (and `.json`) | bind-numbers, refresh, respond | the report of that run |
-| `response-letter.docx`, `response-letter.md` | respond (with `--reviews`) | one entry per reviewer point |
-| `<name>.harness/` | all | the project folder next to the document: `project.yaml` (id), `events.jsonl` (what ran, with which model), `claims.yaml` (the claims ledger: text, kind, evidence, strength, status; interpretation claims wait for you), `cache/` (checks and HTTP answers), `view/` (a private git history of the document text, used to spot collaborators' edits) |
-
-The project folder uses its own git history; it never reads or writes your global git configuration.
+`write_document(task, *, out, roles, ...)` and `continue_document(folder, *, roles, ...)` are async and return a `ComposeResult` (`folder`, `outputs`, `goal_met`, `stop_reason`, `rounds`, `open_questions`, `usage`). The errors derive from `ComposeError`; a bad argument raises `ComposeUsageError`.
 
 ## What leaves the machine
 
-- **Model calls**, only for the commands and flags that take a model: the text of the paragraphs or comments being worked on goes to the model you name. Use a local (Ollama) model to keep it on the machine. `check` with no `--model` makes no model call.
-- **Crossref** (through `andamentum.references`): the titles, authors and DOIs of cited works, and DOIs for retraction notices. Your own text is not sent. A contact address goes only with `--mailto`. `--offline` turns this off. `write` also sends the key messages of the brief as search queries.
-- **Research** (`write --research` only): your task text goes to the search engine you name (SearxNG, which forwards it to public search engines, or the Chrome you name, which searches DuckDuckGo and Bing) and to OpenAlex, Europe PMC and arXiv; the works found are fetched. Nothing from your sources or your draft is sent. Run it on a task you are willing to publish.
-- **URL probes**: the links already in your document, requested to see if they still work (private and internal addresses are refused). `--offline` turns this off.
-- **Zotero**: the local API on your own machine; nothing is sent out, and nothing is ever written to Zotero.
-- **MCP**: stdio only; the server listens on no network port.
-
-Answers from Crossref and the URL probes are cached in the project folder, and research keeps its own store there (`research.db`), so repeat runs make fewer requests.
+- **Model calls**: the text of your task, the sources and the sections goes to the models you name. Use a local (Ollama) model to keep it on the machine.
+- **URL sources** you pass are fetched; private and internal addresses are refused.
+- **Research** (`--research` only): your task text goes to the search engine you name and to OpenAlex, Europe PMC and arXiv. Run it on a task you are willing to publish.
+- Nothing is ever sent by the tool: no mail, no upload.
 
 ## Limits
 
-- Word desktop and Word on the web have not been tested with the hidden content controls that bind numbers and claims; if Word drops one, that number is no longer bound and `refresh` will not update it. The file is checked by re-reading it after every write, with Word-independent tools (python-docx, LibreOffice).
-- Zotero fields are written for Zotero; EndNote fields are read (for checking) but not written.
-- `statistics` recomputes p for t, F, chi-square, r and z tests only; not regression coefficients, tables or corrections.
-- `numbers` and `bind-numbers` find a value only if it is stored in a `.csv`, `.tsv` or `.json` result file at the written precision; derived values (a difference the text computes) are not found. At most 80 paragraphs per run.
-- A citation check says the cited work exists and matches its record. It does not say the work supports the sentence; that stays your judgement.
-- `needs_citation` is advisory: it flags a sentence when the decision model's probability of "yes" is at least 0.5, and nobody has measured how often that is right.
-- Research has not been run against live sources and models in this build; its tests use an invented world. Findings are only as good as the passages the engine read: an abstract is a short passage, and a work whose full text is behind a paywall is read from its abstract.
-- Interpretation claims are never approved by the tool: they stay marked "needs author".
+- The checks are only as independent as the models behind them; use different models for `--drafter` and `--critic` when it matters.
+- A citation in the finished document says the fact has a verbatim quote in the source. It does not say the source is right.
+- Judge and critic calls do not report their tokens, so the usage figures in the report are a lower bound for those roles.
+- The `grant` genre is generic: funder specifics enter only through the call text you pass as a source.

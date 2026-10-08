@@ -1,48 +1,53 @@
 """``andamentum-compose``: a task in, a finished document out. Never sends anything.
 
-Exit codes for ``write`` and ``run``: 0 goal met (``write`` into Word: no check
-error left), 4 goal not met or open issues (outputs are still written), 3 crash.
-A missing role model or a bad argument exits 2.
+``write TASK -o DIR`` drafts the document into the folder DIR: markdown
+sections, the evidence, a report and the rendered files in ``DIR/out/``.
+``continue DIR`` picks a folder up again, ``check DIR`` runs its checks once,
+``status DIR`` says where it stands, ``render DIR`` renders it again and
+``genres`` lists the kinds of document. ``new``, ``sections``, ``show``,
+``edit``, ``add`` and ``validate`` read and edit a document folder and call no
+model. ``eval`` compares compose with a single model call on synthetic tasks.
+Working on an existing Word file is the separate tool ``andamentum-word``.
 
-``write`` is a harness verb (``harness/draft/verb.py``): ``--out FILE.docx`` or
-``--into`` drafts into Word as tracked changes; any other ``--out`` is a bundle
-folder (the compose pipeline).
-
-``check FILE.docx`` is the harness verb (see ``harness/check.py``: commented copy
-and report, exit 0/1/2/3); ``check-bundle DIR`` is the bundle's own one-pass check.
-
-The bundle verbs (``new``, ``sections``, ``show``, ``edit``, ``add``,
-``validate``, ``render --raw``) call no model. A bundle error prints
-``error: ...`` and exits 2; ``validate`` exits 1 when it finds an error.
+Exit codes: 0 success (the goal was met), 1 the run finished but the goal is
+not met or the folder has problems (``validate`` found an error; the output is
+still written), 2 usage error, 3 an input could not be read (the folder is
+missing or is not a document folder, a source file does not exist), 4 the run
+failed (model or network error, crash).
 """
 
 from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import sys
 import traceback
+from collections.abc import Sequence
 from pathlib import Path
 
-from dotenv import load_dotenv
-
-from .bundle import Bundle, BundleError
-from .bundle.scaffolds import SCAFFOLDS
-from .harness.kernel.verbs import build_subparsers, dispatch_verb, load_builtin_verbs
 from .schemas import ROLE_NAMES, Roles
 
-EXIT_OK = 0
-EXIT_USAGE = 2
-EXIT_CRASH = 3
-EXIT_NOT_MET = 4
-BUNDLE_COMMANDS = ("new", "sections", "show", "edit", "add", "validate")
+EXIT_OK, EXIT_NOT_MET, EXIT_USAGE, EXIT_INPUT, EXIT_FAILED = 0, 1, 2, 3, 4
+
+EXIT_EPILOG = (
+    "exit codes: 0 success; 1 finished but the goal is not met or problems were "
+    "found; 2 usage error; 3 an input could not be read; 4 the run failed"
+)
+FORMATS = ["docx", "md", "html", "txt"]
 
 
 def _progress(line: str) -> None:
     print(line, file=sys.stderr, flush=True)
 
 
-def _add_models(parser: argparse.ArgumentParser) -> None:
+def _version() -> str:
+    from andamentum import __version__
+
+    return f"andamentum-compose {__version__}"
+
+
+def _models(parser: argparse.ArgumentParser) -> None:
     group = parser.add_argument_group(
         "models", "--model fills every role not named; every role needs a model"
     )
@@ -51,12 +56,12 @@ def _add_models(parser: argparse.ArgumentParser) -> None:
         group.add_argument(f"--{role}", metavar="MODEL", help=f"model for the {role}")
 
 
-def _add_output(parser: argparse.ArgumentParser) -> None:
+def _output_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--format",
         action="append",
         dest="formats",
-        choices=["docx", "md", "html", "txt"],
+        choices=FORMATS,
         help="output format (repeatable); default: the genre's formats",
     )
     parser.add_argument(
@@ -66,131 +71,180 @@ def _add_output(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _research_options(parser: argparse.ArgumentParser, *, enable: bool) -> None:
+    group = parser.add_argument_group(
+        "research",
+        "research the task once and cite what it finds"
+        if enable
+        else "only for a folder started with --research whose research did "
+        "not finish; a finished research result is reused",
+    )
+    if enable:
+        group.add_argument(
+            "--research",
+            action="store_true",
+            help="search scholarly sources or the web for the task and cite "
+            "what is found (needs the network)",
+        )
+    group.add_argument(
+        "--research-mode",
+        choices=["web", "scholarly", "both"],
+        help="where to search; default: the genre's choice",
+    )
+    group.add_argument(
+        "--searxng-url",
+        help="your SearxNG address (web search needs this or --browser)",
+    )
+    group.add_argument(
+        "--browser",
+        action="store_true",
+        help="search the web through an isolated Chrome in a podman container "
+        "instead of SearxNG",
+    )
+    group.add_argument(
+        "--mailto",
+        metavar="EMAIL",
+        help="your email, for the polite pools of the sources",
+    )
+
+
+def _folder(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("folder", type=Path, help="the document folder")
+
+
+def _json(parser: argparse.ArgumentParser, *, what: str = "the result") -> None:
+    parser.add_argument(
+        "--json", action="store_true", help=f"print {what} as JSON instead of text"
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
+    from .bundle.scaffolds import SCAFFOLDS
+
     parser = argparse.ArgumentParser(
         prog="andamentum-compose",
-        description="A task in, a finished document out. Never sends anything.",
-        epilog="example: andamentum-compose check collaborator.docx --results results",
+        description="A task in, a finished document out, in a folder. Never "
+        "sends anything. For an existing Word file use andamentum-word.",
+        epilog=EXIT_EPILOG,
     )
-    sub = parser.add_subparsers(dest="command", required=True)
+    parser.add_argument("--version", action="version", version=_version())
+    sub = parser.add_subparsers(dest="command", required=True, metavar="COMMAND")
 
-    run = sub.add_parser(
-        "run",
-        help="continue an existing bundle",
-        epilog="example: andamentum-compose run memo --model anthropic:claude-haiku-4-5",
-    )
-    run.add_argument("bundle", type=Path)
-    run.add_argument("--max-rounds", type=int, default=4)
-    run.add_argument("--confirm-own-sources", action="store_true")
-    research = run.add_argument_group(
-        "research",
-        "only for a bundle started with --research whose research did not "
-        "finish; a finished research result is reused",
-    )
-    research.add_argument("--research-mode", choices=["web", "scholarly", "both"])
-    research.add_argument("--searxng-url")
-    research.add_argument("--browser", action="store_true")
-    research.add_argument("--mailto")
-    _add_models(run)
-    _add_output(run)
+    def add(name: str, summary: str, example: str) -> argparse.ArgumentParser:
+        return sub.add_parser(
+            name,
+            help=summary,
+            description=summary,
+            epilog=f"example: {example}\n{EXIT_EPILOG}",
+            formatter_class=argparse.RawDescriptionHelpFormatter,
+        )
 
-    status = sub.add_parser(
-        "status",
-        help="show where a bundle stands",
-        epilog="example: andamentum-compose status memo",
+    write = add(
+        "write",
+        "Write a document from a task into a new folder.",
+        'andamentum-compose write "A memo on the SaltLog pilot" --out memo '
+        "--model anthropic:claude-haiku-4-5",
     )
-    status.add_argument("bundle", type=Path)
-
-    check = sub.add_parser(
-        "check-bundle",
-        help="run a bundle's checks once, without revising",
-        epilog="example: andamentum-compose check-bundle memo --model anthropic:claude-haiku-4-5",
+    write.add_argument("task", help="what to write, in your own words")
+    write.add_argument(
+        "-o",
+        "--out",
+        type=Path,
+        required=True,
+        metavar="DIR",
+        help="the new folder to write the document into (must not exist or be empty)",
     )
-    check.add_argument("bundle", type=Path)
-    _add_models(check)
-
-    render = sub.add_parser(
-        "render",
-        help="render a bundle's text to out/ again",
-        epilog="example: andamentum-compose render memo --format docx",
+    write.add_argument(
+        "--genre", help="kind of document: a name from 'genres' or a .yaml file"
     )
-    render.add_argument("bundle", type=Path)
-    render.add_argument(
-        "--model", help="producing model for provenance (default: recorded)"
+    write.add_argument(
+        "--source",
+        action="append",
+        default=[],
+        metavar="FILE_OR_URL",
+        help="a file or URL to draw on (repeatable)",
     )
-    render.add_argument(
-        "--raw",
+    write.add_argument(
+        "--max-rounds",
+        type=int,
+        default=4,
+        help="most check-and-revise rounds (default 4)",
+    )
+    write.add_argument(
+        "--confirm-own-sources",
         action="store_true",
-        help="plain bundle render (no citations, sources list or provenance); "
-        "needs exactly one --format and --out FILE",
+        help="proceed although a source looks confidential",
     )
-    render.add_argument("--out", type=Path, help="output file (with --raw)")
-    _add_output(render)
+    _research_options(write, enable=True)
+    _models(write)
+    _output_options(write)
+    _json(write)
 
-    new = sub.add_parser(
-        "new",
-        help="create an empty bundle (no model)",
-        epilog='example: andamentum-compose new paper --title "SaltLog pilot" --scaffold article',
+    cont = add(
+        "continue",
+        "Continue a document folder: finished steps are skipped, checks resume.",
+        "andamentum-compose continue memo --model anthropic:claude-haiku-4-5",
     )
-    new.add_argument("bundle", type=Path)
-    new.add_argument("--title", required=True)
-    new.add_argument("--scaffold", default=None, choices=sorted(SCAFFOLDS))
+    _folder(cont)
+    cont.add_argument(
+        "--max-rounds",
+        type=int,
+        default=4,
+        help="most check-and-revise rounds of this run (default 4)",
+    )
+    cont.add_argument(
+        "--confirm-own-sources",
+        action="store_true",
+        help="proceed although a source looks confidential",
+    )
+    _research_options(cont, enable=False)
+    _models(cont)
+    _output_options(cont)
+    _json(cont)
 
-    sections = sub.add_parser(
-        "sections",
-        help="list a bundle's sections",
-        epilog="example: andamentum-compose sections paper",
+    status = add(
+        "status",
+        "Show where a document folder stands.",
+        "andamentum-compose status memo",
     )
-    sections.add_argument("bundle", type=Path)
+    _folder(status)
 
-    show = sub.add_parser(
-        "show",
-        help="print one section",
-        epilog="example: andamentum-compose show paper s01",
+    check = add(
+        "check",
+        "Run a document folder's checks once, without revising.",
+        "andamentum-compose check memo --model anthropic:claude-haiku-4-5",
     )
-    show.add_argument("bundle", type=Path)
-    show.add_argument("section_id")
+    _folder(check)
+    _models(check)
+    _json(check)
 
-    edit = sub.add_parser(
-        "edit",
-        help="replace a section's body",
-        epilog="example: andamentum-compose edit paper s01 --from new-body.md --revision 1",
+    render = add(
+        "render",
+        "Render a document folder's text again (into its out/ folder).",
+        "andamentum-compose render memo --format docx",
     )
-    edit.add_argument("bundle", type=Path)
-    edit.add_argument("section_id")
-    edit.add_argument(
-        "--from", dest="source", required=True, help="FILE, or - for stdin"
+    _folder(render)
+    render.add_argument(
+        "--model", help="model named in the provenance (default: the one recorded)"
     )
-    edit.add_argument(
-        "--revision", type=int, required=True, help="the revision you read"
+    render.add_argument(
+        "--plain",
+        action="store_true",
+        help="plain render without citations, sources list or provenance; "
+        "needs exactly one --format and -o FILE",
     )
+    render.add_argument(
+        "-o", "--out", type=Path, metavar="FILE", help="file to write (with --plain)"
+    )
+    _output_options(render)
 
-    add = sub.add_parser(
-        "add",
-        help="add a section",
-        epilog='example: andamentum-compose add paper --title "Limitations" --after s03',
-    )
-    add.add_argument("bundle", type=Path)
-    add.add_argument("--title", required=True)
-    add.add_argument("--after", default=None, help="section id to insert after")
+    genres = add("genres", "List the kinds of document.", "andamentum-compose genres")
+    _json(genres, what="the list")
 
-    validate = sub.add_parser(
-        "validate",
-        help="run the structural checks",
-        epilog="example: andamentum-compose validate paper",
-    )
-    validate.add_argument("bundle", type=Path)
-
-    sub.add_parser(
-        "genres",
-        help="list the genre packs",
-        epilog="example: andamentum-compose genres",
-    )
-
-    ev = sub.add_parser(
+    ev = add(
         "eval",
-        help="compose against a single-call baseline on the synthetic tasks",
-        epilog="example: andamentum-compose eval --genre memo --out eval-out --model anthropic:claude-haiku-4-5",
+        "Compare compose with a single model call on the synthetic tasks.",
+        "andamentum-compose eval --genre memo --out eval-out --model anthropic:claude-haiku-4-5",
     )
     ev.add_argument(
         "--genre",
@@ -198,20 +252,95 @@ def build_parser() -> argparse.ArgumentParser:
         dest="genres",
         help="genre to evaluate (repeatable) or 'all' (default)",
     )
-    ev.add_argument("--out", required=True, type=Path)
-    ev.add_argument("--max-rounds", type=int, default=4)
-    _add_models(ev)
-    load_builtin_verbs()
-    build_subparsers(sub)  # harness verbs (registered in the kernel) become subcommands
+    ev.add_argument(
+        "-o",
+        "--out",
+        type=Path,
+        required=True,
+        metavar="DIR",
+        help="folder to write the documents and eval.json / eval.md into",
+    )
+    ev.add_argument(
+        "--max-rounds",
+        type=int,
+        default=4,
+        help="most check-and-revise rounds (default 4)",
+    )
+    _models(ev)
+
+    new = add(
+        "new",
+        "Create an empty document folder (no model).",
+        'andamentum-compose new --out paper --title "SaltLog pilot" --scaffold article',
+    )
+    new.add_argument(
+        "-o",
+        "--out",
+        type=Path,
+        required=True,
+        metavar="DIR",
+        help="the new folder (must not exist or be empty)",
+    )
+    new.add_argument("--title", required=True, help="title of the document")
+    new.add_argument(
+        "--scaffold",
+        choices=sorted(SCAFFOLDS),
+        help="start with this set of empty sections",
+    )
+
+    sections = add(
+        "sections",
+        "List a document folder's sections.",
+        "andamentum-compose sections paper",
+    )
+    _folder(sections)
+    _json(sections, what="the list")
+
+    show = add("show", "Print one section.", "andamentum-compose show paper s01")
+    _folder(show)
+    show.add_argument("section_id", help="id of the section, as 'sections' lists it")
+
+    edit = add(
+        "edit",
+        "Replace a section's body.",
+        "andamentum-compose edit paper s01 --from new-body.md --revision 1",
+    )
+    _folder(edit)
+    edit.add_argument("section_id", help="id of the section, as 'sections' lists it")
+    edit.add_argument(
+        "--from",
+        dest="source",
+        required=True,
+        metavar="FILE",
+        help="file with the new body, or - for stdin",
+    )
+    edit.add_argument(
+        "--revision",
+        type=int,
+        required=True,
+        help="the revision you read; the edit is refused if the section moved on",
+    )
+
+    addp = add(
+        "add",
+        "Add a section.",
+        'andamentum-compose add paper --title "Limitations" --after s03',
+    )
+    _folder(addp)
+    addp.add_argument("--title", required=True, help="title of the new section")
+    addp.add_argument(
+        "--after", help="id of the section to insert after (default: at the end)"
+    )
+
+    validate = add(
+        "validate", "Run the structural checks.", "andamentum-compose validate paper"
+    )
+    _folder(validate)
+    _json(validate, what="the issues")
     return parser
 
 
-def resolve_roles(
-    args: argparse.Namespace,
-    parser: argparse.ArgumentParser,
-    *,
-    fallback: Roles | None = None,
-) -> Roles:
+def resolve_roles(args: argparse.Namespace, *, fallback: Roles | None = None) -> Roles:
     """Roles from the flags; a role with no model is a usage error (exit 2)."""
     chosen: dict[str, str] = {}
     missing: list[str] = []
@@ -224,61 +353,140 @@ def resolve_roles(
         else:
             missing.append(role)
     if missing:
-        parser.error(
+        from .errors import ComposeUsageError
+
+        raise ComposeUsageError(
             f"no model for: {', '.join(missing)}. Pass --model MODEL to use one "
             "model for every role, or --" + ", --".join(missing) + " individually."
         )
     return Roles(**chosen)
 
 
-async def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
-    from .api import compose_bundle, recorded_roles
+def _open_folder(path: Path):  # noqa: ANN202
+    """The document folder at *path*, or ``ComposeInputError`` (exit 3)."""
+    from .bundle import Bundle, BundleError
+    from .errors import ComposeInputError
 
-    from .harness.draft.verb import research_setup
+    if not path.is_dir():
+        raise ComposeInputError(f"{path} is not a folder")
+    try:
+        return Bundle.open(path)
+    except BundleError as exc:
+        raise ComposeInputError(str(exc)) from exc
 
-    roles = resolve_roles(args, parser, fallback=recorded_roles(args.bundle))
-    started_with_research = bool(Bundle.open(args.bundle).metadata.get("research"))
-    result = await compose_bundle(
-        args.bundle,
-        roles=roles,
-        research=research_setup(
-            mailto=args.mailto,
-            searxng_url=args.searxng_url,
-            browser=args.browser,
-            mode=args.research_mode,
+
+def _research(args: argparse.Namespace, *, wanted: bool):  # noqa: ANN202
+    """The research settings, or None when research is not wanted."""
+    from .errors import ComposeUsageError
+    from .research import research_setup
+
+    idle = [
+        flag
+        for flag, on in (
+            ("--research-mode", args.research_mode is not None),
+            ("--searxng-url", args.searxng_url is not None),
+            ("--browser", args.browser),
+            ("--mailto", args.mailto is not None),
         )
-        if started_with_research
-        else None,
+        if on
+    ]
+    if not wanted:
+        if idle:
+            raise ComposeUsageError(f"{', '.join(idle)} need --research")
+        return None
+    return research_setup(
+        mailto=args.mailto,
+        searxng_url=args.searxng_url,
+        browser=args.browser,
+        mode=args.research_mode,
+    )
+
+
+def _check_sources(sources: Sequence[str]) -> None:
+    from .errors import ComposeInputError
+
+    for source in sources:
+        if "://" not in source and not Path(source).exists():
+            raise ComposeInputError(f"source {source} does not exist")
+
+
+def _print_result(result, *, as_json: bool) -> int:  # noqa: ANN001
+    if as_json:
+        print(result.model_dump_json(indent=2))
+    else:
+        for line in result.summary_lines():
+            print(line)
+    return EXIT_OK if result.goal_met else EXIT_NOT_MET
+
+
+async def _write(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    from .api import write_document
+
+    roles = resolve_roles(args)
+    _check_sources(args.source)
+    if args.genre and args.genre.lower().endswith((".yaml", ".yml")):
+        from .errors import ComposeInputError
+
+        if not Path(args.genre).is_file():
+            raise ComposeInputError(f"genre file {args.genre} does not exist")
+    result = await write_document(
+        args.task,
+        out=args.out,
+        roles=roles,
+        genre=args.genre,
+        sources=args.source,
+        max_rounds=args.max_rounds,
+        research=_research(args, wanted=args.research),
+        confirm_own_sources=args.confirm_own_sources,
+        provenance=not args.no_provenance,
+        formats=args.formats,
+        progress=_progress,
+    )
+    return _print_result(result, as_json=args.json)
+
+
+async def _continue(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    from .api import continue_document, recorded_roles
+
+    folder = _open_folder(args.folder)
+    roles = resolve_roles(args, fallback=recorded_roles(args.folder))
+    started_with_research = bool(folder.metadata.get("research"))
+    result = await continue_document(
+        args.folder,
+        roles=roles,
+        research=_research(args, wanted=True) if started_with_research else None,
         max_rounds=args.max_rounds,
         confirm_own_sources=args.confirm_own_sources,
         provenance=not args.no_provenance,
         formats=args.formats,
         progress=_progress,
     )
-    for line in result.summary_lines():
-        print(line)
-    return EXIT_OK if result.goal_met else EXIT_NOT_MET
+    return _print_result(result, as_json=args.json)
 
 
 async def _check(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
-    from .api import check_bundle, recorded_roles
+    from .api import check_folder, recorded_roles
 
-    roles = resolve_roles(args, parser, fallback=recorded_roles(args.bundle))
-    result = await check_bundle(args.bundle, roles=roles, progress=_progress)
-    for item in result.checks:
-        where = f" [{item.section_id}]" if item.section_id else ""
-        print(f"{'pass' if item.passed else 'FAIL'}  {item.name}{where}")
-        if not item.passed:
-            for detail in item.details:
-                print(f"      {detail}")
-    print(f"goal met: {'yes' if result.goal_met else 'no'}")
+    _open_folder(args.folder)
+    roles = resolve_roles(args, fallback=recorded_roles(args.folder))
+    result = await check_folder(args.folder, roles=roles, progress=_progress)
+    if args.json:
+        print(result.model_dump_json(indent=2))
+    else:
+        for item in result.checks:
+            where = f" [{item.section_id}]" if item.section_id else ""
+            print(f"{'pass' if item.passed else 'FAIL'}  {item.name}{where}")
+            if not item.passed:
+                for detail in item.details:
+                    print(f"      {detail}")
+        print(f"goal met: {'yes' if result.goal_met else 'no'}")
     return EXIT_OK if result.goal_met else EXIT_NOT_MET
 
 
 async def _eval(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     from .evals.runner import run_eval
 
-    roles = resolve_roles(args, parser)
+    roles = resolve_roles(args)
     genres = None if not args.genres or "all" in args.genres else args.genres
     report = await run_eval(
         genres=genres,
@@ -292,25 +500,45 @@ async def _eval(args: argparse.Namespace, parser: argparse.ArgumentParser) -> in
     return EXIT_OK
 
 
-def _bundle_command(args: argparse.Namespace) -> int:
-    """The no-model bundle verbs."""
+def _folder_command(args: argparse.Namespace) -> int:
+    """The commands that read or edit a folder and call no model."""
+    from .bundle import Bundle
+
     if args.command == "new":
-        bundle = Bundle.create(args.bundle, title=args.title, scaffold=args.scaffold)
-        print(bundle.path)
+        folder = Bundle.create(args.out, title=args.title, scaffold=args.scaffold)
+        print(folder.path)
         return EXIT_OK
 
-    bundle = Bundle.open(args.bundle)
+    folder = _open_folder(args.folder)
 
     if args.command == "sections":
-        for s in bundle.sections():
-            words = len(s.body.split())
+        rows = folder.sections()
+        if args.json:
             print(
-                f"{s.id}  r{s.revision:<3d} {s.status:10s} {words:6d} words  {s.title}"
+                json.dumps(
+                    [
+                        {
+                            "id": s.id,
+                            "revision": s.revision,
+                            "status": s.status,
+                            "words": len(s.body.split()),
+                            "title": s.title,
+                        }
+                        for s in rows
+                    ],
+                    indent=2,
+                )
             )
+        else:
+            for s in rows:
+                words = len(s.body.split())
+                print(
+                    f"{s.id}  r{s.revision:<3d} {s.status:10s} {words:6d} words  {s.title}"
+                )
         return EXIT_OK
 
     if args.command == "show":
-        s = bundle.section(args.section_id)
+        s = folder.section(args.section_id)
         print(
             f"id: {s.id}\ntitle: {s.title}\norder: {s.order}\n"
             f"revision: {s.revision}\nstatus: {s.status}\n"
@@ -319,97 +547,133 @@ def _bundle_command(args: argparse.Namespace) -> int:
         return EXIT_OK
 
     if args.command == "edit":
-        body = (
-            sys.stdin.read()
-            if args.source == "-"
-            else Path(args.source).read_text(encoding="utf-8")
-        )
-        s = bundle.write_section(
+        if args.source == "-":
+            body = sys.stdin.read()
+        else:
+            from .errors import ComposeInputError
+
+            source = Path(args.source)
+            if not source.is_file():
+                raise ComposeInputError(f"{source} is not a file")
+            body = source.read_text(encoding="utf-8")
+        s = folder.write_section(
             args.section_id, body=body, expected_revision=args.revision
         )
         print(f"{s.id} now at revision {s.revision}")
         return EXIT_OK
 
     if args.command == "add":
-        s = bundle.add_section(title=args.title, after=args.after)
+        s = folder.add_section(title=args.title, after=args.after)
         print(s.id)
         return EXIT_OK
 
     if args.command == "validate":
-        issues = bundle.validate()
-        if not issues:
+        issues = folder.validate()
+        if args.json:
+            print(json.dumps([i.model_dump() for i in issues], indent=2))
+        elif not issues:
             print("ok: no validation issues")
-            return EXIT_OK
-        for issue in issues:
-            print(f"[{issue.severity:7s}] {issue.location}: {issue.message}")
-        return 1 if any(i.severity == "error" for i in issues) else EXIT_OK
+        else:
+            for issue in issues:
+                print(f"[{issue.severity:7s}] {issue.location}: {issue.message}")
+        return EXIT_NOT_MET if any(i.severity == "error" for i in issues) else EXIT_OK
 
     raise AssertionError(args.command)  # pragma: no cover
 
 
-def _render_raw(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
-    if not args.formats or len(args.formats) != 1 or args.out is None:
-        parser.error("render --raw needs exactly one --format and --out FILE")
-    print(Bundle.open(args.bundle).render(args.out, format=args.formats[0]))
+def _render(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    folder = _open_folder(args.folder)
+    if args.plain:
+        if not args.formats or len(args.formats) != 1 or args.out is None:
+            parser.error("render --plain needs exactly one --format and -o FILE")
+        print(folder.render(args.out, format=args.formats[0]))
+        return EXIT_OK
+    if args.out is not None:
+        parser.error(
+            "-o/--out is for --plain; without it the files go to the folder's out/"
+        )
+    from .api import recorded_roles, render_folder
+
+    model = args.model
+    if not model and not args.no_provenance:
+        recorded = recorded_roles(args.folder)
+        model = recorded.drafter if recorded else None
+    if not model and not args.no_provenance:
+        parser.error("render needs --model (no model is recorded in the folder)")
+    for path in render_folder(
+        args.folder,
+        model=model or "",
+        formats=args.formats,
+        provenance=not args.no_provenance,
+    ):
+        print(path)
     return EXIT_OK
 
 
-def main(argv: list[str] | None = None) -> int:
-    load_dotenv()  # secrets only (API keys); configuration comes from flags
+def _genres(args: argparse.Namespace) -> int:
+    from .genres import GENRES
+
+    if args.json:
+        print(
+            json.dumps(
+                [
+                    {
+                        "name": name,
+                        "min_words": genre.word_range[0],
+                        "max_words": genre.word_range[1],
+                        "description": genre.description,
+                    }
+                    for name, genre in GENRES.items()
+                ],
+                indent=2,
+            )
+        )
+        return EXIT_OK
+    for name, genre in GENRES.items():
+        lo, hi = genre.word_range
+        print(f"{name:<10} {lo}-{hi} words  {genre.description}")
+    return EXIT_OK
+
+
+def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
-    args = parser.parse_args(argv if argv is not None else sys.argv[1:])
+    args = parser.parse_args(list(argv) if argv is not None else sys.argv[1:])
+
+    from dotenv import load_dotenv
+
+    from .errors import ComposeError, ComposeInputError
+
+    load_dotenv()  # credentials only (API keys); configuration comes from flags
     try:
-        if getattr(args, "verb", None) is not None:
-            return dispatch_verb(args)
-        if args.command == "run":
-            return asyncio.run(_run(args, parser))
-        if args.command == "check-bundle":
+        if args.command == "write":
+            return asyncio.run(_write(args, parser))
+        if args.command == "continue":
+            return asyncio.run(_continue(args, parser))
+        if args.command == "check":
             return asyncio.run(_check(args, parser))
         if args.command == "eval":
             return asyncio.run(_eval(args, parser))
         if args.command == "status":
-            from .api import bundle_status
+            from .api import folder_status
 
-            print(bundle_status(args.bundle))
+            _open_folder(args.folder)
+            print(folder_status(args.folder))
             return EXIT_OK
-        if args.command in BUNDLE_COMMANDS or (args.command == "render" and args.raw):
-            try:
-                if args.command == "render":
-                    return _render_raw(args, parser)
-                return _bundle_command(args)
-            except BundleError as exc:
-                print(f"error: {exc}", file=sys.stderr)
-                return EXIT_USAGE
         if args.command == "render":
-            from .api import recorded_roles, render_bundle
-
-            model = args.model
-            if not model and not args.no_provenance:
-                recorded = recorded_roles(args.bundle)
-                model = recorded.drafter if recorded else None
-            if not model and not args.no_provenance:
-                parser.error("render needs --model (no recorded model in the bundle)")
-            for path in render_bundle(
-                args.bundle,
-                model=model or "",
-                formats=args.formats,
-                provenance=not args.no_provenance,
-            ):
-                print(path)
-            return EXIT_OK
+            return _render(args, parser)
         if args.command == "genres":
-            from .genres import GENRES
-
-            for name, genre in GENRES.items():
-                lo, hi = genre.word_range
-                print(f"{name:<10} {lo}-{hi} words  {genre.description}")
-            return EXIT_OK
-    except Exception as exc:  # a crash is reported loudly with its traceback, exit 3
-        traceback.print_exc()
+            return _genres(args)
+        return _folder_command(args)
+    except ComposeInputError as exc:
         print(f"error: {exc}", file=sys.stderr)
-        return EXIT_CRASH
-    parser.error(f"unknown command {args.command!r}")
-    return EXIT_USAGE  # pragma: no cover
+        return EXIT_INPUT
+    except ComposeError as exc:  # a bad argument or a refused folder operation
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_USAGE
+    except Exception as exc:  # a crash is reported with its traceback, exit 4
+        traceback.print_exc()
+        print(f"error: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return EXIT_FAILED
 
 
 if __name__ == "__main__":  # pragma: no cover

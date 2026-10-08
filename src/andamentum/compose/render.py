@@ -17,7 +17,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import NamedTuple
 
-from andamentum.compose.bundle import Bundle, Section
+from andamentum.compose.bundle import Bundle, ComposeError, Section
 from andamentum.whetstone import provenance_line, stamp_provenance
 
 from .genres import OutputFormat, Genre
@@ -29,7 +29,7 @@ OUT_DIR = "out"
 _VALID_FORMATS = ("docx", "md", "html", "txt")
 
 
-class ProvenanceRequired(ValueError):
+class ProvenanceRequired(ComposeError, ValueError):
     """Provenance was switched off for a genre that does not allow it."""
 
 

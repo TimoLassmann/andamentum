@@ -11,6 +11,8 @@ from pathlib import Path
 
 import pytest
 
+from ._helpers import copy_of
+
 from andamentum.compose.harness.bench.fixture_http import scheme_only_url_check
 from andamentum.compose.harness.check import CheckParams, run_check
 from andamentum.compose.harness.docx.reader import open_docx
@@ -80,7 +82,7 @@ def test_make_example_is_repeatable(tmp_path: Path):
 async def test_check_runs_on_the_example_from_fixtures(project: ExampleProject):
     before = project.collaborator.read_bytes()
     result = await run_check(
-        CheckParams(file=project.collaborator, results=None),
+        CheckParams(out=copy_of(project.collaborator, "checked"), file=project.collaborator, results=None),
         transport=fixture_transport_for_example(),
         url_check=scheme_only_url_check,
     )
@@ -98,17 +100,18 @@ async def test_check_runs_on_the_example_from_fixtures(project: ExampleProject):
 
 # ------------------------------------------------------------------ the guide
 
-GUIDE = Path(__file__).resolve().parents[5] / "docs" / "compose.md"
+GUIDES = Path(__file__).resolve().parents[5] / "docs"
+GUIDE = GUIDES / "word.md"
 
 
-def guide_commands() -> list[list[str]]:
-    """Every ``andamentum-compose ...`` command of ``docs/compose.md`` code blocks, split into words."""
-    text = GUIDE.read_text(encoding="utf-8")
+def guide_commands(guide: Path = GUIDE, tool: str = "andamentum-word") -> list[list[str]]:
+    """Every ``<tool> ...`` command of the ``bash`` code blocks of a guide, split into words."""
+    text = guide.read_text(encoding="utf-8")
     commands: list[list[str]] = []
     for block in re.findall(r"```bash\n(.*?)```", text, flags=re.DOTALL):
         for command in re.sub(r"\\\n\s*", " ", block).splitlines():
-            words = shlex.split(command)[1:]
-            if command.startswith("andamentum-compose") and "--help" not in words:
+            words = shlex.split(command, comments=True)[1:]
+            if command.startswith(tool) and "--help" not in words:
                 commands.append(words)
     return commands
 
@@ -117,7 +120,7 @@ def test_the_guide_has_commands():
     verbs = {c[0] for c in guide_commands()}
     assert {
         "check",
-        "write",
+        "draft",
         "refresh",
         "bind-numbers",
         "respond",
@@ -130,10 +133,22 @@ def test_the_guide_has_commands():
 @pytest.mark.parametrize("words", guide_commands(), ids=lambda w: " ".join(w[:2]))
 def test_every_command_in_the_guide_parses_against_the_cli(words: list[str]):
     """The guide cannot drift from the CLI: each documented command is accepted as written."""
+    from andamentum.word.cli import build_parser
+
+    args = build_parser().parse_args(words)
+    assert args.command
+
+
+@pytest.mark.parametrize(
+    "words",
+    guide_commands(GUIDES / "compose.md", "andamentum-compose"),
+    ids=lambda w: " ".join(w[:2]),
+)
+def test_every_command_in_the_compose_guide_parses_against_the_cli(words: list[str]):
     from andamentum.compose.cli import build_parser
 
     args = build_parser().parse_args(words)
-    assert args.command or args.verb
+    assert args.command
 
 
 def test_the_guide_names_the_example_files_it_builds(project: ExampleProject):

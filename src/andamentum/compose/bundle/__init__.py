@@ -16,6 +16,7 @@ from .bundle import Bundle
 from .models import (
     Reference,
     BundleError,
+    ComposeError,
     Section,
     StaleRevisionError,
     ValidationIssue,
@@ -27,6 +28,7 @@ __all__ = [
     # Data types
     "Reference",
     "BundleError",
+    "ComposeError",
     "Section",
     "StaleRevisionError",
     "ValidationIssue",

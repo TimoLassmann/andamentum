@@ -17,7 +17,7 @@ from mcp.shared.memory import create_connected_server_and_client_session
 from pydantic import BaseModel
 from pydantic_ai.usage import RunUsage
 
-from andamentum.compose import cli
+from andamentum.word import cli
 from andamentum.compose.brief import BriefDraft
 from andamentum.compose.evidence import RawFact, RawFacts
 from andamentum.compose.harness import mcp_server
@@ -28,7 +28,7 @@ from andamentum.compose.harness.bindings.refresh import RefreshParams, run_refre
 from andamentum.compose.harness.checks.numbers import NumericClaims
 from andamentum.compose.harness.docx.reader import open_docx
 from andamentum.compose.harness.draft.claims import ClaimLabel, ClaimLabels
-from andamentum.compose.harness.draft.verb import WriteParams, run_write
+from andamentum.compose.harness.draft.verb import DraftParams, run_draft
 from andamentum.compose.harness.examples import (
     ExampleProject,
     fixture_transport_for_example,
@@ -45,6 +45,7 @@ from andamentum.compose.harness.respond.triage import (
 from andamentum.compose.schemas import Outline, ReaderQuestion, SectionPlan
 from andamentum.compose.write import SectionBody
 
+from ._helpers import copy_of
 from .test_bindings_bind import StubModel
 
 USAGE = RunUsage(input_tokens=11, output_tokens=7)
@@ -181,8 +182,8 @@ async def test_write_into_a_new_word_file_from_the_example(
     )
     notes_before, refs_before = sha(project.notes), sha(project.library)
     out = project.root / "paper.docx"
-    result = await run_write(
-        WriteParams(
+    result = await run_draft(
+        DraftParams(
             task="Write the SaltLog pilot article",
             out=out,
             source=[str(project.notes)],
@@ -222,42 +223,15 @@ async def test_write_into_a_new_word_file_from_the_example(
     assert {c.author for c in view.comments} <= {"andamentum compose"}
 
 
-def test_write_cli_routes_a_docx_out_to_word_and_a_folder_to_the_bundle(
+def test_draft_cli_refuses_research_flags_without_research(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ):
-    # a usage error from each destination proves which one ran (no model is called)
-    assert (
-        cli.main(
-            [
-                "write",
-                "t",
-                "--out",
-                str(tmp_path / "p.docx"),
-                "--model",
-                "m",
-                "--format",
-                "md",
-            ]
-        )
-        == 2
+    # a usage error proves the Word path ran and refused (no model is called)
+    code = cli.main(
+        ["draft", "t", "--out", str(tmp_path / "d"), "--model", "m", "--browser"]
     )
-    assert "only apply to a bundle" in capsys.readouterr().err
-    assert (
-        cli.main(
-            [
-                "write",
-                "t",
-                "--out",
-                str(tmp_path / "d"),
-                "--model",
-                "m",
-                "--results",
-                str(tmp_path),
-            ]
-        )
-        == 2
-    )
-    assert "only apply when writing into Word" in capsys.readouterr().err
+    assert code == 2
+    assert "need --research" in capsys.readouterr().err
 
 
 # ---------------------------------------------------------------------- refresh
@@ -293,7 +267,7 @@ async def test_a_changed_csv_value_is_a_tracked_change_and_a_comment(
     monkeypatch.setattr(bind_module, "run_agent_with_usage", StubModel(picks))
     before = sha(project.collaborator)
     bound = await run_bind(
-        BindParams(file=project.collaborator, results=project.results, model="stub:m")
+        BindParams(out=copy_of(project.collaborator, "bound"), file=project.collaborator, results=project.results, model="stub:m")
     )
     assert sha(project.collaborator) == before
     assert len(bound.report.bound) == 5, bound.report.unmatched
@@ -304,7 +278,7 @@ async def test_a_changed_csv_value_is_a_tracked_change_and_a_comment(
     bound_before = sha(bound.output)
     refreshed = run_refresh(
         RefreshParams(
-            file=bound.output,
+            out=copy_of(bound.output, "refreshed"), file=bound.output,
             results=project.results,
             project=Path(bound.report.project_dir),
         )
@@ -396,7 +370,7 @@ async def test_respond_answers_comments_and_writes_a_response_letter(
     original = {c.id: c for c in open_docx(project.collaborator).comments}
     result = await run_respond(
         RespondParams(
-            file=project.collaborator,
+            out=copy_of(project.collaborator, "responded"), file=project.collaborator,
             reviews=project.reviews,
             model="stub:m",
             offline=True,
@@ -423,7 +397,7 @@ async def test_respond_answers_comments_and_writes_a_response_letter(
     assert "## Reviewer 2, point 2" in text
     assert "> Please say whether the study was registered" in text
     assert result.letter_docx is not None and result.letter_docx.is_file()
-    assert result.report.exit_code == 4  # items for the authors remain
+    assert result.report.exit_code == 1  # items for the authors remain
 
 
 # -------------------------------------------------------------------------- MCP
@@ -443,7 +417,7 @@ async def test_mcp_lists_the_tools_and_runs_check_on_the_example(
             "show_section",
             "apply_edits",
             "check",
-            "write",
+            "draft",
             "refresh",
             "respond",
             "find_citation",
@@ -453,7 +427,12 @@ async def test_mcp_lists_the_tools_and_runs_check_on_the_example(
             "not registered" in (t.description or "").lower() for t in tools.values()
         )
         called = await client.call_tool(
-            "check", {"file": str(project.collaborator), "offline": True}
+            "check",
+            {
+                "file": str(project.collaborator),
+                "offline": True,
+                "out": str(project.root / "checked.docx"),
+            },
         )
         assert called.structuredContent is not None
         run = called.structuredContent
@@ -515,7 +494,7 @@ async def test_mcp_find_and_insert_citation_verify_before_citing(
         ),
         transport=fixture_transport_for_example(),
     )
-    assert code == 4 and "nothing written" in message and "10.0000/fake" in message
+    assert code == 1 and "nothing written" in message and "10.0000/fake" in message
     assert not (project.root / "fake.docx").exists()
     # an offset outside the paragraph is a usage error and nothing is written
     from andamentum.compose.harness.bindings.common import UsageError

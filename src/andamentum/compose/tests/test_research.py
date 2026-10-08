@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from andamentum.compose import compose_bundle, write_document
+from andamentum.compose import continue_document, write_document
 from andamentum.compose import store as bundle_store
 from andamentum.compose.evidence import stored_source_path
 from andamentum.compose.genres import GENRES, Genre
@@ -324,8 +324,8 @@ async def test_a_resumed_run_reuses_the_saved_research(
     monkeypatch.setattr("andamentum.deep_research.research", fake)
     first = await _write(tmp_path, research=WEB)
     assert len(fake.calls) == 1
-    again = await compose_bundle(
-        first.bundle, roles=Roles.all("test:model"), formats=["txt"]
+    again = await continue_document(
+        first.folder, roles=Roles.all("test:model"), formats=["txt"]
     )
     assert len(fake.calls) == 1  # no setup needed, nothing searched again
     assert again.stop_reason == "goal_met"
@@ -341,12 +341,12 @@ async def test_a_failed_research_run_cannot_be_resumed_without_its_settings(
     with pytest.raises(RuntimeError, match="boom"):
         await _write(tmp_path, research=WEB)
     with pytest.raises(ResearchSetupError, match="--research"):
-        await compose_bundle(
+        await continue_document(
             tmp_path / "demo.compose", roles=Roles.all("test:model"), formats=["txt"]
         )
     # with the settings and a working engine the same bundle completes
     monkeypatch.setattr("andamentum.deep_research.research", FakeResearch())
-    done = await compose_bundle(
+    done = await continue_document(
         tmp_path / "demo.compose",
         roles=Roles.all("test:model"),
         formats=["txt"],

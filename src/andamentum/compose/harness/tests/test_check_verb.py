@@ -9,7 +9,6 @@ from pathlib import Path
 
 import pytest
 
-from andamentum.compose import cli
 from andamentum.compose.harness.bench.fixture_http import (
     fixture_transport,
     scheme_only_url_check,
@@ -22,6 +21,7 @@ from andamentum.compose.harness.check import (
 )
 from andamentum.compose.harness.docx.reader import open_docx
 from andamentum.compose.harness.kernel import ProjectStore
+from ._helpers import copy_of
 from andamentum.core.decisions.testing import StubDecisions, noul_answer
 
 
@@ -51,6 +51,7 @@ def sha(path: Path) -> str:
 
 
 async def run(path: Path, *, decision_handle=None, **kw):
+    kw.setdefault("out", copy_of(path, "checked"))
     return await run_check(
         CheckParams(file=path, **kw),
         transport=fixture_transport(),
@@ -92,7 +93,7 @@ async def test_report_files_events_and_snapshot(manuscript: Path):
     assert "## citations" in markdown and "Skipped checks" in markdown
     assert "needs --results" in markdown
 
-    store = ProjectStore(manuscript.with_name("paper.harness"))
+    store = ProjectStore(manuscript.with_name("state"))
     events = store.read_events()
     assert [e["type"] for e in events] == ["transaction", "check_run"]
     assert events[0]["author"] == "andamentum check"
@@ -114,7 +115,7 @@ async def test_second_run_uses_the_project_caches(manuscript: Path):
     assert second.report.network_calls == 0
     assert second.report.http_cache_hits > 0
     assert second.report.diagnostics == first.report.diagnostics
-    assert len(ProjectStore(manuscript.with_name("paper.harness")).read_events()) == 4
+    assert len(ProjectStore(manuscript.with_name("state")).read_events()) == 4
 
 
 async def test_offline_skips_network_checks_and_says_why(manuscript: Path):
@@ -184,25 +185,6 @@ async def test_the_project_id_travels_with_the_copy(manuscript: Path, tmp_path: 
     assert again.report.project_id == ProjectStore(project).meta().id
 
 
-def test_cli_registers_the_verb_and_exit_codes(
-    manuscript: Path, clean: Path, capsys: pytest.CaptureFixture[str]
-):
-    assert cli.main(["check", str(clean), "--offline"]) == 0
-    out = capsys.readouterr().out
-    assert "commented copy" in out and "skipped citations" in out
-    assert cli.main(["check", str(manuscript), "--offline"]) == 1
-    assert cli.main(["check", str(manuscript.with_name("missing.docx"))]) == 2
-    assert "error:" in capsys.readouterr().err
-
-
-def test_the_bundle_check_moved_to_check_bundle():
-    parser = cli.build_parser()
-    args = parser.parse_args(["check-bundle", "folder", "--model", "m"])
-    assert args.command == "check-bundle"
-    args = parser.parse_args(["check", "paper.docx", "--offline"])
-    assert args.verb == "check" and args.offline is True
-
-
 def _field_document(path: Path, payload: str) -> Path:
     from andamentum.compose.harness.spike.make import (
         build_docx,
@@ -239,7 +221,7 @@ async def test_a_fixed_field_payload_is_not_served_from_the_cache(tmp_path: Path
 async def test_the_project_checks_yaml_holds_the_structure_limits(tmp_path: Path):
     path = tmp_path / "cite.docx"
     _field_document(path, json.dumps({"citationItems": [{"id": "x"}]}))
-    project = tmp_path / "cite.harness"
+    project = tmp_path / "state"
     project.mkdir()
     (project / "checks.yaml").write_text("structure:\n  max_words: 1\n")
     result = await run(path, offline=True, checks=["structure"])

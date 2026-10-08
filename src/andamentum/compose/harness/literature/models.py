@@ -8,13 +8,14 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from andamentum.references import UpdateNotice
 
+from ..errors import WordError
 from ..kernel.csl import doi_of, title_of, year_of
 from ..kernel.ops import CitationItem
 
 WorkSource = Literal["library", "zotero", "crossref"]
 
 
-class LiteratureError(RuntimeError):
+class LiteratureError(WordError, RuntimeError):
     """A source that was asked for could not answer; never turned into "no results"."""
 
 

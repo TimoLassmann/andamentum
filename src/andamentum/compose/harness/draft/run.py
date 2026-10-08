@@ -3,7 +3,7 @@
 The compose workers do the writing (brief, evidence, outline, draft, revise);
 this module sequences them around a ``.docx`` instead of a bundle folder:
 
-1. a project folder ``<out stem>.harness/`` (the harness store) and a scratch
+1. a project folder ``state/`` beside ``out`` (the harness store; or *project*) and a scratch
    folder inside it for the workers' artefacts;
 2. sources, result files, the text of the document being extended and verified
    literature become compose sources; one call per source extracts quote-checked
@@ -66,7 +66,8 @@ from andamentum.compose.steps import first_sentences
 from andamentum.compose.write import draft_section
 from andamentum.whetstone import stamp_provenance
 
-from ..project import write_copy
+from ..errors import WordUsageError
+from ..project import project_dir, write_copy
 from ..bindings.ledger import Ledger
 from ..bindings.results import Catalogue, load_catalogue
 from ..check import CheckParams, CheckReport, comment_ops, run_check
@@ -105,7 +106,7 @@ from .disclosure import ai_use_statement
 from .works import LiteratureSearch, ResearchRun, gather_works, work_source
 
 DEFAULT_MAX_ROUNDS = 2
-EXIT_OK, EXIT_OPEN, EXIT_USAGE = 0, 4, 2
+EXIT_OK, EXIT_OPEN, EXIT_USAGE = 0, 1, 2
 RESULT_SUFFIXES = (".csv", ".tsv", ".json")
 NAMED_SECTION_WORDS = 250
 HEADING_LEVEL = 1
@@ -119,7 +120,7 @@ TABLE_NOTE = (
 FIGURE_NOTE = "a figure the outline planned was not drawn: figures are not written into Word documents"
 
 
-class DraftUsageError(ValueError):
+class DraftUsageError(WordUsageError, ValueError):
     """A bad invocation (missing file, impossible combination): exit code 2."""
 
 
@@ -150,7 +151,7 @@ class DraftResult(BaseModel):
 
     @property
     def exit_code(self) -> int:
-        """0 when nothing is left for the authors, else 4: a check error, a
+        """0 when nothing is left for the authors, else 1: a check error, a
         refused operation, or a question (an unverified work, a placeholder,
         an interpretation nobody has backed with data)."""
         if self.open_errors or self.refused or self.author_questions:
@@ -948,6 +949,7 @@ async def draft_document(
     offline: bool = False,
     confirm_own_sources: bool = False,
     mailto: str | None = None,
+    project: str | Path | None = None,
     progress: Callable[[str], None] | None = None,
     transport: httpx.AsyncBaseTransport | None = None,
     url_check: Callable[[str], tuple[bool, str]] | None = None,
@@ -958,13 +960,13 @@ async def draft_document(
     claims and runs the numbers check; the critic and reader roles are part of
     the compose roles and unused here). *literature* answers queries with
     verified works; without it nothing is cited. *research* runs
-    ``deep_research`` once in the genre's mode over ``<project>/research.db``
+    ``deep_research`` once in the genre's mode over ``<project>/research.db``; *project* is the folder that keeps the ledger and logs (default ``state/`` beside *out*)
     and adds each verified work that has a finding (its quotes are checked
     passages) as a source; without it nothing is searched. *genre* is a compose genre
     pack name or YAML path; ``None`` lets the brief compiler choose.
 
     Returns a :class:`DraftResult`; ``exit_code`` is 0 when no check error is
-    left in the drafted text and nothing was refused, 4 otherwise. Raises
+    left in the drafted text and nothing was refused, 1 otherwise. Raises
     :class:`DraftUsageError` for a bad invocation.
     """
     out_path = Path(out)
@@ -982,7 +984,7 @@ async def draft_document(
     )
     preset = genre_for(genre) if genre else None
 
-    project = out_path.with_name(f"{out_path.stem}.harness")
+    project = project_dir(out_path, Path(project) if project is not None else None)
     work = project / WORK_DIR
     work.mkdir(parents=True, exist_ok=True)
     adapter = DocxAdapter()

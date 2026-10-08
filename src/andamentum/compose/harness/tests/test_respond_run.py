@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 from pydantic import BaseModel
 
-from andamentum.compose import cli
+from andamentum.word import cli
 from andamentum.compose.harness.docx.reader import open_docx
 from andamentum.compose.harness.kernel import ProjectStore
 from andamentum.compose.harness.kernel.verbs import _clear_verbs, load_builtin_verbs
@@ -37,6 +37,7 @@ from andamentum.compose.harness.spike.make import (
 from andamentum.core.decisions.testing import StubDecisions, choice_answer
 
 from ...tests._stub import USAGE
+from ._helpers import copy_of
 from ._helpers import make_view
 
 APP = "Participants logged every meal for four weeks using the SaltLog app."
@@ -200,6 +201,7 @@ def sha(path: Path) -> str:
 
 
 async def respond(doc: Path, *, decision_handle=None, **kw):
+    kw.setdefault("out", copy_of(doc, "responded"))
     kw.setdefault("model", "test:model")
     kw.setdefault("offline", True)
     return await run_respond(
@@ -215,7 +217,7 @@ async def test_every_category_is_handled_and_nothing_human_is_resolved(
     assert sha(doc) == before  # the input is never modified
     report = result.report
     assert report.counts == {"edit": 1, "answer": 1, "author": 1, "done": 1}
-    assert report.exit_code == 4  # an item needs the authors
+    assert report.exit_code == 1  # an item needs the authors
     assert result.output == doc.with_name("paper.responded.docx")
 
     out = open_docx(result.output)
@@ -263,7 +265,7 @@ async def test_report_and_events_and_snapshot(doc: Path, script: Scripted):
     assert "## Needs the authors" in text and "Comment by Roe Reviewer" in text
     assert result.report.model_calls == 6
     assert result.report.input_tokens == 6 * USAGE.input_tokens
-    store = ProjectStore(doc.with_name("paper.harness"))
+    store = ProjectStore(doc.with_name("state"))
     kinds = [e["type"] for e in store.read_events()]
     assert kinds == ["transaction", "respond_run"]
     assert store.snapshot_log()[0].startswith(
@@ -354,14 +356,14 @@ async def test_no_items_needs_no_model(tmp_path: Path):
     plain = build_docx(
         tmp_path / "plain.docx", paragraph(run("Nothing to answer here."))
     )
-    result = await run_respond(RespondParams(file=plain, offline=True))
+    result = await run_respond(RespondParams(out=copy_of(plain, "responded"), file=plain, offline=True))
     assert result.report.outcomes == [] and result.report.exit_code == 0
     assert result.output.is_file()
 
 
 async def test_items_without_a_model_is_a_usage_error(doc: Path, script: Scripted):
     with pytest.raises(RespondUsageError, match="--model"):
-        await run_respond(RespondParams(file=doc, offline=True))
+        await run_respond(RespondParams(out=copy_of(doc, "responded"), file=doc, offline=True))
     with pytest.raises(RespondUsageError, match="must not be the input"):
         await run_respond(RespondParams(file=doc, out=doc, model="m", offline=True))
     assert script.calls == []
@@ -451,7 +453,7 @@ async def test_reviews_file_gives_a_response_letter(
         "Reviewer 1, point 2",
     ]
     assert report.unverified_points == ["Reviewer 2, point 1"]
-    assert report.exit_code == 4
+    assert report.exit_code == 1
 
     assert result.letter_docx == tmp_path / "out" / "response-letter.docx"
     assert result.letter_md == tmp_path / "out" / "response-letter.md"
@@ -542,7 +544,7 @@ async def test_review_point_without_a_locatable_passage_is_for_the_authors(
     reviews = tmp_path / "reviews.txt"
     reviews.write_text(REVIEWS)
     result = await run_respond(
-        RespondParams(file=doc, reviews=reviews, model="m", offline=True)
+        RespondParams(out=copy_of(doc, "responded"), file=doc, reviews=reviews, model="m", offline=True)
     )
     first = next(
         o for o in result.report.outcomes if o.item.label == "Reviewer 1, point 1"
@@ -572,7 +574,7 @@ async def test_reviews_must_be_a_known_type(tmp_path: Path, script: Scripted):
     odd = tmp_path / "reviews.rtf"
     odd.write_text("x")
     with pytest.raises(ValueError, match="must be"):
-        await run_respond(RespondParams(file=doc, reviews=odd, model="m", offline=True))
+        await run_respond(RespondParams(out=copy_of(doc, "responded"), file=doc, reviews=odd, model="m", offline=True))
 
 
 # ----------------------------------------------- collaborators' own edits
@@ -585,18 +587,18 @@ async def test_collaborators_edits_since_the_last_look_are_checked(tmp_path: Pat
         paragraph(run("Methods"), style="Heading1") + paragraph(run(STAT_OK)),
     )
     project = tmp_path / "shared.harness"
-    one = await run_respond(RespondParams(file=first, project=project, offline=True))
+    one = await run_respond(RespondParams(out=copy_of(first, "responded"), file=first, project=project, offline=True))
     assert "no earlier snapshot" in one.report.collaborator_baseline
     # a collaborator hand-edits the statistic, the document is saved again
     second = build_docx(
         tmp_path / "paper3.docx",
         paragraph(run("Methods"), style="Heading1") + paragraph(run(STAT_BAD)),
     )
-    two = await run_respond(RespondParams(file=second, project=project, offline=True))
+    two = await run_respond(RespondParams(out=copy_of(second, "responded"), file=second, project=project, offline=True))
     assert two.report.collaborator_changes == 1
     assert len(two.report.collaborator_errors) == 1
     assert two.report.collaborator_errors[0].check == "statistics"
-    assert two.report.exit_code == 4
+    assert two.report.exit_code == 1
     out = open_docx(two.output)
     comment = next(c for c in out.comments if c.author == "andamentum respond")
     assert comment.text.startswith("Changed since the last look. [error] statistics:")
@@ -709,9 +711,19 @@ def test_verb_is_registered_and_the_cli_parses_it():
     load_builtin_verbs()
     parser = cli.build_parser()
     args = parser.parse_args(
-        ["respond", "paper.docx", "--reviews", "r.txt", "--model", "m", "--offline"]
+        [
+            "respond",
+            "paper.docx",
+            "--reviews",
+            "r.txt",
+            "--model",
+            "m",
+            "--offline",
+            "--out",
+            "answered",
+        ]
     )
-    assert args.verb == "respond" and args.offline and str(args.reviews) == "r.txt"
+    assert args.command == "respond" and args.offline and str(args.reviews) == "r.txt"
     text = (
         parser.format_help()
         + next(
@@ -726,6 +738,8 @@ def test_verb_is_registered_and_the_cli_parses_it():
 
 def test_cli_usage_error_exits_2(doc: Path, capsys: pytest.CaptureFixture[str]):
     _clear_verbs()
-    code = cli.main(["respond", str(doc), "--offline"])
+    code = cli.main(
+        ["respond", str(doc), "--offline", "--out", str(doc.parent / "answered")]
+    )
     assert code == 2
     assert "--model" in capsys.readouterr().err

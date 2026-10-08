@@ -56,7 +56,7 @@ def test_open_roundtrip_and_metadata(tmp_path):
 
 
 def test_open_rejects_non_bundle_and_bad_version(tmp_path):
-    with pytest.raises(BundleError, match="not a bundle"):
+    with pytest.raises(BundleError, match="not a document folder"):
         Bundle.open(tmp_path)
     Bundle.create(tmp_path / "d", title="T")
     manifest = tmp_path / "d" / "bundle.yaml"

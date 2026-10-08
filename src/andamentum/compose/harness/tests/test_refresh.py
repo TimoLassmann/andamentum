@@ -20,6 +20,7 @@ from andamentum.compose.harness.bindings.common import UsageError
 from andamentum.compose.harness.docx.reader import open_docx
 from andamentum.compose.harness.kernel import ProjectStore
 
+from ._helpers import copy_of
 from ._bindings_helpers import (
     EFFECT,
     INTERVAL,
@@ -47,7 +48,7 @@ def bound(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     import asyncio
 
     run = asyncio.run(
-        run_bind(BindParams(file=manuscript, results=results, model="stub:m"))
+        run_bind(BindParams(out=copy_of(manuscript, "bound"), file=manuscript, results=results, model="stub:m"))
     )
     assert len(run.report.bound) == 7, run.report.unmatched
     return run.output, results, Path(run.report.project_dir)
@@ -59,6 +60,7 @@ def sha(path: Path) -> str:
 
 def refresh(bound, **kw):
     docx, results, project = bound
+    kw.setdefault("out", copy_of(docx, "refreshed"))
     return run_refresh(RefreshParams(file=docx, results=results, project=project, **kw))
 
 
@@ -108,7 +110,7 @@ def test_a_number_with_a_comment_opening_inside_its_control_is_still_replaced(
         output=commented,
     )
     make_results(results, effect="0.2511")
-    run = run_refresh(RefreshParams(file=commented, results=results, project=project))
+    run = run_refresh(RefreshParams(out=copy_of(commented, "refreshed"), file=commented, results=results, project=project))
     (change,) = run.report.changes
     assert change.applied
     copy = open_docx(run.output)
@@ -387,27 +389,29 @@ def test_usage_errors(bound, tmp_path):
     with pytest.raises(UsageError, match="never edited"):
         run_refresh(RefreshParams(file=docx, results=results, out=docx))
     with pytest.raises(UsageError, match="--results"):
-        run_refresh(RefreshParams(file=docx, results=tmp_path / "nope"))
+        run_refresh(RefreshParams(out=copy_of(docx, "refreshed"), file=docx, results=tmp_path / "nope"))
     with pytest.raises(UsageError, match=".docx"):
-        run_refresh(RefreshParams(file=tmp_path / "x.txt", results=results))
+        run_refresh(RefreshParams(out=copy_of(tmp_path / "x.txt", "refreshed"), file=tmp_path / "x.txt", results=results))
 
 
-def test_the_verb_exit_codes(bound, capsys):
-    from andamentum.compose import cli
+def test_the_verb_exit_codes(bound, capsys, tmp_path):
+    from andamentum.word import cli
 
     docx, results, project = bound
-    args = ["refresh", str(docx), "--results", str(results), "--project", str(project)]
+    folder = docx.parent  # the folder bind-numbers wrote into, with its state/
+    args = ["refresh", str(docx), "--results", str(results), "--out", str(folder)]
     assert cli.main(args) == 0
     make_results(results, p="0.9")
-    assert cli.main([*args, "--out", str(docx.with_name("flip.docx"))]) == 1
-    assert cli.main(["refresh", str(docx), "--results", str(results / "x")]) == 2
+    assert cli.main(args) == 1
+    missing = ["refresh", str(docx), "--results", str(results / "x"), "--out", str(folder)]
+    assert cli.main(missing) == 3
     assert "error:" in capsys.readouterr().err
 
 
-def test_the_project_folder_is_found_from_the_id_in_the_document(bound):
+def test_a_second_run_into_the_same_folder_finds_the_ledger(bound):
     docx, results, project = bound
     make_results(results, effect="0.3")
-    run = run_refresh(RefreshParams(file=docx, results=results))  # no --project
+    run = run_refresh(RefreshParams(out=copy_of(docx, "refreshed"), file=docx, results=results))  # no project: state/ beside the output
     assert Path(run.report.project_dir) == project
     assert len(run.report.changes) == 1
 

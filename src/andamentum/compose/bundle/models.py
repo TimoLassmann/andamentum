@@ -10,8 +10,12 @@ from pydantic import BaseModel
 Severity = Literal["error", "warning", "info"]
 
 
-class BundleError(Exception):
-    """A bundle operation failed (missing section, bad layout, bad argument)."""
+class ComposeError(Exception):
+    """Base class of the errors compose raises on purpose."""
+
+
+class BundleError(ComposeError):
+    """A document-folder operation failed (missing section, bad layout, bad argument)."""
 
 
 class StaleRevisionError(BundleError):

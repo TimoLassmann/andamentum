@@ -566,7 +566,7 @@ class Finish(BaseNode[ComposeState, ComposeDeps, ComposeResult]):
         )
         return End(
             ComposeResult(
-                bundle=deps.bundle_dir,
+                folder=deps.bundle_dir,
                 outputs=outputs,
                 goal_met=stop == "goal_met",
                 stop_reason=stop,

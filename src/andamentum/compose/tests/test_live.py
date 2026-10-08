@@ -23,7 +23,7 @@ from andamentum.compose.harness.bench.fixture_http import scheme_only_url_check
 from andamentum.compose.harness.bindings.bind import BindParams, run_bind
 from andamentum.compose.harness.bindings.refresh import RefreshParams, run_refresh
 from andamentum.compose.harness.docx.reader import open_docx
-from andamentum.compose.harness.draft.verb import WriteParams, run_write
+from andamentum.compose.harness.draft.verb import DraftParams, run_draft
 from andamentum.compose.harness.examples import (
     ExampleProject,
     fixture_transport_for_example,
@@ -100,8 +100,8 @@ def example(tmp_path) -> ExampleProject:
 async def test_write_into_word_cites_and_binds(example: ExampleProject):
     out = example.root / "paper.docx"
     before = _sha(example.library), _sha(example.notes)
-    result = await run_write(
-        WriteParams(
+    result = await run_draft(
+        DraftParams(
             task="Introduction and results for the SaltLog pilot, citing the published "
             "works in the library for the background",
             out=out,
@@ -115,7 +115,7 @@ async def test_write_into_word_cites_and_binds(example: ExampleProject):
         url_check=scheme_only_url_check,
     )
     assert (_sha(example.library), _sha(example.notes)) == before
-    assert result.exit_code in (0, 4)
+    assert result.exit_code in (0, 1)
     view = open_docx(out)
     assert any(p.heading_level for p in view.paragraphs)
     assert view.project_id is not None
@@ -134,13 +134,24 @@ async def test_bind_numbers_then_refresh_after_a_result_changes(
 ):
     before = _sha(example.collaborator)
     bound = await run_bind(
-        BindParams(file=example.collaborator, results=example.results, model=MODEL)
+        BindParams(
+            file=example.collaborator,
+            results=example.results,
+            model=MODEL,
+            out=example.root / "bound" / "collaborator.bound.docx",
+        )
     )
     assert _sha(example.collaborator) == before
     assert bound.report.bound, "the model matched no number to a result file"
     summary = example.results / "summary.csv"
     summary.write_text(summary.read_text().replace("412", "398"), encoding="utf-8")
-    refreshed = run_refresh(RefreshParams(file=bound.output, results=example.results))
+    refreshed = run_refresh(
+        RefreshParams(
+            file=bound.output,
+            results=example.results,
+            out=bound.output.with_name("collaborator.refreshed.docx"),
+        )
+    )
     report = refreshed.report
     assert report.exit_code in (0, 1)
     assert len(report.changes) + report.unchanged == len(bound.report.bound)
@@ -163,7 +174,7 @@ async def test_respond_replies_to_every_open_thread_and_writes_the_letter(
         )
     )
     assert _sha(example.collaborator) == before
-    assert run.report.exit_code in (0, 4)
+    assert run.report.exit_code in (0, 1)
     source = open_docx(example.collaborator)
     after = open_docx(run.output)
     open_threads = [

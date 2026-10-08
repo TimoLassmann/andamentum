@@ -1,6 +1,6 @@
 # harness/draft — notes for Claude
 
-`draft_document(task, *, out, roles, into=None, genre=None, sources=(), results=None, literature=None, research=None, template=None, max_rounds=2, offline=False, ...)` is the library behind `andamentum-compose write`. The CLI flags are wired in `verb.py` (the `write` verb: `--out FILE.docx` or `--into` comes here, any other `--out` is the bundle path; `run_write` builds the literature sources, maps `DraftUsageError` to exit 2 and `DraftResult.exit_code` to 0 or 4); this module takes explicit arguments and the four compose `Roles` (the drafter writes, the judge labels claims and runs the numbers check; critic and reader are unused here).
+`draft_document(task, *, out, roles, into=None, genre=None, sources=(), results=None, literature=None, research=None, template=None, max_rounds=2, offline=False, ...)` is the library behind `andamentum-word draft` (public face: `andamentum.word.draft_document`, which writes `draft.docx` into the `--out` folder). The flags are wired in `verb.py` (the `draft` verb; the old bundle destination is `andamentum-compose write`; `run_draft` builds the literature sources, refuses idle research flags, raises `DraftUsageError` (exit 2) and `DraftResult.exit_code` is 0 or 1); this module takes explicit arguments and the four compose `Roles` (the drafter writes, the judge labels claims and runs the numbers check; critic and reader are unused here).
 
 ## What it reuses (and where it stops)
 
@@ -10,7 +10,7 @@ Two names are imported across modules on purpose, because a second copy would dr
 
 ## Flow (`run.py`)
 
-1. Project folder `<out stem>.harness/` (the harness store; its id is the document's when `--into` already carries one) with a scratch folder `compose/` for the workers. `out` must not exist; the input of `--into` and every source are only read.
+1. Project folder `state/` beside `out` (or the explicit `project`; the harness store; its id is the document's when `--into` already carries one) with a scratch folder `compose/` for the workers. `out` must not exist; the input of `--into` and every source are only read.
 2. Sources: the text of the document being extended (as one source), `--source` files and URLs, every csv/tsv/json under `--results` (the source's label is the path relative to the results folder), then verified literature works. One fact-extraction call per source, in order; a fact whose quote is not in the source is dropped by the worker. Source ids are `src1..`, fact ids `f1..` globally.
 3. Outline (figures are not drawn into Word and are noted in the report), then targets (below), then one draft per target in outline order, each seeing the first two sentences of the sections before it (written this run or already in the document).
 4. `claims.analyse_section` per section (parse, sentences, kinds, number bindings), then `assemble.build_round`, then the check, then the repair loop.
@@ -72,11 +72,11 @@ One paragraph under "Statement on the use of AI", built only from logged events 
 
 ## Limits and pitfalls
 
-- Tracked insertions only: nothing existing is rewritten (`Replace` is not used by `write`).
+- Tracked insertions only: nothing existing is rewritten (`Replace` is not used by `draft`).
 - Inline formatting, tables and figures are not written; a table is flattened, a planned figure is dropped, both reported.
 - Anchors for unverified works and other document-level questions are the first inserted paragraph, not a section.
 - The confidentiality gate of `ingest_sources` also reads the existing document text; it raises unless `confirm_own_sources` is set.
-- An `--into` document's project id must equal that of an existing `<out stem>.harness/`.
+- An `--into` document's project id must equal that of an existing `state/` beside `out`.
 - The numbers check and the claim labels use the judge model and add tokens that `DraftResult.usage` (which sums the worker log) does not include for the check.
 - Not measured against a real model: tests stub the model boundary and the network. The first live run is the acceptance smoke.
 
