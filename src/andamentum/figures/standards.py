@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from .errors import FiguresError
+
 
 @dataclass(frozen=True)
 class JournalPreset:
@@ -203,12 +205,12 @@ def get_preset(name: str) -> JournalPreset:
         JournalPreset with all formatting parameters.
 
     Raises:
-        ValueError: If preset name is not recognized.
+        FiguresError: If preset name is not recognized.
     """
     key = name.lower()
     if key not in JOURNAL_PRESETS:
         available = ", ".join(sorted(JOURNAL_PRESETS.keys()))
-        raise ValueError(f"Unknown journal preset '{name}'. Available: {available}")
+        raise FiguresError(f"Unknown journal preset '{name}'. Available: {available}")
     return JOURNAL_PRESETS[key]
 
 
@@ -232,7 +234,7 @@ def resolve_width(width: str | float, preset: JournalPreset) -> float:
     key = str(width).lower()
     if key not in mapping:
         available = ", ".join(sorted(mapping.keys()))
-        raise ValueError(
+        raise FiguresError(
             f"Unknown width '{width}'. Use {available} or a number in inches."
         )
     return mapping[key]

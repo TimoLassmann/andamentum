@@ -24,6 +24,7 @@ from markdown.extensions.tables import TableExtension
 from markdown.extensions.toc import TocExtension
 
 from andamentum.typeset.atoms import validate_document
+from andamentum.typeset.errors import PDF_INSTALL_HINT, PdfUnavailableError
 from andamentum.typeset.styles import get_style
 
 logger = logging.getLogger(__name__)
@@ -484,9 +485,9 @@ def render_pdf(
 ) -> Path:
     """Render *document* to a PDF file using WeasyPrint.
 
-    WeasyPrint is an optional dependency.  This function performs a lazy
-    import and raises :exc:`ImportError` with a helpful message if it is not
-    installed.
+    WeasyPrint is an optional dependency (the ``pdf`` extra).  This function
+    performs a lazy import and raises :exc:`PdfUnavailableError` (also an
+    ``ImportError``) naming the extra if it is not installed.
 
     Parameters
     ----------
@@ -508,7 +509,7 @@ def render_pdf(
 
     Raises
     ------
-    ImportError
+    PdfUnavailableError
         If WeasyPrint is not installed.
     """
     # Ensure Homebrew libs are findable on Apple Silicon (pango, gobject).
@@ -524,11 +525,8 @@ def render_pdf(
     try:
         import weasyprint  # type: ignore[import-untyped]
     except ImportError as exc:
-        raise ImportError(
-            "WeasyPrint is required for PDF rendering. "
-            "Install it with the optional extra: pip install 'andamentum[pdf]' "
-            "(or: pip install weasyprint). "
-            "It also needs system libraries — on macOS: brew install pango libffi."
+        raise PdfUnavailableError(
+            f"WeasyPrint is required for PDF output. {PDF_INSTALL_HINT}"
         ) from exc
 
     html = render(

@@ -1,12 +1,15 @@
 """andamentum.llm_judge — a dead-simple LLM-as-judge primitive.
 
+The type of ``model`` sets the mode: one model id (``str``) = fast, a single
+judge; a list of ids = panel, several judges with an agreement gate.
+
 Two things:
 
-1. ``await judge_score(output, *, criteria=None, context=None, model=...)``
-   — score ONE output against criteria, per-criterion, with confidence and
+1. ``await judge_score(text, *, criteria=None, context=None, model=...)``
+   — score ONE text against criteria, per-criterion, with confidence and
    doubt.
-2. ``await judge_compare(output_a, output_b, *, criteria=None, context=None,
-   model=...)`` — compare TWO outputs (which is better), with confidence
+2. ``await judge_compare(text_a, text_b, *, criteria=None, context=None,
+   model=...)`` — compare TWO texts (which is better), with confidence
    and doubt.
 
 Both are single async entry points returning a bounded, flat-ish pydantic
@@ -92,6 +95,7 @@ from typing import Sequence
 
 from . import panel
 from .criteria import DEFAULT_CRITERIA
+from .errors import InvalidJudgeInputError, JudgeError
 from .schemas import CompareResult, Criterion, CriterionScore, JudgeVote, ScoreResult
 
 __all__ = [
@@ -103,6 +107,8 @@ __all__ = [
     "CompareResult",
     "JudgeVote",
     "DEFAULT_CRITERIA",
+    "JudgeError",
+    "InvalidJudgeInputError",
 ]
 
 
@@ -137,35 +143,35 @@ def _validate_inputs(models: list[str], criteria: list[Criterion]) -> None:
     default verdict — this module never invents a score it did not derive.
     """
     if not models:
-        raise ValueError(
+        raise InvalidJudgeInputError(
             "model must name at least one judge: pass a model id (fast path) "
             "or a non-empty sequence of model ids (panel path)"
         )
     if any(not m.strip() for m in models):
-        raise ValueError(f"model ids must be non-empty strings, got {models!r}")
+        raise InvalidJudgeInputError(f"model ids must be non-empty strings, got {models!r}")
     if not criteria:
-        raise ValueError(
+        raise InvalidJudgeInputError(
             "criteria must contain at least one Criterion — pass criteria=None "
             "to use the built-in DEFAULT_CRITERIA, not an empty list"
         )
 
 
 async def judge_score(
-    output: str,
+    text: str,
     *,
     criteria: list[Criterion] | None = None,
     context: str | None = None,
     model: str | Sequence[str],
 ) -> ScoreResult:
-    """Score ``output`` against ``criteria``, one verbalized distribution
+    """Score ``text`` against ``criteria``, one verbalized distribution
     per criterion, rolled up to one overall verdict.
 
     Args:
-        output: The text to judge.
+        text: The text to judge.
         criteria: Criteria to score against. ``None`` -> :data:`DEFAULT_CRITERIA`
             (six short, domain-agnostic axes: correctness, completeness,
             instruction-following, sound reasoning, clarity, groundedness).
-        context: The task/prompt ``output`` was answering. Optional, but
+        context: The task/prompt ``text`` was answering. Optional, but
             strongly used by the prompt when present.
         model: A model id (fast, single judge, temperature 0) or a sequence
             of model ids (panel, sequential, sampling temperature — see
@@ -176,7 +182,7 @@ async def judge_score(
         roll-up limitation and the doubt-signal caveat — both apply here.
 
     Raises:
-        ValueError: on a degenerate input — an empty ``model`` sequence, a
+        InvalidJudgeInputError (a ``JudgeError`` and a ``ValueError``): on a degenerate input — an empty ``model`` sequence, a
             blank model id, or an empty ``criteria`` list (pass
             ``criteria=None`` for the defaults, not ``[]``).
         Whatever the underlying pydantic-ai call raises after the built-in
@@ -189,11 +195,11 @@ async def judge_score(
     _validate_inputs(models, resolved_criteria)
     if is_panel:
         parts = await panel.run_score_panel(
-            output, resolved_criteria, context, models=models
+            text, resolved_criteria, context, models=models
         )
     else:
         parts = await panel.run_score_fast(
-            output, resolved_criteria, context, model=models[0]
+            text, resolved_criteria, context, model=models[0]
         )
     return ScoreResult(
         per_criterion=parts.per_criterion,
@@ -207,25 +213,25 @@ async def judge_score(
 
 
 async def judge_compare(
-    output_a: str,
-    output_b: str,
+    text_a: str,
+    text_b: str,
     *,
     criteria: list[Criterion] | None = None,
     context: str | None = None,
     model: str | Sequence[str],
 ) -> CompareResult:
-    """Compare ``output_a`` and ``output_b`` — which is better.
+    """Compare ``text_a`` and ``text_b`` — which is better.
 
     Both presentation orders are always run (A-first and B-first), even in
     fast mode, and the winner is computed from the order-averaged
     histogram — a single-order call is vulnerable to position bias.
 
     Args:
-        output_a: The first candidate output.
-        output_b: The second candidate output.
+        text_a: The first candidate text.
+        text_b: The second candidate text.
         criteria: Criteria the judge should weigh (folded into the prompt's
             "criteria that matter" framing). ``None`` -> :data:`DEFAULT_CRITERIA`.
-        context: The task/prompt both outputs were answering. Optional, but
+        context: The task/prompt both texts were answering. Optional, but
             strongly used by the prompt when present.
         model: A model id (fast, single judge, temperature 0) or a sequence
             of model ids (panel, sequential, sampling temperature — see
@@ -237,7 +243,7 @@ async def judge_compare(
         ``order_consistent`` semantics and the doubt-signal caveat.
 
     Raises:
-        ValueError: on a degenerate input — an empty ``model`` sequence, a
+        InvalidJudgeInputError (a ``JudgeError`` and a ``ValueError``): on a degenerate input — an empty ``model`` sequence, a
             blank model id, or an empty ``criteria`` list (pass
             ``criteria=None`` for the defaults, not ``[]``).
         Whatever the underlying pydantic-ai call raises after the built-in
@@ -250,11 +256,11 @@ async def judge_compare(
     _validate_inputs(models, resolved_criteria)
     if is_panel:
         parts = await panel.run_compare_panel(
-            output_a, output_b, resolved_criteria, context, models=models
+            text_a, text_b, resolved_criteria, context, models=models
         )
     else:
         parts = await panel.run_compare_fast(
-            output_a, output_b, resolved_criteria, context, model=models[0]
+            text_a, text_b, resolved_criteria, context, model=models[0]
         )
     return CompareResult(
         reasoning=parts.reasoning,

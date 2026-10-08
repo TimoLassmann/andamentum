@@ -1,21 +1,24 @@
 """Command-line entry point: ``andamentum-llm-judge``.
 
-Two subcommands: ``score <output>`` and ``compare <output_a> <output_b>``.
-``--model`` is required (no hidden default). Pass it once for the FAST
-(single-judge) path, or repeat it / pass a comma-separated list for the
-PANEL path — a 3-model panel over the 6 default criteria is 18+ strictly
-sequential model calls (plus any PromptedOutput retries), so panel runs are
-noticeably slower than fast runs, especially against local Ollama. This is
-accepted: correctness over speed, and Ollama serialises requests anyway so
-there is nothing to parallelise.
+Two subcommands: ``score TEXT`` and ``compare TEXT_A TEXT_B``. Each text is a
+literal argument, or ``-`` to read it from stdin (for ``compare`` at most one
+of the two may be ``-``). ``--model`` is required (no default). Pass it once
+for the FAST path (a single judge), or repeat it / pass a comma-separated
+list for the PANEL path - a 3-model panel over the 6 default criteria is
+18+ strictly sequential model calls (plus any PromptedOutput retries), so
+panel runs are noticeably slower than fast runs, especially against local
+Ollama. This is accepted: correctness over speed, and Ollama serialises
+requests anyway so there is nothing to parallelise.
 
-Output is JSON to stdout by default; use ``-o`` to write a file.
+The result is JSON on stdout, or in the ``-o/--out`` file.
 
 Exit codes:
-    0 — success
-    1 — argument error
-    2 — input error (e.g. a criteria file that doesn't parse)
-    3 — judge call failed
+    0 - success (the verdict is in the JSON; a "fails" or "b" verdict is not an error)
+    2 - usage error (a wrong or missing argument)
+    3 - input unreadable (a criteria file that is missing or does not parse)
+    4 - the run failed (model or network error, or no valid structured answer)
+
+A judge verdict is data rather than a pass/fail check, so 1 is not used.
 """
 
 from __future__ import annotations
@@ -24,19 +27,29 @@ import argparse
 import asyncio
 import json
 import sys
+from collections.abc import Sequence
 from pathlib import Path
-from typing import NoReturn, Sequence
-
-from dotenv import load_dotenv
 
 from . import judge_compare, judge_score
 from .criteria import DEFAULT_CRITERIA
+from .errors import InvalidJudgeInputError
 from .schemas import Criterion
 
+_EXIT_CODES = """\
+exit codes:
+  0  success (the verdict is in the JSON; a "fails" verdict is not an error)
+  2  usage error (a wrong or missing argument)
+  3  input unreadable (a criteria file that is missing or does not parse)
+  4  the run failed (model or network error, or no valid structured answer)
+"""
 
-def _die(code: int, message: str) -> NoReturn:
-    print(f"error: {message}", file=sys.stderr)
-    sys.exit(code)
+
+class _Exit(Exception):
+    """Stops the run with an exit code and a one-line message."""
+
+    def __init__(self, code: int, message: str) -> None:
+        super().__init__(message)
+        self.code = code
 
 
 def _parse_models(raw: list[str]) -> str | list[str]:
@@ -46,7 +59,7 @@ def _parse_models(raw: list[str]) -> str | list[str]:
     for entry in raw:
         models.extend(part.strip() for part in entry.split(",") if part.strip())
     if not models:
-        raise ValueError("--model given but resolved to no model ids")
+        raise InvalidJudgeInputError("--model given but resolved to no model ids")
     return models[0] if len(models) == 1 else models
 
 
@@ -57,27 +70,35 @@ def _load_criteria(path: str | None) -> list[Criterion]:
     return [Criterion(**entry) for entry in data]
 
 
-def _build_parser() -> argparse.ArgumentParser:
+def _read_text(value: str, *, stdin_text: dict[str, str]) -> str:
+    """A literal argument, or all of stdin for ``-`` (read once)."""
+    if value != "-":
+        return value
+    if "text" not in stdin_text:
+        stdin_text["text"] = sys.stdin.read()
+    return stdin_text["text"]
+
+
+def build_parser() -> argparse.ArgumentParser:
+    from andamentum import __version__
+
     parser = argparse.ArgumentParser(
         prog="andamentum-llm-judge",
         description=(
-            "LLM-as-judge: score one output against criteria, or compare "
-            "two outputs. Pass --model once for a fast single judge, or "
-            "multiple times (or comma-separated) for a sequential panel "
-            "with an agreement gate."
+            "LLM-as-judge: score one text against criteria, or compare two "
+            "texts. Pass --model once for a fast single judge, or several "
+            "times (or comma-separated) for a sequential panel with an "
+            "agreement gate. Prints JSON."
         ),
+        epilog=_EXIT_CODES,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    from andamentum import __version__ as _ver
-
     parser.add_argument(
-        "--version", action="version", version=f"%(prog)s (andamentum {_ver})"
+        "--version", action="version", version=f"andamentum-llm-judge {__version__}"
     )
 
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    # `score` takes a positional named `output` (the text to judge), so the
-    # destination-file flag MUST carry an explicit, different dest — sharing
-    # `output` makes argparse silently overwrite one with the other.
     def _add_shared(sp: argparse.ArgumentParser) -> None:
         sp.add_argument(
             "--model",
@@ -85,42 +106,65 @@ def _build_parser() -> argparse.ArgumentParser:
             action="append",
             metavar="MODEL",
             help=(
-                "Required. Repeatable, or comma-separated, for a panel. "
-                "One value = fast single judge (temperature 0). "
-                "Examples: anthropic:claude-haiku-4-5, ollama:gemma4:31b."
+                "model that judges. One value = fast mode, a single judge at "
+                "temperature 0. Repeat the flag, or comma-separate, for panel "
+                "mode: several judges, run one after another, with an agreement "
+                "gate. Examples: anthropic:claude-haiku-4-5, ollama:gemma4:31b"
             ),
         )
         sp.add_argument(
             "--context",
             default=None,
             metavar="TEXT",
-            help="Optional task/prompt the output(s) were answering.",
+            help="the task or question the text(s) were answering (optional)",
         )
         sp.add_argument(
             "--criteria",
             default=None,
-            metavar="PATH",
-            help="Optional JSON file: a list of {name, description} objects. "
-            "Defaults to the built-in six-criterion set.",
+            metavar="FILE",
+            help=(
+                "JSON file holding a list of {name, description} objects "
+                "(default: the built-in six criteria)"
+            ),
         )
         sp.add_argument(
             "-o",
-            "--output",
+            "--out",
             dest="out_path",
             default="-",
             metavar="FILE",
-            help="Output JSON file path. Default: '-' (stdout).",
+            help="write the JSON result to FILE (default: print to stdout)",
         )
 
     score_parser = subparsers.add_parser(
-        "score", help="Score one output against criteria."
+        "score",
+        help="score one text against criteria",
+        description="Score one text against criteria. Prints JSON.",
+        epilog=_EXIT_CODES,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    score_parser.add_argument("output", help="The text to judge.")
+    score_parser.add_argument(
+        "text", metavar="TEXT", help="the text to judge; use - to read it from stdin"
+    )
     _add_shared(score_parser)
 
-    compare_parser = subparsers.add_parser("compare", help="Compare two outputs.")
-    compare_parser.add_argument("output_a", help="The first candidate output.")
-    compare_parser.add_argument("output_b", help="The second candidate output.")
+    compare_parser = subparsers.add_parser(
+        "compare",
+        help="say which of two texts is better",
+        description=(
+            "Compare two texts. Both presentation orders are always run. Prints JSON."
+        ),
+        epilog=_EXIT_CODES,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    compare_parser.add_argument(
+        "text_a", metavar="TEXT_A", help="the first text; use - to read it from stdin"
+    )
+    compare_parser.add_argument(
+        "text_b",
+        metavar="TEXT_B",
+        help="the second text; use - to read it from stdin (only one of the two may be -)",
+    )
     _add_shared(compare_parser)
 
     return parser
@@ -129,33 +173,44 @@ def _build_parser() -> argparse.ArgumentParser:
 async def _run(args: argparse.Namespace) -> int:
     try:
         model = _parse_models(args.model)
-    except ValueError as exc:
-        _die(1, str(exc))
+    except InvalidJudgeInputError as exc:
+        raise _Exit(2, str(exc)) from exc
+
+    if args.command == "compare" and args.text_a == "-" and args.text_b == "-":
+        raise _Exit(2, "only one of TEXT_A and TEXT_B may be - (stdin)")
 
     try:
         criteria = _load_criteria(args.criteria)
-    except (OSError, json.JSONDecodeError, ValueError) as exc:
-        _die(2, f"could not load criteria from {args.criteria!r}: {exc}")
+    except (OSError, json.JSONDecodeError, ValueError, TypeError) as exc:
+        raise _Exit(
+            3, f"could not load criteria from {args.criteria!r}: {exc}"
+        ) from exc
 
+    stdin_text: dict[str, str] = {}
     try:
         if args.command == "score":
+            text = _read_text(args.text, stdin_text=stdin_text)
             result = await judge_score(
-                args.output, criteria=criteria, context=args.context, model=model
+                text, criteria=criteria, context=args.context, model=model
             )
         else:
+            text_a = _read_text(args.text_a, stdin_text=stdin_text)
+            text_b = _read_text(args.text_b, stdin_text=stdin_text)
             result = await judge_compare(
-                args.output_a,
-                args.output_b,
+                text_a,
+                text_b,
                 criteria=criteria,
                 context=args.context,
                 model=model,
             )
+    except InvalidJudgeInputError as exc:
+        raise _Exit(2, str(exc)) from exc
     except Exception as exc:
         # Broad catch here is deliberate CLI-boundary behaviour (matches
         # andamentum-vision-critique): report a clear message on stderr for
         # what is a routine user-facing tool, rather than an unfriendly
         # traceback. The library layer itself never swallows errors.
-        _die(3, f"judge call failed: {type(exc).__name__}: {exc}")
+        raise _Exit(4, f"judge call failed: {type(exc).__name__}: {exc}") from exc
 
     payload = result.model_dump_json(indent=2)
     if args.out_path == "-":
@@ -168,13 +223,18 @@ async def _run(args: argparse.Namespace) -> int:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    load_dotenv()
-    parser = _build_parser()
-    args = parser.parse_args(argv)
+    from dotenv import load_dotenv
+
+    args = build_parser().parse_args(argv)
+    load_dotenv()  # provider API keys only
     try:
         return asyncio.run(_run(args))
+    except _Exit as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return exc.code
     except KeyboardInterrupt:
-        _die(1, "interrupted")
+        print("error: interrupted", file=sys.stderr)
+        return 4
 
 
 if __name__ == "__main__":  # pragma: no cover

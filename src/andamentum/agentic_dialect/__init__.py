@@ -17,8 +17,13 @@ from ._laws import Law, checklist, law, laws
 from ._roles import ROLES, for_role, roles
 from .checks import Violation, check_code
 from .doc import doc_path, read_doc, skeleton
+from .errors import DialectError, PathNotFoundError, UnknownLawError, UnknownRoleError
 
 __all__ = [
+    "DialectError",
+    "PathNotFoundError",
+    "UnknownLawError",
+    "UnknownRoleError",
     "Law",
     "Violation",
     "ROLES",

@@ -19,6 +19,7 @@ import httpx
 import pytest
 
 from andamentum.vision_critique import FigureCritique, critique_figure
+from andamentum.vision_critique import UnsupportedImageError
 from andamentum.vision_critique.api import _normalise_image, _sniff_media_type
 
 
@@ -59,8 +60,20 @@ def test_sniff_media_type_jpeg() -> None:
     assert _sniff_media_type(b"\xff\xd8\xff\xe0\x00\x10") == "image/jpeg"
 
 
-def test_sniff_media_type_unknown_defaults_png() -> None:
-    assert _sniff_media_type(b"some-random-bytes-no-magic") == "image/png"
+def test_sniff_media_type_unknown_raises() -> None:
+    with pytest.raises(UnsupportedImageError):
+        _sniff_media_type(b"some-random-bytes-no-magic")
+
+
+async def test_pdf_and_svg_are_refused(tmp_path: Path) -> None:
+    pdf = tmp_path / "fig.pdf"
+    pdf.write_bytes(b"%PDF-1.7 not an image")
+    with pytest.raises(UnsupportedImageError):
+        await _normalise_image(pdf)
+    svg = tmp_path / "fig.svg"
+    svg.write_text("<svg xmlns='http://www.w3.org/2000/svg'/>")
+    with pytest.raises(UnsupportedImageError):
+        await _normalise_image(str(svg))
 
 
 # ── unit: critique_figure end-to-end with mocked Agent.run ─────────────
@@ -97,8 +110,8 @@ async def test_critique_figure_returns_parsed_schema() -> None:
     assert out.suggested_fixes == ["rotate_x_labels"]
 
 
-async def test_critique_figure_passes_extra_context() -> None:
-    """``extra_context`` lands in the prompt sent to the agent."""
+async def test_critique_figure_passes_context() -> None:
+    """``context`` lands in the prompt sent to the agent."""
     fake_critique = FigureCritique(
         label_overlap=False,
         labels_legible=True,
@@ -120,7 +133,7 @@ async def test_critique_figure_passes_extra_context() -> None:
         await critique_figure(
             b"\x89PNG\r\n\x1a\n" + b"\x00" * 8,
             model="ollama:fake-model",
-            extra_context="manuscript panel — Cell format",
+            context="manuscript panel — Cell format",
         )
 
     sent = mock_agent.run.call_args.args[0]

@@ -6,6 +6,6 @@ Each chunk carries its source offsets and its heading path. No model is
 involved and nothing outside the standard library is imported.
 """
 
-from .splitter import Chunk, chunk
+from .splitter import Chunk, ChunkerError, chunk
 
-__all__ = ["Chunk", "chunk"]
+__all__ = ["Chunk", "ChunkerError", "chunk"]

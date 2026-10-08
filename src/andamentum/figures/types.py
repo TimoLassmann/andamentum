@@ -9,6 +9,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from .errors import FiguresError
+
 
 class PlotKind(str, Enum):
     """Supported plot types."""
@@ -26,7 +28,7 @@ class PlotKind(str, Enum):
     STACKED = "stacked"
 
 
-# Explicitly banned kinds — raise ValueError with explanation
+# Explicitly banned kinds — raise FiguresError with explanation
 BANNED_KINDS = {
     "pie": "Pie charts use angle-based encoding, which humans perceive inaccurately (Cleveland & McGill 1984). Use kind='bar' instead.",
     "donut": "Donut charts have the same perceptual problems as pie charts. Use kind='bar' instead.",
@@ -55,7 +57,7 @@ class DataTable:
         lengths = {k: len(v) for k, v in columns.items()}
         unique_lengths = set(lengths.values())
         if len(unique_lengths) > 1:
-            raise ValueError(f"All columns must have equal length, got: {lengths}")
+            raise FiguresError(f"All columns must have equal length, got: {lengths}")
 
     @property
     def column_names(self) -> list[str]:
@@ -106,7 +108,7 @@ class DataTable:
     def from_records(cls, records: list[dict[str, Any]]) -> DataTable:
         """Create from row records: [{"col": val, ...}, ...]."""
         if not records:
-            raise ValueError("Cannot create DataTable from empty records list")
+            raise FiguresError("Cannot create DataTable from empty records list")
         all_keys: list[str] = []
         seen: set[str] = set()
         for r in records:
@@ -126,7 +128,7 @@ class DataTable:
         reader = csv.DictReader(io.StringIO(csv_string.strip()))
         records = list(reader)
         if not records:
-            raise ValueError("CSV string contains no data rows")
+            raise FiguresError("CSV string contains no data rows")
         # Try to convert numeric strings
         columns: dict[str, list[Any]] = {}
         for key in records[0]:

@@ -26,7 +26,7 @@ agentic graph systems; treat changes to it with the same care as changes to a la
 ## File map
 
 `_laws.py` laws · `_roles.py` role briefs + `for_role` · `checks.py` portable AST gates +
-`check_code` · `doc.py` canon access + `skeleton`/`normalize` · `cli.py` adapter ·
+`check_code` · `doc.py` canon access + `skeleton`/`normalize` · `cli.py` adapter (exit 0 / 1 `check` found violations / 2 unknown law or role / 3 path unreadable; `--json` on `check` and the listings) · `errors.py` `DialectError`, `UnknownLawError`, `UnknownRoleError` (also `KeyError`s) ·
 `__init__.py` public API. (`_laws`/`_roles` are underscore-private to avoid colliding with the
 `laws()`/`roles()` functions.)
 

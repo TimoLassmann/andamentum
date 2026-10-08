@@ -10,6 +10,8 @@ from __future__ import annotations
 import random
 from typing import Any
 
+from .errors import FiguresError
+
 
 def bootstrap_ci(
     values: list[float | int],
@@ -29,14 +31,14 @@ def bootstrap_ci(
         Tuple of (mean, ci_lower, ci_upper).
 
     Raises:
-        ValueError: If values is empty.
+        FiguresError: If values is empty.
     """
     if not values:
-        raise ValueError("Cannot compute bootstrap CI on empty values")
+        raise FiguresError("Cannot compute bootstrap CI on empty values")
 
     clean = [v for v in values if isinstance(v, (int, float))]
     if not clean:
-        raise ValueError("No numeric values found")
+        raise FiguresError("No numeric values found")
 
     rng = random.Random(seed)
     n = len(clean)

@@ -293,14 +293,18 @@ html = render(doc, custom_css="body { font-family: Georgia; font-size: 14px; }")
 
 This replaces the built-in style entirely. Your CSS must style all the `.typeset-*` classes yourself.
 
+## Command line
+
+`andamentum-typeset SOURCE [-o FILE] [--style S] [--title T] [--footer F]` renders a Markdown file (`-` for stdin) to HTML on stdout, or to the file named with `-o` (`.html` or `.pdf`). Exit codes: 0 success, 2 usage error, 3 input unreadable, 4 render failed (including PDF without the extra). Errors derive from `TypesetError` (a `ValueError`).
+
 ## PDF output
 
-PDF rendering uses WeasyPrint. It's an optional dependency — install it separately.
+PDF rendering uses WeasyPrint, which comes with the `pdf` extra. `render_pdf` is always importable; without the extra it raises `PdfUnavailableError` (an `ImportError`) that names the extra.
 
 ### Setup (macOS)
 
 ```bash
-pip install weasyprint
+pip install 'andamentum[pdf]'
 brew install pango libffi    # WeasyPrint needs these system libraries
 ```
 
@@ -457,7 +461,7 @@ All methods return `self` for optional chaining. Output methods:
 
 - `r.render() -> str` — render to HTML string
 - `r.save(path) -> Path` — write HTML file
-- `r.save_pdf(path, **kw) -> Path` — write PDF (requires WeasyPrint)
+- `r.save_pdf(path, **kw) -> Path` — write PDF (requires the `pdf` extra: `pip install 'andamentum[pdf]'`)
 - `r.atoms -> list[dict]` — get the accumulated atom list (read-only copy)
 - `len(r)` — number of atoms
 
@@ -477,7 +481,7 @@ Same as `render()`, but writes the HTML to a file and returns the path.
 
 ### `render_pdf(document, output, *, style="article", custom_css=None, title=None, footer="") -> Path`
 
-Same as `render()`, but produces a PDF via WeasyPrint. Requires `pip install weasyprint` and system libraries (macOS: `brew install pango libffi`).
+Same as `render()`, but produces a PDF via WeasyPrint. Requires `pip install 'andamentum[pdf]'` and system libraries (macOS: `brew install pango libffi`).
 
 ### `STYLES`
 

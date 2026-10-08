@@ -18,6 +18,7 @@ from matplotlib import font_manager
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 
+from .errors import FiguresError
 from .standards import JournalPreset, get_preset
 
 # Use non-interactive backend by default
@@ -314,7 +315,7 @@ def inline_svg(path: str | Path) -> str:
         The trimmed element as a string, starting with ``<svg``.
 
     Raises:
-        ValueError: If the file has no ``<svg`` root or no ``viewBox``.
+        FiguresError: If the file has no ``<svg`` root or no ``viewBox``.
     """
     text = Path(path).read_text(encoding="utf-8")
     text = _XML_DECL.sub("", text, count=1)
@@ -324,11 +325,11 @@ def inline_svg(path: str | Path) -> str:
 
     start = text.find("<svg")
     if start < 0:
-        raise ValueError(f"{path} has no <svg> root element")
+        raise FiguresError(f"{path} has no <svg> root element")
     text = text[start:]
     root_end = text.index(">")
     root = text[:root_end]
     if "viewBox" not in root:
-        raise ValueError(f"{path}: the <svg> root has no viewBox; cannot inline")
+        raise FiguresError(f"{path}: the <svg> root has no viewBox; cannot inline")
     root = _ROOT_SIZE.sub("", root)
     return root + text[root_end:]

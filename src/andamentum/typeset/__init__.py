@@ -43,11 +43,11 @@ from .builders import (
     prose,
     reference,
 )
-from .renderer import render, render_to_file
-from .styles import get_style
+from .errors import PdfUnavailableError, TypesetError
+from .renderer import render, render_pdf, render_to_file
 
 # === Result/data types (returned by the above; not tools themselves) ===
-from .styles import STYLES
+from .styles import STYLES, get_style
 
 __all__ = [
     # Functions / callables
@@ -63,11 +63,9 @@ __all__ = [
     "render_to_file",
     "render_pdf",
     "get_style",
+    # Errors
+    "TypesetError",
+    "PdfUnavailableError",
     # Data types
     "STYLES",
 ]
-
-try:
-    from .renderer import render_pdf
-except ImportError:
-    pass

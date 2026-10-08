@@ -1,24 +1,50 @@
-"""CLI entry point for andamentum-figures."""
+"""Command-line entry point: andamentum-figures.
+
+Usage::
+
+    andamentum-figures plot data.csv --kind bar --x group --y value -o figure.pdf
+    andamentum-figures palettes
+    andamentum-figures journals
+
+``plot`` writes the figure to the file named with ``-o/--out`` (the format
+follows the extension: .pdf, .png, .svg) and prints a short summary, or the
+full result as JSON with ``--json``.
+
+Exit codes: 0 success; 2 usage error (a wrong or missing argument, or an
+option the data cannot satisfy); 3 the data file could not be read (missing,
+not .csv or .json, not valid JSON); 4 the run failed (a crash, or the figure
+could not be written). A figure has no negative result, so 1 is not used.
+"""
 
 from __future__ import annotations
 
 import argparse
 import json
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 
+_EXIT_CODES = """\
+exit codes:
+  0  success
+  2  usage error (a wrong or missing argument, or an option the data cannot satisfy)
+  3  the data file could not be read (missing, not .csv or .json, invalid JSON)
+  4  the run failed (a crash, or the figure could not be written)
+"""
 
-def _build_parser() -> argparse.ArgumentParser:
+
+def build_parser() -> argparse.ArgumentParser:
+    from andamentum import __version__
+
     parser = argparse.ArgumentParser(
         prog="andamentum-figures",
-        description="Publication-quality scientific figure rendering — deterministic plotting of your data with journal-matched sizing.",
+        description="Publication-quality scientific figures. Plots only the numbers "
+        "in your data file; no generative AI. Journal-matched sizing.",
+        epilog=_EXIT_CODES,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    from andamentum import __version__ as _ver
-
     parser.add_argument(
-        "--version",
-        action="version",
-        version=f"%(prog)s (andamentum {_ver})",
+        "--version", action="version", version=f"andamentum-figures {__version__}"
     )
     sub = parser.add_subparsers(dest="command")
 
@@ -33,11 +59,29 @@ def _build_parser() -> argparse.ArgumentParser:
     tones = ", ".join(list(ANDAMENTUM_TONES) + list(ANDAMENTUM_TONE_ALIASES))
 
     # plot subcommand
-    plot = sub.add_parser("plot", help="Generate a figure from a data file")
-    plot.add_argument("data_file", help="Path to CSV or JSON data file")
-    plot.add_argument("--kind", default="auto", help=f"Plot type ({kinds})")
-    plot.add_argument("--x", default=None, help="X-axis column name")
-    plot.add_argument("--y", default=None, nargs="+", help="Y-axis column name(s)")
+    plot = sub.add_parser(
+        "plot",
+        help="draw a figure from a data file",
+        description="Draw a figure from a CSV or JSON table and write it to the file named with -o.",
+        epilog=_EXIT_CODES,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    plot.add_argument(
+        "data_file", metavar="DATA", help="path to a .csv or .json data file"
+    )
+    plot.add_argument(
+        "--kind", default="auto", help=f"chart type (default: auto): {kinds}"
+    )
+    plot.add_argument(
+        "--x", default=None, help="column for the x axis (default: detected)"
+    )
+    plot.add_argument(
+        "--y",
+        default=None,
+        nargs="+",
+        metavar="COLUMN",
+        help="column(s) for the y axis; give several, separated by spaces, for a wide-form table",
+    )
     plot.add_argument(
         "--group",
         default=None,
@@ -49,76 +93,102 @@ def _build_parser() -> argparse.ArgumentParser:
     plot.add_argument(
         "--group-order",
         default=None,
-        help="Series order, comma-separated. Must name every series once.",
+        metavar="A,B,C",
+        help="series order, comma-separated; must name every series once",
     )
-    plot.add_argument("--error", default=None, help="Error column")
-    plot.add_argument("--error-type", default=None, help="Error type (sem, sd, ci95)")
-    plot.add_argument("--title", default=None, help="Figure title")
-    plot.add_argument("--x-label", default=None, help="X-axis label")
-    plot.add_argument("--y-label", default=None, help="Y-axis label")
-    plot.add_argument("--style", default="npg", help=f"Color palette ({palettes})")
+    plot.add_argument("--error", default=None, help="column holding error-bar values")
+    plot.add_argument(
+        "--error-type", default=None, help="what the error bars show: sem, sd or ci95"
+    )
+    plot.add_argument("--title", default=None, help="figure title")
+    plot.add_argument("--x-label", default=None, help="x-axis label")
+    plot.add_argument("--y-label", default=None, help="y-axis label")
+    plot.add_argument(
+        "--style", default="npg", help=f"colour palette (default: npg): {palettes}"
+    )
     plot.add_argument(
         "--series-colors",
         default=None,
+        metavar="NAME=TONE,...",
         help=(
-            "Map series (or bar categories) to design-system tones by name, "
+            "colour series (or bar categories) by tone name, "
             f"e.g. wrong=rust,refused=ochre,right=olive. Tones: {tones}. "
             "No hex values."
         ),
     )
     plot.add_argument(
-        "--journal", default="default", help=f"Journal preset ({journals})"
+        "--journal",
+        default="default",
+        help=f"journal size preset (default: default): {journals}",
     )
     plot.add_argument(
         "--mode",
         default="publication",
         choices=["publication", "showcase"],
-        help="Output mode",
+        help="publication (default: journal sizing) or showcase (large type for slides; overrides --journal)",
     )
     plot.add_argument(
-        "--width", default="single", help="Width (single, 1.5, double, or inches)"
+        "--width",
+        default="single",
+        help="figure width: single, 1.5 or double (journal column widths), or a number of inches (default: single)",
     )
-    plot.add_argument("--dpi", type=int, default=300, help="Resolution")
+    plot.add_argument(
+        "--dpi",
+        type=int,
+        default=300,
+        help="resolution in dots per inch (default: 300)",
+    )
     plot.add_argument(
         "--horizontal",
         action=argparse.BooleanOptionalAction,
         default=None,
         help=(
-            "Force horizontal (--horizontal) or vertical (--no-horizontal) bars. "
-            "Default: auto by label count and length."
+            "force horizontal (--horizontal) or vertical (--no-horizontal) bars; "
+            "by default the orientation follows label count and length"
         ),
     )
     plot.add_argument(
         "--normalize",
         action="store_true",
-        help="Stacked only: segments as fractions of the category total; totals still labelled as counts.",
+        help="stacked only: draw segments as fractions of the category total (totals are still labelled as counts)",
     )
     plot.add_argument(
         "--svg-inline",
         action="store_true",
         help=(
-            "Write the bare <svg> element (no XML declaration, DOCTYPE, metadata, "
-            "width or height) so a report can inline it. Output must be .svg."
+            "write the bare <svg> element (no XML declaration, DOCTYPE, metadata, "
+            "width or height) so a report can inline it; --out must end in .svg"
         ),
     )
-    plot.add_argument("-o", "--output", default="figure.pdf", help="Output file path")
+    plot.add_argument(
+        "-o",
+        "--out",
+        required=True,
+        metavar="FILE",
+        help="file to write the figure to; the format follows the extension (.pdf, .png, .svg)",
+    )
+    plot.add_argument(
+        "--json",
+        action="store_true",
+        help="print the full result (path, legend, notes, size, ...) as JSON instead of a summary",
+    )
 
     # palettes subcommand
-    sub.add_parser("palettes", help="List available color palettes")
+    sub.add_parser("palettes", help="list the colour palettes")
 
     # journals subcommand
-    sub.add_parser("journals", help="List available journal format presets")
+    sub.add_parser("journals", help="list the journal size presets")
 
     return parser
 
 
-def main() -> None:
-    parser = _build_parser()
-    args = parser.parse_args()
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
 
     if args.command is None:
         parser.print_help()
-        return
+        return 0
 
     if args.command == "palettes":
         from .palettes import PALETTES
@@ -127,56 +197,61 @@ def main() -> None:
             print(
                 f"  {name:12s} ({len(colors)} colors): {', '.join(colors[:5])}{'...' if len(colors) > 5 else ''}"
             )
-        return
+        return 0
 
     if args.command == "journals":
         from .standards import list_presets
 
         for name, desc in list_presets().items():
             print(f"  {name:12s} {desc}")
-        return
+        return 0
 
-    if args.command == "plot":
-        _run_plot(args)
-        return
+    return _run_plot(args)
 
 
-def _run_plot(args: argparse.Namespace) -> None:
+def _run_plot(args: argparse.Namespace) -> int:
+    from .errors import FiguresError
     from .render import figure
 
     data_path = Path(args.data_file)
-    if not data_path.exists():
-        print(f"Error: File not found: {data_path}", file=sys.stderr)
-        sys.exit(1)
-
-    # Load data
     suffix = data_path.suffix.lower()
-    if suffix == ".csv":
-        data: dict | list | str = data_path.read_text()
-    elif suffix == ".json":
-        with open(data_path) as f:
-            data = json.load(f)
-    else:
+    if suffix not in (".csv", ".json"):
         print(
-            f"Error: Unsupported file type: {suffix}. Use .csv or .json",
+            f"error: unsupported data file type '{suffix}'; use a .csv or .json file",
             file=sys.stderr,
         )
-        sys.exit(1)
+        return 3
+    try:
+        data: dict | list | str
+        if suffix == ".csv":
+            data = data_path.read_text(encoding="utf-8")
+        else:
+            data = json.loads(data_path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        print(f"error: data file not found: {data_path}", file=sys.stderr)
+        return 3
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        print(f"error: cannot read {data_path}: {exc}", file=sys.stderr)
+        return 3
 
-    # Parse width
+    # --width is a column-width name (single, 1.5, double) or a number of inches.
     width: str | float = args.width
     try:
         width = float(args.width)
     except ValueError:
         pass
 
-    # Parse y columns
+    # One --y value is a single column; several are a wide-form table.
     y = args.y
     if y and len(y) == 1:
         y = y[0]
 
     group_order = _split_list(args.group_order)
-    series_colors = _parse_series_colors(args.series_colors)
+    try:
+        series_colors = _parse_series_colors(args.series_colors)
+    except FiguresError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
 
     try:
         result = figure(
@@ -196,15 +271,22 @@ def _run_plot(args: argparse.Namespace) -> None:
             width=width,
             dpi=args.dpi,
             horizontal=args.horizontal,
-            output=args.output,
+            output=args.out,
             group_order=group_order,
             normalize=args.normalize,
             series_colors=series_colors,
             svg_inline=args.svg_inline,
         )
-    except ValueError as exc:
-        print(f"Error: {exc}", file=sys.stderr)
-        sys.exit(1)
+    except FiguresError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    except OSError as exc:
+        print(f"error: cannot write {args.out}: {exc}", file=sys.stderr)
+        return 4
+
+    if args.json:
+        print(result.model_dump_json(indent=2))
+        return 0
 
     print(f"Saved: {result.path}")
     print(f"Kind:  {result.kind}")
@@ -220,6 +302,7 @@ def _run_plot(args: argparse.Namespace) -> None:
             file=sys.stderr,
         )
     print(f"\nLegend:\n  {result.legend}")
+    return 0
 
 
 def _split_list(value: str | None) -> list[str] | None:
@@ -231,6 +314,8 @@ def _split_list(value: str | None) -> list[str] | None:
 
 def _parse_series_colors(value: str | None) -> dict[str, str] | None:
     """Parse ``name=tone,name=tone`` into a dict. Tone names are checked by figure()."""
+    from .errors import FiguresError
+
     if value is None:
         return None
     mapping: dict[str, str] = {}
@@ -239,11 +324,11 @@ def _parse_series_colors(value: str | None) -> dict[str, str] | None:
         if not item:
             continue
         if "=" not in item:
-            print(
-                f"Error: --series-colors entry '{item}' is not name=tone",
-                file=sys.stderr,
-            )
-            sys.exit(1)
+            raise FiguresError(f"--series-colors entry '{item}' is not name=tone")
         name, tone = item.split("=", 1)
         mapping[name.strip()] = tone.strip()
     return mapping or None
+
+
+if __name__ == "__main__":  # pragma: no cover
+    sys.exit(main())

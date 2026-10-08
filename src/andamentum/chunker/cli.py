@@ -5,7 +5,11 @@ Usage::
     andamentum-chunker INPUT --max-chars 4000 -o chunks.json
     andamentum-chunker - --max-chars 4000 --text-only < doc.md
 
-Outputs JSON with {chunks: [{text, start, end, heading_path}], total_chars}.
+Prints JSON with {chunks: [{text, start, end, heading_path}], total_chars}.
+
+Exit codes: 0 success; 2 usage error; 3 the input could not be read
+(missing file, not UTF-8 text). The chunker has no negative result, so 1 and
+4 are not used.
 """
 
 from __future__ import annotations
@@ -13,54 +17,76 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 
-from .splitter import chunk
+from .splitter import ChunkerError, chunk
+
+_EXIT_CODES = """\
+exit codes:
+  0  success
+  2  usage error (a wrong or missing argument)
+  3  the input could not be read (missing file, not UTF-8 text)
+"""
 
 
-def _build_parser() -> argparse.ArgumentParser:
+def build_parser() -> argparse.ArgumentParser:
+    from andamentum import __version__
+
     parser = argparse.ArgumentParser(
         prog="andamentum-chunker",
-        description="Deterministic chunking of markdown by headings, paragraphs and sentences.",
+        description="Split markdown into chunks at headings, paragraphs and sentences. "
+        "Code blocks, tables and front matter are never cut. No model is used.",
+        epilog=_EXIT_CODES,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    from andamentum import __version__ as _ver
-
     parser.add_argument(
-        "--version", action="version", version=f"%(prog)s (andamentum {_ver})"
+        "--version", action="version", version=f"andamentum-chunker {__version__}"
     )
-    parser.add_argument("input", help="Path to a text/markdown file, or - for stdin")
+    parser.add_argument("input", help="path to a text or markdown file, or - for stdin")
     parser.add_argument(
         "--max-chars",
         type=int,
         required=True,
-        help="Maximum characters per chunk (code blocks and tables may exceed it)",
+        help="maximum characters per chunk (code blocks and tables may exceed it)",
     )
     parser.add_argument(
-        "-o", "--output", default="-", help="Output file path (default: stdout)"
+        "-o",
+        "--out",
+        default="-",
+        metavar="FILE",
+        help="write the result to FILE (default: print to stdout)",
     )
     parser.add_argument(
         "--text-only",
         action="store_true",
-        help="Print only the chunk texts, separated by a blank line and ---",
+        help="print only the chunk texts, separated by a blank line and ---",
     )
     return parser
 
 
-def main(argv: list[str] | None = None) -> int:
-    args = _build_parser().parse_args(argv)
+def main(argv: Sequence[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
     if args.max_chars < 1:
-        print("Error: --max-chars must be >= 1", file=sys.stderr)
+        print("error: --max-chars must be at least 1", file=sys.stderr)
         return 2
-    if args.input == "-":
-        source = sys.stdin.read()
-    else:
-        path = Path(args.input)
-        if not path.exists():
-            print(f"Error: input file not found: {args.input}", file=sys.stderr)
-            return 1
-        source = path.read_text()
+    try:
+        if args.input == "-":
+            source = sys.stdin.read()
+        else:
+            source = Path(args.input).read_text(encoding="utf-8")
+    except FileNotFoundError:
+        print(f"error: input file not found: {args.input}", file=sys.stderr)
+        return 3
+    except (OSError, UnicodeDecodeError) as exc:
+        print(f"error: cannot read {args.input} as UTF-8 text: {exc}", file=sys.stderr)
+        return 3
 
-    chunks = chunk(source, max_chars=args.max_chars)
+    try:
+        chunks = chunk(source, max_chars=args.max_chars)
+    except ChunkerError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
     if args.text_only:
         body = "\n\n---\n\n".join(c.text for c in chunks)
     else:
@@ -79,10 +105,14 @@ def main(argv: list[str] | None = None) -> int:
             },
             indent=2,
         )
-    if args.output == "-":
+    if args.out == "-":
         print(body)
     else:
-        Path(args.output).write_text(body)
+        try:
+            Path(args.out).write_text(body, encoding="utf-8")
+        except OSError as exc:
+            print(f"error: cannot write {args.out}: {exc}", file=sys.stderr)
+            return 4
     return 0
 
 

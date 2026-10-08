@@ -446,25 +446,25 @@ td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
       <div class="card">
         <p class="eyebrow">score one output</p>
         <h3><code>judge_score</code></h3>
-        <p>Scores <code>output</code> against each criterion independently — one verbalized distribution per criterion — then rolls the criteria up into one overall verdict of <span class="badge badge--success">meets</span> <span class="badge badge--warn">partial</span> <span class="badge badge--danger">fails</span>.</p>
+        <p>Scores <code>text</code> against each criterion independently — one verbalized distribution per criterion — then rolls the criteria up into one overall verdict of <span class="badge badge--success">meets</span> <span class="badge badge--warn">partial</span> <span class="badge badge--danger">fails</span>.</p>
       </div>
       <div class="card">
         <p class="eyebrow">compare two outputs</p>
         <h3><code>judge_compare</code></h3>
-        <p>Decides which of <code>output_a</code> / <code>output_b</code> is better. <code>winner</code> is always a value — <span class="badge">a</span> <span class="badge">b</span> <span class="badge">tie</span> — and both presentation orders are always run to defuse position bias.</p>
+        <p>Decides which of <code>text_a</code> / <code>text_b</code> is better. <code>winner</code> is always a value — <span class="badge">a</span> <span class="badge">b</span> <span class="badge">tie</span> — and both presentation orders are always run to defuse position bias.</p>
       </div>
     </div>
 
     <h3>Signatures</h3>
 <pre><code><span class="tok-kw">async def</span> <span class="tok-fn">judge_score</span>(
-    output: <span class="tok-kw">str</span>, *,
+    text: <span class="tok-kw">str</span>, *,
     criteria: <span class="tok-kw">list</span>[Criterion] | <span class="tok-kw">None</span> = <span class="tok-kw">None</span>,
     context: <span class="tok-kw">str</span> | <span class="tok-kw">None</span> = <span class="tok-kw">None</span>,
     model: <span class="tok-kw">str</span> | Sequence[<span class="tok-kw">str</span>],
 ) -> ScoreResult
 
 <span class="tok-kw">async def</span> <span class="tok-fn">judge_compare</span>(
-    output_a: <span class="tok-kw">str</span>, output_b: <span class="tok-kw">str</span>, *,
+    text_a: <span class="tok-kw">str</span>, text_b: <span class="tok-kw">str</span>, *,
     criteria: <span class="tok-kw">list</span>[Criterion] | <span class="tok-kw">None</span> = <span class="tok-kw">None</span>,
     context: <span class="tok-kw">str</span> | <span class="tok-kw">None</span> = <span class="tok-kw">None</span>,
     model: <span class="tok-kw">str</span> | Sequence[<span class="tok-kw">str</span>],
@@ -606,7 +606,7 @@ result = <span class="tok-kw">await</span> <span class="tok-fn">judge_compare</s
     <p>Position bias is real and worst when the two candidates are close in quality. The literature's fix — bidirectional preference entropy (SCOPE, 2026) — is baked in: candidates are always labelled <strong>&ldquo;Response 1&rdquo; / &ldquo;Response 2&rdquo;, never A/B</strong>, so the elicitation schema carries no position information, and the caller controls which output is shown first.</p>
     <p><strong>Both orders always run, even in fast mode:</strong></p>
     <ul>
-      <li>Order <code>AB</code> shows <code>output_a</code> as Response 1; order <code>BA</code> shows <code>output_b</code> as Response 1.</li>
+      <li>Order <code>AB</code> shows <code>text_a</code> as Response 1; order <code>BA</code> shows <code>text_b</code> as Response 1.</li>
       <li>Each raw <code>[p1, ptie, p2]</code> is canonicalized back to <code>[pa, ptie, pb]</code> (<code>BA</code> just swaps the two ends).</li>
       <li>The two canonical histograms are averaged; the winner is read off the <em>order-averaged</em> histogram — never a single order.</li>
       <li>Any tie for the maximum mass (including an even a/b split) reports <code>tie</code>: a judge that split its belief evenly cannot honestly pick a winner.</li>
@@ -662,7 +662,7 @@ result = <span class="tok-kw">await</span> <span class="tok-fn">judge_compare</s
 
   <section>
     <h2><span class="n">8</span>Command line</h2>
-    <p>The <code>andamentum-llm-judge</code> script exposes both functions as subcommands. <code>--model</code> is required (no hidden default); pass it once for the fast path, or repeat it / give a comma-separated list for a panel. Output is JSON to stdout by default (<code>-o</code> writes a file).</p>
+    <p>The <code>andamentum-llm-judge</code> script exposes both functions as subcommands. <code>--model</code> is required (no hidden default); pass it once for the fast path, or repeat it / give a comma-separated list for a panel. Output is JSON to stdout by default (<code>-o/--out</code> writes a file). A text may be <code>-</code> to read it from stdin (for <code>compare</code>, only one of the two).</p>
 <pre><code><span class="tok-com"># fast single judge</span>
 andamentum-llm-judge score <span class="tok-str">"Paris is the capital of France."</span> \
     --context <span class="tok-str">"What is the capital of France?"</span> \
@@ -673,7 +673,7 @@ andamentum-llm-judge compare <span class="tok-str">"answer one"</span> <span cla
     --model ollama:gemma4:31b-nvfp4 --model ollama:gpt-oss:20b \
     --criteria my_criteria.json \
     -o result.json</code></pre>
-    <p>A panel over the six default criteria is many strictly-sequential model calls (plus any <code>PromptedOutput</code> retries), so panel runs are noticeably slower than fast runs — accepted deliberately: correctness over speed, and there is nothing to parallelise against a serialising local backend. Exit codes: <span class="badge badge--success">0</span> success, <span class="badge">1</span> argument error, <span class="badge">2</span> input error, <span class="badge badge--danger">3</span> judge call failed.</p>
+    <p>A panel over the six default criteria is many strictly-sequential model calls (plus any <code>PromptedOutput</code> retries), so panel runs are noticeably slower than fast runs — accepted deliberately: correctness over speed, and there is nothing to parallelise against a serialising local backend. Exit codes: <span class="badge badge--success">0</span> success, <span class="badge">2</span> usage error, <span class="badge">3</span> input unreadable (criteria file), <span class="badge badge--danger">4</span> judge call failed.</p>
   </section>
 
   <section>

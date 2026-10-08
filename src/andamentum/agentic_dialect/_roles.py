@@ -8,6 +8,7 @@ laws in its slice, and the checklist items for those laws.
 from __future__ import annotations
 
 from ._laws import law
+from .errors import UnknownRoleError
 
 ROLES: dict[str, tuple[str, ...]] = {
     "worker": ("L2", "L7", "L8"),
@@ -36,11 +37,11 @@ def roles() -> tuple[str, ...]:
 def for_role(role: str) -> str:
     """The prompt-slice a job needs: its job line, its laws, its checklist.
 
-    Raises ``KeyError`` for an unknown role.
+    Raises ``UnknownRoleError`` (a ``KeyError``) for an unknown role.
     """
     key = role.lower()
     if key not in ROLES:
-        raise KeyError(f"Unknown role: {role!r}. Known: {', '.join(ROLES)}")
+        raise UnknownRoleError(f"Unknown role: {role!r}. Known: {', '.join(ROLES)}")
     selected = [law(i) for i in ROLES[key]]
     lines = [_JOB[key], "", "Laws that apply:"]
     for lw in selected:

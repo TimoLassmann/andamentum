@@ -8,6 +8,8 @@ the palette provides.
 
 from __future__ import annotations
 
+from .errors import FiguresError
+
 # ── Qualitative palettes (categorical data) ──────────────────────────────────
 
 NPG: list[str] = [
@@ -162,7 +164,7 @@ def get_palette(name: str, n: int | None = None) -> list[str]:
         List of hex color strings.
 
     Raises:
-        ValueError: If palette name is not recognized, or if ``andamentum``
+        FiguresError: If palette name is not recognized, or if ``andamentum``
             is asked for more colours than it has.
     """
     key = _palette_key(name)
@@ -175,7 +177,7 @@ def get_palette(name: str, n: int | None = None) -> list[str]:
         return colors[:n]
 
     if key == "andamentum":
-        raise ValueError(
+        raise FiguresError(
             f"The andamentum palette has {len(colors)} colours and "
             f"{n} were requested. It does not cycle: merge or facet the series."
         )
@@ -217,13 +219,13 @@ def resolve_tone(name: str) -> str:
     can check the output against the token set.
 
     Raises:
-        ValueError: If the name is not a known tone.
+        FiguresError: If the name is not a known tone.
     """
     key = name.strip().lower().replace("_", "-")
     key = ANDAMENTUM_TONE_ALIASES.get(key, key)
     if key not in ANDAMENTUM_TONES:
         accepted = ", ".join(list(ANDAMENTUM_TONES) + list(ANDAMENTUM_TONE_ALIASES))
-        raise ValueError(f"Unknown tone '{name}'. Accepted: {accepted}")
+        raise FiguresError(f"Unknown tone '{name}'. Accepted: {accepted}")
     return ANDAMENTUM_TONES[key]
 
 
@@ -247,12 +249,12 @@ def assign_series_colors(
         A list of hexes aligned with ``names``.
 
     Raises:
-        ValueError: If a mapped name is not in ``names`` or a tone is unknown.
+        FiguresError: If a mapped name is not in ``names`` or a tone is unknown.
     """
     mapping = series_colors or {}
     unknown = [k for k in mapping if k not in names]
     if unknown:
-        raise ValueError(
+        raise FiguresError(
             f"series_colors names {unknown} are not in the data. "
             f"Series present: {names}"
         )
@@ -277,7 +279,7 @@ def _palette_key(name: str) -> str:
     key = name.lower().replace("-", "_")
     if key not in PALETTES:
         available = ", ".join(sorted(PALETTES.keys()))
-        raise ValueError(f"Unknown palette '{name}'. Available: {available}")
+        raise FiguresError(f"Unknown palette '{name}'. Available: {available}")
     return key
 
 

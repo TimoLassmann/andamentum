@@ -75,6 +75,8 @@ def test_public_surface_matches_documented_set():
         "CompareResult",
         "JudgeVote",
         "DEFAULT_CRITERIA",
+        "JudgeError",
+        "InvalidJudgeInputError",
     }
     assert set(llm_judge.__all__) == expected
 

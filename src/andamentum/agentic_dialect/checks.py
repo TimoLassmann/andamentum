@@ -17,6 +17,8 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
+from .errors import PathNotFoundError
+
 _ORCHESTRATION_FILES = {"graph.py", "nodes.py"}
 _SKIP_FILES = {"cli.py", "__init__.py", "conftest.py"}
 _CLIENT_CONSTRUCTORS = {"Agent"}
@@ -43,8 +45,13 @@ def check_code(path: str | Path, *, strict: bool = False) -> list[Violation]:
     broad ``except`` that does not re-raise). It is off by default so adopting a new
     gate is a deliberate step, not a surprise across every codebase already calling
     ``check_code``; turn it on per-invocation (``--strict``) when ready to enforce it.
+
+    A path that does not exist raises :class:`PathNotFoundError`; an empty
+    result never means "nothing was checked".
     """
     root = Path(path)
+    if not root.exists():
+        raise PathNotFoundError(f"no such file or folder: {root}")
     files = [root] if root.is_file() else sorted(root.rglob("*.py"))
     out: list[Violation] = []
     for f in files:

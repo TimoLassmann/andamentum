@@ -136,3 +136,13 @@ def test_clean_worker_passes(tmp_path: Path) -> None:
     )
     f = _write(tmp_path, "summarize.py", src)
     assert check_code(f) == []
+
+
+def test_check_code_raises_for_a_missing_path(tmp_path):
+    """An empty result must mean "checked and clean", never "nothing found to check"."""
+    import pytest
+
+    from andamentum.agentic_dialect import PathNotFoundError, check_code
+
+    with pytest.raises(PathNotFoundError):
+        check_code(tmp_path / "no-such-folder")

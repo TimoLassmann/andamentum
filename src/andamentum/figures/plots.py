@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.axes import Axes
 
+from .errors import FiguresError
 from .palettes import get_palette
 from .stats import compute_mean_error
 
@@ -195,7 +196,7 @@ def stacked_bar(
         The category totals, in category order.
 
     Raises:
-        ValueError: If a value is negative, or a series has the wrong
+        FiguresError: If a value is negative, or a series has the wrong
             number of values.
     """
     series_names = list(data.keys())
@@ -204,12 +205,12 @@ def stacked_bar(
     for name in series_names:
         vals = data[name]
         if len(vals) != n_cats:
-            raise ValueError(
+            raise FiguresError(
                 f"Series '{name}' has {len(vals)} values for {n_cats} categories"
             )
         negative = [v for v in vals if v < 0]
         if negative:
-            raise ValueError(
+            raise FiguresError(
                 f"Series '{name}' has a negative value ({negative[0]}); "
                 "stacking is undefined for negative values."
             )

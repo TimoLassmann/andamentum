@@ -13,7 +13,7 @@ Quick start::
         title="Comparison",
         y_label="Value (units)",
         style="npg",
-        output="fig.pdf",
+        output="fig.pdf",  # required: the file to write
     )
 
 Low-level API for custom multi-panel figures::
@@ -32,6 +32,7 @@ For plot primitives, import from submodules::
 """
 
 # === Functions you can wrap as agent tools ===
+from .errors import FiguresError
 from .palettes import get_palette, list_palettes
 from .render import figure
 from .standards import get_preset, list_presets, resolve_width
@@ -61,6 +62,8 @@ __all__ = [
     "list_presets",
     "list_palettes",
     "resolve_width",
+    # Errors
+    "FiguresError",
     # Data types
     "PlotKind",
     "FigureMode",

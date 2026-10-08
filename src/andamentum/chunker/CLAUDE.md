@@ -2,7 +2,7 @@
 
 ## Overview
 
-`andamentum.chunker` splits markdown into chunks. It is deterministic and uses no model: same input, same chunks. Public surface: `Chunk` and `chunk` (`__all__`), nothing else.
+`andamentum.chunker` splits markdown into chunks. It is deterministic and uses no model: same input, same chunks. Public surface: `Chunk`, `chunk` and `ChunkerError` (a `ValueError` subclass; `__all__`), nothing else.
 
 ```python
 chunk(text: str, *, max_chars: int) -> list[Chunk]
@@ -23,7 +23,7 @@ Standard library only. `chunker` MUST NOT import `core` or any other sub-module;
 
 ## Invariants (tested on seeded random markdown in `tests/test_chunk.py`)
 
-Chunks are in source order and do not overlap; `text == source[start:end]`; chunk text has no leading or trailing blank lines; every non-whitespace character lies in exactly one chunk; no chunk exceeds `max_chars` unless it holds an atomic block or an unbreakable token. Empty or whitespace-only input gives `[]`; `max_chars < 1` raises `ValueError`.
+Chunks are in source order and do not overlap; `text == source[start:end]`; chunk text has no leading or trailing blank lines; every non-whitespace character lies in exactly one chunk; no chunk exceeds `max_chars` unless it holds an atomic block or an unbreakable token. Empty or whitespace-only input gives `[]`; `max_chars < 1` raises `ChunkerError`.
 
 ## Pitfalls
 
@@ -33,4 +33,4 @@ Chunks are in source order and do not overlap; `text == source[start:end]`; chun
 
 ## CLI
 
-`andamentum-chunker INPUT --max-chars N [-o FILE] [--text-only] [--version]`. `INPUT` is a path or `-` for stdin; `--max-chars` is required. JSON output: `{"chunks": [{text, start, end, heading_path}], "total_chars": n}`.
+`andamentum-chunker INPUT --max-chars N [-o FILE] [--text-only] [--version]`. `INPUT` is a path or `-` for stdin; `--max-chars` is required. Exit codes: 0 success, 2 usage error, 3 input unreadable (missing file, not UTF-8). Errors are one `error:` line on stderr. JSON output: `{"chunks": [{text, start, end, heading_path}], "total_chars": n}`.

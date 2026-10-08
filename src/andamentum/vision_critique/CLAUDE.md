@@ -9,3 +9,10 @@ Moved from the root `CLAUDE.md`, word for word. Claude Code loads this file when
 ## Layering
 
 - `vision_critique` depends on `core` (for `resolve_model`) and `pydantic` / `pydantic-ai` / `httpx`. MUST NOT depend on `epistemic`, `deep_research`, `document_store`, `whetstone`, `compose`, `figures`, `typeset`, `chunker`, or `harvest`. Other modules MAY depend on `vision_critique` (e.g. `figures` for refinement loops, `whetstone` for figure review during manuscript checking).
+
+## Interface notes
+
+- The caller-supplied extra text is `context` in Python and `--context` on the command line (it was `extra_context` in Python).
+- Only PNG, JPEG, WEBP and GIF are accepted. A supported file extension or content type is trusted; otherwise the type is read from the content. Anything else (PDF, SVG, TIFF) raises `UnsupportedImageError` (CLI exit 3) instead of being sent as PNG.
+- Errors derive from `VisionCritiqueError`.
+- CLI exit codes: 0 no issue found / 1 the critique found at least one issue (JSON still written) / 2 usage / 3 image unreadable or unsupported / 4 run failed. `-o/--out` writes the JSON to a file.

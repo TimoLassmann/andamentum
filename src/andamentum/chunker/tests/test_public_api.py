@@ -7,7 +7,7 @@ import andamentum.chunker as chunker
 
 
 def test_public_all():
-    assert set(chunker.__all__) == {"Chunk", "chunk"}
+    assert set(chunker.__all__) == {"Chunk", "ChunkerError", "chunk"}
 
 
 def test_public_imports_are_resolvable():

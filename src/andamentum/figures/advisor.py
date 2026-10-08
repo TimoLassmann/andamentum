@@ -13,21 +13,22 @@ Rules grounded in:
 
 from __future__ import annotations
 
+from .errors import FiguresError
 from .types import BANNED_KINDS, DataTable, PlotKind
 
 
 def check_banned(kind: str) -> None:
-    """Raise ValueError if the requested kind is explicitly banned.
+    """Raise FiguresError if the requested kind is explicitly banned.
 
     Args:
         kind: Plot kind string.
 
     Raises:
-        ValueError: If kind is banned (pie, donut, 3d_bar, 3d_pie).
+        FiguresError: If kind is banned (pie, donut, 3d_bar, 3d_pie).
     """
     key = kind.lower().replace("-", "_")
     if key in BANNED_KINDS:
-        raise ValueError(f"Refused to create '{kind}' chart. {BANNED_KINDS[key]}")
+        raise FiguresError(f"Refused to create '{kind}' chart. {BANNED_KINDS[key]}")
 
 
 def recommend_kind(

@@ -45,7 +45,7 @@ def test_typeset_cli_writes_html_to_stdout_by_default(
 
 
 def test_typeset_cli_creates_parent_dirs(tmp_path: Path) -> None:
-    """--output creates intermediate directories."""
+    """-o creates intermediate directories."""
     src = tmp_path / "doc.md"
     src.write_text("body")
     out = tmp_path / "nested" / "deep" / "out.html"
@@ -85,19 +85,17 @@ def test_typeset_cli_reads_stdin_when_source_is_dash(
     assert "From stdin" in out
 
 
-def test_typeset_cli_missing_input_exits_2(tmp_path: Path) -> None:
-    """A non-existent input file triggers exit code 2."""
+def test_typeset_cli_missing_input_exits_3(tmp_path: Path) -> None:
+    """A non-existent input file returns exit code 3."""
     missing = tmp_path / "does-not-exist.md"
-    with pytest.raises(SystemExit) as exc_info:
-        main([str(missing)])
-    assert exc_info.value.code == 2
+    assert main([str(missing)]) == 3
 
 
 def test_typeset_cli_renders_pdf_when_output_is_pdf(tmp_path: Path) -> None:
     """An output ending in .pdf triggers the PDF backend (if available).
 
     We only check the exit code path: either WeasyPrint is present and
-    rc == 0, or it is missing and the CLI exits 3 with a clear message.
+    rc == 0, or it is missing and the CLI exits 4 with a clear message.
     """
     pytest.importorskip("weasyprint")
     src = tmp_path / "doc.md"
@@ -109,3 +107,25 @@ def test_typeset_cli_renders_pdf_when_output_is_pdf(tmp_path: Path) -> None:
     assert rc == 0
     assert out.exists()
     assert out.read_bytes()[:4] == b"%PDF"
+
+
+def test_star_import_always_works_and_pdf_names_the_extra(monkeypatch) -> None:
+    """render_pdf is always defined; without WeasyPrint it names the pdf extra."""
+    import builtins
+
+    namespace: dict = {}
+    exec("from andamentum.typeset import *", namespace)
+    assert "render_pdf" in namespace
+
+    real_import = builtins.__import__
+
+    def no_weasyprint(name, *args, **kwargs):
+        if name == "weasyprint":
+            raise ImportError("blocked")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", no_weasyprint)
+    from andamentum.typeset import PdfUnavailableError
+
+    with pytest.raises(PdfUnavailableError, match=r"andamentum\[pdf\]"):
+        namespace["render_pdf"]("# x", "x.pdf")

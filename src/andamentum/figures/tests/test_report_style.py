@@ -527,9 +527,9 @@ class TestCliParsing:
         assert _parse_series_colors(None) is None
 
     def test_help_strings_come_from_registries(self):
-        from andamentum.figures.cli import _build_parser
+        from andamentum.figures.cli import build_parser
 
-        parser = _build_parser()
+        parser = build_parser()
         subparsers = [
             a for a in parser._actions if isinstance(a, argparse._SubParsersAction)
         ]
@@ -542,3 +542,32 @@ class TestCliParsing:
         assert "--normalize" in help_text
         assert "--series-colors" in help_text
         assert "--horizontal" in help_text
+
+
+class TestCliCommand:
+    CSV = "group,value\nA,1\nB,2\n"
+
+    def _data(self, tmp_path):
+        f = tmp_path / "d.csv"
+        f.write_text(self.CSV)
+        return f
+
+    def test_out_is_required(self, tmp_path, capsys):
+        from andamentum.figures.cli import main
+
+        with pytest.raises(SystemExit) as exc:
+            main(["plot", str(self._data(tmp_path))])
+        assert exc.value.code == 2
+
+    def test_json_output_and_exit_codes(self, tmp_path, capsys):
+        import json as _json
+
+        from andamentum.figures.cli import main
+
+        out = tmp_path / "f.png"
+        rc = main(["plot", str(self._data(tmp_path)), "-o", str(out), "--json"])
+        assert rc == 0
+        assert _json.loads(capsys.readouterr().out)["path"] == str(out)
+        assert out.exists()
+        assert main(["plot", str(tmp_path / "missing.csv"), "-o", str(out)]) == 3
+        assert main(["plot", str(self._data(tmp_path)), "-o", str(out), "--kind", "pie"]) == 2

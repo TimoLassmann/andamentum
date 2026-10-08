@@ -3,7 +3,8 @@
 Single async public API: ``await critique_figure(image, *, model)`` →
 :class:`FigureCritique`. Image is bytes, a Path, or an http(s) URL;
 ``model`` is any pydantic-ai multimodal model id (Ollama, Anthropic,
-OpenAI, etc.) — required, no hidden default.
+OpenAI, etc.) — required, no hidden default. Only PNG, JPEG, WEBP and
+GIF images are accepted; anything else raises :class:`UnsupportedImageError`.
 
 The default critique schema (:class:`FigureCritique`) is tightly bounded
 on purpose: small local vision models reliably fill close-set enums,
@@ -25,6 +26,7 @@ Example::
 """
 
 from .api import critique_figure
+from .errors import UnsupportedImageError, VisionCritiqueError
 from .schemas import AspectIssue, FigureCritique, SuggestedFix
 
 __all__ = [
@@ -32,4 +34,6 @@ __all__ = [
     "FigureCritique",
     "AspectIssue",
     "SuggestedFix",
+    "VisionCritiqueError",
+    "UnsupportedImageError",
 ]

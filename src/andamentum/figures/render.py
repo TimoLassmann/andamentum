@@ -21,6 +21,7 @@ from .advisor import (
     validate_kind,
 )
 from .auto import detect_column_roles, detect_log_scale, recommend_sort
+from .errors import FiguresError
 from .legend import generate_legend
 from .palettes import assign_series_colors, get_palette, palette_capacity_note
 from .plots import (
@@ -90,7 +91,7 @@ def figure(
     log_scale: str | None = None,
     sort: str | None = None,
     horizontal: bool | None = None,
-    output: str | Path = "figure.pdf",
+    output: str | Path,
     group_order: list[str] | None = None,
     normalize: bool = False,
     series_colors: dict[str, str] | None = None,
@@ -132,7 +133,8 @@ def figure(
             on label count and length. Many bars with long labels become
             illegible mush in vertical orientation; the auto-decider
             picks horizontal for those cases and emits an advisor note.
-        output: Output file path.
+        output: Output file path (required; the format follows the extension:
+            .pdf, .png, .svg). Nothing is written anywhere else.
         group_order: Series order for ``stacked`` and grouped ``bar``.
             Must name every series exactly once. Default is the order of
             first appearance in the data.
@@ -153,7 +155,7 @@ def figure(
         FigureResult with path, legend, advisor notes, and metadata.
 
     Raises:
-        ValueError: If kind is banned (pie, 3D, etc.), unknown, or the
+        FiguresError: If kind is banned (pie, 3D, etc.), unknown, or the
             data does not fit it; if ``stacked`` data has a negative value
             or two rows for one (category, series); if ``group_order`` or
             ``series_colors`` names something not in the data; or if the
@@ -174,11 +176,11 @@ def figure(
     check_banned(kind)
     known = {k.value for k in PlotKind}
     if kind not in known:
-        raise ValueError(
+        raise FiguresError(
             f"Unknown kind '{kind}'. Available: {', '.join(sorted(known))}"
         )
     if svg_inline and Path(output).suffix.lower() != ".svg":
-        raise ValueError(f"svg_inline needs a .svg output path, got '{output}'")
+        raise FiguresError(f"svg_inline needs a .svg output path, got '{output}'")
 
     # ── 2. Normalize data ────────────────────────────────────────────────
     table = DataTable.normalize(data)
@@ -199,14 +201,14 @@ def figure(
     if resolved_kind == PlotKind.STACKED.value:
         series = _build_series(table, x_col, y_cols, group_col, group_order)
         if series is None:
-            raise ValueError(
+            raise FiguresError(
                 "kind='stacked' needs a group column (long form: x, y, group) "
                 "or two or more y columns (wide form)."
             )
     elif resolved_kind == PlotKind.BAR.value and group_col is not None:
         series = _build_series(table, x_col, y_cols, group_col, group_order)
     elif group_order is not None:
-        raise ValueError(
+        raise FiguresError(
             "group_order applies to kind='stacked' or a bar chart with a group column"
         )
     if series is not None:
@@ -434,7 +436,7 @@ def _build_series(
         ):
             key = (str(cat), str(ser))
             if key in cells:
-                raise ValueError(
+                raise FiguresError(
                     f"Two rows for ({key[0]}, {key[1]}) in columns "
                     f"'{x_col}' and '{group_col}'. One row per (category, series) "
                     "is required; aggregate first if that is what you want."
@@ -460,7 +462,7 @@ def _build_series(
     elif group_col is None and len(y_cols) >= 2:
         segment_label = "series"
         if table.n_rows != len(categories):
-            raise ValueError(
+            raise FiguresError(
                 f"Wide-form data needs one row per '{x_col}' value; "
                 f"got {table.n_rows} rows for {len(categories)} categories."
             )
@@ -475,7 +477,7 @@ def _build_series(
     if group_order is not None:
         present = list(data.keys())
         if sorted(group_order) != sorted(present) or len(group_order) != len(present):
-            raise ValueError(
+            raise FiguresError(
                 f"group_order must name every series exactly once. "
                 f"Given {group_order}; series present: {present}"
             )
@@ -527,7 +529,7 @@ def _resolve_colors(
     palette = get_palette(style)
     if names is None:
         if series_colors:
-            raise ValueError(
+            raise FiguresError(
                 "series_colors applies to charts with named series or categories"
             )
         return palette
@@ -563,7 +565,7 @@ def _dispatch_plot(
 
     if kind == PlotKind.STACKED.value:
         if series is None:
-            raise ValueError("kind='stacked' needs series data")
+            raise FiguresError("kind='stacked' needs series data")
         totals = stacked_bar(
             ax,
             series.data,

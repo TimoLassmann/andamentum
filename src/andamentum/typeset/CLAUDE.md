@@ -50,3 +50,9 @@ The repo's visual design system lives in `docs/design/`. It covers both document
 
 
 **Spec vs. live implementation.** `docs/design/components.css` is the canonical specification of the visual system. `src/andamentum/typeset/styles.py` is the live CSS that the renderer compiles into output today. They are not yet in sync — the design directory is the source of truth that `styles.py` should converge toward. When making visual changes, edit the spec first; the migration from `styles.py` to `components.css` is a separate, larger piece of work.
+
+## Interface notes
+
+- `from andamentum.typeset import *` always works: `render_pdf` is always defined and, without WeasyPrint, raises `PdfUnavailableError` (also an `ImportError`) whose message gives the one install hint, `pip install 'andamentum[pdf]'`, and names the system libraries.
+- Errors derive from `TypesetError` (a `ValueError`).
+- CLI: `andamentum-typeset SOURCE [-o FILE]`; exit 0 / 2 usage / 3 input unreadable / 4 render failed (including a PDF without the extra).

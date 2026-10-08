@@ -22,6 +22,10 @@ class Chunk:
     heading_path: tuple[str, ...]
 
 
+class ChunkerError(ValueError):
+    """Base class for chunker errors (a ValueError, so existing callers keep working)."""
+
+
 def chunk(text: str, *, max_chars: int) -> list[Chunk]:
     """Split markdown `text` into chunks of at most `max_chars` characters.
 
@@ -31,7 +35,7 @@ def chunk(text: str, *, max_chars: int) -> list[Chunk]:
     `max_chars`. A single token longer than `max_chars` is cut hard.
     """
     if max_chars < 1:
-        raise ValueError(f"max_chars must be >= 1, got {max_chars}")
+        raise ChunkerError(f"max_chars must be >= 1, got {max_chars}")
     if not text.strip():
         return []
 

@@ -20,7 +20,7 @@ def _run(args: list[str], stdin: str | None = None) -> subprocess.CompletedProce
 def test_help_lists_args():
     result = _run(["--help"])
     assert result.returncode == 0
-    for token in ("--max-chars", "--output", "--text-only", "input"):
+    for token in ("--max-chars", "--out", "--text-only", "input"):
         assert token in result.stdout
     assert "--judge-model" not in result.stdout
 
@@ -32,7 +32,7 @@ def test_max_chars_is_required():
 
 
 def test_missing_input_file_exits_nonzero():
-    assert _run(["/nonexistent/file.txt", "--max-chars", "100"]).returncode == 1
+    assert _run(["/nonexistent/file.txt", "--max-chars", "100"]).returncode == 3
 
 
 def test_json_output_from_file(tmp_path):

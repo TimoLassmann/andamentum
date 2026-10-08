@@ -51,11 +51,11 @@ def calls(monkeypatch):
     """Capture every argument the CLI hands to the library entry points."""
     captured: list[dict[str, object]] = []
 
-    async def fake_judge_score(output, *, criteria, context, model):
+    async def fake_judge_score(text, *, criteria, context, model):
         captured.append(
             {
                 "fn": "score",
-                "output": output,
+                "text": text,
                 "criteria": criteria,
                 "context": context,
                 "model": model,
@@ -63,12 +63,12 @@ def calls(monkeypatch):
         )
         return _fake_score_result()
 
-    async def fake_judge_compare(output_a, output_b, *, criteria, context, model):
+    async def fake_judge_compare(text_a, text_b, *, criteria, context, model):
         captured.append(
             {
                 "fn": "compare",
-                "output_a": output_a,
-                "output_b": output_b,
+                "text_a": text_a,
+                "text_b": text_b,
                 "criteria": criteria,
                 "context": context,
                 "model": model,
@@ -84,7 +84,7 @@ def calls(monkeypatch):
 # ── The regression this module shipped without ───────────────────────────
 #
 # `score` declares a positional named `output`; the destination-file flag is
-# `-o/--output`. Both once resolved to argparse dest `output`, so:
+# `-o/--out`. Both once resolved to argparse dest `output`, so:
 #   * without -o, the JSON was written to a FILE NAMED AFTER THE JUDGED TEXT
 #     instead of stdout; and
 #   * with -o, the judge was handed the FILE PATH as the text to judge and
@@ -101,7 +101,7 @@ def test_score_sends_the_positional_text_to_the_judge_not_the_output_path(
         ["score", "Paris is the capital of France.", "--model", "m", "-o", str(out)]
     )
     assert rc == 0
-    assert calls[0]["output"] == "Paris is the capital of France."
+    assert calls[0]["text"] == "Paris is the capital of France."
     assert json.loads(out.read_text())["overall"] == "meets"
 
 
@@ -114,7 +114,7 @@ def test_score_without_output_flag_writes_to_stdout_not_a_file_named_after_the_t
 
     payload = json.loads(capsys.readouterr().out)
     assert payload["overall"] == "meets"
-    assert calls[0]["output"] == "Paris is the capital of France."
+    assert calls[0]["text"] == "Paris is the capital of France."
     # Nothing may be written to disk on the stdout path.
     assert list(tmp_path.iterdir()) == []
 
@@ -141,18 +141,18 @@ def test_score_passes_context_through(calls, capsys):
 def test_compare_passes_both_outputs_in_order(calls, capsys):
     assert cli.main(["compare", "first", "second", "--model", "m"]) == 0
     assert calls[0]["fn"] == "compare"
-    assert calls[0]["output_a"] == "first"
-    assert calls[0]["output_b"] == "second"
+    assert calls[0]["text_a"] == "first"
+    assert calls[0]["text_b"] == "second"
     assert json.loads(capsys.readouterr().out)["winner"] == "a"
 
 
-def test_compare_honours_the_output_flag(calls, tmp_path, capsys):
+def test_compare_honours_the_out_flag(calls, tmp_path, capsys):
     out = tmp_path / "nested" / "cmp.json"
     rc = cli.main(["compare", "first", "second", "--model", "m", "-o", str(out)])
     assert rc == 0
     # Parent directories are created for the caller.
     assert json.loads(out.read_text())["winner"] == "a"
-    assert calls[0]["output_a"] == "first"
+    assert calls[0]["text_a"] == "first"
 
 
 # ── model parsing: the fast/panel mode axis ──────────────────────────────
@@ -228,40 +228,32 @@ def test_missing_model_flag_is_an_argparse_error(calls):
     assert exc.value.code == 2  # argparse's own usage-error code
 
 
-def test_unparseable_criteria_file_exits_2(calls, tmp_path, capsys):
+def test_unparseable_criteria_file_exits_3(calls, tmp_path, capsys):
     path = tmp_path / "bad.json"
     path.write_text("{not json", encoding="utf-8")
-    with pytest.raises(SystemExit) as exc:
-        cli.main(["score", "text", "--model", "m", "--criteria", str(path)])
-    assert exc.value.code == 2
+    assert cli.main(["score", "text", "--model", "m", "--criteria", str(path)]) == 3
     assert "could not load criteria" in capsys.readouterr().err
 
 
-def test_missing_criteria_file_exits_2(calls, tmp_path, capsys):
+def test_missing_criteria_file_exits_3(calls, tmp_path, capsys):
     missing = tmp_path / "nope.json"
-    with pytest.raises(SystemExit) as exc:
-        cli.main(["score", "text", "--model", "m", "--criteria", str(missing)])
-    assert exc.value.code == 2
+    assert cli.main(["score", "text", "--model", "m", "--criteria", str(missing)]) == 3
     assert "could not load criteria" in capsys.readouterr().err
 
 
-def test_criteria_file_with_wrong_shape_exits_2(calls, tmp_path, capsys):
+def test_criteria_file_with_wrong_shape_exits_3(calls, tmp_path, capsys):
     path = tmp_path / "wrong.json"
     path.write_text(json.dumps([{"nombre": "x"}]), encoding="utf-8")
-    with pytest.raises(SystemExit) as exc:
-        cli.main(["score", "text", "--model", "m", "--criteria", str(path)])
-    assert exc.value.code == 2
+    assert cli.main(["score", "text", "--model", "m", "--criteria", str(path)]) == 3
     capsys.readouterr()
 
 
-def test_a_failing_judge_call_exits_3_and_reports_on_stderr(monkeypatch, capsys):
+def test_a_failing_judge_call_exits_4_and_reports_on_stderr(monkeypatch, capsys):
     async def boom(*args, **kwargs):
         raise RuntimeError("model exploded")
 
     monkeypatch.setattr(cli, "judge_score", boom)
-    with pytest.raises(SystemExit) as exc:
-        cli.main(["score", "text", "--model", "m"])
-    assert exc.value.code == 3
+    assert cli.main(["score", "text", "--model", "m"]) == 4
     err = capsys.readouterr().err
     assert "judge call failed" in err
     assert "RuntimeError" in err
@@ -274,8 +266,7 @@ def test_a_failing_judge_call_writes_no_output_file(monkeypatch, tmp_path):
 
     monkeypatch.setattr(cli, "judge_score", boom)
     out = tmp_path / "result.json"
-    with pytest.raises(SystemExit):
-        cli.main(["score", "text", "--model", "m", "-o", str(out)])
+    assert cli.main(["score", "text", "--model", "m", "-o", str(out)]) == 4
     assert not out.exists()
 
 
@@ -306,6 +297,29 @@ def test_stdout_payload_is_the_full_result_schema(calls, capsys):
 def test_written_file_is_utf8_and_round_trips(calls, tmp_path, capsys):
     out = tmp_path / "r.json"
     assert cli.main(["score", "héllo — ünicode", "--model", "m", "-o", str(out)]) == 0
-    assert calls[0]["output"] == "héllo — ünicode"
+    assert calls[0]["text"] == "héllo — ünicode"
     assert json.loads(out.read_text(encoding="utf-8"))["overall"] == "meets"
     capsys.readouterr()
+
+
+# ── stdin ────────────────────────────────────────────────────────────────
+
+
+def test_dash_reads_the_text_from_stdin(calls, monkeypatch, capsys):
+    import io
+
+    monkeypatch.setattr("sys.stdin", io.StringIO("from stdin"))
+    assert cli.main(["score", "-", "--model", "m"]) == 0
+    assert calls[0]["text"] == "from stdin"
+    capsys.readouterr()
+
+
+def test_compare_accepts_stdin_for_one_text_only(calls, monkeypatch, capsys):
+    import io
+
+    monkeypatch.setattr("sys.stdin", io.StringIO("piped"))
+    assert cli.main(["compare", "first", "-", "--model", "m"]) == 0
+    assert (calls[0]["text_a"], calls[0]["text_b"]) == ("first", "piped")
+    capsys.readouterr()
+    assert cli.main(["compare", "-", "-", "--model", "m"]) == 2
+    assert "only one" in capsys.readouterr().err

@@ -12,6 +12,8 @@ from typing import Literal
 
 from pydantic import BaseModel
 
+from .errors import UnknownLawError
+
 Tier = Literal["type-check", "lint", "test", "review-only"]
 
 
@@ -130,10 +132,10 @@ def laws() -> tuple[Law, ...]:
 
 
 def law(law_id: str) -> Law:
-    """One law by id (e.g. ``"L4"``). Raises ``KeyError`` if unknown."""
+    """One law by id (e.g. ``"L4"``). Raises ``UnknownLawError`` (a ``KeyError``) if unknown."""
     key = law_id.upper()
     if key not in _BY_ID:
-        raise KeyError(f"Unknown law id: {law_id!r}. Known: {', '.join(_BY_ID)}")
+        raise UnknownLawError(f"Unknown law id: {law_id!r}. Known: {', '.join(_BY_ID)}")
     return _BY_ID[key]
 
 

@@ -24,7 +24,7 @@ borderline call is ~0.5.
 """
 
 
-def build_prompt(*, extra_context: str | None = None) -> str:
+def build_prompt(*, context: str | None = None) -> str:
     """Build the user prompt for a critique call.
 
     The schema itself is communicated via pydantic-ai's structured-output
@@ -32,6 +32,6 @@ def build_prompt(*, extra_context: str | None = None) -> str:
     caller-supplied context.
     """
     parts = [_BASE_PROMPT.strip()]
-    if extra_context:
-        parts.append(f"\nContext: {extra_context.strip()}")
+    if context:
+        parts.append(f"\nContext: {context.strip()}")
     return "\n".join(parts)

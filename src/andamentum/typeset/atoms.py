@@ -9,6 +9,8 @@ from __future__ import annotations
 import warnings
 from collections.abc import Mapping
 
+from .errors import TypesetError
+
 ATOM_KINDS: frozenset[str] = frozenset(
     {"heading", "prose", "callout", "items", "aside", "card", "reference"}
 )
@@ -35,7 +37,7 @@ def validate_atom(atom: Mapping[str, object], index: int) -> dict[str, object]:
     """Validate one atom dict and return a normalised copy.
 
     Unknown ``kind`` values fall back to ``"prose"`` with a :mod:`warnings`
-    warning.  Missing required fields raise :exc:`ValueError` with the atom
+    warning.  Missing required fields raise :exc:`TypesetError` with the atom
     index and field name included in the message.
 
     Parameters
@@ -69,7 +71,7 @@ def validate_atom(atom: Mapping[str, object], index: int) -> dict[str, object]:
     # ── Required field check ───────────────────────────────────────────────
     required = _REQUIRED_FIELDS[str(kind)]
     if required is not None and required not in result:
-        raise ValueError(
+        raise TypesetError(
             f"Atom {index} (kind={kind!r}) is missing required field {required!r}."
         )
 
@@ -77,7 +79,7 @@ def validate_atom(atom: Mapping[str, object], index: int) -> dict[str, object]:
     if kind == "callout":
         tone = result.get("tone")
         if tone is not None and tone not in CALLOUT_TONES:
-            raise ValueError(
+            raise TypesetError(
                 f"Atom {index}: invalid callout tone {tone!r}. "
                 f"Expected one of {sorted(CALLOUT_TONES)}."
             )
@@ -85,7 +87,7 @@ def validate_atom(atom: Mapping[str, object], index: int) -> dict[str, object]:
     if kind == "items":
         variant = result.get("variant")
         if variant is not None and variant not in ITEMS_VARIANTS:
-            raise ValueError(
+            raise TypesetError(
                 f"Atom {index}: invalid items variant {variant!r}. "
                 f"Expected one of {sorted(ITEMS_VARIANTS)}."
             )
@@ -108,18 +110,18 @@ def validate_document(atoms: list[Mapping[str, object]]) -> list[dict[str, objec
 
     Raises
     ------
-    ValueError
+    TypesetError
         If *atoms* is not a list, or if any element is not a dict, or if any
         atom fails validation.
     """
     if not isinstance(atoms, list):
-        raise ValueError(
+        raise TypesetError(
             f"Document must be a list of atom dicts; got {type(atoms).__name__!r}."
         )
 
     result: list[dict[str, object]] = []
     for i, atom in enumerate(atoms):
         if not isinstance(atom, dict):
-            raise ValueError(f"Atom {i} must be a dict; got {type(atom).__name__!r}.")
+            raise TypesetError(f"Atom {i} must be a dict; got {type(atom).__name__!r}.")
         result.append(validate_atom(atom, i))
     return result
