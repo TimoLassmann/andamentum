@@ -1432,6 +1432,9 @@ def _install_fake_source(monkeypatch, *, results, pages, search_error=None):
     return built
 
 
+SEARX = "http://searx.test"
+
+
 class TestWebSearchProvider:
     async def test_gather_returns_evidence_quality_none(self, monkeypatch):
         from ..providers.web_search import WebSearchProvider
@@ -1446,7 +1449,9 @@ class TestWebSearchProvider:
         }
         _install_fake_source(monkeypatch, results=results, pages=pages)
 
-        out = await WebSearchProvider(max_pages=2).gather("some general claim")
+        out = await WebSearchProvider(searxng_url=SEARX, max_pages=2).gather(
+            "some general claim"
+        )
         assert len(out) == 2
         assert all(isinstance(e, GatheredEvidence) for e in out)
         assert all(e.quality_score is None for e in out)
@@ -1465,7 +1470,7 @@ class TestWebSearchProvider:
         pages = {"https://a.test/x": RuntimeError("blocked")}
         _install_fake_source(monkeypatch, results=results, pages=pages)
 
-        out = await WebSearchProvider(max_pages=1).gather("claim")
+        out = await WebSearchProvider(searxng_url=SEARX, max_pages=1).gather("claim")
         assert len(out) == 1
         assert "snippet only" in out[0].content
         assert out[0].structured_data["fetched_full_content"] is False
@@ -1474,7 +1479,7 @@ class TestWebSearchProvider:
         from ..providers.web_search import WebSearchProvider
 
         _install_fake_source(monkeypatch, results=[], pages={})
-        assert await WebSearchProvider().gather("claim") == []
+        assert await WebSearchProvider(searxng_url=SEARX).gather("claim") == []
 
     async def test_search_error_returns_empty_not_raises(self, monkeypatch):
         from ..providers.web_search import WebSearchProvider
@@ -1482,7 +1487,7 @@ class TestWebSearchProvider:
         _install_fake_source(
             monkeypatch, results=[], pages={}, search_error=RuntimeError("searxng down")
         )
-        assert await WebSearchProvider().gather("claim") == []
+        assert await WebSearchProvider(searxng_url=SEARX).gather("claim") == []
 
     async def test_source_receives_the_search_address(self, monkeypatch):
         from ..providers.web_search import WebSearchProvider
@@ -1494,16 +1499,29 @@ class TestWebSearchProvider:
         assert built[0]["searxng_url"] == "http://searx.test"
         assert built[0]["browser_cdp_url"] == "http://chrome.test"
 
+    async def test_a_missing_address_raises_instead_of_searching_nothing(
+        self, monkeypatch
+    ):
+        from ..providers.web_search import WebSearchProvider
+
+        _install_fake_source(monkeypatch, results=[], pages={})
+        with pytest.raises(ValueError, match="searxng_url"):
+            await WebSearchProvider().gather("claim")
+        with pytest.raises(ValueError, match="searxng_url"):
+            await WebSearchProvider().check_health()
+
     async def test_check_health_passes_and_fails(self, monkeypatch):
         from ..providers.web_search import WebSearchProvider
 
         _install_fake_source(monkeypatch, results=[], pages={})
-        assert (await WebSearchProvider().check_health()).status == "pass"
+        assert (
+            await WebSearchProvider(searxng_url=SEARX).check_health()
+        ).status == "pass"
 
         _install_fake_source(
             monkeypatch, results=[], pages={}, search_error=RuntimeError("down")
         )
-        failed = await WebSearchProvider().check_health()
+        failed = await WebSearchProvider(searxng_url=SEARX).check_health()
         assert failed.status == "fail"
         assert "down" in failed.message
 

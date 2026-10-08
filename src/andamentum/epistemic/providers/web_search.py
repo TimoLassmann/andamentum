@@ -17,8 +17,8 @@ composes the model-free ``deep_research`` web source (SearXNG or Chrome
 search, safe page fetch/extract), which carries SSRF protection, robots/paywall
 gating and safe redirects.
 
-API docs: SearXNG (local instance; default http://127.0.0.1:4070), or a Chrome
-over its debugging address (``browser_cdp_url``)
+API docs: a SearXNG instance (``searxng_url``), or a Chrome over its debugging
+address (``browser_cdp_url``); one of the two is required to gather
 Authentication: none
 
 Architecture: Layer 1 (standalone; depends on deep_research, an allowed
@@ -37,8 +37,6 @@ if TYPE_CHECKING:
     from ..preflight import CheckResult
 
 logger = logging.getLogger(__name__)
-
-_DEFAULT_SEARXNG_URL = "http://127.0.0.1:4070"
 
 
 class WebSearchProvider:
@@ -115,13 +113,15 @@ class WebSearchProvider:
     def __init__(
         self,
         *,
-        searxng_url: str = _DEFAULT_SEARXNG_URL,
+        searxng_url: str | None = None,
         browser_cdp_url: str | None = None,
         max_results: int = 8,
         max_pages: int = 4,
     ) -> None:
         """Args:
-        searxng_url: Base URL of the local SearXNG instance.
+        searxng_url: Base URL of a SearXNG instance. With neither this nor
+            ``browser_cdp_url``, ``gather`` and ``check_health`` raise
+            ``ValueError`` (a configuration error is not a failed search).
         browser_cdp_url: A Chrome's debugging address; search goes through that
             browser instead of SearXNG.
         max_results: Search results to request.
@@ -132,6 +132,13 @@ class WebSearchProvider:
         self.browser_cdp_url = browser_cdp_url
         self.max_results = max_results
         self.max_pages = max_pages
+
+    def _require_address(self) -> None:
+        if not self.searxng_url and not self.browser_cdp_url:
+            raise ValueError(
+                "web search needs an address: a SearXNG instance (searxng_url) "
+                "or a Chrome's debugging address (browser_cdp_url)"
+            )
 
     def _open(self) -> tuple[Any, Any]:
         """A web source over an in-memory store, and the client to close."""
@@ -152,6 +159,7 @@ class WebSearchProvider:
 
         from ..preflight import CheckResult
 
+        self._require_address()
         t0 = time.monotonic()
         client = None
         try:
@@ -181,8 +189,10 @@ class WebSearchProvider:
         """Search the web and return extracted page content as evidence.
 
         Returns ``[]`` on any failure (search down, no results, all fetches
-        failed) — never raises, per the provider contract.
+        failed) — never raises, per the provider contract. A missing search
+        address is a configuration error and raises ``ValueError``.
         """
+        self._require_address()
         client = None
         try:
             source, client = self._open()

@@ -9,12 +9,8 @@ Architecture: Layer 1 (standalone package, depends on deep_research)
 from __future__ import annotations
 
 import logging
-import os
-import shutil
-import subprocess
 import time
 import urllib.request
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
@@ -27,12 +23,6 @@ from .operations.base import ProviderRegistry
 
 logger = logging.getLogger(__name__)
 
-# SearXNG defaults
-_SEARXNG_PORT = int(os.getenv("SEARXNG_PORT", "4070"))
-_SEARXNG_URL = os.getenv("SEARXNG_URL", f"http://127.0.0.1:{_SEARXNG_PORT}")
-_SEARXNG_IMAGE = os.getenv("SEARXNG_IMAGE", "docker.io/searxng/searxng:latest")
-_SEARXNG_CONTAINER = os.getenv("SEARXNG_CONTAINER", "mcp-searxng")
-
 # One gather is a small research run: rounds of search, read and reflect per
 # sub-question, and pages read in full per round. The loop stops early when the
 # question is answered, so a simple fact usually takes one round.
@@ -42,7 +32,7 @@ GATHER_READS_PER_ROUND = 3
 CONTEXT_CHARS = 800
 
 
-def _searxng_is_healthy(url: str = _SEARXNG_URL, timeout: float = 3.0) -> bool:
+def _searxng_is_healthy(url: str, timeout: float = 3.0) -> bool:
     """Check if SearXNG is responding."""
     try:
         urllib.request.urlopen(f"{url}/search?q=test&format=json", timeout=timeout)
@@ -60,74 +50,6 @@ def _browser_is_healthy(cdp_url: str, timeout: float = 3.0) -> bool:
         return False
 
 
-def ensure_searxng(url: str = _SEARXNG_URL, port: int = _SEARXNG_PORT) -> bool:
-    """Ensure SearXNG is running, starting it via podman if needed.
-
-    Returns True if SearXNG is available after this call.
-    Uses the container name and settings the other andamentum tools share.
-    """
-    if _searxng_is_healthy(url):
-        return True
-
-    if not shutil.which("podman"):
-        logger.warning("SearXNG not running and podman not found")
-        return False
-
-    # Write minimal settings
-    state_dir = Path(
-        os.getenv("SEARXNG_STATE_DIR", Path.home() / ".cache" / "mcp-searxng")
-    )
-    state_dir.mkdir(parents=True, exist_ok=True)
-    settings_path = state_dir / "settings.yml"
-
-    if not settings_path.exists():
-        secret = os.urandom(32).hex()
-        settings_path.write_text(
-            "use_default_settings: true\n"
-            "search:\n"
-            "  formats:\n"
-            "    - html\n"
-            "    - json\n"
-            "server:\n"
-            f'  secret_key: "{secret}"\n'
-            "  port: 8080\n"
-            "  method: GET\n"
-            "ui:\n"
-            "  query_in_title: true\n",
-            encoding="utf-8",
-        )
-
-    # Start container (--replace handles existing stopped containers)
-    cmd = [
-        "podman",
-        "run",
-        "--name",
-        _SEARXNG_CONTAINER,
-        "--replace",
-        "-d",
-        "-p",
-        f"{port}:8080",
-        "-v",
-        f"{settings_path}:/etc/searxng/settings.yml:ro",
-        _SEARXNG_IMAGE,
-    ]
-    logger.info(f"Starting SearXNG: {' '.join(cmd)}")
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-    if result.returncode != 0:
-        logger.warning(f"Failed to start SearXNG: {result.stderr or result.stdout}")
-        return False
-
-    # Wait for it to come up
-    for _ in range(15):
-        time.sleep(2)
-        if _searxng_is_healthy(url):
-            logger.info("SearXNG started successfully")
-            return True
-
-    logger.warning("SearXNG started but not responding after 30s")
-    return False
-
-
 class WebSearchGatherer:
     """Evidence gatherer running the ``deep_research`` loop over the web.
 
@@ -141,20 +63,25 @@ class WebSearchGatherer:
     would be a hidden judgement, so the downstream scorer decides.
 
     Search goes through a Chrome (``browser_cdp_url``) when one is given, else
-    through SearXNG at ``searxng_url``.
+    through the SearXNG at ``searxng_url``. One of the two is required; the
+    library starts no search service of its own.
     """
 
     def __init__(
         self,
         *,
         model: str,
-        searxng_url: str = _SEARXNG_URL,
+        searxng_url: str | None = None,
         browser_cdp_url: str | None = None,
     ):
+        if not searxng_url and not browser_cdp_url:
+            raise ValueError(
+                "web search needs an address: a SearXNG instance (searxng_url) "
+                "or a Chrome's debugging address (browser_cdp_url)"
+            )
         self.model = model
         self.searxng_url = searxng_url
         self.browser_cdp_url = browser_cdp_url
-        self._searxng_ensured = False
 
     async def check_health(self) -> "CheckResult":
         """Test reachability of the search address (the Chrome, else SearXNG)."""
@@ -165,6 +92,7 @@ class WebSearchGatherer:
             healthy = _browser_is_healthy(self.browser_cdp_url, timeout=5.0)
             where = f"Chrome at {self.browser_cdp_url}"
         else:
+            assert self.searxng_url is not None  # __init__ requires one address
             healthy = _searxng_is_healthy(self.searxng_url, timeout=5.0)
             where = f"SearXNG at {self.searxng_url}"
         elapsed = (time.monotonic() - t0) * 1000
@@ -197,11 +125,6 @@ class WebSearchGatherer:
         """
         del source_type
         from andamentum.deep_research import Budget, SourceConfig, research
-
-        # Start SearXNG on first use; a Chrome is the user's to run.
-        if not self.browser_cdp_url and not self._searxng_ensured:
-            ensure_searxng(self.searxng_url)
-            self._searxng_ensured = True
 
         result = await research(
             query,
@@ -425,6 +348,7 @@ def get_default_gatherer(
     model: str,
     providers: Optional[ProviderRegistry] = None,
     use_web_search: bool = True,
+    searxng_url: Optional[str] = None,
     browser_cdp_url: Optional[str] = None,
 ) -> EvidenceGatherer:
     """Create the default evidence gatherer.
@@ -436,8 +360,10 @@ def get_default_gatherer(
             When provided, returns a CompositeGatherer that routes
             by source_type and falls back to web search.
         use_web_search: False for providers only (requires ``providers``).
+        searxng_url: The address of a SearXNG instance for web search.
         browser_cdp_url: A Chrome's debugging address; web search goes through
-            that browser instead of SearXNG.
+            that browser instead of SearXNG. With ``use_web_search`` one of the
+            two is required (``ValueError`` otherwise).
 
     Returns a ``CompositeGatherer`` when ``providers`` are given, else a
     ``WebSearchGatherer``.
@@ -463,7 +389,9 @@ def get_default_gatherer(
             )
         return CompositeGatherer(None, providers)  # type: ignore[return-value]
 
-    web = WebSearchGatherer(model=model, browser_cdp_url=browser_cdp_url)
+    web = WebSearchGatherer(
+        model=model, searxng_url=searxng_url, browser_cdp_url=browser_cdp_url
+    )
     if providers:
         return CompositeGatherer(web, providers)  # type: ignore[return-value]
     return web

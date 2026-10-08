@@ -162,18 +162,33 @@ class TestWebSearchGathererFindings:
             await gatherer.gather("web_search", "q")
 
     @pytest.mark.asyncio
-    async def test_searxng_is_ensured_only_without_a_browser(self):
+    async def test_searxng_url_reaches_the_sources_and_nothing_is_started(
+        self, monkeypatch
+    ):
+        # the environment names another instance: it must be ignored
+        monkeypatch.setenv("SEARXNG_URL", "http://env.invalid:1")
         result = _result(works=[], passages=[], findings=[])
-
         with (
-            _run_with(result),
-            patch("andamentum.epistemic.evidence_gathering.ensure_searxng") as ensure,
+            _run_with(result) as run,
+            patch("subprocess.run") as started,
         ):
-            await WebSearchGatherer(model="test").gather("web_search", "q")
             await WebSearchGatherer(
-                model="test", browser_cdp_url="http://chrome.test"
+                model="test", searxng_url="http://searx.test"
             ).gather("web_search", "q")
-        assert ensure.call_count == 1
+        assert run.call_args.kwargs["sources"].searxng_url == "http://searx.test"
+        started.assert_not_called()
+
+    def test_without_an_address_construction_is_a_clear_error(self):
+        with pytest.raises(ValueError, match="searxng_url"):
+            WebSearchGatherer(model="test")
+
+    def test_the_default_gatherer_needs_an_address_for_web_search(self):
+        from ..evidence_gathering import get_default_gatherer
+
+        with pytest.raises(ValueError, match="searxng_url"):
+            get_default_gatherer(model="test")
+        gatherer = get_default_gatherer(model="test", searxng_url="http://searx.test")
+        assert gatherer.searxng_url == "http://searx.test"  # type: ignore[attr-defined]
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -295,3 +310,35 @@ class TestCompositeGathererNoSilentFallback:
         )
         with pytest.raises(RuntimeError, match="All gather calls failed"):
             await gatherer.gather("all", "test query")
+
+
+class TestWebSearchAddressIsRequiredAtTheStart:
+    @pytest.mark.asyncio
+    async def test_the_graph_refuses_to_start_without_an_address(self, tmp_path):
+        from ..graph import run_epistemic_graph
+
+        with pytest.raises(ValueError, match="searxng_url"):
+            await run_epistemic_graph(
+                question="Is exercise good for cardiovascular health?",
+                database_name="no_address",
+                db_dir=str(tmp_path),
+                model="fake:test-model",
+                embedding_model="fake-embeddings",
+            )
+        assert list(tmp_path.iterdir()) == []  # nothing was created
+
+    @pytest.mark.asyncio
+    async def test_preflight_skips_web_search_without_an_address(self):
+        from ..preflight import preflight
+
+        result = await preflight(model="fake:test-model", providers={})
+        web = [c for c in result.checks if c.name == "WebSearch"]
+        assert [c.status for c in web] == ["skip"]
+
+    def test_the_commands_take_the_address(self):
+        from ..cli import _build_parser as build_parser
+
+        parser = build_parser()
+        for command in (["ask", "q"], ["verify", "c"], ["preflight"]):
+            args = parser.parse_args([*command, "--searxng-url", "http://searx.test"])
+            assert args.searxng_url == "http://searx.test"

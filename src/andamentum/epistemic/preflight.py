@@ -76,6 +76,7 @@ async def preflight(
     model: str,
     providers: ProviderRegistry | None = None,
     verbose: bool = False,
+    searxng_url: str | None = None,
     browser_cdp_url: str | None = None,
 ) -> PreflightResult:
     """Run preflight checks on LLM, web search, and evidence providers.
@@ -88,8 +89,10 @@ async def preflight(
         providers: Optional dict of named evidence providers. Each value
             that has a ``check_health()`` method will be checked.
         verbose: If True, log progress.
+        searxng_url: The SearXNG instance web search is checked at.
         browser_cdp_url: A Chrome's debugging address; web search is checked
-            there instead of at SearXNG.
+            there instead of at SearXNG. With neither, web search is not
+            checked (and the run that follows must say where it searches).
 
     Returns:
         PreflightResult with individual check outcomes.
@@ -118,14 +121,28 @@ async def preflight(
             ]
         )
 
-    # 2. Web search (a Chrome when given, else SearXNG)
-    try:
-        from .evidence_gathering import WebSearchGatherer
+    # 2. Web search (a Chrome when given, else SearXNG); without an address
+    # there is nothing to check, and a run would refuse to start.
+    skipped: list[CheckResult] = []
+    if searxng_url or browser_cdp_url:
+        try:
+            from .evidence_gathering import WebSearchGatherer
 
-        web = WebSearchGatherer(model=model, browser_cdp_url=browser_cdp_url)
-        tasks.append(("WebSearch", web))
-    except ImportError:
-        pass
+            web = WebSearchGatherer(
+                model=model, searxng_url=searxng_url, browser_cdp_url=browser_cdp_url
+            )
+            tasks.append(("WebSearch", web))
+        except ImportError:
+            pass
+    else:
+        skipped.append(
+            CheckResult(
+                name="WebSearch",
+                status="skip",
+                message="no address given (--searxng-url or --browser-cdp-url)",
+                elapsed_ms=0.0,
+            )
+        )
 
     # 3. Evidence providers
     if providers:
@@ -134,6 +151,8 @@ async def preflight(
                 tasks.append((name, provider))
 
     if not tasks:
+        if skipped:
+            return PreflightResult(checks=skipped)
         return PreflightResult(
             checks=[
                 CheckResult(
@@ -154,4 +173,4 @@ async def preflight(
     coros = [_run_check(component, name) for name, component in tasks]
     results = await asyncio.gather(*coros)
 
-    return PreflightResult(checks=list(results))
+    return PreflightResult(checks=[*skipped, *results])
