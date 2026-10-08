@@ -354,6 +354,7 @@ async def _run_goal_loop(
         result = await review_document(
             document,
             model=model,
+            cap=2,  # the goal loop's per-round review keeps two gap-loop rounds
             reviewer=reviewer,
             criteria=criteria,
             guidelines_text=guidelines_text,

@@ -41,7 +41,7 @@ async def run_arm_a(ref: PaperRef, *, model: str) -> ArmOutput:
 
     assert ref.markdown_path, f"{ref.slug}: harvest before running arm A"
     result = await review_document(
-        str(Path(ref.markdown_path)), model=model, editor=False
+        str(Path(ref.markdown_path)), model=model, editor=False, cap=2
     )
     findings = [
         ArmFinding(title=f.title, detail=f.rationale)
@@ -120,7 +120,7 @@ async def run_arm_b_v3(ref: PaperRef, *, model: str) -> ArmOutput:
 
     assert ref.markdown_path, f"{ref.slug}: harvest before running arm B (v3)"
     text = Path(ref.markdown_path).read_text(encoding="utf-8")
-    result = await run_review(text, model=model, editor=False)
+    result = await run_review(text, model=model, editor=False, cap=2)
     findings = [
         ArmFinding(title=f.title, detail=f.rationale)
         for f in result.findings

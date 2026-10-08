@@ -60,7 +60,7 @@ logger = logging.getLogger("andamentum.whetstone.pipeline")
 @dataclass(frozen=True)
 class ReviewDeps:
     agent_model: str
-    cap: int = 2  # gap-loop round cap
+    cap: int = 3  # gap-loop round cap
     # Aggregate-failure gate: when this fraction (or more) of the active
     # criteria crash and contribute nothing, the result is flagged
     # degraded — a run that skipped most of its cascade is not green.
@@ -453,7 +453,7 @@ async def run_review(
     markdown: str,
     *,
     model: str,
-    cap: int = 2,
+    cap: int = 3,
     sections: list[Section] | None = None,
     confidentiality_text: str | None = None,
     document_type: str = "auto",
@@ -664,7 +664,7 @@ async def review_document(
     source: str | ReviewedDocument,
     *,
     model: str,
-    cap: int = 2,
+    cap: int = 3,
     document_type: str = "auto",
     confirm_own_draft: bool = False,
     criteria: list[Criterion] | None = None,

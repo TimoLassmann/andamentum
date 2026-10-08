@@ -4,7 +4,7 @@ Whetstone has no image-extraction path from a ``.docx`` and no notion of a
 figure at all — building a general figure-locator is out of scope here.
 This module instead composes two things that already exist: a plain regex
 scan for ``"Figure N"`` / ``"Fig. N"`` mentions, and
-``andamentum.vision_critique.critique_figure``'s existing ``extra_context``
+``andamentum.vision_critique.critique_figure``'s existing ``context``
 and ``schema`` parameters — the caption and referencing sentences go in as
 context, and the model's verdict comes back typed. Nothing inside
 ``vision_critique`` changes.
@@ -139,7 +139,7 @@ async def check_figure_text_match(
                 figure.path,
                 model=model,
                 schema=FigureTextMatch,
-                extra_context=context,
+                context=context,
             )
         except Exception as exc:
             checks.append(

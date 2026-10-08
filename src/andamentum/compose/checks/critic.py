@@ -213,6 +213,7 @@ async def run_critic(
             result = await review_document(
                 document,
                 model=model,
+                cap=2,
                 document_type=genre.whetstone_document_type,
                 confirm_own_draft=True,
                 editor=False,

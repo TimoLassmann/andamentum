@@ -81,8 +81,8 @@ async def test_check_satisfied_when_the_model_reports_a_match() -> None:
     figures = (FigureRef(label="Figure 1", path=Path("fig1.png")),)
     text = "Figure 1. Counts by group.\nFigure 1 shows four bars.\n"
 
-    async def fake_critique(image, *, model, schema, extra_context=None):
-        assert extra_context is not None and "Counts by group" in extra_context
+    async def fake_critique(image, *, model, schema, context=None):
+        assert context is not None and "Counts by group" in context
         return FigureTextMatch(
             matches_description=True, discrepancies=[], confidence=0.9
         )
@@ -97,7 +97,7 @@ async def test_check_not_satisfied_on_a_reported_mismatch() -> None:
     figures = (FigureRef(label="Figure 1", path=Path("fig1.png")),)
     text = "Figure 1. Four bars.\nFigure 1 shows four bars rising.\n"
 
-    async def fake_critique(image, *, model, schema, extra_context=None):
+    async def fake_critique(image, *, model, schema, context=None):
         return FigureTextMatch(
             matches_description=False,
             discrepancies=["the figure shows three bars, not four"],
@@ -118,7 +118,7 @@ async def test_a_crashed_call_is_recorded_not_raised() -> None:
     figures = (FigureRef(label="Figure 1", path=Path("fig1.png")),)
     text = "Figure 1. Something.\n"
 
-    async def boom(image, *, model, schema, extra_context=None):
+    async def boom(image, *, model, schema, context=None):
         raise RuntimeError("model unavailable")
 
     with patch("andamentum.vision_critique.critique_figure", new=boom):

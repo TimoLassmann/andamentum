@@ -216,7 +216,7 @@ _SUPPORTED_OUT_EXTENSIONS = {".md", ".html", ".docx"}
 # .DEFAULT_EDITOR_CRITERIA`, and the run falls through to it.
 _DEFAULT_NOVELTY_SEARCH_DEPTH = 2
 # Same as the library's ``cap`` default in ``review_document``.
-_DEFAULT_ROUNDS = 2
+_DEFAULT_ROUNDS = 3
 _DEFAULT_GOAL_MAX_ROUNDS = 4
 
 _COMMANDS: tuple[str, ...] = (
@@ -510,7 +510,7 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=_DEFAULT_ROUNDS,
         metavar="N",
-        help="Hard cap on the gap-loop re-examination rounds. Default: 2. "
+        help="Hard cap on the gap-loop re-examination rounds. Default: 3. "
         "The loop typically exits earlier when no demands remain.",
     )
     review.add_argument(
