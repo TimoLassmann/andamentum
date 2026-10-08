@@ -205,6 +205,8 @@ async def run_epistemic_graph(
     output_dir: Optional[Path] = None,
     ibe_agreement_k: Optional[int] = None,
     use_web_search: bool = True,
+    searxng_url: Optional[str] = None,
+    browser: bool = False,
 ) -> "PipelineResult":
     """Run a research question through the epistemic graph pipeline.
 
@@ -224,11 +226,28 @@ async def run_epistemic_graph(
             sub-objective spawned by the decomposed runner). When None,
             falls back to resume-first-objective-or-create behaviour
             from ``question``.
+        searxng_url, browser: Where web search goes: a SearXNG
+            instance, or the isolated Chrome (a podman container; it wins when
+            both are given). One is required whenever web search is in play
+            (``use_web_search``, or the ``web_search`` provider loaded by
+            ``provider``); the run refuses to start without it.
 
     Returns:
         PipelineResult (backward compatible)
     """
     from ..databases import open_store
+
+    web_in_play = use_web_search or (
+        providers is None and provider in ("all", "web_search")
+    )
+    if web_in_play and not (searxng_url or browser):
+        raise ValueError(
+            "web search needs an address: pass searxng_url (a SearXNG "
+            "instance) or browser=True (the isolated Chrome), or "
+            "turn web search off (use_web_search=False with providers that "
+            "need none)"
+        )
+
     from ..entities import Objective
     from ..evidence_gathering import get_default_gatherer
     from ..repository import EpistemicRepository
@@ -314,13 +333,19 @@ async def run_epistemic_graph(
                 providers = get_all_providers()
             elif provider == "web_search":
                 providers = {"web_search": get_provider("web_search")}
+            # The addresses given for web search serve the web provider too.
+            if providers and "web_search" in providers:
+                providers["web_search"] = get_provider(
+                    "web_search", searxng_url=searxng_url, browser=browser
+                )
 
         evidence_gatherer = (
             get_default_gatherer(
                 model=model,
                 providers=providers,
-                embedding_model=embedding_model,
                 use_web_search=use_web_search,
+                searxng_url=searxng_url,
+                browser=browser,
             )
             if model
             else None

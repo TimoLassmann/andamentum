@@ -48,6 +48,7 @@ from .synth import StructuredReview, critique_and_revise, synthesise, to_review_
 
 if TYPE_CHECKING:
     from andamentum.core.decisions import DecisionModel
+    from andamentum.deep_research import NoveltyResearch
     from andamentum.references import Hint
 
     from ..reviewed_document import ReviewedDocument
@@ -84,6 +85,11 @@ class V3Deps:
     flag_novelty: bool = True
     novelty_target_cap: int = 8
     novelty_search_depth: int = 2
+    # Where the novelty check searches (deep_research, scholarly sources)
+    # and where its research store lives; None takes the defaults. The review
+    # model judges what the search finds; an undetermined target gives no
+    # finding. Only read when ``check_novelty`` is on.
+    novelty_research: "NoveltyResearch | None" = None
     # The active reviewer profile's stance, rendered at the top of every
     # criterion and editor prompt. Empty for the default reviewer, and then
     # rendered as nothing at all.
@@ -253,7 +259,7 @@ class FlagNoveltyTargets(BaseNode[V3State, V3Deps, ReviewResult]):
 
 @dataclass
 class RunNoveltySearches(BaseNode[V3State, V3Deps, ReviewResult]):
-    """Parallel deep_research per target. Per-target failures are
+    """deep_research per target. Per-target failures are
     captured in NoveltyEvidence.error rather than aborting the loop."""
 
     async def run(self, ctx: GraphRunContext[V3State, V3Deps]) -> "JudgeNovelty":
@@ -263,6 +269,7 @@ class RunNoveltySearches(BaseNode[V3State, V3Deps, ReviewResult]):
             ctx.state.novelty_targets,
             agent_model=ctx.deps.agent_model,
             search_depth=ctx.deps.novelty_search_depth,
+            research=ctx.deps.novelty_research,
         )
         return JudgeNovelty()
 
@@ -275,6 +282,15 @@ class JudgeNovelty(BaseNode[V3State, V3Deps, ReviewResult]):
     async def run(self, ctx: GraphRunContext[V3State, V3Deps]) -> "Gate":
         if not ctx.deps.check_novelty or not ctx.state.novelty_evidence:
             return Gate()
+        # A target the check could not assess is not a novel one: name it in
+        # the result so the reader can tell "novel" (silence) from "not
+        # assessed" (listed here).
+        for ev in ctx.state.novelty_evidence:
+            if ev.error is not None:
+                ctx.state.failed_criteria.append(
+                    f"novelty: '{ev.target.short_summary[:60]}' not assessed "
+                    f"({ev.error[:200]})"
+                )
         verdicts = judge_novelty(ctx.state.novelty_evidence)
         ctx.state.findings.extend(verdicts_to_findings(verdicts))
         return Gate()
@@ -377,6 +393,7 @@ class Finalize(BaseNode[V3State, V3Deps, ReviewResult]):
                 )
                 for t in ctx.state.novelty_targets
             ],
+            novelty_checked=ctx.deps.check_novelty,
             llm_calls=counters.llm_calls if counters else 0,
             gap_rounds_used=counters.gap_rounds if counters else 0,
             failed_criteria=ctx.state.failed_criteria,
@@ -449,6 +466,7 @@ async def run_review_v3(
     flag_novelty: bool = True,
     novelty_target_cap: int = 8,
     novelty_search_depth: int = 2,
+    novelty_research: "NoveltyResearch | None" = None,
     reviewer: "ReviewerProfile | None" = None,
     patch_author: str | None = None,
     extra_findings: list[PublicFinding] | None = None,
@@ -499,6 +517,13 @@ async def run_review_v3(
     the LLM classifier (its top choice is the type). ``None`` (the default)
     leaves the run exactly as it was: the LLM classifier decides.
 
+    ``novelty_research`` (a ``deep_research.NoveltyResearch``: the scholarly
+    sources and an optional store; ``None`` takes the defaults) configures the
+    novelty check, which runs on deep_research and judges with the review
+    model; it needs ``check_novelty=True``. A claim whose check cannot conclude (a failing
+    source, a thin search, a spent budget) produces no finding: the verdict is
+    never guessed.
+
     ``reviewer`` is the reviewer profile whose stance, criteria and editor
     criteria this run uses (see :mod:`.reviewers`). ``None`` means the default
     reviewer, which selects nothing of its own and therefore reproduces the
@@ -533,6 +558,12 @@ async def run_review_v3(
             "`guidelines_text=` (free-text to extract from), not both. "
             "These are two different ways to supply the active criterion "
             "set and choosing between them must be explicit."
+        )
+
+    if novelty_research is not None and not check_novelty:
+        raise ValueError(
+            "run_review_v3: `novelty_research` configures the novelty check; "
+            "pass `check_novelty=True` with it"
         )
 
     if not confirm_own_draft:
@@ -619,6 +650,7 @@ async def run_review_v3(
         flag_novelty=flag_novelty,
         novelty_target_cap=novelty_target_cap,
         novelty_search_depth=novelty_search_depth,
+        novelty_research=novelty_research,
         brief=resolved.brief,
         reviewer_header=resolved.header,
         extra_findings=list(extra_findings or []),
@@ -643,6 +675,7 @@ async def review_document_v3(
     flag_novelty: bool = True,
     novelty_target_cap: int = 8,
     novelty_search_depth: int = 2,
+    novelty_research: "NoveltyResearch | None" = None,
     reviewer: "ReviewerProfile | None" = None,
     patch_author: str | None = None,
     extra_findings: list[PublicFinding] | None = None,
@@ -686,6 +719,7 @@ async def review_document_v3(
             flag_novelty=flag_novelty,
             novelty_target_cap=novelty_target_cap,
             novelty_search_depth=novelty_search_depth,
+            novelty_research=novelty_research,
             reviewer=reviewer,
             patch_author=patch_author,
             extra_findings=extra_findings,

@@ -45,6 +45,13 @@ from andamentum.compose.evidence import (
 from andamentum.compose.genres import Genre, genre_for
 from andamentum.compose.log import ActionLog
 from andamentum.compose.plan import make_outline
+from andamentum.compose.research import (
+    RESEARCH_DB,
+    attribute,
+    degraded_notes,
+    research_facts,
+    research_sources,
+)
 from andamentum.compose.revise import revise_section
 from andamentum.compose.schemas import (
     Brief,
@@ -95,7 +102,7 @@ from .claims import (
 )
 from .disclosure import HEADING as AI_HEADING
 from .disclosure import ai_use_statement
-from .works import LiteratureSearch, gather_works, work_source
+from .works import LiteratureSearch, ResearchRun, gather_works, work_source
 
 DEFAULT_MAX_ROUNDS = 2
 EXIT_OK, EXIT_OPEN, EXIT_USAGE = 0, 4, 2
@@ -170,6 +177,7 @@ class _Run:
     store: ProjectStore
     log: ActionLog
     work: Path
+    research_db: Path
     results: Path | None
     offline: bool
     mailto: str | None
@@ -297,6 +305,7 @@ async def _gather_evidence(
     existing: Path | None,
     brief_genre: Genre | None,
     literature: LiteratureSearch | None,
+    research: ResearchRun | None,
     confirm_own_sources: bool,
 ) -> tuple[Brief, Genre, _Evidence]:
     paths: list[str] = [str(existing)] if existing else []
@@ -366,18 +375,50 @@ async def _gather_evidence(
             # published result gets written up as the author's own.
             found_facts = [
                 fact.model_copy(
-                    update={
-                        "statement": f"Another published work ({source.title}) "
-                        f"reports, not this study: {fact.statement}"
-                    }
+                    update={"statement": attribute(fact.statement, title=source.title)}
                 )
                 for fact in found_facts
             ]
         evidence.facts += found_facts
         run.step("evidence", role="drafter", model=run.roles.drafter, detail=source.id)
+    if research is not None:
+        await _add_research(run, research, genre=genre, evidence=evidence)
     bundle_store.save_sources(run.work, evidence.sources)
     bundle_store.save_facts(run.work, evidence.facts)
     return brief, genre, evidence
+
+
+async def _add_research(
+    run: _Run, research: ResearchRun, *, genre: Genre, evidence: _Evidence
+) -> None:
+    """Run the research and add each verified work with a finding as a source.
+
+    Facts come straight from the findings: their quotes were checked against
+    stored passages by the engine and are located again in the source text
+    here, so this adds no model call.
+    """
+    found = await research(run.task, genre=genre, database=run.research_db)
+    result = found.result
+    run.step("research", role="drafter", model=run.roles.drafter, detail=result.mode)
+    evidence.unverified += [u for u in found.unverified if u not in evidence.unverified]
+    evidence.notes += found.notes + degraded_notes(result)
+    added = research_sources(
+        result,
+        bundle_dir=run.work,
+        first_number=len(evidence.sources) + 1,
+        only=set(found.works),
+    )
+    for source in added:
+        text = stored_source_path(run.work, source).read_text(encoding="utf-8")
+        facts, dropped = research_facts(
+            result, source, text, first_number=len(evidence.facts) + 1
+        )
+        evidence.sources.append(source)
+        evidence.infos[source.id] = SourceInfo(
+            source=source, work=found.works[source.work_id]
+        )
+        evidence.facts += facts
+        evidence.notes += dropped
 
 
 # ---------------------------------------------------------------- targets
@@ -901,6 +942,7 @@ async def draft_document(
     sources: Sequence[str] = (),
     results: str | Path | None = None,
     literature: LiteratureSearch | None = None,
+    research: ResearchRun | None = None,
     template: str | Path | None = None,
     max_rounds: int = DEFAULT_MAX_ROUNDS,
     offline: bool = False,
@@ -915,7 +957,10 @@ async def draft_document(
     *roles* names the model for each job (the drafter writes, the judge labels
     claims and runs the numbers check; the critic and reader roles are part of
     the compose roles and unused here). *literature* answers queries with
-    verified works; without it nothing is cited. *genre* is a compose genre
+    verified works; without it nothing is cited. *research* runs
+    ``deep_research`` once in the genre's mode over ``<project>/research.db``
+    and adds each verified work that has a finding (its quotes are checked
+    passages) as a source; without it nothing is searched. *genre* is a compose genre
     pack name or YAML path; ``None`` lets the brief compiler choose.
 
     Returns a :class:`DraftResult`; ``exit_code`` is 0 when no check error is
@@ -959,6 +1004,7 @@ async def draft_document(
         store=store,
         log=ActionLog(work),
         work=work,
+        research_db=project / RESEARCH_DB,
         results=results_path,
         offline=offline,
         mailto=mailto,
@@ -979,6 +1025,7 @@ async def draft_document(
         existing=existing,
         brief_genre=preset,
         literature=literature,
+        research=research,
         confirm_own_sources=confirm_own_sources,
     )
 

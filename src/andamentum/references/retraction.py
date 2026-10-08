@@ -18,7 +18,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from .crossref import get_work, normalise_doi
+from .crossref import get_work
+from .works import normalise_doi
 from .http import ReferenceHttp
 
 NoticeKind = Literal["retraction", "expression_of_concern", "correction"]
@@ -63,7 +64,7 @@ class RetractionStatus(BaseModel):
 
 async def lookup_retraction(doi: str, *, http: ReferenceHttp) -> RetractionStatus:
     """Update notices Crossref holds for *doi*."""
-    doi = normalise_doi(doi)
+    doi = normalise_doi(doi) or doi.strip()
     result = await get_work(doi, http=http)
     if isinstance(result, str):
         return RetractionStatus(doi=doi, status="service_error", detail=result)

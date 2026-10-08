@@ -63,8 +63,8 @@ Two commitments shape the whole package:
 - `andamentum.document_store` — one SQLite file of documents with a fixed
   API; hybrid search (BM25 + vectors, cross-encoder rerank) and an opt-in
   search agent
-- `andamentum.deep_research` — web research pipeline (search → fetch → extract
-  → verify → synthesise) over a local SearXNG instance
+- `andamentum.deep_research` — evidence-first research loop over the web (a
+  Chrome or SearxNG) and scholarly sources; a report that cites verified findings
 
 **Building agentic systems**
 - `andamentum.agentic_dialect` — the house style for pydantic-graph + pydantic-ai
@@ -139,7 +139,7 @@ the full flag reference.
 | `andamentum-typeset` | Render Markdown to typeset HTML / PDF in three styles (article / cv / report). PDF needs the `pdf` extra. | none |
 | `andamentum-chunker` | Deterministic chunking of markdown by headings, paragraphs and sentences | none |
 | `andamentum-vision-critique` | Vision-critique a rendered figure → bounded JSON (label overlap, legibility, suggested fixes). Multimodal model required | required (multimodal) |
-| `andamentum-research` | Web-research pipeline (search → fetch → extract → verify → synthesise) over a local SearXNG instance | required |
+| `andamentum-research` | Research a question over the web (a Chrome or SearxNG) and scholarly sources; the report cites verified findings | required |
 | `andamentum-epistemic` | Formal-epistemology pipeline: `ask "<question>"` (decompose + research) or `verify "<claim>"` (single-claim verification) | required |
 | `andamentum-agentic-dialect` | The agentic-systems house style: `laws`, `law <id>`, `roles`, `role <role>`, `checklist`, `skeleton`, `check <path> [--strict]` (portable conformance gates, nonzero exit on fail) | none |
 | `andamentum-forge` | Natural-language brief → validated, agent-authored, sandbox-audited runnable package. `build` (full pipeline) or `design` (spec only). `--stop-after {render,build,audit}`, `--sandbox {podman,subprocess}` | required |
@@ -207,7 +207,8 @@ publicly-funded data infrastructure.
 ### Software
 
 - **[SearXNG](https://github.com/searxng/searxng)** — privacy-preserving
-  metasearch; self-hosted in `deep_research`. AGPL-3.0.
+  metasearch; an instance you run, one of the two web-search options of
+  `deep_research`. AGPL-3.0.
 - **[trafilatura](https://trafilatura.readthedocs.io/)** — HTML article
   extraction.
   Barbaresi, A. (2021). "Trafilatura: A Web Scraping Library and

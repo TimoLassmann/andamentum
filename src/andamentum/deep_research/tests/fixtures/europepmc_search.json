@@ -1,0 +1,90 @@
+{
+ "version": "6.9",
+ "hitCount": 327,
+ "nextCursorMark": "AoIIQF6ygig1NTYyNDEwMA==",
+ "resultList": {
+  "result": [
+   {
+    "id": "42261185",
+    "source": "MED",
+    "pmid": "42261185",
+    "pmcid": "PMC13245737",
+    "doi": "10.1093/bib/bbag216",
+    "title": "CRISPR-MBTF: a multi-branch transformer fusion framework for CRISPR-Cas9 off-target prediction.",
+    "authorString": "Jahangiri-Sisakht A, Safari L, Alipanahi R.",
+    "authorList": {
+     "author": [
+      {
+       "fullName": "Jahangiri-Sisakht A",
+       "lastName": "Jahangiri-Sisakht"
+      },
+      {
+       "fullName": "Safari L",
+       "lastName": "Safari"
+      },
+      {
+       "fullName": "Alipanahi R",
+       "lastName": "Alipanahi"
+      }
+     ]
+    },
+    "journalInfo": {
+     "journal": {
+      "title": "Briefings in bioinformatics"
+     }
+    },
+    "pubYear": "2026",
+    "abstractText": "Clustered regularly interspaced short palindromic repeats and CRISPR-associated protein 9 (CRISPR-Cas9) is a revolutionary genome editing technology derived from a bacterial adaptive immune system that uses a single guide RNA (sgRNA) to direct the Cas9 enzyme to specific DNA sequences for precise genetic modifications. Its ease of use and efficiency has accelerated advancements in genetic research and therapeutic development. However, unintended cleavage at off-target sites remains a significant concern, limiting the safety and broader applicability of CRISPR-based editing. Accurate computational prediction of off-target locations is therefore essential to mitigate potential risks and improve experimental design. In this study, we introduce CRISPR multi-branch transformer fusion (CRISPR-MBTF), a novel deep learning-based framework employing a multi-branch Transformer architecture combined with an attention-based fusion mechanism to model the intricate biological context influencing CRISPR activity. By capturing subtle sequence patterns and contextual dependencies, our model achieves enhanced predictive performance compared to existing approaches. Additionally, interpretability analyses uncover biologically meaningful patterns and highlight influential sequence regions, offering valuable insights into the determinants of CRISPR specificity. This work presents a robust and interpretable tool to support the design of safer and more effective genome editing strategies.",
+    "pubTypeList": {
+     "pubType": [
+      "research-article",
+      "Journal Article"
+     ]
+    },
+    "isOpenAccess": "Y",
+    "inEPMC": "Y",
+    "citedByCount": 0,
+    "license": "cc by"
+   },
+   {
+    "id": "42178392",
+    "source": "MED",
+    "pmid": "42178392",
+    "pmcid": "PMC13202463",
+    "doi": "10.1093/bioinformatics/btag244",
+    "title": "Sassy: fuzzy searching DNA sequences using SIMD.",
+    "authorString": "Beeloo R, Groot Koerkamp R.",
+    "authorList": {
+     "author": [
+      {
+       "fullName": "Beeloo R",
+       "lastName": "Beeloo"
+      },
+      {
+       "fullName": "Groot Koerkamp R",
+       "lastName": "Groot Koerkamp"
+      }
+     ]
+    },
+    "journalInfo": {
+     "journal": {
+      "title": "Bioinformatics (Oxford, England)"
+     }
+    },
+    "pubYear": "2026",
+    "abstractText": "<h4>Motivation</h4>Approximate string matching (ASM) is the problem of finding all occurrences of a pattern in a text while allowing up to k errors. Many modern methods use seed-chain-extend, which is fast in practice, but does not guarantee finding all matches with ≤k errors. However, applications such as CRISPR off-target detection require exhaustive results.<h4>Results</h4>We introduce Sassy, a library and tool for ASM of short patterns in long texts. Sassy splits the text into four parts that are searched in parallel, and uses bitvectors in the text direction rather than the pattern direction. This has complexity O(k⌈n/W⌉) when searching a random text of length n, where W=256 is the SIMD width, and provides significant speedups for small k. Separately, we allow matches of the pattern to extend beyond the text for an overhang cost of, e.g. α=0.5 per character, to find matches near contig or read ends.Sassy is 4× to 15× faster than Edlib for patterns ≤1000 bp, and can search text with a throughput near 2 Gbp/s. Likewise, Sassy is over 100× faster than parasail. We apply Sassy to CRISPR off-target detection by searching 61 guide sequences in a human genome. Sassy is 100× faster than SWOffinder and only slightly slower (for k≤3) than CHOPOFF, for which building its index takes 20 min. Sassy also scales well to larger k, unlike CHOPOFF whose index took over 10 h to build for k=5.<h4>Availability and implementation</h4>Sassy is available as library and binary at https://github.com/RagnarGrootKoerkamp/sassy, and archived at swh:1:dir:e884758dce5777a441bc2799dc8824e563c5f97b.",
+    "pubTypeList": {
+     "pubType": [
+      "Research Support, Non-U.S. Gov't",
+      "research-article",
+      "Journal Article"
+     ]
+    },
+    "isOpenAccess": "Y",
+    "inEPMC": "Y",
+    "citedByCount": 2,
+    "license": "cc by"
+   }
+  ]
+ }
+}

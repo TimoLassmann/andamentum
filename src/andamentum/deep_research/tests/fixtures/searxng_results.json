@@ -1,0 +1,11 @@
+{
+  "query": "apollo lattice",
+  "number_of_results": 0,
+  "results": [
+    {"url": "https://www.example.org/apollo?utm_source=feed", "title": "Apollo lattice overview", "content": "An overview of the Apollo lattice and its sampling.", "engine": "duckduckgo", "publishedDate": "2023-04-02T00:00:00"},
+    {"url": "https://docs.example.net/saltlog", "title": "SaltLog documentation", "content": "How SaltLog stores entries.", "engine": "brave", "publishedDate": null},
+    {"url": "https://www.example.org/apollo", "title": "Apollo lattice overview (duplicate)", "content": "Same page again.", "engine": "brave"},
+    {"url": "", "title": "No url", "content": "dropped"}
+  ],
+  "unresponsive_engines": [["google", "timeout"]]
+}

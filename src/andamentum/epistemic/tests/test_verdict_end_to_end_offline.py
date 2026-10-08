@@ -76,6 +76,7 @@ async def _run_insufficient(tmp_path: Path, monkeypatch, db_name: str):
         db_dir=str(tmp_path),
         model="fake:test-model",
         embedding_model="fake-embeddings",
+        searxng_url="http://searx.invalid",
         provider="none",
         providers={},
     )
@@ -142,6 +143,7 @@ async def _run_directional(tmp_path: Path, monkeypatch, db_name: str):
         start_at=CombineClaimVerdicts,
         model="fake:test-model",
         embedding_model="fake-embeddings",
+        searxng_url="http://searx.invalid",
         provider="none",
         providers={},
     )

@@ -44,6 +44,7 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, NoReturn, Sequence
 
+from dotenv import load_dotenv
 from rich.console import Console
 from rich.logging import RichHandler
 from rich.panel import Panel
@@ -51,6 +52,7 @@ from rich.table import Table
 
 if TYPE_CHECKING:
     from andamentum.core.decisions import DecisionModel
+    from andamentum.deep_research import NoveltyResearch
 
 _LOGGER_NAME = "andamentum.whetstone"
 
@@ -227,6 +229,7 @@ _REVIEW_ONLY_FLAGS: tuple[tuple[str, str, object], ...] = (
     ("editor_criteria", "--editor-criteria", None),
     ("check_novelty", "--check-novelty", False),
     ("novelty_search_depth", "--novelty-search-depth", _DEFAULT_NOVELTY_SEARCH_DEPTH),
+    ("novelty_store", "--novelty-store", None),
     ("rounds", "--rounds", _DEFAULT_ROUNDS),
 )
 
@@ -472,13 +475,15 @@ def _build_parser() -> argparse.ArgumentParser:
         "--check-novelty",
         action="store_true",
         help="VERIFY the novelty claims against the literature, by searching "
-        "the web. Every review already LISTS what the draft claims as new — "
+        "the scholarly sources (OpenAlex, Europe PMC, arXiv) and judging what "
+        "they report with the review model; a claim the search cannot settle "
+        "is reported as not assessed, never guessed. Every review already LISTS what the draft claims as new — "
         "that costs one call to the model already reading your draft and "
         "discloses nothing further. This flag takes those sentences and sends "
         "them to a search engine, so it is off by default: an unpublished "
         "manuscript should not reach a third party without you deciding it "
-        "should. Adds one search + one judge call per claim found, over at "
-        "most 8 claims. With a list of reviewers this runs once, before the "
+        "should. Adds one search and one judge call per finding read, for each "
+        "claim found, over at most 8 claims. With a list of reviewers this runs once, before the "
         "second reviewer starts — never once per reviewer.",
     )
     review_grp.add_argument(
@@ -486,8 +491,18 @@ def _build_parser() -> argparse.ArgumentParser:
         type=int,
         default=_DEFAULT_NOVELTY_SEARCH_DEPTH,
         metavar="N",
-        help="Search depth for --check-novelty (1=quick, 2=balanced, "
-        "3=thorough). Default: 2.",
+        help="Search depth for --check-novelty: the number of search "
+        "rounds per claim (1=quick, 2=balanced, 3=thorough). Default: 2.",
+    )
+    review_grp.add_argument(
+        "--novelty-store",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="With --check-novelty: a research store file (SQLite) that "
+        "keeps the works and passages between runs, so a second "
+        "review of the same draft re-reads nothing. Default: in memory, "
+        "nothing is kept. No default location is used.",
     )
     review_grp.add_argument(
         "--rounds",
@@ -652,6 +667,7 @@ def _validate_args(args: argparse.Namespace) -> None:
     args.reviewers = _parse_reviewers(args.reviewer)
     args.final_editor = _split_off_the_final_editor(args)
     _validate_decision_args(args)
+    _validate_novelty_args(args)
     if args.mode == "checklist":
         _reject_review_only_flags(args)
         _reject_the_line_editor_under_checklist(args)
@@ -759,6 +775,12 @@ def _validate_decision_args(args: argparse.Namespace) -> None:
             "--decision-model answers the document-type question, which "
             f"--document-type {args.document_type} already settles. Drop one.",
         )
+
+
+def _validate_novelty_args(args: argparse.Namespace) -> None:
+    """Refuse --novelty-store without --check-novelty, which would ignore it."""
+    if getattr(args, "novelty_store", None) is not None and not args.check_novelty:
+        _die(1, "--novelty-store needs --check-novelty.")
 
 
 def _default_reviewer_name() -> str:
@@ -1464,6 +1486,26 @@ async def _run(args: argparse.Namespace, console: Console) -> None:
             await decision_model.aclose()
 
 
+def _novelty_research(args: argparse.Namespace) -> NoveltyResearch | None:
+    """The novelty-check setup for ``--check-novelty``, else None.
+
+    Credentials for the scholarly sources come from the environment (loaded
+    from .env in ``main``); they are never flags.
+    """
+    if not args.check_novelty:
+        return None
+    from andamentum.deep_research import NoveltyResearch, SourceConfig
+
+    return NoveltyResearch(
+        sources=SourceConfig(
+            mailto=os.environ.get("OPENALEX_EMAIL") or None,
+            openalex_api_key=os.environ.get("OPENALEX_API_KEY") or None,
+            semantic_scholar_api_key=os.environ.get("SEMANTIC_SCHOLAR_API_KEY") or None,
+        ),
+        store=getattr(args, "novelty_store", None),
+    )
+
+
 async def _review_and_write(
     args: argparse.Namespace,
     console: Console,
@@ -1476,6 +1518,7 @@ async def _review_and_write(
     *decision_model* is the opened ``--decision-model`` handle (the caller
     closes it), or None.
     """
+    novelty_research = _novelty_research(args)
     from .renderers import render_docx, render_html, render_markdown
     from .v3 import Criterion, review_document_v3
     from .v3.checklist import checklist_document_v3
@@ -1589,6 +1632,7 @@ async def _review_and_write(
                     editor_criteria=editor_criteria,
                     check_novelty=args.check_novelty,
                     novelty_search_depth=args.novelty_search_depth,
+                    novelty_research=novelty_research,
                     patch_author=args.patch_author,
                     workdir=interim_dir,
                     decision_model=decision_model,
@@ -1664,6 +1708,7 @@ async def _review_and_write(
                         check_novelty=args.check_novelty and index == 0,
                         flag_novelty=index == 0,
                         novelty_search_depth=args.novelty_search_depth,
+                        novelty_research=novelty_research if index == 0 else None,
                         # The profile is resolved inside the pipeline, not
                         # here: the document type it resolves against is
                         # only known once the classifier has run, and
@@ -2258,6 +2303,8 @@ def main(argv: Sequence[str] | None = None) -> None:
     ``... proofread draft.md`` / ``... apply-patches draft.docx --patches
     p.json --out r.docx`` / ``... verify-provenance reviewed.docx`` /
     ``... references draft.docx --out r.docx``)."""
+    # Secrets only (API keys), here in the CLI and never in the library.
+    load_dotenv()
     raw = list(sys.argv[1:] if argv is None else argv)
     if raw and raw[0] == "proofread":
         # proofread short-circuits the whetstone pipeline entirely

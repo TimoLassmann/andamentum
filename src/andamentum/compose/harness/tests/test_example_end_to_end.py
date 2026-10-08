@@ -235,7 +235,8 @@ def test_write_cli_routes_a_docx_out_to_word_and_a_folder_to_the_bundle(
                 str(tmp_path / "p.docx"),
                 "--model",
                 "m",
-                "--research",
+                "--format",
+                "md",
             ]
         )
         == 2

@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from .brief import compile_brief
     from .bundle import Bundle, Section
     from .genres import GENRES, Genre, genre_for
+    from .research import ResearchSetup
     from .schemas import Brief, ComposeResult, Roles, StopReason
 
 __all__ = [
@@ -28,6 +29,7 @@ __all__ = [
     "ComposeResult",
     "Brief",
     "Roles",
+    "ResearchSetup",
     "Genre",
     "GENRES",
     "genre_for",
@@ -43,6 +45,7 @@ _HOME = {
     "ComposeResult": "schemas",
     "Brief": "schemas",
     "Roles": "schemas",
+    "ResearchSetup": "research",
     "StopReason": "schemas",
     "Genre": "genres",
     "GENRES": "genres",

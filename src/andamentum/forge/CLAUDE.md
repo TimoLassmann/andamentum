@@ -177,8 +177,7 @@ live dashboard) · `cli.py` the `andamentum-forge` adapter.
 `run_forge` takes an optional `reporter=` Port (default silent `NoopReporter`); it drives
 the graph via `graph.iter` so each stage lights as it runs and its one-line summary is read
 off the run state, while `build`/`audit` emit per-node and per-check sub-events. The CLI
-installs the `RichReporter` live dashboard on `--verbose`. Following the `deep_research`
-reporter pattern: keyword-only events, presentation-only leaf, no graph engine.
+installs the `RichReporter` live dashboard on `--verbose`. A Port reporter: keyword-only events, presentation-only leaf, no graph engine.
 
 ## Develop
 

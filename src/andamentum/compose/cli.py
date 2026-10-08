@@ -82,6 +82,15 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("bundle", type=Path)
     run.add_argument("--max-rounds", type=int, default=4)
     run.add_argument("--confirm-own-sources", action="store_true")
+    research = run.add_argument_group(
+        "research",
+        "only for a bundle started with --research whose research did not "
+        "finish; a finished research result is reused",
+    )
+    research.add_argument("--research-mode", choices=["web", "scholarly", "both"])
+    research.add_argument("--searxng-url")
+    research.add_argument("--browser", action="store_true")
+    research.add_argument("--mailto")
     _add_models(run)
     _add_output(run)
 
@@ -225,10 +234,21 @@ def resolve_roles(
 async def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     from .api import compose_bundle, recorded_roles
 
+    from .harness.draft.verb import research_setup
+
     roles = resolve_roles(args, parser, fallback=recorded_roles(args.bundle))
+    started_with_research = bool(Bundle.open(args.bundle).metadata.get("research"))
     result = await compose_bundle(
         args.bundle,
         roles=roles,
+        research=research_setup(
+            mailto=args.mailto,
+            searxng_url=args.searxng_url,
+            browser=args.browser,
+            mode=args.research_mode,
+        )
+        if started_with_research
+        else None,
         max_rounds=args.max_rounds,
         confirm_own_sources=args.confirm_own_sources,
         provenance=not args.no_provenance,

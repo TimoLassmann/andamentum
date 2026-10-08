@@ -244,5 +244,3 @@ async def test_the_project_checks_yaml_holds_the_structure_limits(tmp_path: Path
     (project / "checks.yaml").write_text("structure:\n  max_words: 1\n")
     result = await run(path, offline=True, checks=["structure"])
     assert [d.check for d in result.report.diagnostics] == ["structure"]
-
-

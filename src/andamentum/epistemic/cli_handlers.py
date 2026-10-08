@@ -870,6 +870,8 @@ async def handle_ask(
     output_path: Optional[str] = None,
     provider: str = "all",
     db_dir: Optional[str] = None,
+    searxng_url: Optional[str] = None,
+    browser: bool = False,
 ) -> AskResult:
     """Ask a research question and get validated findings.
 
@@ -1017,6 +1019,8 @@ async def handle_ask(
             provider=provider,
             db_dir=db_dir,
             quality_scorer=OpenAlexQualityScorer(),
+            searxng_url=searxng_url,
+            browser=browser,
         )
 
         console.print()

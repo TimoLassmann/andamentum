@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import socket
 from collections.abc import Callable
+from contextlib import AbstractAsyncContextManager, nullcontext
 from typing import Literal, Protocol
 from urllib.parse import urlencode
 
@@ -26,6 +27,11 @@ from pydantic import BaseModel
 from andamentum.core.url_safety import SsrfBlocked, is_safe_url
 
 from .lookup import CROSSREF_API, _get, _user_agent
+
+
+def _safe_url(url: str) -> tuple[bool, str]:
+    """``is_safe_url``, looked up when called (not when a client is built)."""
+    return is_safe_url(url)
 
 
 class Cache(Protocol):
@@ -71,13 +77,17 @@ class ReferenceHttp:
         cache: Cache | None = None,
         mailto: str | None = None,
         timeout: float = 20.0,
-        url_check: Callable[[str], tuple[bool, str]] = is_safe_url,
+        url_check: Callable[[str], tuple[bool, str]] | None = None,
+        gate: Callable[[], AbstractAsyncContextManager[None]] | None = None,
     ) -> None:
         self._owns_client = client is None
+        # entered around each Crossref request that goes to the network (never a
+        # cached answer): a caller that rate-limits holds its turn in it
+        self.gate = gate or nullcontext
         self.client = client or httpx.AsyncClient(timeout=timeout)
         self.cache = cache
         self.mailto = mailto
-        self.url_check = url_check
+        self.url_check = url_check or _safe_url
 
     async def aclose(self) -> None:
         if self._owns_client:
@@ -105,12 +115,13 @@ class ReferenceHttp:
         cached = self._read(key)
         if cached is not None:
             return int(cached["status"]), cached["body"]
-        response = await _get(
-            self.client,
-            f"{CROSSREF_API}{path}",
-            params=params,
-            headers={"User-Agent": _user_agent(self.mailto)},
-        )
+        async with self.gate():
+            response = await _get(
+                self.client,
+                f"{CROSSREF_API}{path}",
+                params=params,
+                headers={"User-Agent": _user_agent(self.mailto)},
+            )
         if isinstance(response, str):
             return response
         body = {} if response.status_code == 404 else response.json()

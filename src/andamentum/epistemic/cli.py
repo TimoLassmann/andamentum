@@ -59,6 +59,20 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Evidence provider (default: all)",
     )
     ask_parser.add_argument(
+        "--searxng-url",
+        default=None,
+        help="A SearXNG instance for web search (e.g. http://127.0.0.1:4070)",
+    )
+    ask_parser.add_argument(
+        "--browser",
+        action="store_true",
+        help=(
+            "Search the web through an isolated Chrome in a podman container "
+            "(started and removed per search run) instead of SearXNG. One of "
+            "--searxng-url and --browser is required"
+        ),
+    )
+    ask_parser.add_argument(
         "--quick",
         action="store_true",
         help="Skip preplanning (clarification + conceptual analysis)",
@@ -117,6 +131,20 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Evidence provider (default: all)",
     )
     verify_parser.add_argument(
+        "--searxng-url",
+        default=None,
+        help="A SearXNG instance for web search (e.g. http://127.0.0.1:4070)",
+    )
+    verify_parser.add_argument(
+        "--browser",
+        action="store_true",
+        help=(
+            "Search the web through an isolated Chrome in a podman container "
+            "(started and removed per search run) instead of SearXNG. One of "
+            "--searxng-url and --browser is required"
+        ),
+    )
+    verify_parser.add_argument(
         "--quick",
         action="store_true",
         help="Skip preplanning (clarification + conceptual analysis)",
@@ -167,6 +195,16 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     pf_parser.add_argument(
         "--providers", default=None, help="Provider set: 'biomedical' or omit for none"
+    )
+    pf_parser.add_argument(
+        "--searxng-url",
+        default=None,
+        help="A SearXNG instance to check for web search",
+    )
+    pf_parser.add_argument(
+        "--browser",
+        action="store_true",
+        help="Check podman (the isolated Chrome) instead of SearXNG",
     )
     pf_parser.add_argument("--verbose", action="store_true", help="Print extra details")
 
@@ -301,7 +339,13 @@ async def _preflight(args: argparse.Namespace) -> None:
 
         providers = get_biomedical_providers()
 
-    result = await preflight(model=model, providers=providers, verbose=args.verbose)
+    result = await preflight(
+        model=model,
+        providers=providers,
+        verbose=args.verbose,
+        searxng_url=args.searxng_url,
+        browser=args.browser,
+    )
 
     for check in result.checks:
         icon = {"pass": "OK", "fail": "FAIL", "skip": "SKIP"}[check.status]
@@ -374,6 +418,14 @@ async def _ask(args: argparse.Namespace) -> None:
 
     from andamentum.core.models import resolve_embedding_model_from_args
 
+    if not (args.searxng_url or args.browser):
+        print(
+            "Error: web search needs an address. Pass --searxng-url (a "
+            "SearXNG instance) or --browser (the isolated Chrome).",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+
     model = _resolve_model(args)
     embedding_model = resolve_embedding_model_from_args(args.embedding_model)
 
@@ -393,6 +445,8 @@ async def _ask(args: argparse.Namespace) -> None:
         mode=mode,
         provider=args.provider,
         output_path=args.output,
+        searxng_url=args.searxng_url,
+        browser=args.browser,
     )
 
     if not result.success and result.error:

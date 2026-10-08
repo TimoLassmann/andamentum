@@ -1,0 +1,6 @@
+{
+  "offset": 0,
+  "data": [
+    {"citingPaper": {"paperId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "externalIds": {"DOI": "10.1000/apollo.cites1"}, "title": "A paper that cites Apollo", "abstract": "Builds on the Apollo lattice.", "year": 2023, "venue": "Invented Letters", "authors": [{"name": "Richard Roe"}]}}
+  ]
+}

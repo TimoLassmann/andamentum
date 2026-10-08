@@ -49,7 +49,7 @@ from andamentum.core.decisions import DecisionModel
 
 from .check import check_citations
 from .cited import resolve_cited_work, resolve_entry
-from .crossref import CrossrefError, fetch_work, normalise_doi, search_crossref, to_csl
+from .crossref import CrossrefError, fetch_work, search_crossref, to_csl
 from .decide import decide_style, judge_candidates
 from .http import Cache, ReferenceHttp, UrlHealth, UrlStatus
 from .identifiers import Identifiers, extract_identifiers
@@ -71,8 +71,26 @@ from .parse import DOI, find_reference_list, split_entries
 from .pubmed import PubMedRecord, fetch_pubmed, parse_pubmed_xml
 from .retraction import NoticeKind, RetractionStatus, UpdateNotice, lookup_retraction
 from .scan import pandoc_notes, scan
+from .works import (
+    LICENCE_NO_REDISTRIBUTE,
+    Work,
+    WorkAccess,
+    WorkRetraction,
+    canonical_url,
+    merge_works,
+    normalise_arxiv_id,
+    normalise_doi,
+    normalise_local_id,
+    normalise_openalex_id,
+    normalise_pmcid,
+    normalise_pmid,
+    normalise_s2_id,
+    title_key,
+    works_compatible,
+)
 
 __all__ = [
+    "LICENCE_NO_REDISTRIBUTE",
     "LOOKUP_KINDS",
     "Cache",
     "CrossrefError",
@@ -81,7 +99,6 @@ __all__ = [
     "extract_identifiers",
     "fetch_pubmed",
     "fetch_work",
-    "normalise_doi",
     "parse_pubmed_xml",
     "search_crossref",
     "to_csl",
@@ -104,7 +121,21 @@ __all__ = [
     "ReferenceEntry",
     "ReferenceReport",
     "StyleDecision",
+    "Work",
+    "WorkAccess",
+    "WorkRetraction",
+    "canonical_url",
     "check_references",
+    "merge_works",
+    "normalise_arxiv_id",
+    "normalise_doi",
+    "normalise_local_id",
+    "normalise_openalex_id",
+    "normalise_pmcid",
+    "normalise_pmid",
+    "normalise_s2_id",
+    "title_key",
+    "works_compatible",
 ]
 
 

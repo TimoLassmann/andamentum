@@ -55,6 +55,7 @@ async def test_stop_after_prepare_objective_writes_question_type(
         db_dir=str(tmp_path),
         model="fake:test-model",
         embedding_model="fake-embeddings",
+        searxng_url="http://searx.invalid",
         stop_after=PrepareObjective,
     )
 
@@ -104,6 +105,7 @@ async def test_start_at_skips_to_named_node(tmp_path: Path, monkeypatch) -> None
         db_dir=str(tmp_path),
         model="fake:test-model",
         embedding_model="fake-embeddings",
+        searxng_url="http://searx.invalid",
         stop_after=PrepareObjective,
     )
     assert r1.status == "stopped_after:PrepareObjective"
@@ -116,6 +118,7 @@ async def test_start_at_skips_to_named_node(tmp_path: Path, monkeypatch) -> None
         db_dir=str(tmp_path),
         model="fake:test-model",
         embedding_model="fake-embeddings",
+        searxng_url="http://searx.invalid",
         start_at=Decompose,
         stop_after=Decompose,
     )
@@ -158,6 +161,7 @@ async def test_output_dir_emits_three_artifacts(tmp_path: Path, monkeypatch) -> 
         db_dir=str(tmp_path),
         model="fake:test-model",
         embedding_model="fake-embeddings",
+        searxng_url="http://searx.invalid",
         stop_after=PrepareObjective,
         output_dir=artifacts,
     )
@@ -203,6 +207,7 @@ async def test_stage_invariant_satisfied_no_crash(tmp_path: Path, monkeypatch) -
         db_dir=str(tmp_path),
         model="fake:test-model",
         embedding_model="fake-embeddings",
+        searxng_url="http://searx.invalid",
         stop_after=Decompose,
     )
     assert result.status == "stopped_after:Decompose"
@@ -245,6 +250,7 @@ async def test_stage_invariant_violation_crashes_loudly(
             db_dir=str(tmp_path),
             model="fake:test-model",
             embedding_model="fake-embeddings",
+            searxng_url="http://searx.invalid",
             stop_after=Decompose,
         )
     assert "preplanning" in str(excinfo.value)
@@ -276,6 +282,7 @@ async def test_stop_after_unknown_node_skips_invariant_check(
         db_dir=str(tmp_path),
         model="fake:test-model",
         embedding_model="fake-embeddings",
+        searxng_url="http://searx.invalid",
         stop_after=PlanEvidence,
     )
     assert result.status == "stopped_after:PlanEvidence"
@@ -314,6 +321,7 @@ async def test_chain_preplanning_then_resume_from_decompose(
         db_dir=str(tmp_path),
         model="fake:test-model",
         embedding_model="fake-embeddings",
+        searxng_url="http://searx.invalid",
         start_at=pp.entry,
         stop_after=pp.exit_after,
         output_dir=artifacts,
@@ -333,6 +341,7 @@ async def test_chain_preplanning_then_resume_from_decompose(
         db_dir=str(tmp_path),
         model="fake:test-model",
         embedding_model="fake-embeddings",
+        searxng_url="http://searx.invalid",
         start_at=pp.entry,
         stop_after=pp.exit_after,
     )

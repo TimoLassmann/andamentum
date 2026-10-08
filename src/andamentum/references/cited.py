@@ -10,7 +10,8 @@ the same rules (a returned work counts only when its title is in the entry).
 
 from __future__ import annotations
 
-from .crossref import get_work, normalise_doi
+from .crossref import get_work
+from .works import normalise_doi
 from .http import ReferenceHttp
 from .lookup import (
     _CANDIDATES,
@@ -38,7 +39,7 @@ async def resolve_cited_work(
     none of DOI and title there is nothing to resolve, and the result is
     ``service_error`` (not checked) with the reason.
     """
-    doi = normalise_doi(doi)
+    doi = normalise_doi(doi) or doi.strip()
     text = _entry_text(title, authors or [], year)
     entry = ReferenceEntry(
         number=None,

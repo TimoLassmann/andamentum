@@ -8,10 +8,10 @@ turns Crossref's records, which are close to CSL JSON, into CSL JSON.
 
 from __future__ import annotations
 
-import re
 from urllib.parse import quote
 
 from .http import ReferenceHttp
+from .works import normalise_doi
 
 _SELECT = (
     "DOI,title,author,editor,issued,container-title,volume,issue,page,"
@@ -27,23 +27,23 @@ _TYPE_MAP = {
     "dissertation": "thesis",
     "dataset": "dataset",
 }
-_DOI_PREFIX = re.compile(r"^(?:https?://(?:dx\.)?doi\.org/|doi:)\s*", re.IGNORECASE)
 
 
 class CrossrefError(RuntimeError):
     """Crossref could not answer, or has no usable record; never an empty result."""
 
 
-def normalise_doi(doi: str) -> str:
-    """The bare, lower-cased DOI: ``https://doi.org/``, ``http://dx.doi.org/``
-    and ``doi:`` prefixes removed (DOIs are case-insensitive)."""
-    return _DOI_PREFIX.sub("", doi.strip()).strip().lower()
-
-
 async def get_work(doi: str, *, http: ReferenceHttp) -> tuple[int, dict] | str:
     """``(status, json)`` for Crossref's record of *doi* (a 200 or a 404), or
-    a one-line failure reason. The one by-DOI request in this package."""
-    return await http.crossref(f"/works/{quote(normalise_doi(doi), safe='/')}")
+    a one-line failure reason. The one by-DOI request in this package.
+
+    *doi* is normalised with :func:`works.normalise_doi`; text that is not a
+    DOI is reported as such and never sent.
+    """
+    bare = normalise_doi(doi)
+    if bare is None:
+        return f"{doi!r} is not a DOI"
+    return await http.crossref(f"/works/{quote(bare, safe='/')}")
 
 
 async def fetch_work(doi: str, *, http: ReferenceHttp) -> dict[str, object]:
@@ -53,7 +53,7 @@ async def fetch_work(doi: str, *, http: ReferenceHttp) -> dict[str, object]:
     be reached, or the record has no title; a DOI that does not resolve is
     never turned into a made-up work.
     """
-    bare = normalise_doi(doi)
+    bare = normalise_doi(doi) or doi.strip()
     result = await get_work(bare, http=http)
     if isinstance(result, str):
         raise CrossrefError(f"Crossref lookup of {bare} failed: {result}")

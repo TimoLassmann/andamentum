@@ -174,7 +174,9 @@ def render_html(
         )
 
     if result.novelty_claims:
-        atoms.extend(_novelty_claim_atoms(result.novelty_claims))
+        atoms.extend(
+            _novelty_claim_atoms(result.novelty_claims, checked=result.novelty_checked)
+        )
 
     if result.reference_summary:
         atoms.append(
@@ -276,7 +278,9 @@ def _edits_atoms(
     return out
 
 
-def _novelty_claim_atoms(claims: list[NoveltyClaim]) -> list[dict[str, Any]]:
+def _novelty_claim_atoms(
+    claims: list[NoveltyClaim], *, checked: bool = False
+) -> list[dict[str, Any]]:
     """What the draft stakes as new — found on every run, verified on none.
 
     The caveat is a callout rather than a paragraph so it cannot be skimmed
@@ -292,7 +296,11 @@ def _novelty_claim_atoms(claims: list[NoveltyClaim]) -> list[dict[str, Any]]:
         {
             "kind": "callout",
             "tone": "note",
-            "content": "These are checked against nothing. This is what the draft asserts, not what the literature says.",
+            "content": (
+                "These were checked against the literature; similar work found is listed under Novelty above."
+                if checked
+                else "These are checked against nothing. This is what the draft asserts, not what the literature says."
+            ),
         },
     ]
     entries = []
@@ -302,12 +310,13 @@ def _novelty_claim_atoms(claims: list[NoveltyClaim]) -> list[dict[str, Any]]:
             body += f"\n\n_Why it matters:_ {claim.why_load_bearing}"
         entries.append({"label": "!", "body": body})
     out.append({"kind": "items", "entries": entries})
-    out.append(
-        {
-            "kind": "prose",
-            "content": "To check them automatically, re-run with --check-novelty. That sends these sentences to a search engine.",
-        }
-    )
+    if not checked:
+        out.append(
+            {
+                "kind": "prose",
+                "content": "To check them automatically, re-run with --check-novelty. That sends these sentences to a search engine.",
+            }
+        )
     return out
 
 

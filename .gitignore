@@ -81,3 +81,10 @@ benchmarks/*/results/
 
 # Snakemake working dir (experiments run from the repo root)
 /.snakemake/
+
+# Third-party benchmark data (local evaluation only, never redistributed): the
+# datasets, their indexes and the results computed from them stay in data/. Only
+# data/README.md, which documents each dataset's source, licence status and
+# citation, is committed. The glob + negation, as for experiments/ above.
+data/*
+!data/README.md
