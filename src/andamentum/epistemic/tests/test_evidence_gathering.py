@@ -2,310 +2,178 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from ..evidence_gathering import WebSearchGatherer
+from andamentum.deep_research.v2 import Finding, Passage, ResearchResult
+from andamentum.references import Work
+
+from ..evidence_gathering import GATHER_MAX_ROUNDS, WebSearchGatherer
 from ..operations import GatheredEvidence
 
 
-def _make_research_result(
-    fetched_pages: list | None = None,
-    page_summaries: list | None = None,
-    evidence_summary: str | None = None,
-    sources: list[str] | None = None,
-):
-    """Build a mock ResearchResult with the fields WebSearchGatherer accesses."""
-    from andamentum.deep_research.models import (
-        EvidenceReport,
-        ResearchErrors,
-        ResearchResult,
+def _work(url: str = "http://example.com/page1", title: str = "Test Page") -> Work:
+    return Work(
+        work_id="w1", url=url, title=title, venue="example.com", access="metadata"
     )
 
-    if fetched_pages is None:
-        fetched_pages = []
-    if page_summaries is None:
-        page_summaries = []
 
-    report = EvidenceReport(
-        evidence_summary=evidence_summary
-        if evidence_summary is not None
-        else "Fallback summary",
-        key_findings=["finding1"],
-        sources=sources or ["http://example.com"],
-        total_searches_performed=1,
-        total_pages_fetched=len(fetched_pages),
-        iterations_required=1,
+def _passage(text: str, *, work_id: str = "w1", start: int = 0) -> Passage:
+    return Passage.make(work_id=work_id, start=start, text=text)
+
+
+def _finding(
+    passage: Passage,
+    *,
+    quote: str,
+    number: int = 1,
+    verified: bool = True,
+    claim: str = "The page states the fact.",
+) -> Finding:
+    return Finding(
+        finding_id=f"F{number}",
+        subquestion_id="sq1",
+        claim=claim,
+        quote=quote,
+        quote_verified=verified,
+        passage_id=passage.passage_id,
+        work_id=passage.work_id,
     )
 
-    from andamentum.deep_research.verification import VerificationResult
 
+def _result(
+    *, works: list[Work], passages: list[Passage], findings: list[Finding], **extra
+) -> ResearchResult:
     return ResearchResult(
-        output=report,
-        page_summaries=page_summaries,
-        fetched_pages=fetched_pages,
-        iterations=1,
-        searches=1,
-        pages_fetched=len(fetched_pages),
-        verification=VerificationResult(
-            total_cited=0,
-            verified_count=0,
-            verified=[],
-            unverified=[],
-            accessed_not_cited=[],
-            verification_rate=0.0,
-        ),
-        errors=ResearchErrors(search_errors=0, fetch_errors=0),
+        run_id="r1",
+        question="q",
+        mode="web",
+        works=works,
+        passages=passages,
+        findings=findings,
+        **extra,
     )
 
 
-def _make_fetched_page(
-    url: str = "http://example.com/page1",
-    title: str = "Test Page",
-    content: str = "This is the raw page content with real evidence.",
-    word_count: int = 50,
-    relevance_score: float = 0.8,
-    is_relevant: bool = True,
-):
-    from andamentum.deep_research.models import FetchedPage
-
-    return FetchedPage(
-        url=url,
-        title=title,
-        content=content,
-        word_count=word_count,
-        relevance_score=relevance_score,
-        is_relevant=is_relevant,
-        extraction_timestamp=datetime(2026, 4, 7, 12, 0, 0),
+def _run_with(result: ResearchResult):
+    """Patch the v2 entry point the gatherer calls; return the mock."""
+    return patch(
+        "andamentum.deep_research.v2.research",
+        new_callable=AsyncMock,
+        return_value=result,
     )
 
 
-def _make_page_summary(
-    url: str = "http://example.com/page1",
-    title: str = "Test Page",
-    summary: str = "AI generated summary of the page.",
-    key_points: list[str] | None = None,
-    key_excerpts: list[str] | None = None,
-    relevance_score: float = 0.8,
-):
-    from andamentum.deep_research.models import PageSummary
-
-    return PageSummary(
-        url=url,
-        title=title,
-        summary=summary,
-        key_points=key_points or ["Point A", "Point B"],
-        key_excerpts=key_excerpts or ['"Verbatim quote from source"'],
-        relevance_score=relevance_score,
-    )
-
-
-class TestWebSearchGathererRawContent:
-    """Test that WebSearchGatherer passes raw page content as primary evidence."""
+class TestWebSearchGathererFindings:
+    """WebSearchGatherer turns verified v2 findings into evidence."""
 
     @pytest.mark.asyncio
-    async def test_raw_content_is_primary(self):
-        """Raw FetchedPage.content should be the GatheredEvidence.content, not AI summary."""
-        raw_text = "The actual text from the web page with specific data points."
-        page = _make_fetched_page(content=raw_text)
-        summary = _make_page_summary(summary="AI compressed version of the page.")
-
-        result = _make_research_result(
-            fetched_pages=[page],
-            page_summaries=[summary],
+    async def test_finding_becomes_evidence_with_context(self):
+        text = "Before the quote. " * 100 + "Water boils at 100 C." + " After." * 100
+        passage = _passage(text)
+        result = _result(
+            works=[_work()],
+            passages=[passage],
+            findings=[_finding(passage, quote="Water boils at 100 C.")],
         )
 
-        gatherer = WebSearchGatherer(model="test")
-        with patch(
-            "andamentum.deep_research.orchestrator.run_research",
-            new_callable=AsyncMock,
-            return_value=result,
-        ):
-            with patch("andamentum.epistemic.evidence_gathering.ensure_searxng"):
-                gathered = await gatherer.gather("web_search", "test query")
+        gatherer = WebSearchGatherer(model="test", browser_cdp_url="http://chrome.test")
+        with _run_with(result) as run:
+            gathered = await gatherer.gather("web_search", "boiling point of water")
 
         assert len(gathered) == 1
-        assert gathered[0].content == raw_text
-        assert gathered[0].source_ref == "http://example.com/page1"
+        ev = gathered[0]
+        assert "Water boils at 100 C." in ev.content
+        # context is a window around the quote, not the whole passage
+        assert len(ev.content) < len(text)
+        assert ev.source_ref == "http://example.com/page1"
+        assert ev.source_type == "web_search"
+        assert ev.evidence_kind == "web_page"
+        assert ev.quality_score is None
+        sd = ev.structured_data
+        assert sd["claim"] == "The page states the fact."
+        assert sd["quote"] == "Water boils at 100 C."
+        assert sd["quote_verified"] is True
+        assert sd["title"] == "Test Page"
+        assert sd["site"] == "example.com"
+
+        args, kwargs = run.call_args
+        assert args == ("boiling point of water",)
+        assert kwargs["mode"] == "web"
+        assert kwargs["model"] == "test"
+        assert kwargs["budget"].max_rounds == GATHER_MAX_ROUNDS
+        assert kwargs["sources"].browser_cdp_url == "http://chrome.test"
 
     @pytest.mark.asyncio
-    async def test_annotations_in_structured_data(self):
-        """Annotations from pointers should be in structured_data."""
-        page = _make_fetched_page()
-        summary = _make_page_summary(
-            summary="The AI summary.",
-            key_points=["Point 1", "Point 2"],
-            key_excerpts=['"raw page content"'],
+    async def test_unverified_finding_is_not_evidence_and_is_logged(self, caplog):
+        passage = _passage("The page says something else entirely.")
+        result = _result(
+            works=[_work()],
+            passages=[passage],
+            findings=[
+                _finding(passage, quote="a quote that is not there", verified=False),
+                _finding(passage, quote="something else", number=2),
+            ],
         )
 
-        result = _make_research_result(fetched_pages=[page], page_summaries=[summary])
+        gatherer = WebSearchGatherer(model="test", browser_cdp_url="http://chrome.test")
+        with _run_with(result), caplog.at_level("WARNING"):
+            gathered = await gatherer.gather("web_search", "q")
 
-        gatherer = WebSearchGatherer(model="test")
-        with patch(
-            "andamentum.deep_research.orchestrator.run_research",
-            new_callable=AsyncMock,
-            return_value=result,
-        ):
-            with patch("andamentum.epistemic.evidence_gathering.ensure_searxng"):
-                gathered = await gatherer.gather("web_search", "test query")
-
-        sd = gathered[0].structured_data
-        assert "annotations" in sd
-        assert len(sd["annotations"]) >= 1
-        assert "page_title" in sd
-
-    @pytest.mark.asyncio
-    async def test_evidence_kind_set(self):
-        """evidence_kind should be 'web_page' for web search results."""
-        page = _make_fetched_page()
-        summary = _make_page_summary()
-        result = _make_research_result(fetched_pages=[page], page_summaries=[summary])
-
-        gatherer = WebSearchGatherer(model="test")
-        with patch(
-            "andamentum.deep_research.orchestrator.run_research",
-            new_callable=AsyncMock,
-            return_value=result,
-        ):
-            with patch("andamentum.epistemic.evidence_gathering.ensure_searxng"):
-                gathered = await gatherer.gather("web_search", "test query")
-
-        assert gathered[0].evidence_kind == "web_page"
-
-    @pytest.mark.asyncio
-    async def test_quality_score_from_summary_relevance(self):
-        """quality_score should come from PageSummary.relevance_score."""
-        page = _make_fetched_page(relevance_score=0.5)
-        summary = _make_page_summary(relevance_score=0.9)
-        result = _make_research_result(fetched_pages=[page], page_summaries=[summary])
-
-        gatherer = WebSearchGatherer(model="test")
-        with patch(
-            "andamentum.deep_research.orchestrator.run_research",
-            new_callable=AsyncMock,
-            return_value=result,
-        ):
-            with patch("andamentum.epistemic.evidence_gathering.ensure_searxng"):
-                gathered = await gatherer.gather("web_search", "test query")
-
-        # Should use summary relevance (post-content analysis), not fetch relevance
-        assert gathered[0].quality_score == 0.9
-
-
-class TestWebSearchGathererEdgeCases:
-    """Test edge cases and fallback strategies."""
-
-    @pytest.mark.asyncio
-    async def test_fetched_page_without_matching_summary_is_skipped(self):
-        """FetchedPage with no PageSummary match (filtered at relevance < 0.3) should be skipped."""
-        page = _make_fetched_page(url="http://example.com/irrelevant")
-        # No matching summary — summarizer filtered it out
-        result = _make_research_result(fetched_pages=[page], page_summaries=[])
-
-        gatherer = WebSearchGatherer(model="test")
-        with patch(
-            "andamentum.deep_research.orchestrator.run_research",
-            new_callable=AsyncMock,
-            return_value=result,
-        ):
-            with patch("andamentum.epistemic.evidence_gathering.ensure_searxng"):
-                gathered = await gatherer.gather("web_search", "test query")
-
-        # Should fall through to Strategy 2 (EvidenceReport fallback)
         assert len(gathered) == 1
-        assert gathered[0].content == "Fallback summary"
+        assert gathered[0].structured_data["quote"] == "something else"
+        assert "1 of 2 findings" in caplog.text
 
     @pytest.mark.asyncio
-    async def test_empty_fetched_pages_falls_back_to_summaries(self):
-        """When fetched_pages is empty, fall back to page_summaries (backward compat)."""
-        summary = _make_page_summary(
-            summary="AI summary from older deep-research.",
-            key_points=["Old point"],
+    async def test_no_verified_findings_returns_empty(self):
+        passage = _passage("Some text.")
+        result = _result(
+            works=[_work()],
+            passages=[passage],
+            findings=[_finding(passage, quote="nope", verified=False)],
         )
-        result = _make_research_result(fetched_pages=[], page_summaries=[summary])
-
-        gatherer = WebSearchGatherer(model="test")
-        with patch(
-            "andamentum.deep_research.orchestrator.run_research",
-            new_callable=AsyncMock,
-            return_value=result,
-        ):
-            with patch("andamentum.epistemic.evidence_gathering.ensure_searxng"):
-                gathered = await gatherer.gather("web_search", "test query")
-
-        assert len(gathered) == 1
-        # Falls back to summary-based content (current behavior)
-        assert "AI summary from older deep-research." in gathered[0].content
+        gatherer = WebSearchGatherer(model="test", browser_cdp_url="http://chrome.test")
+        with _run_with(result):
+            assert await gatherer.gather("web_search", "q") == []
 
     @pytest.mark.asyncio
-    async def test_multiple_pages_produce_multiple_items(self):
-        """Each matched FetchedPage+PageSummary pair produces one GatheredEvidence."""
-        pages = [
-            _make_fetched_page(url="http://a.com", content="Content A"),
-            _make_fetched_page(url="http://b.com", content="Content B"),
-        ]
-        summaries = [
-            _make_page_summary(url="http://a.com", relevance_score=0.7),
-            _make_page_summary(url="http://b.com", relevance_score=0.9),
-        ]
-        result = _make_research_result(fetched_pages=pages, page_summaries=summaries)
-
-        gatherer = WebSearchGatherer(model="test")
-        with patch(
-            "andamentum.deep_research.orchestrator.run_research",
-            new_callable=AsyncMock,
-            return_value=result,
-        ):
-            with patch("andamentum.epistemic.evidence_gathering.ensure_searxng"):
-                gathered = await gatherer.gather("web_search", "test query")
-
-        assert len(gathered) == 2
-        assert gathered[0].content == "Content A"
-        assert gathered[1].content == "Content B"
-
-    @pytest.mark.asyncio
-    async def test_no_results_at_all(self):
-        """When everything is empty, return a 'no results' GatheredEvidence."""
-        result = _make_research_result(
-            fetched_pages=[],
-            page_summaries=[],
-            evidence_summary="",
-            sources=[],
+    async def test_doi_link_when_the_work_has_no_url(self):
+        work = Work(work_id="w1", title="A paper", doi="10.1234/abc", access="metadata")
+        passage = _passage("A finding sits here.")
+        result = _result(
+            works=[work],
+            passages=[passage],
+            findings=[_finding(passage, quote="A finding sits here.")],
         )
-
-        gatherer = WebSearchGatherer(model="test")
-        with patch(
-            "andamentum.deep_research.orchestrator.run_research",
-            new_callable=AsyncMock,
-            return_value=result,
-        ):
-            with patch("andamentum.epistemic.evidence_gathering.ensure_searxng"):
-                gathered = await gatherer.gather("web_search", "test query")
-
-        assert len(gathered) == 1
-        assert "no usable results" in gathered[0].content.lower()
-        assert gathered[0].quality_score == 0.0
+        gatherer = WebSearchGatherer(model="test", browser_cdp_url="http://chrome.test")
+        with _run_with(result):
+            gathered = await gatherer.gather("web_search", "q")
+        assert gathered[0].source_ref == "https://doi.org/10.1234/abc"
 
     @pytest.mark.asyncio
-    async def test_passage_has_page_title_in_structured_data(self):
-        """Page title should be in structured_data for provenance."""
-        page = _make_fetched_page(content="Some real content here. " * 50)
-        summary = _make_page_summary(key_excerpts=["real content here"])
-        result = _make_research_result(fetched_pages=[page], page_summaries=[summary])
+    async def test_finding_of_unknown_work_raises(self):
+        passage = _passage("Text.")
+        result = _result(
+            works=[], passages=[passage], findings=[_finding(passage, quote="Text.")]
+        )
+        gatherer = WebSearchGatherer(model="test", browser_cdp_url="http://chrome.test")
+        with _run_with(result), pytest.raises(RuntimeError, match="not among"):
+            await gatherer.gather("web_search", "q")
 
-        gatherer = WebSearchGatherer(model="test")
-        with patch(
-            "andamentum.deep_research.orchestrator.run_research",
-            new_callable=AsyncMock,
-            return_value=result,
+    @pytest.mark.asyncio
+    async def test_searxng_is_ensured_only_without_a_browser(self):
+        result = _result(works=[], passages=[], findings=[])
+
+        with (
+            _run_with(result),
+            patch("andamentum.epistemic.evidence_gathering.ensure_searxng") as ensure,
         ):
-            with patch("andamentum.epistemic.evidence_gathering.ensure_searxng"):
-                gathered = await gatherer.gather("web_search", "test query")
-
-        sd = gathered[0].structured_data
-        assert sd["page_title"] == "Test Page"
+            await WebSearchGatherer(model="test").gather("web_search", "q")
+            await WebSearchGatherer(
+                model="test", browser_cdp_url="http://chrome.test"
+            ).gather("web_search", "q")
+        assert ensure.call_count == 1
 
 
 # ──────────────────────────────────────────────────────────────────────────────

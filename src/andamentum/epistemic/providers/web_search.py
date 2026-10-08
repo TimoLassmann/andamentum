@@ -13,14 +13,15 @@ the dedicated providers handle better.
 Unlike the legacy fallback, this is a pure retrieval provider matching the
 provider contract (CONTRIBUTING.md): no LLM synthesis, ``quality_score=None``
 always, returns ``list[GatheredEvidence]`` (empty on error, never raises). It
-composes the model-free deep_research backend (SearXNG search + safe page
-fetch/extract), which carries SSRF protection, robots/paywall gating, safe
-redirects, and a circuit breaker.
+composes the model-free ``deep_research.v2`` web source (SearXNG or Chrome
+search, safe page fetch/extract), which carries SSRF protection, robots/paywall
+gating and safe redirects.
 
-API docs: SearXNG (local instance; default http://127.0.0.1:4070)
-Authentication: none (local SearXNG)
+API docs: SearXNG (local instance; default http://127.0.0.1:4070), or a Chrome
+over its debugging address (``browser_cdp_url``)
+Authentication: none
 
-Architecture: Layer 1 (standalone; depends on deep_research, an allowed
+Architecture: Layer 1 (standalone; depends on deep_research.v2, an allowed
 evidence-gathering dependency).
 """
 
@@ -28,7 +29,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from ..operations import GatheredEvidence
 
@@ -115,36 +116,53 @@ class WebSearchProvider:
         self,
         *,
         searxng_url: str = _DEFAULT_SEARXNG_URL,
+        browser_cdp_url: str | None = None,
         max_results: int = 8,
         max_pages: int = 4,
     ) -> None:
         """Args:
         searxng_url: Base URL of the local SearXNG instance.
-        max_results: Search results to request from SearXNG.
+        browser_cdp_url: A Chrome's debugging address; search goes through that
+            browser instead of SearXNG.
+        max_results: Search results to request.
         max_pages: Top results to fetch + extract full content from (the rest
             contribute their snippet only).
         """
         self.searxng_url = searxng_url
+        self.browser_cdp_url = browser_cdp_url
         self.max_results = max_results
         self.max_pages = max_pages
 
+    def _open(self) -> tuple[Any, Any]:
+        """A web source over an in-memory store, and the client to close."""
+        from andamentum.deep_research.v2 import ResearchStore
+        from andamentum.deep_research.v2.sources import SourceClient, WebSource
+
+        client = SourceClient(ResearchStore.in_memory())
+        source = WebSource(
+            searxng_url=self.searxng_url,
+            browser_cdp_url=self.browser_cdp_url,
+            client=client,
+        )
+        return source, client
+
     async def check_health(self) -> "CheckResult":
-        """Probe SearXNG reachability via the same search path ``gather`` uses."""
+        """Probe search reachability via the same search path ``gather`` uses."""
         import time
 
         from ..preflight import CheckResult
 
         t0 = time.monotonic()
+        client = None
         try:
-            from andamentum.deep_research.backends import HttpxSearchBackend
-
-            async with HttpxSearchBackend(searxng_url=self.searxng_url) as backend:
-                await backend.search("health check", max_results=1)
+            source, client = self._open()
+            await source.search("health check", limit=1)
             elapsed = (time.monotonic() - t0) * 1000
+            where = "Chrome" if self.browser_cdp_url else "SearXNG"
             return CheckResult(
                 name="WebSearchProvider",
                 status="pass",
-                message=f"SearXNG reachable ({elapsed:.0f}ms)",
+                message=f"{where} reachable ({elapsed:.0f}ms)",
                 elapsed_ms=elapsed,
             )
         except Exception as e:  # noqa: BLE001
@@ -155,78 +173,73 @@ class WebSearchProvider:
                 message=str(e),
                 elapsed_ms=elapsed,
             )
+        finally:
+            if client is not None:
+                await client.aclose()
 
     async def gather(self, query: str) -> list[GatheredEvidence]:
         """Search the web and return extracted page content as evidence.
 
-        Returns ``[]`` on any failure (SearXNG down, no results, all fetches
+        Returns ``[]`` on any failure (search down, no results, all fetches
         failed) — never raises, per the provider contract.
         """
+        client = None
         try:
-            from andamentum.deep_research.backends import HttpxSearchBackend
-        except ImportError:
-            logger.info("deep_research not available — web search disabled")
-            return []
+            source, client = self._open()
+            results = await source.search(query, limit=self.max_results)
+            if not results:
+                return []
 
-        try:
-            async with HttpxSearchBackend(searxng_url=self.searxng_url) as backend:
-                results = await backend.search(query, max_results=self.max_results)
-                if not results:
-                    return []
-
-                to_fetch = results[: self.max_pages]
-
-                async def _fetch(result: object) -> tuple[object, object | None]:
-                    try:
-                        page = await backend.fetch_page(result.url)  # type: ignore[attr-defined]
-                        return result, page
-                    except Exception as e:  # noqa: BLE001
-                        logger.debug(
-                            "web_search fetch failed for %s: %s",
-                            result.url,  # type: ignore[attr-defined]
-                            e,
-                        )
-                        return result, None
-
-                fetched = await asyncio.gather(*(_fetch(r) for r in to_fetch))
-
-                gathered: list[GatheredEvidence] = []
-                for result, page in fetched:
-                    # Full extracted content when the fetch succeeded; otherwise
-                    # fall back to the search snippet so a fetch failure still
-                    # contributes something.
-                    body = (
-                        page.content  # type: ignore[attr-defined]
-                        if page is not None and getattr(page, "content", "")
-                        else result.snippet  # type: ignore[attr-defined]
+            async def _fetch(candidate: Any) -> tuple[Any, Any]:
+                try:
+                    return candidate, await source.fetch_text(candidate.work)
+                except Exception as e:  # noqa: BLE001
+                    logger.debug(
+                        "web_search fetch failed for %s: %s", candidate.work.url, e
                     )
-                    if not body:
-                        continue
-                    title = result.title  # type: ignore[attr-defined]
-                    content = f"{title}\n\n{body}" if title else body
-                    gathered.append(
-                        GatheredEvidence(
-                            content=content,
-                            source_ref=result.url,  # type: ignore[attr-defined]
-                            source_type="web_search",
-                            evidence_kind="web_page",
-                            identifiers={"url": result.url},  # type: ignore[attr-defined]
-                            structured_data={
-                                "title": title,
-                                "url": result.url,  # type: ignore[attr-defined]
-                                "domain": result.domain,  # type: ignore[attr-defined]
-                                "snippet": result.snippet,  # type: ignore[attr-defined]
-                                "fetched_full_content": page is not None,
-                            },
-                            quality_score=None,
-                            quality_metadata={"domain": result.domain},  # type: ignore[attr-defined]
-                            limitations=[
-                                "Web source — not peer-reviewed; assess "
-                                "credibility independently."
-                            ],
-                        )
+                    return candidate, None
+
+            fetched = await asyncio.gather(
+                *(_fetch(c) for c in results[: self.max_pages])
+            )
+
+            gathered: list[GatheredEvidence] = []
+            for candidate, page in fetched:
+                work = candidate.work
+                # Full extracted text when the fetch succeeded; otherwise fall
+                # back to the search snippet so a fetch failure still
+                # contributes something.
+                body = page.text if page is not None else candidate.snippet
+                if not body:
+                    continue
+                title = work.title or ""
+                content = f"{title}\n\n{body}" if title else body
+                gathered.append(
+                    GatheredEvidence(
+                        content=content,
+                        source_ref=work.url or "",
+                        source_type="web_search",
+                        evidence_kind="web_page",
+                        identifiers={"url": work.url or ""},
+                        structured_data={
+                            "title": title,
+                            "url": work.url,
+                            "domain": work.venue,
+                            "snippet": candidate.snippet,
+                            "fetched_full_content": page is not None,
+                        },
+                        quality_score=None,
+                        quality_metadata={"domain": work.venue},
+                        limitations=[
+                            "Web source — not peer-reviewed; assess "
+                            "credibility independently."
+                        ],
                     )
-                return gathered
+                )
+            return gathered
         except Exception as e:  # noqa: BLE001
             logger.warning("Web search query failed for '%s': %s", query, e)
             return []
+        finally:
+            if client is not None:
+                await client.aclose()

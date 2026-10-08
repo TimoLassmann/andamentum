@@ -1,10 +1,9 @@
 """Default evidence gathering implementation.
 
-Provides a WebSearchGatherer that uses deep_research (optional dependency)
-to fetch real evidence from the web. When deep_research is not installed,
-the gatherer is not available and operations fall back to agent-only extraction.
+Provides a WebSearchGatherer that runs the ``deep_research.v2`` research loop
+over the open web and hands its findings on as evidence.
 
-Architecture: Layer 1 (standalone package, optional dependency on deep_research)
+Architecture: Layer 1 (standalone package, depends on deep_research.v2)
 """
 
 from __future__ import annotations
@@ -19,19 +18,28 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
+    from andamentum.deep_research.v2 import Finding, Passage, ResearchResult
+
     from .preflight import CheckResult
-    from andamentum.deep_research.models import PageSummary
 
 from .operations import GatheredEvidence, EvidenceGatherer, GathererCapability
 from .operations.base import ProviderRegistry
 
 logger = logging.getLogger(__name__)
 
-# SearXNG defaults (match deep_research conventions)
+# SearXNG defaults
 _SEARXNG_PORT = int(os.getenv("SEARXNG_PORT", "4070"))
 _SEARXNG_URL = os.getenv("SEARXNG_URL", f"http://127.0.0.1:{_SEARXNG_PORT}")
 _SEARXNG_IMAGE = os.getenv("SEARXNG_IMAGE", "docker.io/searxng/searxng:latest")
 _SEARXNG_CONTAINER = os.getenv("SEARXNG_CONTAINER", "mcp-searxng")
+
+# One gather is a small research run: rounds of search, read and reflect per
+# sub-question, and pages read in full per round. The loop stops early when the
+# question is answered, so a simple fact usually takes one round.
+GATHER_MAX_ROUNDS = 2
+GATHER_READS_PER_ROUND = 3
+# Characters of the page kept on each side of a finding's quote as its context.
+CONTEXT_CHARS = 800
 
 
 def _searxng_is_healthy(url: str = _SEARXNG_URL, timeout: float = 3.0) -> bool:
@@ -43,12 +51,20 @@ def _searxng_is_healthy(url: str = _SEARXNG_URL, timeout: float = 3.0) -> bool:
         return False
 
 
+def _browser_is_healthy(cdp_url: str, timeout: float = 3.0) -> bool:
+    """Check if a Chrome answers on its debugging address."""
+    try:
+        urllib.request.urlopen(f"{cdp_url.rstrip('/')}/json/version", timeout=timeout)
+        return True
+    except Exception:
+        return False
+
+
 def ensure_searxng(url: str = _SEARXNG_URL, port: int = _SEARXNG_PORT) -> bool:
     """Ensure SearXNG is running, starting it via podman if needed.
 
     Returns True if SearXNG is available after this call.
-    Uses the same container name and settings as the deep_research PodmanSearxngManager
-    for compatibility.
+    Uses the container name and settings the other andamentum tools share.
     """
     if _searxng_is_healthy(url):
         return True
@@ -113,35 +129,56 @@ def ensure_searxng(url: str = _SEARXNG_URL, port: int = _SEARXNG_PORT) -> bool:
 
 
 class WebSearchGatherer:
-    """Evidence gatherer using deep_research for web search.
+    """Evidence gatherer running the ``deep_research.v2`` loop over the web.
 
-    Satisfies the EvidenceGatherer protocol. Uses `deep_research.orchestrator`
-    for actual web search via SearXNG + LLM analysis.
+    Satisfies the EvidenceGatherer protocol. One ``gather`` call is one small
+    research run (``research(query, mode="web")``, ``GATHER_MAX_ROUNDS``
+    rounds). Each finding whose quote the engine found in the page text becomes
+    one ``GatheredEvidence``: the content is the page text around the quote,
+    the source is the work's URL. A finding whose quote could not be verified is
+    not evidence and is left out; the count is logged. ``quality_score`` stays
+    ``None``: v2 gives no per-finding relevance score, and a number made up here
+    would be a hidden judgement, so the downstream scorer decides.
+
+    Search goes through a Chrome (``browser_cdp_url``) when one is given, else
+    through SearXNG at ``searxng_url``.
     """
 
-    def __init__(self, *, model: str, embedding_model: str | None = None):
+    def __init__(
+        self,
+        *,
+        model: str,
+        searxng_url: str = _SEARXNG_URL,
+        browser_cdp_url: str | None = None,
+    ):
         self.model = model
-        self.embedding_model = embedding_model
+        self.searxng_url = searxng_url
+        self.browser_cdp_url = browser_cdp_url
         self._searxng_ensured = False
 
     async def check_health(self) -> "CheckResult":
-        """Test SearXNG reachability."""
+        """Test reachability of the search address (the Chrome, else SearXNG)."""
         from .preflight import CheckResult
 
         t0 = time.monotonic()
-        healthy = _searxng_is_healthy(timeout=5.0)
+        if self.browser_cdp_url:
+            healthy = _browser_is_healthy(self.browser_cdp_url, timeout=5.0)
+            where = f"Chrome at {self.browser_cdp_url}"
+        else:
+            healthy = _searxng_is_healthy(self.searxng_url, timeout=5.0)
+            where = f"SearXNG at {self.searxng_url}"
         elapsed = (time.monotonic() - t0) * 1000
         if healthy:
             return CheckResult(
                 name="WebSearch",
                 status="pass",
-                message=f"SearXNG reachable ({elapsed:.0f}ms)",
+                message=f"{where} reachable ({elapsed:.0f}ms)",
                 elapsed_ms=elapsed,
             )
         return CheckResult(
             name="WebSearch",
             status="fail",
-            message=f"SearXNG not reachable at {_SEARXNG_URL}",
+            message=f"{where} not reachable",
             elapsed_ms=elapsed,
         )
 
@@ -153,178 +190,108 @@ class WebSearchGatherer:
         return GathererCapability(capable=True, source_types=["web_search"])
 
     async def gather(self, source_type: str, query: str) -> list[GatheredEvidence]:
-        """Gather evidence via deep_research web search."""
-        from andamentum.deep_research.orchestrator import run_research
+        """Gather evidence via one ``deep_research.v2`` web run.
 
-        # Ensure SearXNG is running on first call
-        if not self._searxng_ensured:
-            ensure_searxng()
+        Returns ``[]`` when the run produced no finding with a verified quote;
+        the caller treats that as "no source found", not as evidence.
+        """
+        del source_type
+        from andamentum.deep_research.v2 import Budget, SourceConfig, research
+
+        # Start SearXNG on first use; a Chrome is the user's to run.
+        if not self.browser_cdp_url and not self._searxng_ensured:
+            ensure_searxng(self.searxng_url)
             self._searxng_ensured = True
 
-        result = await run_research(
-            query=query,
-            max_iterations=1,
+        result = await research(
+            query,
+            mode="web",
             model=self.model,
-            max_results=5,
-            max_pages=3,
-            verbose=False,
+            budget=Budget(
+                max_rounds=GATHER_MAX_ROUNDS, reads_per_round=GATHER_READS_PER_ROUND
+            ),
+            sources=SourceConfig(
+                searxng_url=self.searxng_url, browser_cdp_url=self.browser_cdp_url
+            ),
         )
-
-        gathered: list[GatheredEvidence] = []
-
-        # Build URL → PageSummary lookup for AI pre-analysis metadata
-        summary_by_url: dict[str, "PageSummary"] = {}
-        for ps in result.page_summaries:
-            summary_by_url.setdefault(ps.url, ps)
-
-        # Strategy 1: Passage extraction from fetched_pages (preferred)
-        if result.fetched_pages:
-            from .passage_extraction import extract_passages, PageData
-            from .embeddings import _chunk_text, embed_texts as _embed_texts
-
-            # Build PageData for each page that has a summary
-            page_data_list: list[PageData] = []
-            for page in result.fetched_pages:
-                summary = summary_by_url.get(page.url)
-                if summary is None:
-                    continue
-                page_data_list.append(
-                    PageData(
-                        url=page.url,
-                        title=page.title,
-                        content=page.content,
-                        key_excerpts=list(summary.key_excerpts),
-                        key_points=list(summary.key_points),
-                        relevance_score=summary.relevance_score,
-                    )
-                )
-
-            if page_data_list:
-                # Cross-page findings from the synthesiser
-                cross_findings = (
-                    list(result.output.key_findings) if result.output else []
-                )
-
-                # Pre-compute chunk embeddings per page
-                chunk_embeddings_by_url: dict[str, list[list[float]]] = {}
-                for pd in page_data_list:
-                    chunks = _chunk_text(pd.content)
-                    if self.embedding_model:
-                        try:
-                            chunk_embeddings_by_url[pd.url] = await _embed_texts(
-                                chunks, model=self.embedding_model
-                            )
-                        except RuntimeError:
-                            logger.warning("Embedding failed for %s, skipping", pd.url)
-
-                # Pre-compute cross-page finding embeddings
-                cross_finding_embs: list[list[float]] | None = None
-                if cross_findings and self.embedding_model:
-                    try:
-                        cross_finding_embs = await _embed_texts(
-                            cross_findings, model=self.embedding_model
-                        )
-                    except RuntimeError:
-                        logger.warning("Embedding failed for cross-page findings")
-
-                # Extract focused passages
-                passages = await extract_passages(
-                    pages=page_data_list,
-                    cross_page_findings=cross_findings,
-                    cross_page_finding_embeddings=cross_finding_embs,
-                    chunk_embeddings_by_url=chunk_embeddings_by_url,
-                    embedding_model=self.embedding_model,
-                )
-
-                for passage in passages:
-                    gathered.append(
-                        GatheredEvidence(
-                            content=passage.text,
-                            source_ref=passage.page_url,
-                            source_type="web_search",
-                            evidence_kind="web_page",
-                            structured_data={
-                                "annotations": passage.annotations,
-                                "page_title": passage.page_title,
-                            },
-                            limitations=[
-                                "Web source; passage extracted from larger page"
-                            ],
-                            quality_score=next(
-                                (
-                                    pd.relevance_score
-                                    for pd in page_data_list
-                                    if pd.url == passage.page_url
-                                ),
-                                0.5,
-                            ),
-                            quality_metadata={
-                                "title": passage.page_title,
-                                "annotation_count": passage.annotation_count,
-                            },
-                        )
-                    )
-
-        # Strategy 2: Fall back to page_summaries (backward compat / empty fetched_pages)
-        if not gathered and result.page_summaries:
-            for ps in result.page_summaries:
-                if ps.relevance_score < 0.2:
-                    continue
-                key_points = (
-                    "\n".join(f"- {p}" for p in ps.key_points) if ps.key_points else ""
-                )
-                content = f"{ps.title}\n\n{ps.summary}"
-                if key_points:
-                    content += f"\n\nKey points:\n{key_points}"
-                gathered.append(
-                    GatheredEvidence(
-                        content=content,
-                        source_ref=ps.url,
-                        source_type="web_search",
-                        limitations=[
-                            "AI-summarized content; original source text not available"
-                        ],
-                        quality_score=ps.relevance_score,
-                        quality_metadata={
-                            "relevance_score": ps.relevance_score,
-                            "title": ps.title,
-                        },
-                    )
-                )
-
-        # Strategy 3: Fall back to synthesized EvidenceReport
-        if not gathered:
-            output = result.output
-            if output:
-                summary = output.evidence_summary or ""
-                sources = output.sources or []
-                if summary:
-                    source_refs = [str(s) for s in sources] if sources else [query]
-                    gathered.append(
-                        GatheredEvidence(
-                            content=summary,
-                            source_ref="; ".join(source_refs[:3]),
-                            source_type="web_search",
-                            limitations=[
-                                "AI-synthesized summary; no direct source text available"
-                            ],
-                            quality_score=0.4,
-                        )
-                    )
-
-        # Strategy 4: No results
-        if not gathered:
-            gathered.append(
-                GatheredEvidence(
-                    content=f"Web search for '{query}' returned no usable results.",
-                    source_ref=query,
-                    source_type="web_search",
-                    limitations=["No results found"],
-                    quality_score=0.0,
-                )
+        for reason in result.degraded:
+            logger.warning(
+                "[WebSearchGatherer] degraded run for %.80s: %s", query, reason
             )
+        return _evidence_from_result(result, query=query)
 
-        return gathered
+
+def _evidence_from_result(
+    result: "ResearchResult", *, query: str
+) -> list[GatheredEvidence]:
+    """One ``GatheredEvidence`` per finding with a verified quote."""
+    works = {w.work_id: w for w in result.works}
+    passages = {p.passage_id: p for p in result.passages}
+    gathered: list[GatheredEvidence] = []
+    skipped = 0
+    for finding in result.findings:
+        if not finding.quote_verified:
+            skipped += 1
+            continue
+        work = works.get(finding.work_id)
+        if work is None:
+            raise RuntimeError(
+                f"finding {finding.finding_id} cites work {finding.work_id} "
+                f"which is not among the run's works"
+            )
+        url = work.url or (f"https://doi.org/{work.doi}" if work.doi else None)
+        if not url:
+            raise RuntimeError(
+                f"work {finding.work_id} of finding {finding.finding_id} "
+                f"has neither a URL nor a DOI"
+            )
+        content = _context_around(finding, passages.get(finding.passage_id))
+        gathered.append(
+            GatheredEvidence(
+                content=content,
+                source_ref=url,
+                source_type="web_search",
+                evidence_kind="web_page",
+                identifiers={"url": url},
+                structured_data={
+                    "claim": finding.claim,
+                    "quote": finding.quote,
+                    "quote_verified": finding.quote_verified,
+                    "title": work.title,
+                    "site": work.venue,
+                },
+                limitations=[
+                    "Web source; passage taken from a larger page, not peer-reviewed"
+                ],
+            )
+        )
+    if skipped:
+        logger.warning(
+            "[WebSearchGatherer] %d of %d findings for %.80s had an unverified "
+            "quote and were not passed on as evidence",
+            skipped,
+            len(result.findings),
+            query,
+        )
+    return gathered
+
+
+def _context_around(finding: "Finding", passage: "Passage | None") -> str:
+    """The text of the passage around the finding's quote.
+
+    Falls back to the quote itself when the passage is missing or the quote
+    cannot be located in it (the engine verified it against the page, whose
+    window may differ from the stored passage).
+    """
+    from andamentum.deep_research.v2 import locate_quote
+
+    if passage is None:
+        return finding.quote
+    at = locate_quote(finding.quote, passage.text)
+    if at is None:
+        return finding.quote
+    start, end = at
+    return passage.text[max(0, start - CONTEXT_CHARS) : end + CONTEXT_CHARS].strip()
 
 
 class CompositeGatherer:
@@ -457,10 +424,10 @@ def get_default_gatherer(
     *,
     model: str,
     providers: Optional[ProviderRegistry] = None,
-    embedding_model: Optional[str] = None,
     use_web_search: bool = True,
+    browser_cdp_url: Optional[str] = None,
 ) -> Optional[EvidenceGatherer]:
-    """Create a default evidence gatherer if deep_research is available.
+    """Create a default evidence gatherer if deep_research.v2 is available.
 
     Args:
         model: LLM model string for web search analysis.
@@ -468,9 +435,11 @@ def get_default_gatherer(
             ``andamentum.epistemic.providers.get_biomedical_providers()``).
             When provided, returns a CompositeGatherer that routes
             by source_type and falls back to web search.
-        embedding_model: Optional embedding model for passage extraction.
+        use_web_search: False for providers only (requires ``providers``).
+        browser_cdp_url: A Chrome's debugging address; web search goes through
+            that browser instead of SearXNG.
 
-    Returns None if deep_research is not installed, allowing callers
+    Returns None if deep_research.v2 is not importable, allowing callers
     to fall back gracefully.
     """
     # WEB SEARCH IS OPT-OUT, NOT ABSENT-BY-DEFAULT.
@@ -495,12 +464,12 @@ def get_default_gatherer(
         return CompositeGatherer(None, providers)  # type: ignore[return-value]
 
     try:
-        import andamentum.deep_research.orchestrator  # noqa: F401
+        import andamentum.deep_research.v2  # noqa: F401
 
-        web = WebSearchGatherer(model=model, embedding_model=embedding_model)
+        web = WebSearchGatherer(model=model, browser_cdp_url=browser_cdp_url)
         if providers:
             return CompositeGatherer(web, providers)  # type: ignore[return-value]
         return web
     except ImportError:
-        logger.info("deep_research not available — evidence gathering disabled")
+        logger.info("deep_research.v2 not available — evidence gathering disabled")
         return None

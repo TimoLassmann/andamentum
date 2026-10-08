@@ -23,8 +23,8 @@ __all__ = [
     "DEFAULT_BASE_URL",
     "embed_documents",
     "embed_texts",
-    # Underscore-prefixed names retained for the few internal callsites
-    # (passage_extraction.py, evidence_gathering.py) that imported them.
+    # Underscore-prefixed names retained for the internal callsites that
+    # import them.
     "_MAX_EMBED_CHARS",
     "_OVERLAP_CHARS",
     "_chunk_text",

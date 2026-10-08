@@ -854,6 +854,7 @@ async def handle_ask(
     output_path: Optional[str] = None,
     provider: str = "all",
     db_dir: Optional[str] = None,
+    browser_cdp_url: Optional[str] = None,
 ) -> AskResult:
     """Ask a research question and get validated findings.
 
@@ -1000,6 +1001,7 @@ async def handle_ask(
             provider=provider,
             db_dir=db_dir,
             quality_scorer=OpenAlexQualityScorer(),
+            browser_cdp_url=browser_cdp_url,
         )
 
         console.print()

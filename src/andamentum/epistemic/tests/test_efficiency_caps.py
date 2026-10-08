@@ -1,4 +1,4 @@
-"""Tests pinning the adversarial / IBE / slot-retry budgets.
+"""Tests pinning the adversarial / IBE budgets.
 
 History:
 
@@ -14,6 +14,10 @@ History:
   - The four budgets above — reverted (2026-05-02) because benchmark
     runs showed convergence degradation: claims more often hit cycle
     caps before IBE could fire. Restored to the pre-Phase-1 values.
+
+The slot-retry budget (``MAX_SLOT_RETRIES``) belonged to the
+retired v1 pipeline and is no longer pinned here: web evidence now comes
+from the ``deep_research.v2`` loop, which has no per-slot generate-verify retry.
 
 These tests now pin the restored (pre-Phase-1) values so a future
 optimization attempt that re-cuts these budgets without first
@@ -49,17 +53,6 @@ def test_ibe_candidates_at_five() -> None:
     "best explanation" judgment meaningful."""
     assert len(_CANDIDATE_IDS) == 5
     assert _CANDIDATE_IDS == ["A", "B", "C", "D", "E"]
-
-
-def test_max_slot_retries_is_three() -> None:
-    """The deep_research per-slot generate→verify retry budget is 3.
-    The reverted Phase 1 cut to 2 gave the generator one fewer
-    chance to recover from a poor first draft, contributing to
-    weaker validated-query pools.
-    """
-    from andamentum.deep_research.nodes import MAX_SLOT_RETRIES
-
-    assert MAX_SLOT_RETRIES == 3
 
 
 # ── Caps still applied at the call site ──────────────────────────────

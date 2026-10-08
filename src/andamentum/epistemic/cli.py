@@ -59,6 +59,14 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Evidence provider (default: all)",
     )
     ask_parser.add_argument(
+        "--browser-cdp-url",
+        default=None,
+        help=(
+            "A Chrome's debugging address (e.g. http://127.0.0.1:9222); web "
+            "search goes through that browser instead of SearXNG"
+        ),
+    )
+    ask_parser.add_argument(
         "--quick",
         action="store_true",
         help="Skip preplanning (clarification + conceptual analysis)",
@@ -117,6 +125,14 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Evidence provider (default: all)",
     )
     verify_parser.add_argument(
+        "--browser-cdp-url",
+        default=None,
+        help=(
+            "A Chrome's debugging address (e.g. http://127.0.0.1:9222); web "
+            "search goes through that browser instead of SearXNG"
+        ),
+    )
+    verify_parser.add_argument(
         "--quick",
         action="store_true",
         help="Skip preplanning (clarification + conceptual analysis)",
@@ -167,6 +183,11 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     pf_parser.add_argument(
         "--providers", default=None, help="Provider set: 'biomedical' or omit for none"
+    )
+    pf_parser.add_argument(
+        "--browser-cdp-url",
+        default=None,
+        help="A Chrome's debugging address to check instead of SearXNG",
     )
     pf_parser.add_argument("--verbose", action="store_true", help="Print extra details")
 
@@ -301,7 +322,12 @@ async def _preflight(args: argparse.Namespace) -> None:
 
         providers = get_biomedical_providers()
 
-    result = await preflight(model=model, providers=providers, verbose=args.verbose)
+    result = await preflight(
+        model=model,
+        providers=providers,
+        verbose=args.verbose,
+        browser_cdp_url=args.browser_cdp_url,
+    )
 
     for check in result.checks:
         icon = {"pass": "OK", "fail": "FAIL", "skip": "SKIP"}[check.status]
@@ -391,6 +417,7 @@ async def _ask(args: argparse.Namespace) -> None:
         mode=mode,
         provider=args.provider,
         output_path=args.output,
+        browser_cdp_url=args.browser_cdp_url,
     )
 
     if not result.success and result.error:

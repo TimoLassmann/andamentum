@@ -76,6 +76,7 @@ async def preflight(
     model: str,
     providers: ProviderRegistry | None = None,
     verbose: bool = False,
+    browser_cdp_url: str | None = None,
 ) -> PreflightResult:
     """Run preflight checks on LLM, web search, and evidence providers.
 
@@ -87,6 +88,8 @@ async def preflight(
         providers: Optional dict of named evidence providers. Each value
             that has a ``check_health()`` method will be checked.
         verbose: If True, log progress.
+        browser_cdp_url: A Chrome's debugging address; web search is checked
+            there instead of at SearXNG.
 
     Returns:
         PreflightResult with individual check outcomes.
@@ -115,11 +118,11 @@ async def preflight(
             ]
         )
 
-    # 2. Web search (SearXNG)
+    # 2. Web search (a Chrome when given, else SearXNG)
     try:
         from .evidence_gathering import WebSearchGatherer
 
-        web = WebSearchGatherer(model=model)
+        web = WebSearchGatherer(model=model, browser_cdp_url=browser_cdp_url)
         tasks.append(("WebSearch", web))
     except ImportError:
         pass

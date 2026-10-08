@@ -205,6 +205,7 @@ async def run_epistemic_graph(
     output_dir: Optional[Path] = None,
     ibe_agreement_k: Optional[int] = None,
     use_web_search: bool = True,
+    browser_cdp_url: Optional[str] = None,
 ) -> "PipelineResult":
     """Run a research question through the epistemic graph pipeline.
 
@@ -314,13 +315,18 @@ async def run_epistemic_graph(
             providers = get_all_providers()
         elif provider == "web_search":
             providers = {"web_search": get_provider("web_search")}
+        # A Chrome given for web search serves the web provider too.
+        if providers and browser_cdp_url and "web_search" in providers:
+            providers["web_search"] = get_provider(
+                "web_search", browser_cdp_url=browser_cdp_url
+            )
 
     evidence_gatherer = (
         get_default_gatherer(
             model=model,
             providers=providers,
-            embedding_model=embedding_model,
             use_web_search=use_web_search,
+            browser_cdp_url=browser_cdp_url,
         )
         if model
         else None
