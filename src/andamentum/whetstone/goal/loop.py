@@ -57,7 +57,7 @@ from .structure import structure_goal_met
 from .verdict import GoalVerdict
 
 if TYPE_CHECKING:
-    from andamentum.deep_research.v2 import NoveltyResearch
+    from andamentum.deep_research import NoveltyResearch
 
 StoppedReason = Literal["goal_met", "no_progress", "cap_reached", "unresolvable"]
 

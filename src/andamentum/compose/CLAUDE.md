@@ -11,7 +11,7 @@ Pipeline (one pydantic-graph graph, `graph.py`):
     Ingest -> CompileBrief -> Research -> Evidence -> Plan -> Draft -> Check -> (Revise -> Check)* -> Finish
 
 - **Ingest** harvests sources into `evidence/sources/` (confidentiality gate first; `--confirm-own-sources` overrides).
-- **Research** (only with `--research`, after the brief because the genre picks the mode) runs `deep_research.v2.research` once and adds each work that has a finding as a source of kind `research`. See "Research" below.
+- **Research** (only with `--research`, after the brief because the genre picks the mode) runs `deep_research.research` once and adds each work that has a finding as a source of kind `research`. See "Research" below.
 - **Evidence** extracts facts per source (sequential); a fact whose quote is not in the source text is dropped and logged. A research source needs no extraction: its facts are its findings. The drafter marks fact use as `[[f12]]`.
 - **Plan** makes the outline (one retry on failed outline checks, then proceeds with warnings) and lays out empty sections in the bundle.
 - **Draft** writes section by section, each call seeing the first two sentences of the earlier sections (deterministic, no model).
@@ -34,7 +34,7 @@ Four roles name the model for each job: `drafter`, `critic`, `judge`, `reader`. 
 
 ## Research (`research.py`)
 
-`--research` consumes `deep_research.v2` findings and passages, never the engine's report prose.
+`--research` consumes `deep_research` findings and passages, never the engine's report prose.
 
 - **Mode per genre**, as data: `Genre.research_mode` (`web`, `scholarly`, `both`; unset means `both` for a genre that cites and `web` otherwise). The packs: `article`, `grant`, `report` scholarly; `memo`, `email`, `howto` web; `proposal` both. `ResearchSetup.mode` (CLI `--research-mode`) overrides it. The reading of "both where the genre cites" is `proposal`, the one cited genre that is not an academic one. Web and both need `ResearchSetup.sources.searxng_url`; without one `ResearchSetupError` is raised before any search.
 - **The question is the user's task text.** Nothing derived from a source file (the brief, a fact, a source's text) is sent to a search engine, because a source can be an unpublished draft. The engine plans its own sub-questions from the task. A model-written query from the brief would be better targeted; it would also leak, so it is not done.
@@ -43,7 +43,7 @@ Four roles name the model for each job: `drafter`, `critic`, `judge`, `reader`. 
 - **A fact per finding** (`research_facts`): the engine's quote is located again in the source text (`evidence.find_quote`) so `start`/`end` index the file the grounding check reads; a quote that cannot be placed is dropped and logged (`finding_dropped`; a bug signal, since the engine checked it). A finding the engine could not verify (`quote_verified` false: its quote was not found in the page) is never a fact; one note per source counts them ("N unverified quotes not used"). The statement is the claim written as another work's (`attribute`: "Another published work (T) reports, not this study: ..."), because the drafter sees only statements and would otherwise write a published result up as the author's. The harness's literature facts use the same function.
 - **Old bundles**: a source of kind `research` with no `work_id` is the legacy report text; it is extracted by the model like any file.
 - **Cost accounting**: the engine's token counts are logged as one `Research` call under the drafter role (so `ComposeResult.usage` includes them); Degraded runs and empty runs become open questions in the report. `evidence/research.json` holds the result without its run log (the log, which carries every page's text, stays in `research.db`); `store.load_research` also reads a file written with one.
-- `deep_research` is imported only inside `run_research_v2` and `store.load_research` (conformance test); `ResearchSetup` is on the public surface (`from andamentum.compose import ResearchSetup`).
+- `deep_research` is imported only inside `run_research` and `store.load_research` (conformance test); `ResearchSetup` is on the public surface (`from andamentum.compose import ResearchSetup`).
 
 ## Layering
 

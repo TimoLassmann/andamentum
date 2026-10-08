@@ -19,7 +19,7 @@ page; the report cites findings by id ([F1]).
 import argparse
 import asyncio
 
-from andamentum.deep_research.v2 import SourceConfig, research
+from andamentum.deep_research import SourceConfig, research
 
 
 async def main() -> None:

@@ -15,7 +15,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .v2.store import ResearchStore
+from .store import ResearchStore
 
 
 def _when(stamp: float | None) -> str:

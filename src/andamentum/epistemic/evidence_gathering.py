@@ -1,9 +1,9 @@
 """Default evidence gathering implementation.
 
-Provides a WebSearchGatherer that runs the ``deep_research.v2`` research loop
+Provides a WebSearchGatherer that runs the ``deep_research`` research loop
 over the open web and hands its findings on as evidence.
 
-Architecture: Layer 1 (standalone package, depends on deep_research.v2)
+Architecture: Layer 1 (standalone package, depends on deep_research)
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
-    from andamentum.deep_research.v2 import Finding, Passage, ResearchResult
+    from andamentum.deep_research import Finding, Passage, ResearchResult
 
     from .preflight import CheckResult
 
@@ -129,7 +129,7 @@ def ensure_searxng(url: str = _SEARXNG_URL, port: int = _SEARXNG_PORT) -> bool:
 
 
 class WebSearchGatherer:
-    """Evidence gatherer running the ``deep_research.v2`` loop over the web.
+    """Evidence gatherer running the ``deep_research`` loop over the web.
 
     Satisfies the EvidenceGatherer protocol. One ``gather`` call is one small
     research run (``research(query, mode="web")``, ``GATHER_MAX_ROUNDS``
@@ -190,13 +190,13 @@ class WebSearchGatherer:
         return GathererCapability(capable=True, source_types=["web_search"])
 
     async def gather(self, source_type: str, query: str) -> list[GatheredEvidence]:
-        """Gather evidence via one ``deep_research.v2`` web run.
+        """Gather evidence via one ``deep_research`` web run.
 
         Returns ``[]`` when the run produced no finding with a verified quote;
         the caller treats that as "no source found", not as evidence.
         """
         del source_type
-        from andamentum.deep_research.v2 import Budget, SourceConfig, research
+        from andamentum.deep_research import Budget, SourceConfig, research
 
         # Start SearXNG on first use; a Chrome is the user's to run.
         if not self.browser_cdp_url and not self._searxng_ensured:
@@ -283,7 +283,7 @@ def _context_around(finding: "Finding", passage: "Passage | None") -> str:
     cannot be located in it (the engine verified it against the page, whose
     window may differ from the stored passage).
     """
-    from andamentum.deep_research.v2 import locate_quote
+    from andamentum.deep_research import locate_quote
 
     if passage is None:
         return finding.quote

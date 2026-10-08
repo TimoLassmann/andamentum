@@ -958,7 +958,7 @@ async def draft_document(
     claims and runs the numbers check; the critic and reader roles are part of
     the compose roles and unused here). *literature* answers queries with
     verified works; without it nothing is cited. *research* runs
-    ``deep_research.v2`` once in the genre's mode over ``<project>/research.db``
+    ``deep_research`` once in the genre's mode over ``<project>/research.db``
     and adds each verified work that has a finding (its quotes are checked
     passages) as a source; without it nothing is searched. *genre* is a compose genre
     pack name or YAML path; ``None`` lets the brief compiler choose.

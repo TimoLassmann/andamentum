@@ -20,7 +20,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from andamentum.compose.genres import Genre
-from andamentum.compose.research import ResearchSetup, run_research_v2
+from andamentum.compose.research import ResearchSetup, run_research
 from andamentum.references import ReferenceHttp
 
 from ..literature import Sources, Unverified, Work, find_works, resolve
@@ -80,7 +80,7 @@ def research_literature(
     """
 
     async def run(task: str, *, genre: Genre, database: Path) -> ResearchFinding:
-        result = await run_research_v2(
+        result = await run_research(
             task,
             genre=genre,
             setup=setup,

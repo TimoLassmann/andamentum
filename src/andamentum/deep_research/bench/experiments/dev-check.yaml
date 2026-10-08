@@ -1,0 +1,41 @@
+# Regression check of the research loop: SimpleQA answer correctness and wall time
+# per question on 20 questions (seed 1, positions 64-83), each answer graded correct /
+# incorrect / not attempted against the gold answer by gpt-oss:120b-cloud, a model the
+# arm does not use. It decides nothing; read the report and the loss attribution
+# after a change to the loop and compare with the previous run.
+# Run (SQA the folder of simple_qa_test_set.csv, OUT a folder under data/):
+#   B="uv run python -m andamentum.deep_research.bench"
+#   $B experiment run src/andamentum/deep_research/bench/experiments/dev-check.yaml \
+#     --out-dir $OUT --simpleqa-dir $SQA --browser-cdp-url http://127.0.0.1:9222
+#   (a Chrome started with --remote-debugging-port=9222 and its own --user-data-dir)
+#   $B experiment report src/andamentum/deep_research/bench/experiments/dev-check.yaml \
+#     --out-dir $OUT
+#   $B experiment losses src/andamentum/deep_research/bench/experiments/dev-check.yaml \
+#     --out-dir $OUT --simpleqa-dir $SQA
+# A search outage stops the run without recording the cell; the same command resumes.
+name: dev-check
+registered: "2026-10-08"
+description: >-
+  SimpleQA answer correctness and wall time per question of the research loop, on 20
+  questions.
+repeats: 1
+grader: "ollama:gpt-oss:120b-cloud"
+
+sets:
+  - {name: simpleqa, n: 20, skip: 63, seed: 1}
+
+arms:
+  - name: v2
+    system: v2
+    model: "ollama:gemma4:31b-cloud"
+
+baselines:
+  simpleqa: v2
+
+notes:
+  - >-
+    A regression check, not a comparison: one arm, no rules. Fixes to the loop must be
+    general; never tune one to a question of this set.
+  - >-
+    The arm searches the web through one Chrome (DuckDuckGo's HTML page, Bing when
+    DuckDuckGo shows a bot check) and reads a fetched PDF from its text layer.

@@ -47,7 +47,7 @@ from .research import (
     degraded_notes,
     research_facts,
     research_sources,
-    run_research_v2,
+    run_research,
 )
 from .revise import revise_section
 from .schemas import (
@@ -73,7 +73,7 @@ from .steps import (
 from .write import draft_section
 
 if TYPE_CHECKING:
-    from andamentum.deep_research.v2 import ResearchResult
+    from andamentum.deep_research import ResearchResult
 
 DEFAULT_MAX_ROUNDS = 4
 GOAL_STREAK = 2  # consecutive passing check passes the goal needs
@@ -227,7 +227,7 @@ class Research(BaseNode[ComposeState, ComposeDeps, ComposeResult]):
                     "this bundle was started with --research and the research did "
                     "not finish; give the research settings again to continue"
                 )
-            result = await run_research_v2(
+            result = await run_research(
                 deps.task,
                 genre=genre,
                 setup=deps.research,

@@ -7,8 +7,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from andamentum.chunker.judge import JudgeVerdict
-from andamentum.deep_research.v2.sources import SourceError
-from andamentum.deep_research.v2.types import Candidate
+from andamentum.deep_research.sources import SourceError
+from andamentum.deep_research.types import Candidate
 from andamentum.references import Work
 from benchmarks.chunker.app.main import (
     _canonicalise_pdf_url,

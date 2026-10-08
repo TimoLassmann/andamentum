@@ -1388,7 +1388,7 @@ class TestProviderSelfDescriptionContract:
 
 
 def _web_candidate(url, title, snippet, domain):
-    from andamentum.deep_research.v2 import Candidate
+    from andamentum.deep_research import Candidate
     from andamentum.references import Work
 
     return Candidate(
@@ -1406,8 +1406,8 @@ def _install_fake_source(monkeypatch, *, results, pages, search_error=None):
     ``pages`` maps url -> text or an Exception to raise on fetch. Returns the
     list of keyword arguments the provider built the source with.
     """
-    import andamentum.deep_research.v2.sources as v2_sources
-    from andamentum.deep_research.v2.sources import FetchedText
+    import andamentum.deep_research.sources as v2_sources
+    from andamentum.deep_research.sources import FetchedText
 
     built: list[dict] = []
 

@@ -160,7 +160,7 @@ def research_setup(
 ) -> ResearchSetup:
     """The research settings from CLI flags; credentials come from the
     environment (``.env`` is loaded by the CLI), never from flags."""
-    from andamentum.deep_research.v2 import SourceConfig
+    from andamentum.deep_research import SourceConfig
 
     return ResearchSetup(
         sources=SourceConfig(

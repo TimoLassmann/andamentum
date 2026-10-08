@@ -273,7 +273,7 @@ async def test_run_novelty_searches_helper_isolates_per_target_failures() -> Non
         ),
     ]
 
-    from andamentum.deep_research.v2.novelty import NoveltyReport
+    from andamentum.deep_research.novelty import NoveltyReport
 
     call_count = [0]
 
@@ -286,7 +286,7 @@ async def test_run_novelty_searches_helper_isolates_per_target_failures() -> Non
         )
 
     with patch(
-        "andamentum.deep_research.v2.run_novelty_check_v2",
+        "andamentum.deep_research.run_novelty_check",
         new=_stub_run_novelty_check,
     ):
         evidence = await run_novelty_searches(

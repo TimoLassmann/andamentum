@@ -48,7 +48,7 @@ from .synth import StructuredReview, critique_and_revise, synthesise, to_review_
 
 if TYPE_CHECKING:
     from andamentum.core.decisions import DecisionModel
-    from andamentum.deep_research.v2 import NoveltyResearch
+    from andamentum.deep_research import NoveltyResearch
     from andamentum.references import Hint
 
     from ..reviewed_document import ReviewedDocument
@@ -517,7 +517,7 @@ async def run_review_v3(
     the LLM classifier (its top choice is the type). ``None`` (the default)
     leaves the run exactly as it was: the LLM classifier decides.
 
-    ``novelty_research`` (a ``deep_research.v2.NoveltyResearch``: the scholarly
+    ``novelty_research`` (a ``deep_research.NoveltyResearch``: the scholarly
     sources and an optional store; ``None`` takes the defaults) configures the
     novelty check, which runs on deep_research v2 and judges with the review
     model; it needs ``check_novelty=True``. A claim whose check cannot conclude (a failing

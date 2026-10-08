@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from andamentum.deep_research.v2 import Finding, Passage, ResearchResult
+from andamentum.deep_research import Finding, Passage, ResearchResult
 from andamentum.references import Work
 
 from ..evidence_gathering import GATHER_MAX_ROUNDS, WebSearchGatherer
@@ -59,7 +59,7 @@ def _result(
 def _run_with(result: ResearchResult):
     """Patch the v2 entry point the gatherer calls; return the mock."""
     return patch(
-        "andamentum.deep_research.v2.research",
+        "andamentum.deep_research.research",
         new_callable=AsyncMock,
         return_value=result,
     )

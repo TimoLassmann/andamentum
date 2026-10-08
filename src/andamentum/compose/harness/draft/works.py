@@ -30,7 +30,7 @@ from andamentum.compose.schemas import Brief, Source
 from ..kernel.csl import doi_of, title_of, work_key
 
 if TYPE_CHECKING:
-    from andamentum.deep_research.v2 import ResearchResult
+    from andamentum.deep_research import ResearchResult
 
 QUERIES_PER_DRAFT = 6  # one per key message, never more
 WORKS_PER_QUERY = 4

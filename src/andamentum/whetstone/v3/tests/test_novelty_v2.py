@@ -1,7 +1,7 @@
 """The novelty check on deep_research v2: ``run_novelty_searches``.
 
-``run_novelty_check_v2`` is stubbed at the package boundary; its own behaviour
-is tested in ``deep_research/v2/tests/test_novelty.py``.
+``run_novelty_check`` is stubbed at the package boundary; its own behaviour
+is tested in ``deep_research/tests/test_novelty.py``.
 """
 
 from __future__ import annotations
@@ -11,8 +11,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from andamentum.deep_research.v2 import NoveltyResearch, ResearchStore
-from andamentum.deep_research.v2.novelty import (
+from andamentum.deep_research import NoveltyResearch, ResearchStore
+from andamentum.deep_research.novelty import (
     NoveltyReport,
     Relevance,
     SimilarWork,
@@ -73,7 +73,7 @@ async def test_the_v2_path_runs_every_target_in_order_over_one_store() -> None:
         )
 
     setup = _setup()
-    with patch("andamentum.deep_research.v2.run_novelty_check_v2", new=stub):
+    with patch("andamentum.deep_research.run_novelty_check", new=stub):
         evidence = await run_novelty_searches(
             [_target(1), _target(2)], agent_model="stub", search_depth=3, research=setup
         )
@@ -95,7 +95,7 @@ async def test_an_undetermined_report_gives_no_verdict_and_no_finding() -> None:
             assessment="The search was degraded. Novelty is UNDETERMINED.",
         )
 
-    with patch("andamentum.deep_research.v2.run_novelty_check_v2", new=stub):
+    with patch("andamentum.deep_research.run_novelty_check", new=stub):
         evidence = await run_novelty_searches(
             [_target(1)], agent_model="stub", research=_setup()
         )
@@ -114,7 +114,7 @@ async def test_a_crash_on_one_target_does_not_stop_the_others() -> None:
             claim=claim, is_novel=True, confidence=0.8, assessment="none"
         )
 
-    with patch("andamentum.deep_research.v2.run_novelty_check_v2", new=stub):
+    with patch("andamentum.deep_research.run_novelty_check", new=stub):
         evidence = await run_novelty_searches(
             [_target(1), _target(2)], agent_model="stub", research=_setup()
         )
@@ -128,7 +128,7 @@ async def test_a_store_the_caller_opened_is_left_open() -> None:
     async def stub(claim, *, store, **_kw):
         return NoveltyReport(claim=claim, is_novel=True, confidence=0.8, assessment="")
 
-    with patch("andamentum.deep_research.v2.run_novelty_check_v2", new=stub):
+    with patch("andamentum.deep_research.run_novelty_check", new=stub):
         await run_novelty_searches(
             [_target(1)], agent_model="stub", research=_setup(store=store)
         )
@@ -143,7 +143,7 @@ async def test_a_store_path_is_opened_and_kept(tmp_path) -> None:
         assert isinstance(store, ResearchStore)
         return NoveltyReport(claim=claim, is_novel=True, confidence=0.8, assessment="")
 
-    with patch("andamentum.deep_research.v2.run_novelty_check_v2", new=stub):
+    with patch("andamentum.deep_research.run_novelty_check", new=stub):
         await run_novelty_searches(
             [_target(1)], agent_model="stub", research=_setup(store=path)
         )
@@ -157,7 +157,7 @@ async def test_without_a_setup_the_defaults_run_in_memory() -> None:
         seen.append((store, sources, budget.max_rounds))
         return NoveltyReport(claim=claim, is_novel=True, confidence=0.8, assessment="")
 
-    with patch("andamentum.deep_research.v2.run_novelty_check_v2", new=stub):
+    with patch("andamentum.deep_research.run_novelty_check", new=stub):
         evidence = await run_novelty_searches(
             [_target(1)], agent_model="stub", search_depth=2
         )

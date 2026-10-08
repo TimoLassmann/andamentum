@@ -52,7 +52,7 @@ from rich.table import Table
 
 if TYPE_CHECKING:
     from andamentum.core.decisions import DecisionModel
-    from andamentum.deep_research.v2 import NoveltyResearch
+    from andamentum.deep_research import NoveltyResearch
 
 _LOGGER_NAME = "andamentum.whetstone"
 
@@ -1494,7 +1494,7 @@ def _novelty_research(args: argparse.Namespace) -> NoveltyResearch | None:
     """
     if not args.check_novelty:
         return None
-    from andamentum.deep_research.v2 import NoveltyResearch, SourceConfig
+    from andamentum.deep_research import NoveltyResearch, SourceConfig
 
     return NoveltyResearch(
         sources=SourceConfig(

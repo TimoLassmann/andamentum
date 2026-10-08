@@ -415,7 +415,7 @@ async def test_the_novelty_setup_reaches_the_first_round_only(
 ) -> None:
     """Novelty is checked once, in round 1 (the claims do not change between
     rounds), so the setup is handed to that round's review and no other."""
-    from andamentum.deep_research.v2 import NoveltyResearch
+    from andamentum.deep_research import NoveltyResearch
     from andamentum.whetstone.v3.graph import review_document_v3
 
     document = await _open(tmp_path)

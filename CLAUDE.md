@@ -19,7 +19,7 @@ This repository is **public** on GitHub. Everything committed — files, test fi
 Andamentum is a single Python package (`src/andamentum/`) of tightly-scoped sub-modules for building agentic reasoning pipelines. The core three were consolidated from separate packages; the commit history around that migration is relevant context.
 
 - `andamentum.epistemic` — formal epistemology: evidence/claims/uncertainty entities, deterministic stage gates, pattern-driven work scheduling, multi-agent verification
-- `andamentum.deep_research` — web research. The legacy pipeline (search → fetch → extract → verify → synthesize, built on `pydantic-graph`) and `deep_research.v2`, the research loop: plan, then per sub-question queries → search → choose → read → notes → reflect, one write, a code-checked report over web (Chrome over CDP or SearxNG) and scholarly sources
+- `andamentum.deep_research` — web research. The legacy pipeline (search → fetch → extract → verify → synthesize, built on `pydantic-graph`) and `deep_research`, the research loop: plan, then per sub-question queries → search → choose → read → notes → reflect, one write, a code-checked report over web (Chrome over CDP or SearxNG) and scholarly sources
 - `andamentum.document_store` — SQLite + FTS5 + sqlite-vec knowledge base: 4-signal RRF search ranks documents; `get_chunks` / `get_chunk` read the passages, and an opt-in rerank (`rerank` extra) scores them
 - `andamentum.whetstone` — criterion-cascade review of your own drafts → markdown / HTML / tracked-changes `.docx`; reviewer profiles, checklist and panel modes, the goal loop
 - `andamentum.figures` — publication-quality scientific figures: 10 chart types, journal palettes and the andamentum report look

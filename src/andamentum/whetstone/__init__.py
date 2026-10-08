@@ -24,7 +24,7 @@ Review pipeline: deterministic substrate (sectionize + claim extraction +
 document model) → criterion cascade (one of six pluggable sets:
 academic / external_communication / essay / tutorial / creative /
 general) → gap-loop re-grounding → consolidate → gate → synthesise →
-optional editor → finalize. Optional novelty check via deep_research.v2
+optional editor → finalize. Optional novelty check via deep_research
 (opt-in with ``check_novelty=True``).
 
 Panel mode (multi-expert simulated peer review) lives in

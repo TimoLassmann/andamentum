@@ -1,6 +1,6 @@
 """Research for a document: findings and their passages, never report prose.
 
-``--research`` runs ``deep_research.v2.research`` once, in the mode the genre
+``--research`` runs ``deep_research.research`` once, in the mode the genre
 names, over the project's own store (``<project>/research.db``). What compose
 takes from the result is the evidence table: every finding is a claim with a
 verbatim quote that the engine checked against a stored passage of a real work.
@@ -32,7 +32,7 @@ from .genres import Genre, ResearchMode
 from .schemas import Fact, Source
 
 if TYPE_CHECKING:
-    from andamentum.deep_research.v2 import Budget, ResearchResult, SourceConfig
+    from andamentum.deep_research import Budget, ResearchResult, SourceConfig
     from andamentum.references import Work
 
 RESEARCH_DB = "research.db"
@@ -64,7 +64,7 @@ def research_mode(genre: Genre, setup: ResearchSetup) -> ResearchMode:
     return setup.mode or genre.research
 
 
-async def run_research_v2(
+async def run_research(
     task: str,
     *,
     genre: Genre,
@@ -78,7 +78,7 @@ async def run_research_v2(
     The question is the user's own task text, as it was when research was
     plain web search: nothing derived from a source file is ever sent out.
     """
-    from andamentum.deep_research.v2 import Budget, research
+    from andamentum.deep_research import Budget, research
 
     mode = research_mode(genre, setup)
     if mode != "scholarly" and not (

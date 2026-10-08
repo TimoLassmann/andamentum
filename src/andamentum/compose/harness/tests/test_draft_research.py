@@ -19,7 +19,7 @@ from andamentum.compose.harness.draft.search import research_literature
 from andamentum.compose.harness.draft.works import ResearchFinding
 from andamentum.compose.research import ResearchSetup
 from andamentum.compose.write import SectionBody
-from andamentum.deep_research.v2 import SourceConfig
+from andamentum.deep_research import SourceConfig
 from andamentum.references import ReferenceHttp
 
 from ..draft.run import DraftResult
@@ -166,7 +166,7 @@ def _http(doi_known: bool) -> ReferenceHttp:
 
 async def _research_literature(doi_known: bool, monkeypatch: pytest.MonkeyPatch):
     fake = FakeResearch()
-    monkeypatch.setattr("andamentum.deep_research.v2.research", fake)
+    monkeypatch.setattr("andamentum.deep_research.research", fake)
     run = research_literature(
         setup=ResearchSetup(sources=SourceConfig(), mode="scholarly"),
         model="stub:drafter",
@@ -211,7 +211,7 @@ async def test_the_word_verb_replaces_crossref_discovery_with_research(
 ) -> None:
     install_script(monkeypatch)
     fake = FakeResearch()
-    monkeypatch.setattr("andamentum.deep_research.v2.research", fake)
+    monkeypatch.setattr("andamentum.deep_research.research", fake)
     notes, results = make_project(tmp_path)
     crossref_search_calls: list[str] = []
 

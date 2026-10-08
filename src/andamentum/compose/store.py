@@ -18,7 +18,7 @@ from pydantic import TypeAdapter
 from .schemas import Brief, Fact, Outline, RoundRecord, Source
 
 if TYPE_CHECKING:
-    from andamentum.deep_research.v2 import ResearchResult
+    from andamentum.deep_research import ResearchResult
 
 BRIEF = "brief.json"
 OUTLINE = "outline.json"
@@ -106,7 +106,7 @@ def save_research(bundle_dir: str | Path, result: ResearchResult) -> None:
 
 
 def load_research(bundle_dir: str | Path) -> ResearchResult:
-    from andamentum.deep_research.v2 import ResearchResult
+    from andamentum.deep_research import ResearchResult
 
     saved = json.loads(_read(bundle_dir, RESEARCH))
     saved.pop("log", None)  # a file written before the log was left out

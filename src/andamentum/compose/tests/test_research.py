@@ -1,6 +1,6 @@
 """Research in compose: findings and passages become sources and facts.
 
-``deep_research.v2.research`` is stubbed at its package boundary
+``deep_research.research`` is stubbed at its package boundary
 (``_research_helpers.FakeResearch``); the engine's own tests cover the engine.
 The compose side runs for real: the graph, the evidence worker, the store.
 """
@@ -28,7 +28,7 @@ from andamentum.compose.research import (
     research_sources,
 )
 from andamentum.compose.schemas import Roles
-from andamentum.deep_research.v2 import SourceConfig
+from andamentum.deep_research import SourceConfig
 
 from ._research_helpers import (
     BLOG_QUOTE,
@@ -176,7 +176,7 @@ def test_a_research_result_saved_by_the_staged_engine_still_loads(
 
 
 def test_the_saved_research_result_leaves_out_the_run_log(tmp_path: Path) -> None:
-    from andamentum.deep_research.v2 import LogEvent
+    from andamentum.deep_research import LogEvent
 
     result = make_result()
     result.log.events.append(
@@ -278,7 +278,7 @@ async def test_research_runs_once_in_the_genres_mode_over_the_bundles_store(
     tmp_path: Path, script, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     fake = FakeResearch()
-    monkeypatch.setattr("andamentum.deep_research.v2.research", fake)
+    monkeypatch.setattr("andamentum.deep_research.research", fake)
     result = await _write(tmp_path, research=WEB)
 
     bundle = tmp_path / "demo.compose"
@@ -304,7 +304,7 @@ async def test_research_runs_once_in_the_genres_mode_over_the_bundles_store(
 async def test_research_tokens_are_counted_in_the_usage(
     tmp_path: Path, script, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr("andamentum.deep_research.v2.research", FakeResearch())
+    monkeypatch.setattr("andamentum.deep_research.research", FakeResearch())
     with_research = await _write(tmp_path, research=WEB)
     baseline = await write_document(
         "Email Jane Doe that the Apollo Labs demo moved to 19 March",
@@ -321,7 +321,7 @@ async def test_a_resumed_run_reuses_the_saved_research(
     tmp_path: Path, script, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     fake = FakeResearch()
-    monkeypatch.setattr("andamentum.deep_research.v2.research", fake)
+    monkeypatch.setattr("andamentum.deep_research.research", fake)
     first = await _write(tmp_path, research=WEB)
     assert len(fake.calls) == 1
     again = await compose_bundle(
@@ -335,7 +335,7 @@ async def test_a_failed_research_run_cannot_be_resumed_without_its_settings(
     tmp_path: Path, script, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(
-        "andamentum.deep_research.v2.research",
+        "andamentum.deep_research.research",
         FakeResearch(error=RuntimeError("boom")),
     )
     with pytest.raises(RuntimeError, match="boom"):
@@ -345,7 +345,7 @@ async def test_a_failed_research_run_cannot_be_resumed_without_its_settings(
             tmp_path / "demo.compose", roles=Roles.all("test:model"), formats=["txt"]
         )
     # with the settings and a working engine the same bundle completes
-    monkeypatch.setattr("andamentum.deep_research.v2.research", FakeResearch())
+    monkeypatch.setattr("andamentum.deep_research.research", FakeResearch())
     done = await compose_bundle(
         tmp_path / "demo.compose",
         roles=Roles.all("test:model"),
@@ -359,7 +359,7 @@ async def test_web_research_without_a_search_address_is_refused(
     tmp_path: Path, script, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     fake = FakeResearch()
-    monkeypatch.setattr("andamentum.deep_research.v2.research", fake)
+    monkeypatch.setattr("andamentum.deep_research.research", fake)
     with pytest.raises(ResearchSetupError, match="SearxNG.*browser_cdp_url"):
         await _write(tmp_path, research=ResearchSetup(sources=SourceConfig()))
     assert fake.calls == []
@@ -369,7 +369,7 @@ async def test_a_chrome_address_is_enough_for_web_research(
     tmp_path: Path, script, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     fake = FakeResearch()
-    monkeypatch.setattr("andamentum.deep_research.v2.research", fake)
+    monkeypatch.setattr("andamentum.deep_research.research", fake)
     chrome = ResearchSetup(
         sources=SourceConfig(browser_cdp_url="http://127.0.0.1:9222")
     )
@@ -382,7 +382,7 @@ async def test_the_mode_can_be_overridden_and_scholarly_needs_no_searxng(
     tmp_path: Path, script, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     fake = FakeResearch()
-    monkeypatch.setattr("andamentum.deep_research.v2.research", fake)
+    monkeypatch.setattr("andamentum.deep_research.research", fake)
     await _write(
         tmp_path, research=ResearchSetup(sources=SourceConfig(), mode="scholarly")
     )
@@ -404,7 +404,7 @@ async def test_a_degraded_run_is_reported_not_hidden(
     tmp_path: Path, script, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     fake = FakeResearch(make_result(degraded=["openalex: http 500"]))
-    monkeypatch.setattr("andamentum.deep_research.v2.research", fake)
+    monkeypatch.setattr("andamentum.deep_research.research", fake)
     result = await _write(tmp_path, research=WEB)
     assert any("degraded" in q for q in result.open_questions)
 
@@ -413,7 +413,7 @@ async def test_without_research_nothing_is_searched(
     tmp_path: Path, script, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     fake = FakeResearch()
-    monkeypatch.setattr("andamentum.deep_research.v2.research", fake)
+    monkeypatch.setattr("andamentum.deep_research.research", fake)
     await _write(tmp_path)
     assert fake.calls == []
     assert not (tmp_path / "demo.compose" / "research.db").exists()
@@ -427,9 +427,9 @@ async def test_the_real_engine_over_an_invented_world_feeds_real_findings(
     compose gets findings whose quotes are verbatim slices of stored passages,
     and the project's research.db is a real store."""
     from andamentum.core import fetch_gate, url_safety
-    from andamentum.deep_research.v2 import ResearchStore
-    from andamentum.deep_research.v2 import research as real_research
-    from andamentum.deep_research.v2.tests.engine_world import World, world_llm
+    from andamentum.deep_research import ResearchStore
+    from andamentum.deep_research import research as real_research
+    from andamentum.deep_research.tests.engine_world import World, world_llm
 
     monkeypatch.setattr(url_safety, "is_safe_url", lambda url, **_kw: (True, ""))
     monkeypatch.setattr(
@@ -451,7 +451,7 @@ async def test_the_real_engine_over_an_invented_world_feeds_real_findings(
         finally:
             opened.close()
 
-    monkeypatch.setattr("andamentum.deep_research.v2.research", in_the_world)
+    monkeypatch.setattr("andamentum.deep_research.research", in_the_world)
     setup = ResearchSetup(
         sources=SourceConfig(scholarly=("openalex",)), mode="scholarly"
     )

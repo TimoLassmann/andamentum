@@ -17,7 +17,7 @@ History:
 
 The slot-retry budget (``MAX_SLOT_RETRIES``) belonged to the
 retired v1 pipeline and is no longer pinned here: web evidence now comes
-from the ``deep_research.v2`` loop, which has no per-slot generate-verify retry.
+from the ``deep_research`` loop, which has no per-slot generate-verify retry.
 
 These tests now pin the restored (pre-Phase-1) values so a future
 optimization attempt that re-cuts these budgets without first

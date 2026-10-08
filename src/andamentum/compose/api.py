@@ -114,7 +114,7 @@ async def write_document(
     ``compose_bundle`` to continue an existing bundle. *genre* is a pack name or
     a YAML path; ``None`` lets the brief compiler choose.
 
-    *research* turns on research: ``deep_research.v2`` runs once, in the mode
+    *research* turns on research: ``deep_research`` runs once, in the mode
     the genre names, over ``<out>/research.db``, and its findings (claims with
     verbatim quotes from real passages) become sources and facts. ``None``
     runs no research. See ``compose.research``.

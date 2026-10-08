@@ -40,7 +40,7 @@ from .model import Section
 from .review import Finding
 
 if TYPE_CHECKING:
-    from andamentum.deep_research.v2 import NoveltyResearch
+    from andamentum.deep_research import NoveltyResearch
 
 logger = logging.getLogger("andamentum.whetstone.v3")
 
@@ -257,10 +257,10 @@ async def run_novelty_searches(
     """
     if not targets:
         return []
-    from andamentum.deep_research.v2 import (
+    from andamentum.deep_research import (
         NoveltyResearch,
         ResearchStore,
-        run_novelty_check_v2,
+        run_novelty_check,
     )
 
     research = research if research is not None else NoveltyResearch()
@@ -277,7 +277,7 @@ async def run_novelty_searches(
     try:
         for target in targets:
             try:
-                report = await run_novelty_check_v2(
+                report = await run_novelty_check(
                     target.short_summary,
                     model=agent_model,
                     store=store,

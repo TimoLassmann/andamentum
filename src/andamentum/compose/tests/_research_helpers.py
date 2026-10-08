@@ -1,4 +1,4 @@
-"""A synthetic research result and a stand-in for ``deep_research.v2.research``.
+"""A synthetic research result and a stand-in for ``deep_research.research``.
 
 Invented works only (Okafor's SaltLog study, a DOI-less Apollo blog post).
 """
@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from andamentum.deep_research.v2 import (
+from andamentum.deep_research import (
     Finding,
     Passage,
     ResearchResult,
@@ -96,7 +96,7 @@ def make_result(
 
 
 class FakeResearch:
-    """Replaces ``deep_research.v2.research``; records how it was called."""
+    """Replaces ``deep_research.research``; records how it was called."""
 
     def __init__(
         self, result: ResearchResult | None = None, *, error: Exception | None = None

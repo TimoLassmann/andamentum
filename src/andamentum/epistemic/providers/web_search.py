@@ -13,7 +13,7 @@ the dedicated providers handle better.
 Unlike the legacy fallback, this is a pure retrieval provider matching the
 provider contract (CONTRIBUTING.md): no LLM synthesis, ``quality_score=None``
 always, returns ``list[GatheredEvidence]`` (empty on error, never raises). It
-composes the model-free ``deep_research.v2`` web source (SearXNG or Chrome
+composes the model-free ``deep_research`` web source (SearXNG or Chrome
 search, safe page fetch/extract), which carries SSRF protection, robots/paywall
 gating and safe redirects.
 
@@ -21,7 +21,7 @@ API docs: SearXNG (local instance; default http://127.0.0.1:4070), or a Chrome
 over its debugging address (``browser_cdp_url``)
 Authentication: none
 
-Architecture: Layer 1 (standalone; depends on deep_research.v2, an allowed
+Architecture: Layer 1 (standalone; depends on deep_research, an allowed
 evidence-gathering dependency).
 """
 
@@ -135,8 +135,8 @@ class WebSearchProvider:
 
     def _open(self) -> tuple[Any, Any]:
         """A web source over an in-memory store, and the client to close."""
-        from andamentum.deep_research.v2 import ResearchStore
-        from andamentum.deep_research.v2.sources import SourceClient, WebSource
+        from andamentum.deep_research import ResearchStore
+        from andamentum.deep_research.sources import SourceClient, WebSource
 
         client = SourceClient(ResearchStore.in_memory())
         source = WebSource(

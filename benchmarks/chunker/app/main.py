@@ -36,9 +36,9 @@ from andamentum.chunker.extractor import (
 )
 from andamentum.chunker.validation import find_anchor
 from andamentum.core.agents import AgentRunner
-from andamentum.deep_research.v2 import ResearchStore
-from andamentum.deep_research.v2.sources import SourceClient, SourceError, WebSource
-from andamentum.deep_research.v2.types import Candidate
+from andamentum.deep_research import ResearchStore
+from andamentum.deep_research.sources import SourceClient, SourceError, WebSource
+from andamentum.deep_research.types import Candidate
 
 STATIC_DIR = Path(__file__).parent / "static"
 CASES_DIR = Path(__file__).resolve().parents[1] / "cases"
