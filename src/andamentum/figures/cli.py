@@ -9,7 +9,9 @@ Usage::
 ``plot`` is the default: when the first argument is not a command or a flag it
 is taken to be the data file. It writes the figure to the file named with ``-o/--out`` (the format
 follows the extension: .pdf, .png, .svg) and prints a short summary, or the
-full result as JSON with ``--json``.
+full result as JSON with ``--json``. Raster output (.png) is 300 dpi; large
+type for slides is ``--journal showcase``. The Python ``figure()`` keeps every
+setting (``dpi``, ``mode``, ``height``, ``log_scale``, ...).
 
 Exit codes: 0 success; 2 usage error (a wrong or missing argument, or an
 option the data cannot satisfy); 3 the data file could not be read (missing,
@@ -124,24 +126,13 @@ def build_parser() -> argparse.ArgumentParser:
     plot.add_argument(
         "--journal",
         default="default",
-        help=f"journal size preset (default: default): {journals}",
-    )
-    plot.add_argument(
-        "--mode",
-        default="publication",
-        choices=["publication", "showcase"],
-        help="publication (default: journal sizing) or showcase (large type for slides; overrides --journal)",
+        help=f"journal size preset (default: default): {journals}; "
+        "showcase gives large type for slides, report the andamentum report look",
     )
     plot.add_argument(
         "--width",
         default="single",
         help="figure width: single, 1.5 or double (journal column widths), or a number of inches (default: single)",
-    )
-    plot.add_argument(
-        "--dpi",
-        type=int,
-        default=300,
-        help="resolution in dots per inch (default: 300)",
     )
     plot.add_argument(
         "--horizontal",
@@ -275,9 +266,8 @@ def _run_plot(args: argparse.Namespace) -> int:
             y_label=args.y_label,
             style=args.style,
             journal=args.journal,
-            mode=args.mode,
             width=width,
-            dpi=args.dpi,
+            dpi=300,
             horizontal=args.horizontal,
             out=args.out,
             group_order=group_order,

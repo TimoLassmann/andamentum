@@ -27,6 +27,7 @@ from .write import ReportWriterError
 from .types import (
     Budget,
     Candidate,
+    Depth,
     Finding,
     LogEvent,
     Mode,
@@ -42,6 +43,7 @@ from .types import (
 __all__ = [
     "Budget",
     "Candidate",
+    "Depth",
     "Finding",
     "LogEvent",
     "Mode",

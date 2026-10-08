@@ -2,16 +2,19 @@
 
     andamentum-research [ask] "QUESTION" --mode {web,scholarly,both} --model M
         [-o DIR] [--json] [--store PATH] [--cache PATH]
-        [--searxng-url URL | --browser] [--sources openalex,europepmc,arxiv]
-        [--mailto EMAIL] [--local-corpus PATH] [--openalex-search keyword] [--tdm-host HOST ...]
-        [--results-per-query N] [--max-rounds N ... every Budget field] [--quiet]
+        [--depth {quick,standard,deep}] [--searxng-url URL | --browser]
+        [--mailto EMAIL] [--local-corpus PATH] [--tdm-host HOST ...] [--quiet]
     andamentum-research mcp [--store PATH] [--model M] [--searxng-url URL | --browser]
     andamentum-research cache info --cache PATH
     andamentum-research cache prune --cache PATH [--max-bytes N]
 
 ``ask`` is the default: when the first argument is not a command or a flag it
 is taken to be the question. ``--mode web`` and ``--mode both`` need a search
-address, ``--searxng-url URL`` or ``--browser``.
+address, ``--searxng-url URL`` or ``--browser``. ``--depth`` picks one of three
+named budgets (``Budget.for_depth``); ``standard``, the default, is ``Budget()``.
+The scholarly sources are OpenAlex, Europe PMC and arXiv; ``--local-corpus PATH``
+adds your own documents to them. Every other setting is a keyword argument of
+the Python function ``research()``.
 
 Every model and address is a flag; nothing has a hidden default. Without
 ``--store`` nothing persists. The contact address for the OpenAlex and Crossref
@@ -46,9 +49,8 @@ from dotenv import load_dotenv
 from .engine import research
 from .runlog import write_log
 from .sources import SourceConfig
-from .sources.base import DEFAULT_RESULTS_PER_QUERY
 from .store import ResearchStore
-from .types import Budget, Mode, ResearchResult, RunLog
+from .types import Budget, Depth, Mode, ResearchResult, RunLog
 
 EXIT_OK = 0
 EXIT_DEGRADED = 1
@@ -56,11 +58,8 @@ EXIT_USAGE = 2
 EXIT_INPUT = 3
 EXIT_FAILED = 4
 
-ScholarlyName = Literal[
-    "openalex", "europepmc", "arxiv", "semantic_scholar", "local_corpus"
-]
-_SCHOLARLY: tuple[ScholarlyName, ...] = get_args(ScholarlyName)
-_DEFAULT_SOURCES = ("openalex", "europepmc", "arxiv")
+ScholarlyName = Literal["openalex", "europepmc", "arxiv", "local_corpus"]
+_DEFAULT_SOURCES: tuple[ScholarlyName, ...] = ("openalex", "europepmc", "arxiv")
 
 _COMMANDS = ("ask", "mcp", "cache")
 
@@ -75,10 +74,6 @@ exit status:
   3  an input could not be read (for example --local-corpus does not exist)
   4  the run failed (model or network error, or a crash)
 """
-
-
-def _flag(field: str) -> str:
-    return "--" + field.replace("_", "-")
 
 
 def _version() -> str:
@@ -145,6 +140,18 @@ def _add_ask(sub: argparse._SubParsersAction) -> None:  # type: ignore[type-arg]
         help="give the whole result as JSON instead of the Markdown report",
     )
     ask.add_argument(
+        "--depth",
+        choices=get_args(Depth),
+        default="standard",
+        help="how hard to search (default: %(default)s). standard: 3 rounds per "
+        "sub-question, 3 queries and 5 pages read a round, at most 200 model "
+        "calls and 1 hour. quick: 1 round, 2 queries and 3 pages, at most 60 "
+        "calls and 15 minutes. deep: 5 rounds, 4 queries and 8 pages, a wider "
+        "page window, at most 500 calls and 2 hours. A spent limit ends the "
+        "search and the report is still written. The quick and deep values are "
+        "starting points, not measured settings",
+    )
+    ask.add_argument(
         "--store",
         default=None,
         metavar="PATH",
@@ -180,26 +187,12 @@ def _add_ask(sub: argparse._SubParsersAction) -> None:  # type: ignore[type-arg]
         "request (their faster 'polite pool'); optional",
     )
     ask.add_argument(
-        "--sources",
-        type=scholarly_names,
-        default=_DEFAULT_SOURCES,
-        metavar="NAMES",
-        help=f"scholarly sources, comma-separated, from {', '.join(_SCHOLARLY)} "
-        f"(default: {','.join(_DEFAULT_SOURCES)})",
-    )
-    ask.add_argument(
         "--local-corpus",
         type=Path,
         default=None,
         metavar="PATH",
-        help="the folder of your own documents searched as the local_corpus "
-        "source (corpus.jsonl and its index); needed when --sources names local_corpus",
-    )
-    ask.add_argument(
-        "--openalex-search",
-        choices=("keyword", "semantic", "both"),
-        default="keyword",
-        help="how OpenAlex is searched (default: %(default)s)",
+        help="a folder of your own documents (corpus.jsonl and its index), "
+        "searched together with the scholarly sources",
     )
     ask.add_argument(
         "--tdm-host",
@@ -208,25 +201,6 @@ def _add_ask(sub: argparse._SubParsersAction) -> None:  # type: ignore[type-arg]
         metavar="HOST",
         help="a publisher host whose full text you are licensed to mine; may be repeated",
     )
-    ask.add_argument(
-        "--results-per-query",
-        type=int,
-        default=None,
-        metavar="N",
-        help=f"results asked of each source per query (default: {DEFAULT_RESULTS_PER_QUERY})",
-    )
-    limits = ask.add_argument_group(
-        "limits (a spent limit ends the search; the report is still written)"
-    )
-    for name, info in Budget.model_fields.items():
-        kind = float if info.annotation is float else int
-        limits.add_argument(
-            _flag(name),
-            type=kind,
-            default=info.default,
-            metavar="N",
-            help=f"{info.description} (default: {info.default})",
-        )
     ask.add_argument("--quiet", action="store_true", help="no progress lines on stderr")
 
 
@@ -302,24 +276,10 @@ def _add_cache(sub: argparse._SubParsersAction) -> None:  # type: ignore[type-ar
     )
 
 
-def scholarly_names(text: str) -> tuple[ScholarlyName, ...]:
-    """The scholarly sources named in *text* (comma-separated), in its order."""
-    names: list[ScholarlyName] = []
-    for raw in text.split(","):
-        name = raw.strip()
-        known: list[ScholarlyName] = [s for s in _SCHOLARLY if s == name]
-        if not known:
-            raise argparse.ArgumentTypeError(
-                f"unknown source {name!r}; known: {', '.join(_SCHOLARLY)}"
-            )
-        names += known
-    return tuple(dict.fromkeys(names))
-
-
 def _source_config(args: argparse.Namespace) -> SourceConfig:
-    extra = {}
-    if args.results_per_query is not None:
-        extra["results_per_query"] = args.results_per_query
+    scholarly = _DEFAULT_SOURCES
+    if args.local_corpus is not None:
+        scholarly = (*scholarly, "local_corpus")
     return SourceConfig(
         mailto=args.mailto or os.environ.get("OPENALEX_EMAIL") or None,
         openalex_api_key=os.environ.get("OPENALEX_API_KEY") or None,
@@ -327,10 +287,8 @@ def _source_config(args: argparse.Namespace) -> SourceConfig:
         searxng_url=args.searxng_url,
         browser=args.browser,
         tdm_allowed_hosts=frozenset(args.tdm_host),
-        scholarly=args.sources,
+        scholarly=scholarly,
         local_corpus=args.local_corpus,
-        openalex_search=args.openalex_search,
-        **extra,
     )
 
 
@@ -341,7 +299,7 @@ def _render(result: ResearchResult, *, as_json: bool) -> str:
 
 
 async def _run(args: argparse.Namespace) -> ResearchResult:
-    budget = Budget(**{name: getattr(args, name) for name in Budget.model_fields})
+    budget = Budget.for_depth(args.depth)
 
     def progress(line: str) -> None:
         if not args.quiet:
@@ -383,8 +341,6 @@ def _ask(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
         parser.error("the question is empty")
     if args.mode in ("web", "both") and not (args.searxng_url or args.browser):
         parser.error(f"--mode {args.mode} needs --searxng-url or --browser")
-    if "local_corpus" in args.sources and args.local_corpus is None:
-        parser.error("--sources names local_corpus, which needs --local-corpus")
     if args.out and Path(args.out).is_file():
         parser.error(f"--out must be a folder, but {args.out} is a file")
     if args.local_corpus is not None and not args.local_corpus.exists():

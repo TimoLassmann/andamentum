@@ -112,17 +112,6 @@ def _add_run_options(parser: argparse.ArgumentParser, *, what: str) -> None:
         ),
     )
     parser.add_argument(
-        "--quick",
-        action="store_true",
-        help="Skip the clarification and conceptual analysis before the run",
-    )
-    parser.add_argument(
-        "--trace",
-        default="timeline",
-        choices=["timeline", "flow", "claims", "all", "none"],
-        help="How to show the reasoning trace (default: timeline)",
-    )
-    parser.add_argument(
         "--verbose", action="store_true", help="Print progress messages"
     )
 
@@ -429,8 +418,6 @@ async def _ask(args: argparse.Namespace) -> int:
         database=database,
         report=report,
         verbose=args.verbose,
-        trace=args.trace,
-        force_quick=args.quick,
         mode=mode,
         provider=args.provider,
         searxng_url=args.searxng_url,

@@ -27,6 +27,8 @@ from pydantic import (
 from andamentum.references import Work
 
 Mode = Literal["web", "scholarly", "both"]
+# How hard a run searches: a named set of Budget values (``Budget.for_depth``).
+Depth = Literal["quick", "standard", "deep"]
 SubQuestionKind = Literal["topical", "navigational", "metadata"]
 VerifyKind = Literal[
     "unknown_finding",  # the report cites a finding id that does not exist
@@ -300,6 +302,42 @@ class Budget(BaseModel):
         ge=1,
         description="stop reading after this many bytes have been downloaded; the report is still written",
     )
+
+    @classmethod
+    def for_depth(cls, depth: Depth) -> Budget:
+        """The budget named by *depth*.
+
+        ``standard`` is the default ``Budget()`` exactly. ``quick`` (one round,
+        fewer queries and reads, tighter limits) and ``deep`` (more rounds,
+        queries and reads, a wider page window, looser limits) are starting
+        points, not measured settings. ``concurrency`` is not part of a depth:
+        it keeps its default (a local model is held to one call at a time).
+        """
+        if depth == "standard":
+            return cls()
+        if depth == "quick":
+            return cls(
+                max_rounds=1,
+                queries_per_round=2,
+                reads_per_round=3,
+                window_chars=20_000,
+                expand_per_round=10,
+                max_llm_calls=60,
+                max_wall_s=900.0,
+                max_fetch_bytes=20_000_000,
+            )
+        if depth == "deep":
+            return cls(
+                max_rounds=5,
+                queries_per_round=4,
+                reads_per_round=8,
+                window_chars=30_000,
+                expand_per_round=40,
+                max_llm_calls=500,
+                max_wall_s=7200.0,
+                max_fetch_bytes=150_000_000,
+            )
+        raise ValueError(f"unknown depth {depth!r}; known: quick, standard, deep")
 
 
 class RunStats(BaseModel):

@@ -42,7 +42,7 @@ asyncio.run(main())
 
 ## What it provides
 
-- **`research()`** and **`ResearchResult`**: sub-questions, works, passages, findings, the report, the run log and the run's costs. Every bound of a run is a field of **`Budget`**.
+- **`research()`** and **`ResearchResult`**: sub-questions, works, passages, findings, the report, the run log and the run's costs. Every bound of a run is a field of **`Budget`**; `Budget.for_depth("quick" | "standard" | "deep")` gives the three named budgets the command line offers (`standard` is `Budget()`).
 - **`ResearchStore`**: one SQLite file and a `blobs/` folder you name (or `ResearchStore.in_memory()`): the HTTP cache every source reads through, the works found, the passages and each run's records. A second run starts from the first one's answers.
 - **`SourceConfig`**, **`build_sources()`**, **`SourceClient`**: the adapters (OpenAlex, Europe PMC, arXiv, Semantic Scholar, Crossref, the web, a local corpus) and the shared, rate-limited, cached HTTP client.
 - **`run_novelty_check()`**: whether a claim has prior work in the scholarly literature, judged from findings that quote the work; it returns a verdict of novel, not novel or undetermined, never a guess.
@@ -55,7 +55,7 @@ andamentum-research ask "Who wrote the novel Middlemarch?" --mode web \
   --model ollama:gemma4:31b-cloud --browser
 ```
 
-`--model` is required. `andamentum-research ask --help` lists every flag: `--store`, `--cache`, `--searxng-url`, `--browser`, `--sources`, `--local-corpus`, the limit flags, `--json`, `-o DIR`. Without `-o` the report goes to stdout and no file is written; with `-o DIR` the folder gets `report.md` (or `report.json`), `log.md` and `log.jsonl`. `andamentum-research mcp --store PATH` serves the engine and its store to an agent over MCP; `cache info` and `cache prune` look at and trim an HTTP cache. Exit codes: 0 clean, 1 finished degraded (result still written), 2 usage error, 3 an input could not be read, 4 the run failed.
+`--model` is required. `--depth quick|standard|deep` (default `standard`) sets how hard the run searches: standard is 3 rounds per sub-question, 3 queries and 5 pages a round, at most 200 model calls and an hour; quick is 1 round, 2 queries and 3 pages, at most 60 calls and 15 minutes; deep is 5 rounds, 4 queries and 8 pages, a wider page window, at most 500 calls and 2 hours (the quick and deep values are starting points, not measured). The scholarly sources are OpenAlex, Europe PMC and arXiv; `--local-corpus PATH` adds your own documents to them. The other flags: `--store`, `--cache`, `--searxng-url`, `--browser`, `--mailto`, `--tdm-host`, `--json`, `-o DIR`, `--quiet`; every finer setting (each `Budget` field, the source list, Semantic Scholar, the OpenAlex search mode, results per query) is an argument of the Python `research()`. Without `-o` the report goes to stdout and no file is written; with `-o DIR` the folder gets `report.md` (or `report.json`), `log.md` and `log.jsonl`. `andamentum-research mcp --store PATH` serves the engine and its store to an agent over MCP; `cache info` and `cache prune` look at and trim an HTTP cache. Exit codes: 0 clean, 1 finished degraded (result still written), 2 usage error, 3 an input could not be read, 4 the run failed.
 
 With `-o DIR` a run also writes a Markdown log and a JSONL log of what happened at each step, including the text the model saw. `uv run python -m andamentum.deep_research.bench experiment losses ...` reads those logs and says, for each wrong answer, at which stage the right one was lost.
 

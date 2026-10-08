@@ -63,14 +63,10 @@ def test_flags_become_the_research_arguments(
             "--searxng-url",
             "http://127.0.0.1:4070",
             "--browser",
-            "--sources",
-            "europepmc,openalex",
             "--tdm-host",
             "journals.example",
-            "--max-rounds",
-            "2",
-            "--max-wall-s",
-            "90.5",
+            "--depth",
+            "deep",
             "--quiet",
         ]
     )
@@ -79,9 +75,10 @@ def test_flags_become_the_research_arguments(
     assert call["mode"] == "both"
     assert call["model"] == "ollama:gemma4:31b-cloud"
     assert call["store"] == store
-    assert call["budget"] == Budget(max_rounds=2, max_wall_s=90.5)
+    assert call["budget"] == Budget.for_depth("deep")
     sources: SourceConfig = call["sources"]
-    assert sources.scholarly == ("europepmc", "openalex")
+    assert sources.scholarly == ("openalex", "europepmc", "arxiv")
+    assert sources.local_corpus is None
     assert sources.searxng_url == "http://127.0.0.1:4070"
     assert sources.browser is True
     assert sources.tdm_allowed_hosts == frozenset({"journals.example"})
@@ -191,7 +188,7 @@ def test_a_missing_local_corpus_exits_3(
     calls: list[dict[str, Any]], tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     code = cli.main(
-        ["ask", "q", "--mode", "scholarly", "--model", "m", "--sources", "local_corpus"]
+        ["ask", "q", "--mode", "scholarly", "--model", "m"]
         + ["--local-corpus", str(tmp_path / "none")]
     )
     assert code == 3 and calls == []
@@ -203,27 +200,8 @@ def test_a_missing_local_corpus_exits_3(
     [
         ["ask", "q", "--model", "m"],  # no mode
         ["ask", "q", "--mode", "scholarly"],  # no model
-        [
-            "ask",
-            "q",
-            "--mode",
-            "scholarly",
-            "--model",
-            "m",
-            "--sources",
-            "openalex,nope",
-        ],
         ["ask", "q", "--mode", "web", "--model", "m"],  # web needs an address
-        [
-            "ask",
-            "q",
-            "--mode",
-            "scholarly",
-            "--model",
-            "m",
-            "--sources",
-            "local_corpus",
-        ],
+        ["ask", "q", "--mode", "scholarly", "--model", "m", "--depth", "huge"],
         ["ask", "q", "--mode", "scholarly", "--model", "m", "--md"],
         ["no-such-command"],
         [],
@@ -266,12 +244,64 @@ def test_the_question_can_come_from_stdin(
     assert [c["question"] for c in calls] == ["Why Apollo?"]
 
 
-def test_every_budget_flag_has_a_plain_description() -> None:
-    ask = cli.build_parser()._subparsers._group_actions[0].choices["ask"]  # type: ignore[union-attr]
-    helps = {a.dest: a.help for a in ask._actions}
-    for name in Budget.model_fields:
-        assert helps[name] and "default:" in helps[name]
-        assert helps[name].split(" (default")[0] != ""
+def _ask_parser() -> Any:
+    return cli.build_parser()._subparsers._group_actions[0].choices["ask"]  # type: ignore[union-attr]
+
+
+def test_ask_offers_exactly_these_flags() -> None:
+    """The tuning lives in --depth; every other setting is a Python argument."""
+    flags = {f for a in _ask_parser()._actions for f in a.option_strings}
+    assert flags == {
+        "-h", "--help", "--mode", "--model", "-o", "--out", "--json", "--depth",
+        "--store", "--cache", "--searxng-url", "--browser", "--mailto",
+        "--local-corpus", "--tdm-host", "--quiet",
+    }  # fmt: skip
+
+
+@pytest.mark.parametrize("depth", ["quick", "standard", "deep"])
+def test_depth_picks_its_budget(
+    depth: str, calls: list[dict[str, Any]]
+) -> None:
+    cli.main(["q", "--mode", "scholarly", "--model", "m", "--depth", depth, "--quiet"])
+    assert calls[0]["budget"] == Budget.for_depth(depth)  # type: ignore[arg-type]
+
+
+def test_without_depth_the_budget_is_the_default(
+    calls: list[dict[str, Any]],
+) -> None:
+    cli.main(["q", "--mode", "scholarly", "--model", "m", "--quiet"])
+    assert calls[0]["budget"] == Budget() == Budget.for_depth("standard")
+
+
+def test_local_corpus_is_added_to_the_scholarly_sources(
+    calls: list[dict[str, Any]], tmp_path: Path
+) -> None:
+    corpus = tmp_path / "corpus"
+    corpus.mkdir()
+    cli.main(
+        ["q", "--mode", "scholarly", "--model", "m", "--quiet"]
+        + ["--local-corpus", str(corpus)]
+    )
+    sources: SourceConfig = calls[0]["sources"]
+    assert sources.scholarly == ("openalex", "europepmc", "arxiv", "local_corpus")
+    assert sources.local_corpus == corpus
+
+
+@pytest.mark.parametrize(
+    "flag",
+    [
+        "--max-rounds", "--queries-per-round", "--reads-per-round",
+        "--window-chars", "--expand-per-round", "--results-per-query",
+        "--max-llm-calls", "--max-wall-s", "--max-fetch-bytes", "--concurrency",
+        "--openalex-search", "--sources",
+    ],
+)  # fmt: skip
+def test_the_removed_tuning_flags_are_usage_errors(
+    flag: str, calls: list[dict[str, Any]]
+) -> None:
+    with pytest.raises(SystemExit) as stopped:
+        cli.main(["q", "--mode", "scholarly", "--model", "m", flag, "2"])
+    assert stopped.value.code == 2 and calls == []
 
 
 def test_the_cache_subcommands_run_the_cache_job(

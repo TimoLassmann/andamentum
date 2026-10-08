@@ -582,3 +582,59 @@ class TestCliCommand:
         assert rc == 0 and out.exists()
         assert main(["palettes"]) == 0
         assert main(["journals"]) == 0
+
+
+class TestCliFlags:
+    CSV = "group,value\nA,1\nB,2\n"
+
+    def _plot_parser(self):
+        from andamentum.figures.cli import build_parser
+
+        parser = build_parser()
+        sub = next(
+            a for a in parser._actions if isinstance(a, argparse._SubParsersAction)
+        )
+        return sub.choices["plot"]
+
+    def test_plot_offers_exactly_these_flags(self):
+        flags = {f for a in self._plot_parser()._actions for f in a.option_strings}
+        assert flags == {
+            "-h", "--help", "--kind", "--x", "--y", "--group", "--group-order",
+            "--error", "--error-type", "--title", "--x-label", "--y-label",
+            "--style", "--series-colors", "--journal", "--width", "--horizontal",
+            "--no-horizontal", "--normalize", "--svg-inline", "-o", "--out",
+            "--json",
+        }  # fmt: skip
+
+    @pytest.mark.parametrize("flag,value", [("--mode", "showcase"), ("--dpi", "150")])
+    def test_the_removed_flags_are_usage_errors(self, tmp_path, flag, value):
+        from andamentum.figures.cli import main
+
+        data = tmp_path / "d.csv"
+        data.write_text(self.CSV)
+        with pytest.raises(SystemExit) as exc:
+            main([str(data), "-o", str(tmp_path / "f.png"), flag, value])
+        assert exc.value.code == 2
+
+    def test_journal_showcase_is_what_mode_showcase_was(self, tmp_path, capsys):
+        """--journal showcase draws the figure figure(mode="showcase") draws, at 300 dpi."""
+        import json as _json
+
+        from matplotlib import image as mpimg
+
+        from andamentum.figures import figure
+        from andamentum.figures.cli import main
+
+        data = tmp_path / "d.csv"
+        data.write_text(self.CSV)
+        cli_out = tmp_path / "cli.png"
+        assert main([str(data), "-o", str(cli_out), "--journal", "showcase", "--json"]) == 0
+        cli_result = _json.loads(capsys.readouterr().out)
+        api = figure(self.CSV, mode="showcase", dpi=300, out=tmp_path / "api.png")
+        api_result = api.model_dump(mode="json")
+        cli_result.pop("path"), api_result.pop("path")
+        assert cli_result == api_result
+        # Same pixels at 300 dpi; at 150 dpi the same figure has fewer.
+        assert mpimg.imread(cli_out).shape == mpimg.imread(tmp_path / "api.png").shape
+        figure(self.CSV, mode="showcase", dpi=150, out=tmp_path / "low.png")
+        assert mpimg.imread(tmp_path / "low.png").shape[1] < mpimg.imread(cli_out).shape[1]

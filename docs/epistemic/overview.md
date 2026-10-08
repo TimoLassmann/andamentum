@@ -733,7 +733,7 @@ result = await run_epistemic_graph(
 )
 ```
 
-The CLI `andamentum-epistemic ask "<question>"` wraps this. `verify "<claim>"` sets `Objective.claim_to_verify` and skips decomposition. Both require `--model` and `--embedding-model` on the command line (no environment variable, no default). `--out DIR` keeps the run's database (`epistemic.db`) and `report.html` in that folder; without it the run uses a temporary folder that is removed afterwards. `--json` prints the typed `AskResult`. In Python, `await andamentum.epistemic.ask(question, model=..., embedding_model=..., searxng_url=...)` and `verify(claim, ...)` return it.
+The CLI `andamentum-epistemic ask "<question>"` wraps this. `verify "<claim>"` sets `Objective.claim_to_verify` and skips decomposition. Both require `--model` and `--embedding-model` on the command line (no environment variable, no default). `--out DIR` keeps the run's database (`epistemic.db`) and `report.html` in that folder; without it the run uses a temporary folder that is removed afterwards. `--json` prints the typed `AskResult`. The command always makes the full run (clarification and conceptual analysis included) and shows the reasoning trace as a timeline; there is no `--quick` or `--trace`. In Python, `await andamentum.epistemic.ask(question, model=..., embedding_model=..., searxng_url=...)` and `verify(claim, ...)` return it.
 
 ### Stage runners
 

@@ -147,3 +147,48 @@ async def test_ask_without_a_database_leaves_no_file_behind(monkeypatch):
         )
     assert kept and not kept[0].exists()
     assert not kept[0].parent.exists()
+
+
+@pytest.mark.parametrize("command", ["ask", "verify"])
+def test_ask_and_verify_offer_exactly_these_flags(command):
+    import argparse
+
+    sub = next(
+        a
+        for a in cli.build_parser()._actions
+        if isinstance(a, argparse._SubParsersAction)
+    )
+    flags = {f for a in sub.choices[command]._actions for f in a.option_strings}
+    assert flags == {
+        "-h", "--help", "--model", "--embedding-model", "--searxng-url",
+        "--browser", "-o", "--out", "--json", "--provider", "--verbose",
+    }  # fmt: skip
+
+
+@pytest.mark.parametrize("flag", [["--quick"], ["--trace", "flow"]])
+def test_the_removed_quick_and_trace_flags_are_usage_errors(flag, capsys):
+    with pytest.raises(SystemExit) as stopped:
+        cli.main(["ask", "q", "--model", "m", "--embedding-model", "e", *_search(), *flag])
+    assert stopped.value.code == 2
+
+
+def test_the_command_runs_the_full_run_with_the_timeline_trace(monkeypatch, capsys):
+    """No --quick, no --trace: handle_ask gets neither, so its defaults (the full
+    run, the timeline trace) hold."""
+    import inspect
+
+    from andamentum.epistemic import cli_handlers
+
+    seen = {}
+
+    async def fake_handle_ask(text, **kwargs):
+        seen.update(kwargs)
+        return AskResult(success=True, question=text)
+
+    defaults = inspect.signature(cli_handlers.handle_ask).parameters
+    assert defaults["trace"].default == "timeline"
+    assert defaults["force_quick"].default is False
+    monkeypatch.setattr("andamentum.epistemic.cli_handlers.handle_ask", fake_handle_ask)
+    assert cli.main(["ask", "q", "--model", "m", "--embedding-model", "e", *_search()]) == 0
+    assert "trace" not in seen and "force_quick" not in seen
+    capsys.readouterr()

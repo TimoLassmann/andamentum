@@ -103,6 +103,25 @@ def test_the_budget_defaults_are_the_loop_defaults() -> None:
         Budget(window_chars=10)
 
 
+def test_each_depth_names_its_budget() -> None:
+    assert Budget.for_depth("standard") == Budget()
+    fields = (
+        "max_rounds", "queries_per_round", "reads_per_round", "window_chars",
+        "expand_per_round", "max_llm_calls", "max_wall_s", "max_fetch_bytes",
+        "concurrency",
+    )  # fmt: skip
+    quick = Budget.for_depth("quick")
+    deep = Budget.for_depth("deep")
+    assert tuple(getattr(quick, f) for f in fields) == (
+        1, 2, 3, 20_000, 10, 60, 900.0, 20_000_000, 4,
+    )  # fmt: skip
+    assert tuple(getattr(deep, f) for f in fields) == (
+        5, 4, 8, 30_000, 40, 500, 7200.0, 150_000_000, 4,
+    )  # fmt: skip
+    with pytest.raises(ValueError, match="unknown depth"):
+        Budget.for_depth("huge")  # type: ignore[arg-type]
+
+
 def test_cited_work_ids_follow_the_report_order() -> None:
     def finding(number: int, work_id: str) -> Finding:
         return Finding(
