@@ -41,10 +41,12 @@ from .primitives import ClaimStage, Claim, Evidence, Uncertainty
 from .trace import ReasoningTrace
 from andamentum.document_store import Store
 from .databases import (
-    delete_database,
+    delete_store_files,
     get_db_path,
     get_databases_dir,
+    get_ephemeral_dir,
     open_store,
+    resolve_db_path,
 )
 
 logger = logging.getLogger(__name__)
@@ -1136,7 +1138,7 @@ async def handle_ask(
 
         # Clean up if not keeping
         if not keep:
-            if delete_database(name):
+            if delete_store_files(resolve_db_path(name, db_dir)):
                 if verbose:
                     console.print("[dim]Cleaned up ephemeral project database[/dim]")
         else:
@@ -1180,7 +1182,7 @@ async def handle_ask(
             await store.close()
         if not keep:
             try:
-                delete_database(name)
+                delete_store_files(resolve_db_path(name, db_dir))
             except Exception as cleanup_err:
                 logger.warning(f"Failed to cleanup database on error: {cleanup_err}")
 
@@ -1719,7 +1721,10 @@ async def handle_cleanup(
     from datetime import datetime, timedelta
 
     databases_dir = get_databases_dir()
-    if not databases_dir.exists():
+    # ask_* databases live in the ephemeral directory; older runs may have
+    # left some in the main directory, so both are scanned.
+    scan_dirs = [d for d in (get_ephemeral_dir(), databases_dir) if d.exists()]
+    if not scan_dirs:
         console.print("[yellow]No databases directory found[/yellow]")
         return CleanupResult(success=True, deleted=0, freed_bytes=0, dry_run=dry_run)
 
@@ -1729,7 +1734,7 @@ async def handle_cleanup(
     candidates = []
 
     # Find all ask_* databases
-    for item in databases_dir.iterdir():
+    for item in (i for d in scan_dirs for i in d.iterdir()):
         if item.name.startswith("ask_"):
             # Check modification time
             mtime = datetime.fromtimestamp(item.stat().st_mtime)
@@ -1757,7 +1762,12 @@ async def handle_cleanup(
                 base_name = base_name[: -len(suffix)]
                 break
         if base_name not in db_groups:
-            db_groups[base_name] = {"items": [], "total_size": 0, "mtime": mtime}
+            db_groups[base_name] = {
+                "items": [],
+                "total_size": 0,
+                "mtime": mtime,
+                "dir": item.parent,
+            }
         db_groups[base_name]["items"].append(item)
         db_groups[base_name]["total_size"] += size
 
@@ -1777,11 +1787,11 @@ async def handle_cleanup(
             console.print(f"  {base_name}: {size_mb:.2f} MB, {age_days} days old")
 
         if not dry_run:
-            # Use delete_database which handles both .db and _raw
+            # Delete by path: the .db, its WAL sidecars and the _raw directory
             try:
-                delete_database(base_name)
-                deleted_count += 1
-                freed_bytes += info["total_size"]
+                if delete_store_files(info["dir"] / f"{base_name}.db"):
+                    deleted_count += 1
+                    freed_bytes += info["total_size"]
             except Exception as e:
                 console.print(f"  [red]Failed to delete {base_name}: {e}[/red]")
 

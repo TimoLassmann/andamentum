@@ -110,22 +110,27 @@ async def open_store(name: str, db_dir: str | Path | None = None) -> Store:
 
 
 def delete_database(database_name: str, ephemeral: bool = False) -> bool:
-    """Delete a named database file (and its ``_raw`` directory, if any).
+    """Delete a named database in the default directory.
 
     Close any open :class:`Store` on it first. Returns False if not found.
     """
-    db_path = get_db_path(database_name, ephemeral=ephemeral)
-    if not db_path.exists():
-        return False
+    return delete_store_files(get_db_path(database_name, ephemeral=ephemeral))
 
-    raw_dir = db_path.parent / f"{database_name}_raw"
+
+def delete_store_files(db_path: Path) -> bool:
+    """Delete a database file, its WAL sidecars and its ``_raw`` directory.
+
+    Close any open :class:`Store` on it first. Returns False if none of them
+    existed.
+    """
+    found = False
+    raw_dir = db_path.with_name(f"{db_path.stem}_raw")
     if raw_dir.exists():
         shutil.rmtree(raw_dir)
-
-    db_path.unlink()
+        found = True
     # WAL mode leaves sidecar files beside the database
-    for suffix in ("-wal", "-shm"):
-        sidecar = db_path.with_name(db_path.name + suffix)
-        if sidecar.exists():
-            sidecar.unlink()
-    return True
+    for path in (db_path, *(db_path.with_name(db_path.name + s) for s in ("-wal", "-shm"))):
+        if path.exists():
+            path.unlink()
+            found = True
+    return found
