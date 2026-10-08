@@ -19,7 +19,7 @@ This repository is **public** on GitHub. Everything committed — files, test fi
 Andamentum is a single Python package (`src/andamentum/`) of tightly-scoped sub-modules for building agentic reasoning pipelines. The core three were consolidated from separate packages; the commit history around that migration is relevant context.
 
 - `andamentum.epistemic` — formal epistemology: evidence/claims/uncertainty entities, deterministic stage gates, pattern-driven work scheduling, multi-agent verification
-- `andamentum.deep_research` — web research pipeline (search → fetch → extract → verify → synthesize) built on `pydantic-graph`
+- `andamentum.deep_research` — web research. The legacy pipeline (search → fetch → extract → verify → synthesize, built on `pydantic-graph`) and `deep_research.v2`, the research loop: plan, then per sub-question queries → search → choose → read → notes → reflect, one write, a code-checked report over web (Chrome over CDP or SearxNG) and scholarly sources
 - `andamentum.document_store` — SQLite + FTS5 + sqlite-vec knowledge base: 4-signal RRF search ranks documents; `get_chunks` / `get_chunk` read the passages, and an opt-in rerank (`rerank` extra) scores them
 - `andamentum.whetstone` — criterion-cascade review of your own drafts → markdown / HTML / tracked-changes `.docx`; reviewer profiles, checklist and panel modes, the goal loop
 - `andamentum.figures` — publication-quality scientific figures: 10 chart types, journal palettes and the andamentum report look
@@ -76,7 +76,7 @@ uv run ruff format
 uv build
 ```
 
-The canonical green state: **pyright 32 errors (test-only typing noise — pydantic-graph generic variance in `test_topology.py` and in the `_Ctx` stand-in that several `v3` node tests pass to `run()`, `Decomposition` dict-form fixtures in several test files; zero errors in shipped `src/` code. The count moves by one for every node test added, which is why it is a baseline to re-measure rather than a target), `uv run ruff check src/` clean (note: `ruff format` still wants to reformat ~110 pre-existing files — a known cleanup, run `uv run ruff format` once and commit), pytest 4291 passing (34 skipped, 75 deselected)**. Don't claim completion until you've run these three and seen that state.
+The canonical green state: **pyright 32 errors (test-only typing noise — pydantic-graph generic variance in `test_topology.py` and in the `_Ctx` stand-in that several `v3` node tests pass to `run()`, `Decomposition` dict-form fixtures in several test files; zero errors in shipped `src/` code. The count moves by one for every node test added, which is why it is a baseline to re-measure rather than a target), `uv run ruff check src/` clean (note: `ruff format` still wants to reformat ~110 pre-existing files — a known cleanup, run `uv run ruff format` once and commit), pytest 5853 passing (29 skipped, 80 deselected)**. Don't claim completion until you've run these three and seen that state.
 
 Run pytest from the **repo root**. `testpaths` is relative, so invoking it from inside a sub-package silently collects only that subtree — which looks like a green run against a fraction of the suite.
 

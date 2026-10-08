@@ -10,7 +10,6 @@ from typing import Any
 import pytest
 
 from .. import cli
-from ..config import PRESETS
 from ..sources import SourceConfig
 from ..types import Budget, ResearchResult
 
@@ -21,7 +20,7 @@ def _result(*, degraded: list[str] | None = None) -> ResearchResult:
         question="Why Apollo?",
         mode="scholarly",
         report_markdown="# Why Apollo?\n\nIt is fast [F1].\n",
-        stop_reason="covered",
+        stop_reason="answered",
         degraded=degraded or [],
     )
 
@@ -58,12 +57,12 @@ def test_flags_become_the_research_arguments(
             "both",
             "--model",
             "ollama:gemma4:31b-cloud",
-            "--decision-model",
-            "nimble:9b",
             "--store",
             str(store),
             "--searxng-url",
             "http://127.0.0.1:4070",
+            "--browser-cdp-url",
+            "http://127.0.0.1:9222",
             "--sources",
             "europepmc,openalex",
             "--tdm-host",
@@ -79,28 +78,27 @@ def test_flags_become_the_research_arguments(
     assert call["question"] == "Why Apollo?"
     assert call["mode"] == "both"
     assert call["model"] == "ollama:gemma4:31b-cloud"
-    assert call["decision_model"] == "nimble:9b"
     assert call["store"] == store
     assert call["budget"] == Budget(max_rounds=2, max_wall_s=90.5)
     sources: SourceConfig = call["sources"]
     assert sources.scholarly == ("europepmc", "openalex")
     assert sources.searxng_url == "http://127.0.0.1:4070"
+    assert sources.browser_cdp_url == "http://127.0.0.1:9222"
     assert sources.tdm_allowed_hosts == frozenset({"journals.example"})
     assert sources.openalex_api_key is None
-    assert call["config"] is PRESETS["hybrid"]  # the default preset
+    assert "config" not in call and "decision_model" not in call
     out = capsys.readouterr()
     assert out.out == "# Why Apollo?\n\nIt is fast [F1].\n"
-    assert "stop: covered" in out.err
+    assert "stop: answered" in out.err
 
 
-def test_the_preset_flag_picks_the_configuration(calls: list[dict[str, Any]]) -> None:
-    cli.main(
-        ["q", "--mode", "scholarly", "--model", "m", "--preset", "criteria", "--quiet"]
-    )
-    assert calls[0]["config"] is PRESETS["criteria"]
+@pytest.mark.parametrize("flag", ["--preset", "--decision-model", "--embedding-model"])
+def test_the_flags_of_the_removed_steps_are_usage_errors(
+    flag: str, calls: list[dict[str, Any]]
+) -> None:
     with pytest.raises(SystemExit) as stopped:
-        cli.main(["q", "--mode", "scholarly", "--model", "m", "--preset", "nope"])
-    assert stopped.value.code == 2
+        cli.main(["q", "--mode", "scholarly", "--model", "m", flag, "x"])
+    assert stopped.value.code == 2 and calls == []
 
 
 def test_secrets_come_from_the_environment_only(
@@ -114,13 +112,13 @@ def test_secrets_come_from_the_environment_only(
     assert sources.openalex_api_key == "k-open"
     assert sources.mailto == "jane@example.org"
     assert sources.semantic_scholar_api_key == "k-s2"
-    assert calls[0]["store"] is None and calls[0]["decision_model"] is None
+    assert calls[0]["store"] is None
 
 
 def test_json_output_to_a_file(calls: list[dict[str, Any]], tmp_path: Path) -> None:
     out = tmp_path / "result.json"
     cli.main(["q", "--mode", "web", "--model", "m", "--json", "--out", str(out)])
-    assert json.loads(out.read_text())["stop_reason"] == "covered"
+    assert json.loads(out.read_text())["stop_reason"] == "answered"
 
 
 def test_a_degraded_run_exits_4_after_writing_the_result(

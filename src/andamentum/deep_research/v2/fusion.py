@@ -62,7 +62,9 @@ def rank_works(
     """Work ids in the order a result ranks them: first the works behind cited
     findings (in order of first citation), then the other works that were chosen
     and read, then every remaining candidate; the second and third groups by
-    fused score, best first, ties by work id. *excluded* never appear."""
+    fused score, best first. A tie keeps the order of *chosen* (the order the
+    works were read) or of *candidates*: a work id is random per store, so it
+    must not decide. *excluded* never appear."""
     scores = fused_scores(candidates)
 
     def usable(work_id: str) -> bool:
@@ -71,11 +73,11 @@ def rank_works(
     ordered = [w for w in dict.fromkeys(cited) if usable(w)]
     placed = set(ordered)
 
-    def best_first(ids: Collection[str]) -> list[str]:
-        return sorted(ids, key=lambda w: (-scores[w], w))
+    def best_first(ids: Sequence[str]) -> list[str]:
+        return sorted(ids, key=lambda w: -scores[w])  # stable: ties keep their order
 
-    read = {w for w in chosen if usable(w) and w not in placed}
+    read = [w for w in dict.fromkeys(chosen) if usable(w) and w not in placed]
     ordered += best_first(read)
-    placed |= read
+    placed |= set(read)
     ordered += best_first([w for w in candidates if usable(w) and w not in placed])
     return ordered

@@ -456,15 +456,15 @@ def test_run_items_keep_order_filter_by_kind_and_replace_by_ref(
     )
     store.add_run_item(run_id, "subquestion", "s1", {"text": "first"})
     store.add_run_item(run_id, "finding", "F1", finding)
-    store.add_run_item(run_id, "coverage", "s1", {"covered": False})
-    store.add_run_item(run_id, "coverage", "s1", {"covered": True})
+    store.add_run_item(run_id, "flag", "1:dead_link", {"detail": "first"})
+    store.add_run_item(run_id, "flag", "1:dead_link", {"detail": "second"})
     assert [(i.kind, i.ref_id) for i in store.run_items(run_id)] == [
         ("subquestion", "s1"),
         ("finding", "F1"),
-        ("coverage", "s1"),
+        ("flag", "1:dead_link"),
     ]
-    (cov,) = store.run_items(run_id, "coverage")
-    assert cov.data == {"covered": True}
+    (flag,) = store.run_items(run_id, "flag")
+    assert flag.data == {"detail": "second"}
     (item,) = store.run_items(run_id, "finding")
     assert Finding.model_validate(item.data) == finding
 
@@ -485,3 +485,30 @@ def test_decisions_are_logged_in_order(store: ResearchStore) -> None:
     assert [d.answer["p"] for d in store.decisions(run_id)] == [0.9, 0.1, 0.5]
     assert [d.step for d in store.decisions(run_id, "screen")] == ["screen", "screen"]
     assert store.decisions(run_id)[0].ms == 12.5
+
+
+def test_a_store_of_the_previous_schema_loses_only_the_dropped_tables(
+    tmp_path: Path,
+) -> None:
+    """Version 6 drops the decision-answer cache, the determinism table and the
+    embedding cache; the works, the HTTP cache and the decisions stay."""
+    path = tmp_path / "old.db"
+    with ResearchStore(path) as first:
+        stored = first.upsert_work(Work(doi="10.1001/a", title="Alpha"))
+    with sqlite3.connect(path) as raw:
+        raw.executescript(
+            "DELETE FROM schema_version WHERE version = 6;"
+            "CREATE TABLE decision_cache (digest TEXT);"
+            "CREATE TABLE decision_determinism (digest TEXT);"
+            "CREATE TABLE embeddings (model TEXT);"
+        )
+    with ResearchStore(path) as second:
+        assert second.schema_version() == SCHEMA_VERSION
+        assert second.get_work(stored.work_id) == stored
+    with sqlite3.connect(path) as raw:
+        tables = {
+            row[0]
+            for row in raw.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        }
+    assert {"decisions", "works", "http_cache"} <= tables
+    assert not tables & {"decision_cache", "decision_determinism", "embeddings"}

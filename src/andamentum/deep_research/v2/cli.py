@@ -1,17 +1,14 @@
 """``andamentum-research v2``: the evidence-first engine from the command line.
 
     andamentum-research v2 "QUESTION" --mode both --model M
-        [--preset baseline|fast|recall|hybrid|criteria]
-        [--decision-model NAME] [--embedding-model NAME] [--store PATH] [--cache PATH] [--searxng-url URL]
+        [--store PATH] [--cache PATH] [--searxng-url URL | --browser-cdp-url URL]
         [--sources openalex,europepmc,arxiv] [--local-corpus PATH]
         [--openalex-search keyword]
         [--tdm-host HOST ...] [--results-per-query N]
         [--max-rounds N ... every Budget field] [--json | --md] [--out FILE]
         [--log PATH]
 
-Every model and address is a flag; nothing has a hidden default. ``--preset``
-names the run's ``ResearchConfig`` (``config.PRESETS``; ``baseline`` unless
-another is named). Without
+Every model and address is a flag; nothing has a hidden default. Without
 ``--store`` nothing persists. Secrets are read here only, from the environment
 after ``load_dotenv()``: ``OPENALEX_API_KEY``, ``OPENALEX_EMAIL`` (the polite
 contact address for OpenAlex and Crossref) and ``SEMANTIC_SCHOLAR_API_KEY``.
@@ -38,8 +35,7 @@ from typing import Literal, get_args
 
 from dotenv import load_dotenv
 
-from .config import DEFAULT_PRESET, PRESETS
-from .graph import research
+from .engine import research
 from .runlog import write_log
 from .sources import SourceConfig
 from .store import ResearchStore
@@ -67,38 +63,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--mode",
         required=True,
         choices=get_args(Mode),
-        help="web (SearxNG), scholarly (OpenAlex, Europe PMC, arXiv) or both",
+        help="web (Chrome over CDP or SearxNG), scholarly (OpenAlex, Europe PMC, arXiv) or both",
     )
     parser.add_argument(
         "--model",
         required=True,
         help="the language model, a pydantic-ai id (e.g. ollama:gemma4:31b-cloud)",
-    )
-    parser.add_argument(
-        "--preset",
-        choices=sorted(PRESETS),
-        default=DEFAULT_PRESET,
-        help="what the run does at every swappable step: baseline (one generic "
-        "relevance question per candidate), fast (the baseline with a lexical "
-        "pre-filter and code-first claim-support checks), recall (screening "
-        "queue by source rank), hybrid (the raw question searched too, dense "
-        "similarity in the rank fusion, the screen ranks and drops nothing; "
-        "needs --embedding-model) or criteria (LLM-compiled criteria); "
-        "default: %(default)s",
-    )
-    parser.add_argument(
-        "--embedding-model",
-        default=None,
-        metavar="NAME",
-        help="a local Ollama embedding model (e.g. embeddinggemma:latest) for a "
-        "preset that ranks by dense similarity (hybrid); other presets ignore it",
-    )
-    parser.add_argument(
-        "--decision-model",
-        default=None,
-        metavar="NAME",
-        help="a local Ollama decision model for screening and checks; without "
-        "it the language model answers those questions",
     )
     parser.add_argument(
         "--store",
@@ -238,12 +208,9 @@ async def _run(args: argparse.Namespace) -> ResearchResult:
             args.question,
             mode=args.mode,
             model=args.model,
-            decision_model=args.decision_model,
-            embedding_model=args.embedding_model,
             store=Path(args.store) if args.store else None,
             budget=budget,
             sources=_source_config(args),
-            config=PRESETS[args.preset],
             http_cache=cache,
             progress=progress,
         )
@@ -295,7 +262,6 @@ def main(argv: list[str]) -> None:
     else:
         sys.stdout.write(text)
     print(
-        f"preset: {result.config_name} ({result.config_hash[:12]}); "
         f"stop: {result.stop_reason}; {len(result.findings)} findings from "
         f"{len(result.works)} works; {len(result.verification)} verification flags",
         file=sys.stderr,

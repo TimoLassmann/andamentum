@@ -260,12 +260,17 @@ def test_seeds_are_the_best_scholarly_works_not_yet_expanded() -> None:
     }
     seeds = expansion_seeds(scores, candidates=works, expanded={"w5"})
     assert MAX_EXPAND_SEEDS == 3
-    # a web page and a work the run no longer holds are no seeds; ties by id
+    # a web page and a work the run no longer holds are no seeds; a tie keeps the order of the scores
     assert [w.work_id for w in seeds] == ["w2", "w4", "w1"]
     assert [
         w.work_id
         for w in expansion_seeds(scores, candidates=works, expanded=set(), limit=1)
     ] == ["w2"]
+    flipped = dict(reversed(list(scores.items())))
+    assert [
+        w.work_id
+        for w in expansion_seeds(flipped, candidates=works, expanded=set(), limit=2)
+    ] == ["w4", "w2"]
 
 
 class StubExpander:

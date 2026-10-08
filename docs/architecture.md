@@ -157,7 +157,7 @@ src/andamentum/
 ├── harvest/          — universal source → markdown extraction
 ├── chunker/          — structural-first semantic markdown chunking
 ├── document_store/   — SQLite + FTS5 + sqlite-vec personal knowledge base
-├── deep_research/    — web research pipeline (search → fetch → extract → verify → synthesise)
+├── deep_research/    — web research: the legacy pipeline, and `v2`, the research loop (plan → queries → search → choose → read → reflect → write)
 ├── typeset/          — typesetting system (HTML + PDF output)
 ├── compose/          — a task in, a finished document out (brief → evidence → draft → checks → revise); `compose/bundle/` is the model-free folder-bundle layer → .docx / .md / .html / .txt
 ├── figures/          — publication-quality figure rendering

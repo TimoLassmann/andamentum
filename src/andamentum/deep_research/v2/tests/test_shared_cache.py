@@ -8,8 +8,6 @@ real rate limit.
 from __future__ import annotations
 
 import asyncio
-import json
-import sqlite3
 from pathlib import Path
 
 import httpx
@@ -18,15 +16,6 @@ import pytest
 from andamentum.core import fetch_gate, url_safety
 from andamentum.deep_research.v2 import cli as v2_cli
 from andamentum.deep_research.v2.bench import cli as bench_cli
-from andamentum.deep_research.v2.bench.cache_import import (
-    cache_databases,
-    import_stores,
-)
-from andamentum.deep_research.v2.bench.freeze import (
-    FreezeItem,
-    freeze_items_of,
-    snapshot_dir,
-)
 from andamentum.deep_research.v2.sources import SourceClient, SourceConfig, SourceError
 from andamentum.deep_research.v2.sources.base import process_pacing
 from andamentum.deep_research.v2.store import (
@@ -36,7 +25,7 @@ from andamentum.deep_research.v2.store import (
 )
 from andamentum.references import LICENCE_NO_REDISTRIBUTE
 
-from .engine_world import QUESTION, SEARXNG, World, world_decisions, world_llm
+from .engine_world import QUESTION, SEARXNG, World, world_llm
 
 SOURCES = SourceConfig(searxng_url=SEARXNG, scholarly=("openalex",))
 
@@ -158,249 +147,15 @@ def test_a_no_redistribute_entry_is_cached_locally_and_never_exported() -> None:
 # -- the merge of existing stores ----------------------------------------------------
 
 
-def seed_store(path: Path, clock: Clock, rows: dict[str, dict]) -> ResearchStore:
-    store = ResearchStore(path, clock=clock)
-    for name, spec in rows.items():
-        put(store, name, **spec)
-    return store
-
-
-def test_import_keeps_the_freshest_row_and_honours_ttl_and_licence(
-    tmp_path: Path,
-) -> None:
-    clock = Clock()
-    big = b"x" * 40_000  # lands in blobs/, not in the inline table
-    older = seed_store(
-        tmp_path / "older" / "store.db",
-        clock,
-        {
-            "same": {"body": b"old version"},
-            "big": {"body": big, "source": "web:text"},
-            "gone": {"ttl_s": 5},
-        },
-    )
-    older.close()
-    clock.now += 50
-    newer = seed_store(
-        tmp_path / "newer" / "store.db",
-        clock,
-        {
-            "same": {"body": b"new version"},
-            "s2": {
-                "source": "semantic_scholar",
-                "licence": LICENCE_NO_REDISTRIBUTE,
-            },
-        },
-    )
-    newer.close()
-    not_a_store = tmp_path / "other.db"
-    sqlite3.connect(not_a_store).execute("CREATE TABLE t (x)").connection.close()
-
-    cache_path = tmp_path / "cache" / "http.db"
-    found = cache_databases([tmp_path], exclude=cache_path)
-    assert {p.name for p in found} == {"store.db", "other.db"}
-    with ResearchStore(cache_path, clock=clock) as shared:
-        # newer first, then older: the older "same" must not replace the newer one
-        ordered = sorted(found, key=lambda p: p.parent.name != "newer")
-        summary = import_stores(shared, [p for p in ordered if p.name == "store.db"])
-        report = import_stores(shared, [not_a_store])
-        assert "no http_cache table" in report.files[0].problem
-        totals = summary.by_source()
-        assert totals["openalex"].imported == 1  # "same", from the newer store
-        assert totals["openalex"].kept_existing == 1  # the older "same"
-        assert totals["openalex"].expired == 1  # "gone" (ttl 5 s, 50 s old)
-        assert totals["web:text"].imported == 1
-        assert totals["semantic_scholar"].imported == 1
-        same = shared.cache_get(cache_key("openalex", "https://example.org/same"))
-        assert same is not None and same.body == b"new version"
-        text = shared.cache_get(cache_key("web:text", "https://example.org/big"))
-        assert text is not None and text.body == big
-        s2 = shared.cache_get(cache_key("semantic_scholar", "https://example.org/s2"))
-        assert s2 is not None and s2.licence == LICENCE_NO_REDISTRIBUTE
-        assert all(r.licence == "" for r in shared.iter_cache())  # s2 not exported
-    # the stores that were read are unchanged
-    with ResearchStore(tmp_path / "older" / "store.db", clock=clock) as again:
-        assert len(list(again.iter_cache())) == 3
-
-
-def test_import_skips_a_row_whose_blob_is_missing(tmp_path: Path) -> None:
-    clock = Clock()
-    path = tmp_path / "lost" / "store.db"
-    with ResearchStore(path, clock=clock) as store:
-        put(store, "lost", b"y" * 40_000)
-    for blob in (path.parent / "blobs").rglob("*"):
-        if blob.is_file():
-            blob.unlink()
-    with ResearchStore.in_memory(clock=clock) as shared:
-        [report] = import_stores(shared, [path]).files
-    assert report.by_source["openalex"].unreadable == 1 and report.imported == 0
-
-
-def test_the_cache_option_and_the_import_command_are_wired(tmp_path: Path) -> None:
-    parser = bench_cli.build_parser()
-    freeze = parser.parse_args(
-        ["freeze", "web", "--snapshots", "s", "--model", "m", "--cache", "c.db"]
-    )
-    assert freeze.cache == Path("c.db")
-    run = parser.parse_args(
+def test_the_cache_option_is_wired_in_the_bench_and_the_command_line() -> None:
+    run = bench_cli.build_parser().parse_args(
         ["experiment", "run", "e.yaml", "--out-dir", "o", "--cache", "c.db"]
     )
     assert run.cache == Path("c.db")
-    merge = parser.parse_args(["cache", "import", "--cache", "c.db", "a", "b"])
-    assert merge.sources == [Path("a"), Path("b")] and merge.cache == Path("c.db")
     one = v2_cli.build_parser().parse_args(
         ["q", "--mode", "web", "--model", "m", "--cache", "c.db"]
     )
     assert one.cache == "c.db"
-
-
-def test_the_import_command_merges_and_prints_a_row_per_source(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    with ResearchStore(tmp_path / "one" / "store.db") as store:
-        put(store, "a")
-        put(store, "b", source="europepmc")
-    code = bench_cli.main(
-        [
-            "cache",
-            "import",
-            "--cache",
-            str(tmp_path / "c" / "http.db"),
-            str(tmp_path / "one"),
-        ]
-    )
-    assert code == 0
-    out = capsys.readouterr().out
-    assert "openalex" in out and "europepmc" in out and "total" in out
-    with ResearchStore(tmp_path / "c" / "http.db") as shared:
-        assert len(list(shared.iter_cache())) == 2
-
-
-# -- freezing through the shared cache -----------------------------------------------
-
-
-def freeze_args(snapshots: Path, world: World, cache: ResearchStore, **extra) -> dict:  # noqa: ANN003
-    return {
-        "snapshots": snapshots,
-        "model": world_llm().model,
-        "decision_model": world_decisions()[0],
-        "decision_label": "stub",
-        "source_config": SOURCES,
-        "progress": lambda _line: None,
-        "prefetch_top_k": None,
-        "health_client": httpx.AsyncClient(
-            transport=httpx.MockTransport(world.handler)
-        ),
-        "client_factory": world.client,
-        "clock": lambda: 1000.0,
-        "http_cache": cache,
-        **extra,
-    }
-
-
-def network_requests(world: World) -> list[httpx.Request]:
-    return [
-        r for r in world.requests if r.url.host != "searx.test" or r.url.path != "/"
-    ]
-
-
-async def test_a_second_freeze_into_a_fresh_folder_makes_no_network_request(
-    tmp_path: Path,
-) -> None:
-    world = World()
-    with ResearchStore(tmp_path / "cache" / "http.db") as cache:
-        first = await freeze_items_of(
-            "web",
-            [FreezeItem("W01", QUESTION)],
-            **freeze_args(tmp_path / "one", world, cache),
-        )
-        assert not first.failed
-        sent = len(world.requests)
-        assert first.items[0].stats is not None
-        assert sum(first.items[0].stats.requests.values()) > 0
-        second = await freeze_items_of(
-            "web",
-            [FreezeItem("W01", QUESTION)],
-            **freeze_args(tmp_path / "two", world, cache),
-        )
-    assert not second.failed
-    # only the SearxNG health probe went out the second time
-    later = world.requests[sent:]
-    assert [r.url.path for r in later] == ["/"] or all(
-        r.url.host == "searx.test" for r in later
-    ), [str(r.url) for r in later]
-    stats = second.items[0].stats
-    assert stats is not None
-    assert stats.cache_misses == 0 and stats.shared_hits > 0
-    assert stats.requests == {} and stats.hit_rate == 1.0
-    assert "hit rate" in "\n".join(second.lines())
-    meta = json.loads(
-        (snapshot_dir(tmp_path / "two", "web", "W01") / "meta.json").read_text()
-    )
-    assert meta["http_cache"]["shared_cache"] is True
-    assert meta["http_cache"]["hit_rate"] == 1.0
-    assert meta["http_cache"]["network_requests"] == {}
-    # the snapshot is self-contained: its own store answers offline, no shared cache
-    one = ResearchStore(snapshot_dir(tmp_path / "one", "web", "W01") / "store.db")
-    two = ResearchStore(snapshot_dir(tmp_path / "two", "web", "W01") / "store.db")
-    keys_one = {e.key for e in one.iter_cache(exportable_only=False)}
-    keys_two = {e.key for e in two.iter_cache(exportable_only=False)}
-    assert keys_one and keys_one == keys_two
-    one.close()
-    two.close()
-
-
-async def test_a_freeze_without_a_shared_cache_is_unchanged(tmp_path: Path) -> None:
-    world = World()
-    report = await freeze_items_of(
-        "web",
-        [FreezeItem("W01", QUESTION)],
-        **freeze_args(tmp_path, world, None, http_cache=None),  # type: ignore[arg-type]
-    )
-    assert not report.failed
-    stats = report.items[0].stats
-    assert stats is not None and stats.shared_hits == 0 and stats.cache_misses > 0
-    meta = json.loads((snapshot_dir(tmp_path, "web", "W01") / "meta.json").read_text())
-    assert meta["http_cache"]["shared_cache"] is False
-
-
-async def test_citation_lookups_cover_only_the_top_ranked_candidates(
-    tmp_path: Path,
-) -> None:
-    world = World()
-    with ResearchStore.in_memory() as cache:
-        report = await freeze_items_of(
-            "litsearch",
-            [FreezeItem("L1", QUESTION)],
-            **freeze_args(tmp_path, world, cache, prefetch_top_k=1),
-        )
-    assert not report.failed, report.lines()
-    meta = json.loads(
-        (snapshot_dir(tmp_path, "litsearch", "L1") / "meta.json").read_text()
-    )
-    lookups = meta["citation_lookups"]
-    assert lookups["top_k"] == 1
-    assert lookups["works_looked_up"] == meta["citations"]["works"]
-    assert lookups["works_looked_up"] < lookups["candidates"]
-    assert lookups["works_not_looked_up"] == (
-        lookups["candidates"] - lookups["works_looked_up"]
-    )
-
-
-async def test_freeze_report_totals_the_items_requests_by_source(
-    tmp_path: Path,
-) -> None:
-    world = World()
-    with ResearchStore.in_memory() as cache:
-        report = await freeze_items_of(
-            "web",
-            [FreezeItem("W01", QUESTION)],
-            **freeze_args(tmp_path, world, cache),
-        )
-    total = report.total_stats()
-    assert total is not None
-    assert total.requests == report.items[0].stats.requests  # type: ignore[union-attr]
-    assert any(line.startswith("  all items:") for line in report.lines())
 
 
 # -- one limiter per source, shared by every client of the process -------------------
@@ -494,7 +249,7 @@ async def test_a_client_with_an_injected_clock_keeps_its_own_pacing() -> None:
 
 
 def test_research_refuses_a_cache_it_cannot_apply() -> None:
-    from andamentum.deep_research.v2.graph import research
+    from andamentum.deep_research.v2.engine import research
 
     cache = ResearchStore.in_memory()
     with pytest.raises(ValueError, match="http_cache"):
@@ -510,7 +265,7 @@ def test_research_refuses_a_cache_it_cannot_apply() -> None:
 
 
 async def test_a_live_run_in_a_fresh_store_reads_the_shared_cache() -> None:
-    from andamentum.deep_research.v2.graph import research
+    from andamentum.deep_research.v2.engine import research
 
     world = World()
     cache = ResearchStore.in_memory()

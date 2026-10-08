@@ -6,17 +6,15 @@ Tools:
 
 - ``search_works`` and ``expand_citations`` find scholarly works (OpenAlex and
   the other adapters) and one-hop references or citations; ``search_web``
-  searches the web (needs ``--searxng-url``). All three merge duplicates and
-  keep the works in the store.
+  searches the web (needs ``--searxng-url`` or ``--browser-cdp-url``). All
+  three merge duplicates and keep the works in the store.
 - ``read_work`` returns a stored work with its passages. With ``fetch`` it first
   checks Crossref for a retraction, loads the text (full text where open,
-  else the abstract) and stores its passages, with no model. With
-  ``subquestion`` and ``run_id`` it runs the engine's reader on the work:
-  passage selection and finding extraction, quotes checked in code, findings
-  recorded in the run.
-- ``screen`` scores works against criteria for one sub-question, compiled by
-  the model when not given; the decision model scores when the server has one,
-  else the language model. Every answer lands in the store's ``decisions``.
+  else the abstract, else the search snippet) and stores the most relevant
+  window of it as passages, with no model. With ``subquestion`` and ``run_id``
+  it runs the engine's reader on the work: one notes call over the window,
+  quotes checked in code, findings recorded in the run (a quote that cannot
+  be found is kept and marked unverified).
 - ``record_finding`` stores a claim with the verbatim quote behind it, after
   checking that the quote occurs in one of the work's passages (or in its
   abstract, when the licence allows the abstract to be used).
@@ -24,7 +22,7 @@ Tools:
   against the server's store.
 
 Calls that use a model run one at a time: a local model serves one request at
-a time. The decision model is opened once, at the first call that needs it.
+a time.
 
 Resources: ``research://run/<run_id>``, one per run in the store.
 """
@@ -32,7 +30,6 @@ Resources: ``research://run/<run_id>``, one per run in the store.
 from __future__ import annotations
 
 import argparse
-import itertools
 import json
 import re
 from collections.abc import Awaitable, Callable
@@ -54,14 +51,12 @@ from pydantic import (
 )
 from pydantic_ai.models import Model
 
-from andamentum.core.decisions import DecisionModel
 from andamentum.references import Work
 
 from .ask import Asker
-from .criteria import Screener, rank
-from .graph import research
+from .engine import research
 from .identity import merge
-from .read import ReadDeps, load_work, locate_quote, read_work
+from .read import ReadDeps, load_page, locate_quote, read_page
 from .sources import (
     ExpandingSource,
     SourceClient,
@@ -74,7 +69,6 @@ from .store import ResearchStore, StoreError
 from .types import (
     Budget,
     Candidate,
-    Criterion,
     Finding,
     Mode,
     Passage,
@@ -152,19 +146,6 @@ class ReadWorkParams(_Params):
     )
 
 
-class ScreenParams(_Params):
-    subquestion: str = Field(min_length=1, description="the question to screen for")
-    work_ids: list[str] = Field(min_length=1, description="works in the store")
-    criteria: list[Criterion] | None = Field(
-        default=None,
-        description="the rubric to score against; compiled by the model when omitted",
-    )
-    run_id: str | None = Field(
-        default=None,
-        description="record the scores in this run; one is started if omitted",
-    )
-
-
 class RecordFindingParams(_Params):
     run_id: str = Field(min_length=1, description="a run in the store")
     subquestion_id: str = Field(min_length=1)
@@ -173,7 +154,6 @@ class RecordFindingParams(_Params):
     quote: str = Field(
         min_length=1, description="verbatim text from the work that states the claim"
     )
-    criterion_ids: list[str] = Field(default_factory=list)
 
 
 class GetRunParams(_Params):
@@ -196,18 +176,13 @@ def _jsonable(value: BaseModel | list[BaseModel]) -> JsonValue:
 
 
 class ResearchTools:
-    """The tools, bound to one store, its HTTP client and the server's models.
-
-    ``decision_model`` is a name (opened at the first call that needs it and
-    closed by :meth:`aclose`) or an opened handle (used as it is).
-    """
+    """The tools, bound to one store, its HTTP client and the server's model."""
 
     def __init__(
         self,
         store: ResearchStore,
         *,
         model: str | Model | None = None,
-        decision_model: str | DecisionModel | None = None,
         sources: SourceConfig | None = None,
         client: SourceClient | None = None,
     ) -> None:
@@ -220,30 +195,13 @@ class ResearchTools:
             store, pdf_extraction=self.config.pdf_extraction
         )
         self._owns_client = client is None
-        self._decision_name = (
-            decision_model if isinstance(decision_model, str) else None
-        )
-        self._decisions = (
-            decision_model if isinstance(decision_model, DecisionModel) else None
-        )
         self._model_lock = anyio.Lock()
 
     async def aclose(self) -> None:
-        if self._decision_name is not None and self._decisions is not None:
-            await self._decisions.aclose()
         if self._owns_client:
             await self.client.aclose()
 
     # -- what the tools share ---------------------------------------------------
-
-    @property
-    def has_decision_model(self) -> bool:
-        return self._decisions is not None or self._decision_name is not None
-
-    async def _decision_model(self) -> DecisionModel | None:
-        if self._decisions is None and self._decision_name is not None:
-            self._decisions = await DecisionModel.open(self._decision_name)
-        return self._decisions
 
     def _sources(
         self, mode: Mode, *, scholarly: tuple[str, ...] | None = None
@@ -261,7 +219,6 @@ class ResearchTools:
             run_id=run_id,
             budget=Budget(),
             stats=RunStats(),
-            decision_model=await self._decision_model(),
         )
 
     def _work(self, work_id: str) -> Work:
@@ -280,11 +237,7 @@ class ResearchTools:
             question=question,
             mode=MCP_RUN_MODE,
             config={"tool": tool},
-            models={
-                "model": self.model if isinstance(self.model, str) else None,
-                "decision_model": self._decision_name
-                or (self._decisions.id if self._decisions else None),
-            },
+            models={"model": self.model if isinstance(self.model, str) else None},
         )
 
     def _subquestion(self, run_id: str, text: str) -> SubQuestion:
@@ -348,9 +301,10 @@ class ResearchTools:
         return {"works": self._keep(found), "source_errors": errors}
 
     async def search_web(self, params: SearchWebParams) -> JsonObject:
-        if not self.config.searxng_url:
+        if not (self.config.searxng_url or self.config.browser_cdp_url):
             raise ValueError(
-                "search_web needs a SearxNG instance: start the server with --searxng-url"
+                "search_web needs a SearxNG instance or a Chrome: start the server "
+                "with --searxng-url or --browser-cdp-url"
             )
         (web,) = self._sources("web").search
         found = await web.search(params.query, limit=params.limit)
@@ -397,25 +351,39 @@ class ResearchTools:
             async with self._model_lock:
                 asker = await self._asker(run_id)
                 sources = self._sources(
-                    "both" if self.config.searxng_url else "scholarly"
+                    "both"
+                    if self.config.searxng_url or self.config.browser_cdp_url
+                    else "scholarly"
                 )
                 deps = ReadDeps(
-                    screener=Screener(asker=asker),
+                    asker=asker,
                     crossref=sources.crossref,
                     providers=sources.text,
+                    window_chars=asker.budget.window_chars,
                     fetched_bytes=lambda: self.client.fetched_bytes,
                 )
+                candidate = Candidate(work=work, sources=["store"])
                 if params.subquestion is None:
-                    reading, _ = await load_work(work, deps=deps)
-                else:
-                    reading = await read_work(
-                        work,
-                        subquestions=[self._subquestion(run_id, params.subquestion)],
-                        criteria={},
+                    reading = await load_page(
+                        candidate,
+                        subquestion=SubQuestion(
+                            id="Q0", text=work.title or work.work_id
+                        ),
+                        queries=[],
                         deps=deps,
-                        ids=itertools.count(self._next_finding_number(run_id)),
                     )
-                    findings = reading.findings
+                else:
+                    subquestion = self._subquestion(run_id, params.subquestion)
+                    reading = await read_page(
+                        candidate, subquestion=subquestion, queries=[], deps=deps
+                    )
+                    first = self._next_finding_number(run_id)
+                    for number, raw in enumerate(reading.findings, start=first):
+                        finding = Finding.from_raw(raw, number=number)
+                        self.store.add_run_item(
+                            run_id, "finding", finding.finding_id, finding
+                        )
+                        findings.append(finding)
             notes = [*reading.notes, *reading.failed_notes, *reading.degraded]
             if reading.excluded:
                 notes.append(reading.excluded)
@@ -444,39 +412,6 @@ class ResearchTools:
             "notes": notes,
         }
 
-    async def screen(self, params: ScreenParams) -> JsonObject:
-        if self.model is None and not self.has_decision_model:
-            raise ValueError(
-                "screen needs a model or a decision model: start the server with "
-                "--model or --decision-model"
-            )
-        if params.criteria is None and self.model is None:
-            raise ValueError(
-                "screen without criteria needs a model to compile them: start the "
-                "server with --model, or pass criteria"
-            )
-        works = [self._work(work_id) for work_id in params.work_ids]
-        if params.run_id is not None:
-            self._run(params.run_id)
-        run_id = params.run_id or self._start_run(
-            question=params.subquestion, tool="screen"
-        )
-        subquestion = self._subquestion(run_id, params.subquestion)
-        candidates = [
-            Candidate(work=w, sources=["store"], subquestion_ids=[subquestion.id])
-            for w in works
-        ]
-        async with self._model_lock:
-            screener = Screener(asker=await self._asker(run_id))
-            criteria = params.criteria or await screener.compile(subquestion)
-            scores = await screener.score_candidates(subquestion, criteria, candidates)
-        return {
-            "run_id": run_id,
-            "subquestion_id": subquestion.id,
-            "criteria": _jsonable(list(criteria)),
-            "scores": _jsonable(list(rank(scores))),
-        }
-
     async def record_finding(self, params: RecordFindingParams) -> JsonObject:
         self._run(params.run_id)
         work = self._work(params.work_id)
@@ -488,7 +423,6 @@ class ResearchTools:
             quote=quote,
             passage_id=passage.passage_id,
             work_id=work.work_id,
-            criterion_ids=params.criterion_ids,
         )
         self.store.add_run_item(params.run_id, "finding", finding.finding_id, finding)
         return {"finding": _jsonable(finding), "passage": _jsonable(passage)}
@@ -551,7 +485,6 @@ class ResearchTools:
                 params.question,
                 mode=params.mode,
                 model=self.model,
-                decision_model=await self._decision_model(),
                 store=self.store,
                 budget=params.budget,
                 sources=self.config,
@@ -575,7 +508,7 @@ _TOOLS: dict[str, tuple[type[_Params], Handler, str]] = {
     "search_web": (
         SearchWebParams,
         lambda t, p: t.search_web(p),
-        "Search the web (SearxNG). Results are kept in the store as works.",
+        "Search the web (Chrome over CDP or SearxNG). Results are kept in the store as works.",
     ),
     "expand_citations": (
         ExpandCitationsParams,
@@ -587,16 +520,10 @@ _TOOLS: dict[str, tuple[type[_Params], Handler, str]] = {
         ReadWorkParams,
         lambda t, p: t.read_work(p),
         "A stored work with its abstract and passages. With fetch, checks for a "
-        "retraction and stores the passages of its text (full text when open, else "
-        "the abstract). With subquestion and run_id, also extracts findings whose "
-        "quotes are checked against the passages and records them in the run.",
-    ),
-    "screen": (
-        ScreenParams,
-        lambda t, p: t.screen(p),
-        "Score stored works against criteria for one sub-question: the criteria "
-        "are compiled by the model when not given, and applied by the decision "
-        "model when the server has one. Scores are recorded in a run.",
+        "retraction and stores the most relevant passages of its text (full text "
+        "when open, else the abstract or snippet). With subquestion and run_id, "
+        "also extracts findings whose quotes are checked against the passages "
+        "(a quote not found is kept, marked unverified) and records them in the run.",
     ),
     "record_finding": (
         RecordFindingParams,
@@ -608,14 +535,13 @@ _TOOLS: dict[str, tuple[type[_Params], Handler, str]] = {
     "get_run": (
         GetRunParams,
         lambda t, p: t.get_run(p),
-        "Read a run's rows (sub-questions, criteria, candidate scores, findings) "
-        "from the store; without a run id, list the runs.",
+        "Read a run's rows (sub-questions, findings, log) from the store; without a run id, list the runs.",
     ),
     "research": (
         ResearchParams,
         lambda t, p: t.research(p),
         "Run the whole research engine on a question and return the result: "
-        "findings with quotes, coverage, conflicts, the cited report, its "
+        "findings with quotes, the cited report, its "
         "verification flags and the run log (`log`: what happened at each step, "
         "also kept in the store as the run item log/run). Needs a model.",
     ),
@@ -716,16 +642,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--model",
         default=None,
-        help="LLM for criteria, reading and the research tool",
-    )
-    parser.add_argument(
-        "--decision-model",
-        default=None,
-        metavar="NAME",
-        help="local Ollama decision model that scores candidates",
+        help="LLM for reading and the research tool",
     )
     parser.add_argument(
         "--searxng-url", default=None, help="SearXNG instance for search_web"
+    )
+    parser.add_argument(
+        "--browser-cdp-url",
+        default=None,
+        metavar="URL",
+        help="search the web (and read pages the plain fetch cannot) through this "
+        "Chrome instead of SearxNG, e.g. http://127.0.0.1:9222",
     )
     return parser
 
@@ -744,13 +671,9 @@ def main(argv: list[str]) -> None:
         openalex_api_key=os.environ.get("OPENALEX_API_KEY") or None,
         semantic_scholar_api_key=os.environ.get("SEMANTIC_SCHOLAR_API_KEY") or None,
         searxng_url=args.searxng_url,
+        browser_cdp_url=args.browser_cdp_url,
     )
-    tools = ResearchTools(
-        store,
-        model=args.model,
-        decision_model=args.decision_model,
-        sources=sources,
-    )
+    tools = ResearchTools(store, model=args.model, sources=sources)
     try:
         anyio.run(serve_stdio, tools)
     finally:

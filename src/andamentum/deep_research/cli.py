@@ -6,7 +6,7 @@ Usage::
                         [--decision-model NAME]
                         [--start-searxng --searxng-state-dir DIR]
     andamentum-research agents
-    andamentum-research mcp [--store PATH] [--model MODEL] [--decision-model NAME]
+    andamentum-research mcp [--store PATH] [--model MODEL] [--searxng-url URL | --browser-cdp-url URL]
     andamentum-research v2 "QUESTION" --mode {web,scholarly,both} --model MODEL [...]
 """
 

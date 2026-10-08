@@ -36,9 +36,8 @@ from ..sources.local_corpus import (
     read_summary,
     work_of,
 )
-from ..steps import is_scholarly
+from ..search import is_scholarly
 from ..store import SCHEMA_VERSION, ResearchStore
-from ..types import ScreeningEntry
 from .local_world import (
     APOLLO_A,
     APOLLO_B,
@@ -100,14 +99,6 @@ def test_a_local_record_can_seed_citation_expansion() -> None:
     assert not is_scholarly(Work(title="A page"))
 
 
-def test_a_screening_entry_keeps_the_local_id_for_matching() -> None:
-    entry = ScreeningEntry(
-        work_id="w1", subquestion_id="S1", arrival=0, local_id="local:7", title="T"
-    )
-    assert entry.identity().local_id == "local:7"
-    assert set(entry.identity().hard_keys()) & set(local("7").hard_keys())
-
-
 # -- the store ----------------------------------------------------------------------
 
 
@@ -138,9 +129,8 @@ def test_a_store_of_version_three_gains_the_local_id_column(
     )
     raw.commit()
     raw.close()
-    assert SCHEMA_VERSION == 5  # version 5 adds the embedding cache
     with ResearchStore(path) as store:
-        assert store.schema_version() == 5
+        assert store.schema_version() == SCHEMA_VERSION
         assert store.find_work(Work(doi="10.5555/kept")) is not None
         stored = store.upsert_work(Work(local_id="local:7", title="Seven"))
         assert stored.local_id == "local:7"
@@ -405,17 +395,3 @@ def test_naming_the_local_source_without_a_folder_is_a_config_error() -> None:
             SourceConfig(scholarly=("local_corpus",)), store=store, mode="scholarly"
         )
     assert error.value.kind == "config" and "local_corpus" in error.value.reason
-
-
-def test_the_corpus_folder_is_not_recorded_in_a_run(corpus: Path) -> None:
-    """It is an address on one machine, like a secret."""
-    from ..config import PRESETS
-    from ..graph import _run_config  # type: ignore[attr-defined]
-    from ..types import Budget
-
-    config = SourceConfig(scholarly=("local_corpus",), local_corpus=corpus)
-    assert config.model_dump(mode="json")["local_corpus"] == str(corpus)
-    recorded = _run_config(Budget(), config, config=PRESETS["baseline"], frozen=None)
-    sources = recorded["sources"]
-    assert isinstance(sources, dict)
-    assert "local_corpus" not in sources and sources["scholarly"] == ["local_corpus"]

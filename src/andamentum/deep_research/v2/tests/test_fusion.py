@@ -64,10 +64,13 @@ def test_cited_first_then_chosen_then_the_rest() -> None:
     assert order == ["W1", "W4", "W3", "W2", "W5"]
 
 
-def test_ties_break_by_work_id() -> None:
+def test_ties_keep_the_order_of_the_candidates_not_the_work_id() -> None:
     order = rank_works(CANDIDATES, cited=[], chosen=[])
     assert order == ["W3", "W2", "W5", "W1", "W4"]
-    assert order.index("W2") < order.index("W5")
+    first = {"W9": _candidate("W9", alpha=1), "W1": _candidate("W1", alpha=1)}
+    assert rank_works(first, cited=[], chosen=[]) == ["W9", "W1"]
+    # works read keep the order they were read in
+    assert rank_works(first, cited=[], chosen=["W1", "W9"]) == ["W1", "W9"]
 
 
 def test_excluded_never_appear_and_unknown_ids_are_skipped() -> None:

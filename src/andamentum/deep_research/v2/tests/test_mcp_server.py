@@ -1,8 +1,8 @@
 """The v2 MCP server through the SDK's in-memory client, over the real engine.
 
-Real adapters, store, screener and reader; the network is the invented world of
+Real adapters, store and reader; the network is the invented world of
 ``engine_world.py`` behind a mock transport, the language model is
-``ScriptedLLM`` and the decision model ``StubDecisions``.
+``ScriptedLLM``.
 """
 
 from __future__ import annotations
@@ -30,7 +30,6 @@ from .engine_world import (
     SEARXNG,
     SUBQ_APOLLO,
     World,
-    world_decisions,
     world_llm,
 )
 
@@ -39,20 +38,10 @@ ALL_TOOLS = {
     "search_web",
     "expand_citations",
     "read_work",
-    "screen",
     "record_finding",
     "get_run",
     "research",
 }
-APOLLO_CRITERIA = [
-    {
-        "id": "Q1-C1",
-        "text": "Is the result about the Apollo cache?",
-        "kind": "must",
-        "weight": 3,
-        "applies_to": "candidate",
-    }
-]
 
 
 @pytest.fixture(autouse=True)
@@ -72,7 +61,6 @@ def store() -> ResearchStore:
 def serve(
     *,
     model: bool = True,
-    decision: bool = True,
     searxng: bool = True,
     world: World | None = None,
 ):
@@ -89,7 +77,6 @@ def serve(
             tools = mcp_server.ResearchTools(
                 store,
                 model=world_llm().model if model else None,
-                decision_model=world_decisions()[0] if decision else None,
                 sources=SourceConfig(
                     searxng_url=SEARXNG if searxng else None, scholarly=("openalex",)
                 ),
@@ -178,7 +165,8 @@ async def test_search_web_keeps_results_as_works(
 @serve(searxng=False)
 async def test_search_web_needs_an_address(client: ClientSession, store: ResearchStore):
     result = await client.call_tool("search_web", {"query": "apollo"})
-    assert result.isError and "--searxng-url" in message(result)
+    text = message(result)
+    assert result.isError and "--searxng-url" in text and "--browser-cdp-url" in text
 
 
 @serve()
@@ -217,7 +205,7 @@ async def test_expand_citations_of_an_unknown_work(
 # --------------------------------------------------------------------- read
 
 
-@serve(model=False, decision=False)
+@serve(model=False)
 async def test_read_work_fetch_stores_passages_without_a_model(
     client: ClientSession, store: ResearchStore
 ):
@@ -232,7 +220,7 @@ async def test_read_work_fetch_stores_passages_without_a_model(
     assert store.passages_for_work(work_id)
 
 
-@serve(model=False, decision=False)
+@serve(model=False)
 async def test_read_work_of_a_restricted_work_has_no_abstract_anywhere(
     client: ClientSession, store: ResearchStore
 ):
@@ -250,7 +238,7 @@ async def test_read_work_of_a_restricted_work_has_no_abstract_anywhere(
     assert result["abstract"] == ""
 
 
-@serve(model=False, decision=False)
+@serve(model=False)
 async def test_read_work_fetch_excludes_a_retracted_work(
     client: ClientSession, store: ResearchStore
 ):
@@ -297,112 +285,6 @@ async def test_read_work_for_a_subquestion_needs_a_run(
         {"work_id": ids["10.5555/apollo-a"], "subquestion": SUBQ_APOLLO},
     )
     assert result.isError and "run_id" in message(result)
-
-
-# ------------------------------------------------------------------- screen
-
-
-@serve(decision=True)
-async def test_screen_with_the_decision_model_records_every_answer(
-    client: ClientSession, store: ResearchStore
-):
-    ids = await _apollo_works(client)
-    saltlog = data(await client.call_tool("search_works", {"query": "saltlog"}))
-    work_ids = [ids["10.5555/apollo-a"], saltlog["works"][0]["work_id"]]
-    result = data(
-        await client.call_tool(
-            "screen",
-            {
-                "subquestion": SUBQ_APOLLO,
-                "work_ids": work_ids,
-                "criteria": APOLLO_CRITERIA,
-            },
-        )
-    )
-    kept = {s["work_id"]: s["kept"] for s in result["scores"]}
-    assert kept == {work_ids[0]: True, work_ids[1]: False}
-    run_id = result["run_id"]
-    decisions = store.decisions(run_id, "screen")
-    assert len(decisions) == 2 * 2  # one criterion and the source type, per work
-    assert {d.model for d in decisions} == {"ollama:nimble:9b"}
-    candidates = store.run_items(run_id, "candidate")
-    assert len(candidates) == 2
-
-
-@serve(decision=False)
-async def test_screen_compiles_criteria_and_scores_with_the_llm(
-    client: ClientSession, store: ResearchStore
-):
-    ids = await _apollo_works(client)
-    result = data(
-        await client.call_tool(
-            "screen",
-            {"subquestion": SUBQ_APOLLO, "work_ids": [ids["10.5555/apollo-a"]]},
-        )
-    )
-    assert [c["text"] for c in result["criteria"]][0] == (
-        "Is the result about the Apollo cache?"
-    )
-    assert result["scores"][0]["kept"] is True
-    rows = store.run_items(result["run_id"], "criterion")
-    assert rows and rows[0].data["origin"] == "compiled"
-    assert store.decisions(result["run_id"], "screen")
-
-
-@serve(model=False, decision=False)
-async def test_screen_needs_a_scorer(client: ClientSession, store: ResearchStore):
-    ids = await _apollo_works(client)
-    result = await client.call_tool(
-        "screen",
-        {
-            "subquestion": SUBQ_APOLLO,
-            "work_ids": [ids["10.5555/apollo-a"]],
-            "criteria": APOLLO_CRITERIA,
-        },
-    )
-    assert result.isError and "--model or --decision-model" in message(result)
-
-
-@serve(model=False, decision=True)
-async def test_screen_without_criteria_needs_a_model(
-    client: ClientSession, store: ResearchStore
-):
-    ids = await _apollo_works(client)
-    result = await client.call_tool(
-        "screen", {"subquestion": SUBQ_APOLLO, "work_ids": [ids["10.5555/apollo-a"]]}
-    )
-    assert result.isError and "compile" in message(result)
-
-
-@serve(decision=True)
-async def test_two_screens_in_one_run_keep_their_subquestions_apart(
-    client: ClientSession, store: ResearchStore
-):
-    ids = await _apollo_works(client)
-    first = data(
-        await client.call_tool(
-            "screen",
-            {
-                "subquestion": SUBQ_APOLLO,
-                "work_ids": [ids["10.5555/apollo-a"]],
-                "criteria": APOLLO_CRITERIA,
-            },
-        )
-    )
-    second = data(
-        await client.call_tool(
-            "screen",
-            {
-                "subquestion": "Is the Apollo cache safe for write paths?",
-                "work_ids": [ids["10.5555/apollo-a"]],
-                "criteria": APOLLO_CRITERIA,
-                "run_id": first["run_id"],
-            },
-        )
-    )
-    assert (first["subquestion_id"], second["subquestion_id"]) == ("Q1", "Q2")
-    subquestions = store.run_items(first["run_id"], "subquestion")
-    assert [i.ref_id for i in subquestions] == ["Q1", "Q2"]
 
 
 # ------------------------------------------------------------------ findings
@@ -522,7 +404,7 @@ async def test_get_run_lists_runs_and_reports_unknown(
     assert missing.isError
 
 
-@serve(decision=True)
+@serve()
 async def test_research_runs_the_engine_against_the_servers_store(
     client: ClientSession, store: ResearchStore
 ):
@@ -536,7 +418,7 @@ async def test_research_runs_the_engine_against_the_servers_store(
             },
         )
     )
-    assert result["stop_reason"] == "covered"
+    assert result["stop_reason"] == "answered"
     assert result["findings"]
     record = store.get_run(result["run_id"])
     assert record is not None and record.finished_at is not None
@@ -588,21 +470,21 @@ def test_main_opens_the_store_at_the_given_path(
     async def fake_serve(tools: mcp_server.ResearchTools) -> None:
         opened["path"] = tools.store.path
         opened["model"] = tools.model
-        opened["decision"] = tools.has_decision_model
         opened["searxng"] = tools.config.searxng_url
+        opened["chrome"] = tools.config.browser_cdp_url
         await tools.aclose()
 
     monkeypatch.setattr(mcp_server, "serve_stdio", fake_serve)
     path = tmp_path / "lab" / "research.db"
     mcp_server.main(
-        ["--store", str(path), "--model", "m", "--decision-model", "d"]
-        + ["--searxng-url", "http://searx.test"]
+        ["--store", str(path), "--model", "m", "--searxng-url", "http://searx.test"]
+        + ["--browser-cdp-url", "http://127.0.0.1:9222"]
     )
     assert opened == {
         "path": path,
         "model": "m",
-        "decision": True,
         "searxng": "http://searx.test",
+        "chrome": "http://127.0.0.1:9222",
     }
     assert path.exists()
 

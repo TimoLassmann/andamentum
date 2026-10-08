@@ -22,7 +22,6 @@ event loop and a worker thread cannot interleave a write. All SQL is here.
 from __future__ import annotations
 
 import hashlib
-from array import array
 import json
 import os
 import re
@@ -48,7 +47,7 @@ from andamentum.references.works import ID_FIELDS, title_key
 
 from .types import Passage
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 TTL_SEARCH_S = 7 * 86_400
 TTL_METADATA_S = 30 * 86_400
@@ -60,17 +59,7 @@ INLINE_BLOB_LIMIT = 16 * 1024
 # every write: expired rows go first, then the least recently used.
 HTTP_CACHE_MAX_BYTES = 200 * 1024 * 1024
 
-RunItemKind = Literal[
-    "subquestion",
-    "criterion",
-    "candidate",
-    "finding",
-    "conflict",
-    "coverage",
-    "flag",
-    "check",
-    "log",
-]
+RunItemKind = Literal["subquestion", "finding", "flag", "log"]
 
 _DIGEST = re.compile(r"[0-9a-f]{64}")
 _WORK_COLUMNS = (
@@ -233,6 +222,15 @@ CREATE TABLE embeddings (
 );
 """
 
+# The decision-answer cache, the determinism check and the embedding cache served
+# strategies the engine no longer has; their tables go (``decisions``, the audit
+# trail of the novelty check's decision model, stays).
+_SCHEMA_V6 = """
+DROP TABLE IF EXISTS decision_cache;
+DROP TABLE IF EXISTS decision_determinism;
+DROP TABLE IF EXISTS embeddings;
+"""
+
 # Migrations by the version they produce. Development: no shims for old files.
 _MIGRATIONS: dict[int, str] = {
     1: _SCHEMA_V1,
@@ -240,6 +238,7 @@ _MIGRATIONS: dict[int, str] = {
     3: _SCHEMA_V3,
     4: _SCHEMA_V4,
     5: _SCHEMA_V5,
+    6: _SCHEMA_V6,
 }
 
 
@@ -1210,113 +1209,6 @@ class ResearchStore:
                 )
             except sqlite3.IntegrityError as error:
                 raise StoreError(f"unknown run {run_id}") from error
-
-    # -- decision cache ---------------------------------------------------
-
-    def cached_answers(
-        self, *, digest: str, question_hash: str, state_hash: str
-    ) -> dict[str, JsonValue] | None:
-        """The answers stored for this model, request and state, or ``None``."""
-        with self._lock:
-            row = self._conn.execute(
-                "SELECT answers_json FROM decision_cache "
-                "WHERE digest = ? AND question_hash = ? AND state_hash = ?",
-                (digest, question_hash, state_hash),
-            ).fetchone()
-        if row is None:
-            return None
-        stored: dict[str, JsonValue] = json.loads(row["answers_json"])
-        return stored
-
-    def cache_answers(
-        self,
-        *,
-        digest: str,
-        question_hash: str,
-        state_hash: str,
-        answers: Mapping[str, JsonValue],
-    ) -> None:
-        """Remember the answers of one request (a repeat replaces it)."""
-        with self._lock:
-            self._conn.execute(
-                "INSERT OR REPLACE INTO decision_cache VALUES (?, ?, ?, ?)",
-                (digest, question_hash, state_hash, json.dumps(dict(answers))),
-            )
-
-    # -- embedding cache --------------------------------------------------
-
-    def _own_embeddings(
-        self, *, model: str, shas: Sequence[str]
-    ) -> dict[str, list[float]]:
-        found: dict[str, list[float]] = {}
-        with self._lock:
-            for start in range(0, len(shas), 500):
-                chunk = list(shas[start : start + 500])
-                marks = ",".join("?" * len(chunk))
-                rows = self._conn.execute(
-                    f"SELECT text_sha, vector FROM embeddings "
-                    f"WHERE model = ? AND text_sha IN ({marks})",
-                    (model, *chunk),
-                ).fetchall()
-                for row in rows:
-                    found[row["text_sha"]] = array("f", row["vector"]).tolist()
-        return found
-
-    def cached_embeddings(
-        self, *, model: str, shas: Sequence[str]
-    ) -> dict[str, list[float]]:
-        """The vectors held for *model* (digest or name) and these text
-        sha256s. An own miss reads through to the shared cache (``shared_cache=``)
-        and the vector found there is copied into this store."""
-        found = self._own_embeddings(model=model, shas=shas)
-        missing = [s for s in shas if s not in found]
-        if missing and self._shared is not None:
-            shared = self._shared._own_embeddings(model=model, shas=missing)
-            if shared:
-                self._put_embeddings(model=model, vectors=shared)
-                found.update(shared)
-        return found
-
-    def _put_embeddings(
-        self, *, model: str, vectors: Mapping[str, Sequence[float]]
-    ) -> None:
-        with self._lock:
-            self._conn.executemany(
-                "INSERT OR REPLACE INTO embeddings VALUES (?, ?, ?)",
-                [
-                    (model, sha, array("f", vector).tobytes())
-                    for sha, vector in vectors.items()
-                ],
-            )
-
-    def cache_embeddings(
-        self, *, model: str, vectors: Mapping[str, Sequence[float]]
-    ) -> None:
-        """Remember vectors by text sha256 for *model*, here and in the shared
-        cache when there is one."""
-        self._put_embeddings(model=model, vectors=vectors)
-        if self._shared is not None:
-            self._shared._put_embeddings(model=model, vectors=vectors)
-
-    def determinism_of(self, digest: str) -> tuple[bool, str] | None:
-        """What the determinism check found for this model digest: whether
-        identical requests gave identical answers, and the detail. ``None``
-        if it was never checked in this store."""
-        with self._lock:
-            row = self._conn.execute(
-                "SELECT deterministic, detail FROM decision_determinism WHERE digest = ?",
-                (digest,),
-            ).fetchone()
-        return (bool(row["deterministic"]), row["detail"]) if row else None
-
-    def record_determinism(
-        self, digest: str, *, deterministic: bool, detail: str
-    ) -> None:
-        with self._lock:
-            self._conn.execute(
-                "INSERT OR REPLACE INTO decision_determinism VALUES (?, ?, ?, ?)",
-                (digest, int(deterministic), detail, self._clock()),
-            )
 
     def decisions(self, run_id: str, step: str | None = None) -> list[DecisionRecord]:
         query = "SELECT * FROM decisions WHERE run_id = ?"

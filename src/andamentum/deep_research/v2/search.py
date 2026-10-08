@@ -201,10 +201,10 @@ def expansion_seeds(
     expanded: set[str],
     limit: int = MAX_EXPAND_SEEDS,
 ) -> list[Work]:
-    """Scholarly works not yet expanded, best score first (ties by work id), at
-    most *limit*. *scores* maps a work id to how good a seed it is (the engine
+    """Scholarly works not yet expanded, best score first (a tie keeps the order
+    of *scores*: a work id is random per store), at most *limit*. *scores* maps a work id to how good a seed it is (the engine
     gives works that were read and gave findings)."""
-    ordered = sorted(scores.items(), key=lambda item: (-item[1], item[0]))
+    ordered = sorted(scores.items(), key=lambda item: -item[1])
     seeds: list[Work] = []
     for work_id, _ in ordered:
         candidate = candidates.get(work_id)
