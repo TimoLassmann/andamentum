@@ -32,7 +32,6 @@ from ._draft_helpers import (
     default_script,
     install_script,
     make_project,
-    saltlog_literature,
 )
 from ._draft_helpers import BODIES, WORK_CSL, _section_of
 
@@ -84,6 +83,7 @@ class Tools:
         self.library_works = library
         self.read_calls: list[str] = []
         self.verified: list[str] = []
+        self.asked: list[str] = []
         self.tools = CiteTools(
             library=self.library if library is not None else None,
             finder=self.finder,
@@ -97,6 +97,7 @@ class Tools:
         return list(self.library_works or [])
 
     async def finder(self, sentence: str, *, paragraph: str) -> list[Work]:
+        self.asked.append(sentence)
         return list(self.found)
 
     async def read(self, work: Work, *, query: str) -> WorkText:
@@ -159,7 +160,6 @@ async def draft(
         roles=ROLES,
         sources=[str(notes)],
         results=results,
-        literature=saltlog_literature(),
         cite=tools.tools,
         offline=True,
     )
@@ -231,9 +231,9 @@ async def test_a_paper_already_in_the_store_is_not_fetched_again(
         result, _ = await draft(tmp_path, monkeypatch, tools)
         assert await papers.count() == 1
     assert tools.read_calls == []
-    # both candidate sentences took the stored paper; nothing was fetched
+    # every candidate sentence took the stored paper; nothing was fetched
     assert "0 added to" in result.report.read_text(encoding="utf-8")
-    assert "2 taken from it" in result.report.read_text(encoding="utf-8")
+    assert "3 taken from it" in result.report.read_text(encoding="utf-8")
 
 
 async def test_a_work_that_fails_verification_is_never_cited(
@@ -310,14 +310,13 @@ async def test_a_paper_that_supports_two_sentences_is_one_source(
             roles=ROLES,
             sources=[str(notes)],
             results=results,
-            literature=saltlog_literature(),
             cite=tools.tools,
             offline=True,
         )
         assert await papers.count() == 1
     report = result.report.read_text(encoding="utf-8")
     assert (
-        "2 cited" in report and "1 added to" in report and "1 taken from it" in report
+        "3 cited" in report and "1 added to" in report and "2 taken from it" in report
     )
     assert sum(1 for w in result.works if SUPPORTING_DOI in w) == 1
 
@@ -333,7 +332,7 @@ def docx_paragraphs(path: Path) -> list[str]:
     ]
 
 
-async def test_a_work_made_a_source_by_the_literature_step_gets_its_own_full_text_source(
+async def test_a_cited_papers_fact_indexes_the_text_its_source_holds(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     doi = str(WORK_CSL["DOI"])
@@ -590,3 +589,52 @@ async def test_a_changed_sentence_that_is_not_one_plain_sentence_is_not_cited(
     report = result.report.read_text(encoding="utf-8")
     assert "the changed sentence is not one plain sentence" in report
     assert not any(SUPPORTING_DOI in w for w in result.works)
+
+
+def test_a_library_items_abstract_loses_its_markup() -> None:
+    from andamentum.compose.harness.draft.cite import work_from_csl
+
+    work = work_from_csl(
+        {"title": "An invented study", "abstract": "<jats:p>Logs  help.</jats:p>"}
+    )
+    assert work.abstract == "Logs help."
+
+
+async def test_a_sentence_that_cannot_be_placed_costs_no_search(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Markdown inside the sentence: its cleaned text is not in the raw body,
+    so the loop notes it and never asks the finder or the judge about it."""
+    body = "The gain **suggests** that logging helps teachers deliver sessions consistently."
+    path = tmp_path / "papers.db"
+    async with await Store.open(path) as papers:
+        tools = Tools(papers, path, found=[SUPPORTING], texts={SUPPORTING_DOI: PAPER})
+        result, script = await draft(
+            tmp_path, monkeypatch, tools, discussion=body, answer=lambda m: SUPPORTS
+        )
+    assert not any("The gain suggests" in sentence for sentence in tools.asked)
+    assert not any(
+        "The gain suggests" in message
+        for kind, message in script.calls
+        if kind is CiteVerdict
+    )
+    assert "could not be placed in the draft text" in result.report.read_text(
+        encoding="utf-8"
+    )
+
+
+async def test_a_sentence_written_twice_is_never_cited(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The edit needs exactly one place: a sentence that occurs twice is noted,
+    not cited in one of its places by chance."""
+    body = f"{DISCUSSION}\n\n{DISCUSSION}"
+    path = tmp_path / "papers.db"
+    async with await Store.open(path) as papers:
+        tools = Tools(papers, path, found=[SUPPORTING], texts={SUPPORTING_DOI: PAPER})
+        result, _ = await draft(
+            tmp_path, monkeypatch, tools, discussion=body, answer=lambda m: SUPPORTS
+        )
+    assert DISCUSSION not in tools.asked
+    report = result.report.read_text(encoding="utf-8")
+    assert "found zero or several times" in report

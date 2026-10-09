@@ -5,9 +5,10 @@ this module sequences them around a ``.docx`` instead of a bundle folder:
 
 1. a project folder ``state/`` beside ``out`` (the harness store; or *project*) and a scratch
    folder inside it for the workers' artefacts;
-2. sources, result files, the text of the document being extended and verified
-   literature become compose sources; one call per source extracts quote-checked
-   facts (``[[fN]]`` markers in the drafts point at them);
+2. sources, result files and the text of the document being extended become
+   compose sources; one call per source extracts quote-checked facts
+   (``[[fN]]`` markers in the drafts point at them); literature enters only
+   after drafting, through the cite loop (``cite.py``);
 3. an outline, then one draft per target section; every sentence is analysed
    (``claims``): what it rests on, which numbers bind to result files;
 4. a build writes the sections into a copy of the base document as tracked
@@ -104,7 +105,7 @@ from .claims import (
 from .disclosure import HEADING as AI_HEADING
 from .disclosure import ai_use_statement
 from .cite import CiteTools, Rewrite, cite_sentences
-from .works import LiteratureSearch, ResearchRun, gather_works, work_source
+from .works import ResearchRun
 
 DEFAULT_MAX_ROUNDS = 2
 EXIT_OK, EXIT_OPEN, EXIT_USAGE = 0, 1, 2
@@ -307,7 +308,6 @@ async def _gather_evidence(
     sources: Sequence[str],
     existing: Path | None,
     brief_genre: Genre | None,
-    literature: LiteratureSearch | None,
     research: ResearchRun | None,
     confirm_own_sources: bool,
 ) -> tuple[Brief, Genre, _Evidence]:
@@ -352,17 +352,6 @@ async def _gather_evidence(
     bundle_store.save_brief(run.work, brief)
 
     evidence = _Evidence(sources=list(ingested), facts=[], infos=infos)
-    if literature is not None and genre.cites:
-        found = await gather_works(brief, search=literature, progress=run.progress)
-        evidence.unverified = found.unverified
-        evidence.notes += [f"work not used: {line}" for line in found.unused]
-        for work in found.works:
-            source, text = work_source(
-                work, number=len(evidence.sources) + 1, bundle_dir=run.work
-            )
-            evidence.sources.append(source)
-            evidence.infos[source.id] = SourceInfo(source=source, work=work)
-            text_of[source.id] = text
     for source in evidence.sources:
         run.progress(f"Evidence: reading {source.title}")
         found_facts = await extract_facts(
@@ -979,7 +968,6 @@ async def draft_document(
     genre: str | None = None,
     sources: Sequence[str] = (),
     results: str | Path | None = None,
-    literature: LiteratureSearch | None = None,
     research: ResearchRun | None = None,
     cite: CiteTools | None = None,
     template: str | Path | None = None,
@@ -996,8 +984,7 @@ async def draft_document(
 
     *roles* names the model for each job (the drafter writes, the judge labels
     claims and runs the numbers check; the critic and reader roles are part of
-    the compose roles and unused here). *literature* answers queries with
-    verified works; without it nothing is cited. *research* runs
+    the compose roles and unused here). *research* runs
     ``deep_research`` once in the genre's mode over ``<project>/research.db``; *project* is the folder that keeps the ledger and logs (default ``state/`` beside *out*)
     and adds each verified work that has a finding (its quotes are checked
     passages) as a source; without it nothing is searched. *cite* runs the cite
@@ -1067,7 +1054,6 @@ async def draft_document(
         sources=sources,
         existing=existing,
         brief_genre=preset,
-        literature=literature,
         research=research,
         confirm_own_sources=confirm_own_sources,
     )

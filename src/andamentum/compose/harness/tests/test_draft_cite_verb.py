@@ -111,6 +111,37 @@ async def test_the_finders_search_outage_lands_in_source_notes(
     await client.aclose()
 
 
+async def test_a_read_failure_lands_in_source_notes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from andamentum.deep_research import WorkText
+    from andamentum.references import Work
+
+    line = "europepmc could not give the text of An invented paper: HTTP 500"
+
+    async def fake_read(work: Work, **_kwargs: object) -> WorkText:
+        return WorkText(work=work, failed=[line])
+
+    monkeypatch.setattr("andamentum.deep_research.read_work", fake_read)
+    client = httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda request: httpx.Response(404))
+    )
+    async with search.cite_tools(
+        sources=Sources(),
+        http=ReferenceHttp(client=client),
+        model="stub:m",
+        store=tmp_path / "papers.db",
+        cache=tmp_path / "cache.db",
+        mailto=None,
+    ) as tools:
+        found = await tools.read(
+            Work(doi="10.5555/x.2", title="An invented paper"), query="A sentence."
+        )
+        assert found.text == ""
+        assert tools.source_notes == [f"read failed: {line}"]
+    await client.aclose()
+
+
 async def test_an_existing_document_store_is_accepted(tmp_path: Path) -> None:
     from andamentum.document_store import Store
 

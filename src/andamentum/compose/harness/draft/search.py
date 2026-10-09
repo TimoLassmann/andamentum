@@ -1,22 +1,15 @@
-"""``LiteratureSearch`` over the harness literature layer: find, then verify each work.
+"""Where ``draft`` meets the literature and the research engine.
 
-The one place ``draft`` meets ``harness.literature``: a query goes to
-``find_works`` (library file, Zotero read-only, Crossref), every candidate goes
-through ``resolve`` (exists, details agree, not retracted), and the answer
-separates verified works from a line per work that could not be verified. A
-source that cannot answer raises (``LiteratureError``); it is never an empty
-result.
-
-A verified work can back a fact only through its abstract, which comes from the
-CSL ``abstract`` field (a library file or Zotero item that has one; JATS tags
-are removed). Crossref's search does not return abstracts, so a work found only
-there is verified but not quotable and the report lists it as not used.
+``cite_tools`` builds the cite loop's tools (the library file and Zotero
+through ``harness.literature``, the scholarly finder and reader of
+``deep_research``, verification through ``resolve``: the DOI exists, the
+details agree, the work is not retracted) and ``research_literature`` runs
+``deep_research`` once and verifies the works with findings the same way.
 """
 
 from __future__ import annotations
 
 import os
-import re
 from collections.abc import AsyncIterator, Callable
 from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import replace
@@ -29,43 +22,7 @@ from andamentum.references import Work as ScholarlyWork
 
 from ..literature import Sources, Unverified, Work, find_works, resolve
 from .cite import CANDIDATES_PER_SENTENCE, CiteTools, work_from_csl
-from .works import (
-    CitableWork,
-    LiteratureFinding,
-    LiteratureSearch,
-    ResearchFinding,
-    ResearchRun,
-)
-
-_TAG = re.compile(r"<[^>]+>")
-
-
-def abstract_of(csl: dict[str, object]) -> str:
-    return " ".join(_TAG.sub(" ", str(csl.get("abstract") or "")).split())
-
-
-def literature_search(*, sources: Sources, http: ReferenceHttp) -> LiteratureSearch:
-    """A search that returns verified works only (see the module docstring)."""
-
-    async def search(query: str, *, limit: int) -> LiteratureFinding:
-        finding = LiteratureFinding()
-        for work in await find_works(query, sources=sources, limit=limit):
-            verdict = await resolve(work, http=http)
-            if isinstance(verdict, Unverified):
-                year = f" ({verdict.work.year})" if verdict.work.year else ""
-                finding.unverified.append(
-                    f"{verdict.work.title}{year}: {verdict.reason}"
-                )
-                continue
-            checked = verdict.work
-            finding.works.append(
-                CitableWork(
-                    csl=checked.csl, abstract=abstract_of(checked.csl), uri=checked.uri
-                )
-            )
-        return finding
-
-    return search
+from .works import CitableWork, ResearchFinding, ResearchRun
 
 
 def research_literature(
@@ -163,9 +120,19 @@ async def cite_tools(
     own = replace(sources, crossref=None)
     has_library = own.library is not None or own.zotero is not None
 
+    # library items by identity key, so a cited one is verified as itself and
+    # keeps its Zotero item URI (a Zotero field, not plain text)
+    from_library: dict[tuple[str, str], Work] = {}
+
     async def library(sentence: str) -> list[ScholarlyWork]:
         found = await find_works(sentence, sources=own, limit=LIBRARY_PER_SENTENCE)
-        return [work_from_csl(w.csl) for w in found]
+        works = []
+        for item in found:
+            work = work_from_csl(item.csl)
+            for key in work.identity_keys():
+                from_library.setdefault(key, item)
+            works.append(work)
+        return works
 
     source_notes: list[str] = []
 
@@ -201,8 +168,14 @@ async def cite_tools(
             return text
 
         async def verify(work: ScholarlyWork) -> CitableWork | str:
-            csl: dict[str, object] = dict(work.to_csl())
-            verdict = await resolve(Work(csl=csl, source="crossref"), http=http)
+            item = next(
+                (from_library[k] for k in work.identity_keys() if k in from_library),
+                None,
+            )
+            if item is None:
+                csl: dict[str, object] = dict(work.to_csl())
+                item = Work(csl=csl, source="crossref")
+            verdict = await resolve(item, http=http)
             if isinstance(verdict, Unverified):
                 year = f" ({verdict.work.year})" if verdict.work.year else ""
                 return f"{verdict.work.title}{year}: {verdict.reason}"

@@ -18,11 +18,10 @@ from andamentum.compose.harness.bench.fixture_http import (
 )
 from andamentum.compose.harness.bench.planted import load_fixtures
 from andamentum.compose.harness.docx.reader import open_docx
+from andamentum.compose.harness.draft.cite import CiteVerdict
 from andamentum.compose.harness.draft import (
     DraftResult,
     DraftUsageError,
-    LiteratureFinding,
-    CitableWork,
     draft_document,
 )
 from andamentum.compose.harness.kernel import ProjectStore
@@ -33,12 +32,10 @@ from ._draft_helpers import (
     BODIES,
     ROLES,
     SECTIONS,
-    UNVERIFIED_LINE,
     default_script,
-    fixed_literature,
     install_script,
     make_project,
-    saltlog_literature,
+    saltlog_cite_tools,
 )
 
 W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
@@ -52,11 +49,13 @@ async def write(tmp_path: Path, **overrides: object) -> DraftResult:
         roles=ROLES,
         sources=[str(notes)],
         results=results,
-        literature=saltlog_literature(),
         offline=True,
     )
     arguments.update(overrides)
-    return await draft_document(TASK, **arguments)  # type: ignore[arg-type]
+    if "cite" in arguments:
+        return await draft_document(TASK, **arguments)  # type: ignore[arg-type]
+    async with saltlog_cite_tools(tmp_path) as cite:
+        return await draft_document(TASK, cite=cite, **arguments)  # type: ignore[arg-type]
 
 
 @pytest.fixture
@@ -148,10 +147,7 @@ async def test_questions_for_the_author_are_anchored_comments(
     )
     interpretations = [c for c in view.comments if c.text.startswith("Interpretation")]
     assert len(interpretations) == 2
-    unverified = [c for c in view.comments if UNVERIFIED_LINE in c.text]
-    assert len(unverified) == 1
     assert any("control group sample size" in q for q in result.author_questions)
-    assert any(UNVERIFIED_LINE in q for q in result.author_questions)
 
 
 async def test_the_ledger_has_claims_and_bound_numbers(
@@ -251,11 +247,11 @@ async def test_the_checks_ran_on_the_draft(written: tuple[DraftResult, Path]) ->
 # ------------------------------------------------------------- without extras
 
 
-async def test_without_literature_nothing_is_cited(
+async def test_without_the_cite_loop_nothing_is_cited(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     install_script(monkeypatch)
-    result = await write(tmp_path, literature=None)
+    result = await write(tmp_path, cite=None)
     view = open_docx(tmp_path / "paper.docx")
     assert result.citations == 0
     assert "References" not in [p.text for p in view.paragraphs]
@@ -292,60 +288,9 @@ async def test_a_genre_that_does_not_cite_asks_no_literature(
     )
     install_script(monkeypatch, handlers)
     asked: list[str] = []
-
-    async def search(query: str, *, limit: int) -> LiteratureFinding:
-        asked.append(query)
-        return LiteratureFinding()
-
-    await write(tmp_path, literature=search, genre="memo")
+    async with saltlog_cite_tools(tmp_path, asked=asked) as cite:
+        await write(tmp_path, cite=cite, genre="memo")
     assert asked == []
-
-
-async def test_the_drafter_is_told_a_literature_fact_is_another_works_finding(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A live draft wrote an unrelated thesis's benchmark result up as the author's."""
-    script = install_script(monkeypatch)
-    await write(tmp_path)
-    drafts = [m for t, m in script.calls if t is SectionBody]
-    work_lines = [
-        line
-        for m in drafts
-        for line in m.splitlines()
-        if "Another published work" in line
-    ]
-    assert work_lines and all("not this study" in line for line in work_lines)
-
-
-async def test_literature_is_queried_once_per_key_message(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    install_script(monkeypatch)
-    asked: list[tuple[str, int]] = []
-
-    async def search(query: str, *, limit: int) -> LiteratureFinding:
-        asked.append((query, limit))
-        return LiteratureFinding()
-
-    await write(tmp_path, literature=search)
-    assert [q for q, _ in asked] == [
-        "Structured logging improves fidelity",
-        "Reading scores rose",
-    ]
-
-
-async def test_a_work_without_an_abstract_is_not_used(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    install_script(monkeypatch)
-    bare = CitableWork(
-        csl={"id": "x", "title": "No abstract here", "DOI": "10.5555/bare"}, abstract=""
-    )
-    result = await write(
-        tmp_path, literature=fixed_literature(LiteratureFinding(works=[bare]))
-    )
-    assert any("No abstract here: no abstract to quote" in n for n in result.notes)
-    assert result.citations == 0
 
 
 # --------------------------------------------------------------------- online
@@ -376,18 +321,22 @@ async def test_online_the_citation_check_runs_against_the_reference_entries(
         "DOI": doi,
         "abstract": "Structured logging of reading sessions improves fidelity of delivery in school interventions.",
     }
-    install_script(monkeypatch)
-    result = await write(
-        tmp_path,
-        literature=fixed_literature(
-            LiteratureFinding(
-                works=[CitableWork(csl=csl, abstract=str(csl["abstract"]))]
-            )
-        ),
-        offline=False,
-        transport=fixture_transport(fixtures),
-        url_check=scheme_only_url_check,
+    handlers = default_script()
+    handlers[CiteVerdict] = lambda m: (
+        CiteVerdict(supports="yes", quote=str(csl["abstract"]))
+        if "improves delivery fidelity" in m
+        else CiteVerdict(supports="no")
     )
+    install_script(monkeypatch, handlers)
+    paper = f"# {csl['title']}\n\n{csl['abstract']}\n"
+    async with saltlog_cite_tools(tmp_path, csl=csl, paper=paper) as cite:
+        result = await write(
+            tmp_path,
+            cite=cite,
+            offline=False,
+            transport=fixture_transport(fixtures),
+            url_check=scheme_only_url_check,
+        )
     runs = [
         e
         for e in ProjectStore(result.project).read_events()
@@ -582,16 +531,17 @@ async def test_into_adds_the_named_section_and_leaves_the_rest(
     source = collaborator(tmp_path / "collab.docx")
     before = digest(source)
     notes, results = make_project(tmp_path)
-    result = await draft_document(
-        "Write the discussion section into the draft",
-        out=tmp_path / "out" / "paper.docx",
-        into=source,
-        roles=ROLES,
-        sources=[str(notes)],
-        results=results,
-        literature=saltlog_literature(),
-        offline=True,
-    )
+    async with saltlog_cite_tools(tmp_path) as cite:
+        result = await draft_document(
+            "Write the discussion section into the draft",
+            cite=cite,
+            out=tmp_path / "out" / "paper.docx",
+            into=source,
+            roles=ROLES,
+            sources=[str(notes)],
+            results=results,
+            offline=True,
+        )
     assert digest(source) == before  # the input is never touched
     assert result.sections == ["Discussion"]
     view = open_docx(tmp_path / "out" / "paper.docx")
@@ -731,29 +681,28 @@ async def test_into_a_zotero_document_the_citation_is_a_zotero_field(
     handlers = default_script()
     original = handlers[SectionBody]
     handlers[SectionBody] = lambda m: (
-        SectionBody(
-            body="Logging improves delivery fidelity [[f2]]."
-        )  # f1 is the notes
+        SectionBody(body="Logging improves delivery fidelity.")  # f1 is the notes
         if "SECTION: Discussion" in m
         else original(m)  # type: ignore[return-value]
     )
     install_script(monkeypatch, handlers)
     source = make_spike_docx(tmp_path / "spike.docx")
     notes, results = make_project(tmp_path)
-    result = await draft_document(
-        "Write the discussion",
-        out=tmp_path / "paper.docx",
-        into=source,
-        roles=ROLES,
-        sources=[str(notes)],
-        literature=saltlog_literature(),
-        offline=True,
-    )
+    async with saltlog_cite_tools(tmp_path) as cite:
+        result = await draft_document(
+            "Write the discussion",
+            cite=cite,
+            out=tmp_path / "paper.docx",
+            into=source,
+            roles=ROLES,
+            sources=[str(notes)],
+            offline=True,
+        )
     view = open_docx(tmp_path / "paper.docx")
     zotero = [f for f in view.fields if f.kind == "citation" and f.manager == "zotero"]
     assert [f.display for f in zotero] == ["(Doe, 2020)", "(Okafor, 2020)"]
     assert any(f.kind == "bibliography" and "Okafor" in f.display for f in view.fields)
-    assert result.citations == 1 and result.exit_code == 1  # author questions remain
+    assert result.citations == 1 and result.exit_code == 0
 
 
 async def test_write_never_overwrites_a_file(tmp_path: Path) -> None:

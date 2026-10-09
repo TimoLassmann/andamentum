@@ -68,7 +68,7 @@ async def test_the_statement_gives_the_counts_of_the_cite_step(
             verdict=CiteVerdict(supports="after_change", quote=QUOTE, sentence=CHANGED),
         )
     text = _statement(result.output)
-    assert "checked 2 sentences that cited nothing" in text
+    assert "checked 3 sentences that cited nothing" in text
     assert "1 sentence was cited" in text and "1 of them changed" in text
 
 

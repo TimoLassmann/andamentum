@@ -14,7 +14,6 @@ import asyncio
 import sys
 from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
-from dataclasses import replace
 import sqlite3
 from pathlib import Path
 from typing import Literal
@@ -31,8 +30,8 @@ from ..literature.access import open_literature
 from ..project import project_dir
 from .run import DraftResult, DraftUsageError, draft_document
 from .cite import CiteTools
-from .search import cite_tools, literature_search, research_literature
-from .works import LiteratureSearch, ResearchRun
+from .search import cite_tools, research_literature
+from .works import ResearchRun
 
 EXIT_OK, EXIT_USAGE, EXIT_OPEN = 0, 2, 1
 WORD_ROUNDS = 2
@@ -229,9 +228,7 @@ async def run_draft(
     project = project_dir(params.out, params.project)
 
     async def draft(
-        literature: LiteratureSearch | None,
-        research: ResearchRun | None = None,
-        cite: CiteTools | None = None,
+        research: ResearchRun | None = None, cite: CiteTools | None = None
     ) -> DraftResult:
         return await draft_document(
             params.task,
@@ -241,7 +238,6 @@ async def run_draft(
             genre=params.genre,
             sources=params.source,
             results=params.results,
-            literature=literature,
             research=research,
             cite=cite,
             template=params.template,
@@ -256,7 +252,7 @@ async def run_draft(
         )
 
     if params.offline:  # nothing is looked up, so nothing can be verified or cited
-        return await draft(None)
+        return await draft()
     papers = params.store or project / PAPERS_STORE
     if papers.is_dir():
         raise DraftUsageError(f"--store {papers} is a folder; name a store file")
@@ -282,22 +278,17 @@ async def run_draft(
             cache=project / CITE_CACHE,
             mailto=params.mailto,
         ) as cite:
-            if setup is None:
-                return await draft(
-                    literature_search(sources=sources, http=http), cite=cite
-                )
-            # Research replaces Crossref as the place new works are found; the
-            # user's library and Zotero are still searched, and every work, found
-            # either way, is verified through the same Crossref lookup.
-            discovery = replace(sources, crossref=None)
-            own = discovery.library is not None or discovery.zotero is not None
-            return await draft(
-                literature_search(sources=discovery, http=http) if own else None,
-                research_literature(
+            # Literature enters through the cite loop alone: the library and
+            # Zotero first, then the scholarly finder; every work it cites is
+            # verified through Crossref. Research adds its findings as evidence.
+            research = (
+                None
+                if setup is None
+                else research_literature(
                     setup=setup, model=roles.drafter, http=http, progress=say
-                ),
-                cite,
+                )
             )
+            return await draft(research, cite)
 
 
 def _rounds(params: DraftParams, default: int) -> int:
