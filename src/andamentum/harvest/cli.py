@@ -42,6 +42,11 @@ EXIT_FAILED = 4
 _LOGGER_NAME = "andamentum.harvest"
 
 _EPILOG = """\
+examples:
+  andamentum-harvest paper.pdf -o paper.md
+  andamentum-harvest https://example.org/article -o article.md
+  andamentum-harvest paper.pdf --mode accurate --figure-model ollama:qwen3.8 -o paper.md
+
 exit status:
   0  success
   2  usage error (a wrong or missing argument; --mode accurate without

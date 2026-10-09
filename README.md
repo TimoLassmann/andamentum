@@ -90,21 +90,39 @@ confidence.
 
 ## Installation
 
-```bash
-pip install andamentum
-```
-
-The core install works out of the box. Two optional extras add heavier,
-self-contained capabilities:
+andamentum is installed from GitHub. (The name `andamentum` on PyPI belongs to
+an unrelated project, so `pip install andamentum` does not give you this
+package.)
 
 ```bash
-pip install 'andamentum[html-articles]'   # trafilatura — best-in-class HTML article extraction
-pip install 'andamentum[pdf]'             # WeasyPrint — PDF output for andamentum-typeset
+# the command-line tools, each on your PATH
+uv tool install "andamentum @ git+https://github.com/timolassmann/andamentum.git"
+
+# or as a library in your own project
+uv add "andamentum @ git+https://github.com/timolassmann/andamentum.git"
 ```
+
+Three optional extras add heavier capabilities. Name them in brackets, for
+example `"andamentum[pdf] @ git+https://..."`:
+
+- `pdf`: WeasyPrint, for PDF output from `andamentum-typeset`
+- `html-articles`: trafilatura, for better extraction of HTML articles
+- `vlm`: local vision-language models for `andamentum-harvest --mode accurate`
+  (large; Apple silicon gets the fastest path)
 
 ## Quickstart
 
-Review a draft you wrote yourself:
+```bash
+andamentum list                                    # every tool and whether it needs a model
+andamentum-harvest paper.pdf -o paper.md           # any document to markdown, no model
+andamentum-whetstone review draft.docx --model anthropic:claude-haiku-4-5 \
+    -o draft.reviewed.docx                         # review your own draft as tracked changes
+```
+
+The [user guide](docs/guide.md) starts from the job you want done and shows
+the commands for each tool. Every command's `--help` ends with examples.
+
+The same review from Python:
 
 ```python
 import asyncio
@@ -130,38 +148,42 @@ Sixteen tools are installed with the package, each with its own command.
 `andamentum list` prints them (`--json` for programs and agents) and
 `andamentum <tool> ...` runs one. Every command follows the same rules
 ([docs/interface.md](docs/interface.md)): `-o/--out` for output, `--json`,
-`-` for stdin, `--model` with no default, and one set of exit codes (0 success,
-1 negative result, 2 usage, 3 input unreadable, 4 run failed). Run `--help` on
-any of them for the full flag reference.
+`-` for stdin, `--model` with no default, `--offline` for no network call
+besides the model, and one set of exit codes (0 success, 1 negative result,
+2 usage, 3 input unreadable, 4 run failed). The [user guide](docs/guide.md)
+has more examples for each tool; `--help` lists every flag.
 
-| Command | What it does | LLM? |
-|---|---|---|
-| `andamentum-compose` | A task in, a finished document out (`write "<task>" -o DIR`); brief, evidence, draft, independent checks and revision run without an approval step; the result is a document folder plus rendered outputs. `continue`, `status`, `check`, `render` and `genres` work on a folder; `new`, `sections`, `show`, `edit`, `add`, `validate` edit it without a model | required for `write`, `continue`, `check`, `eval`; none for the folder commands |
-| `andamentum-word` | Work on an existing Word file (never edited; results go into `-o DIR`): `check` (citations, retractions, URLs, cross-references, statistics), `respond` to comments and reviews, `bind-numbers` and `refresh` numbers from result files, `find-citation` / `insert-citation`, `draft` a task into Word as tracked changes, `mcp` for Claude Code and Claude for Word | required for `respond`, `bind-numbers`, `draft`; `check` only for its optional checks |
-| `andamentum-figures` | Publication-quality scientific figure rendering (10 chart types, journal-matched sizing): `plot DATA -o FILE`. Deterministic plotting — no generative AI. | none |
-| `andamentum-whetstone` | Review of your own draft → markdown / HTML / .docx with comments and tracked changes (`-o FILE`, repeatable). The default run also checks the references (Crossref lookup on) and suggests a next step; `--no-editor`, `--no-references` turn parts off, `--offline` makes no network call besides the model, `--brief` says what to review against. Seven commands: `review` (default), `revise` (`--until TEXT` or `--until-clean structure\|citations\|figures`; exit 1 if not met), `panel` (multi-expert; `--i-am-the-author`), `checklist` (fixed probe bank + coverage table), `reviewers` (list the named reviewers), `apply-patches` (no LLM), `verify-provenance` (no LLM). Exit 0 / 1 negative result / 2 usage / 3 input unreadable / 4 run failed | required for `review`, `revise`, `panel` + `checklist` |
-| `andamentum-references` | Check a draft's citations against its reference list in any citation style, then each entry against Crossref (`DRAFT [--model M] [--decision-model M] [--offline] [--mailto EMAIL] [--json] [-o FILE]`; Word and PDF through harvest). Exit 1 when problems are found | optional (`--model` only for what the text leaves open) |
-| `andamentum-proofread` | Deterministic readability + style check (SMOG, Flesch–Kincaid, weasel words, passive voice, weak openers, adverb density). Accepts URLs, PDF, DOCX, HTML, PPTX, Markdown, plain text, or `-` for stdin; `--json`, `-o FILE`, `--slides [--allow ACRONYMS]` for a .pptx deck. | none |
-| `andamentum-harvest` | Universal source → markdown extraction (PDF / HTML / DOCX / PPTX / Markdown / plain, auto-detected) | none |
-| `andamentum-typeset` | Render Markdown to typeset HTML / PDF in three styles (article / cv / report). PDF needs the `pdf` extra. | none |
-| `andamentum-chunker` | Deterministic chunking of markdown by headings, paragraphs and sentences | none |
-| `andamentum-docstore` | Store documents in one SQLite file, index and search them: `ingest`, `sync`, `search`, `get`, `list`, `delete`, `enrich` | `sync` and `search` need an embedding model (and a reranker for `search`) |
-| `andamentum-vision-critique` | Vision-critique a rendered figure → bounded JSON (label overlap, legibility, suggested fixes). Multimodal model required | required (multimodal) |
-| `andamentum-llm-judge` | Score a text (`score TEXT`) or compare two (`compare TEXT_A TEXT_B`) against criteria; `-` reads stdin; JSON out. One `--model` = one fast judge; repeated = a sequential panel with an agreement gate | required |
-| `andamentum-research` | Research a question over the web (a Chrome or SearxNG) and scholarly sources; the report cites verified findings | required |
-| `andamentum-epistemic` | Answer a question (`ask`) or check a claim (`verify`) by weighing evidence for and against it; `--out DIR` keeps the database and report | required |
-| `andamentum-agentic-dialect` | The agentic-systems house style: `laws`, `law <id>`, `roles`, `role <role>`, `checklist`, `skeleton`, `check <path> [--strict]` (portable conformance gates, exit 1 on fail) | none |
-| `andamentum-forge` | Plain-language brief → small runnable function package, tested in a sandbox (refuses apps, agents and services). `build BRIEF --out DIR` or `design BRIEF`. `--stop-after {render,build,audit}`, `--sandbox {podman,subprocess}` | required |
+| Command | What it does | Example | Model? |
+|---|---|---|---|
+| `andamentum-harvest` | Convert a PDF, Word, PowerPoint, HTML page or text file to markdown | `andamentum-harvest paper.pdf -o paper.md` | only for `--mode accurate` |
+| `andamentum-chunker` | Split markdown at headings, paragraphs and sentences | `andamentum-chunker notes.md --max-chars 2000 -o chunks.json` | none |
+| `andamentum-docstore` | Keep documents in one SQLite file, index and search them | `andamentum-docstore ingest store.db paper.pdf notes.md` | `sync` and `search` need an embedding model; `search` also a reranker |
+| `andamentum-research` | Research a question on the web and in scholarly sources; the report cites what it found (`--depth quick\|standard\|deep`) | `andamentum-research "How much carbon do salt marshes store?" --mode scholarly --model M` | required |
+| `andamentum-epistemic` | Answer a question (`ask`) or check a claim (`verify`) by weighing evidence for and against it | `andamentum-epistemic verify "CLAIM" --model M --embedding-model E --browser` | required |
+| `andamentum-references` | Check a draft's citations against its reference list, then each entry against Crossref; exit 1 when it finds problems | `andamentum-references draft.md` | only for unclear cases |
+| `andamentum-whetstone` | Review your own draft as markdown, HTML or tracked changes in Word; `revise` repeats until a condition holds | `andamentum-whetstone review draft.docx --model M -o draft.reviewed.docx` | required, except `reviewers`, `apply-patches`, `verify-provenance` |
+| `andamentum-proofread` | Readability and style check, the same result every time | `andamentum-proofread draft.md` | none |
+| `andamentum-compose` | Write a new document (email, memo, report, article, how-to, proposal, grant) from a task into a folder | `andamentum-compose write "A memo on the SaltLog pilot" -o memo --model M` | required to write; none for the folder commands |
+| `andamentum-word` | Work on a Word file you have: check it, answer reviewers, refresh numbers, insert citations; your file is never changed | `andamentum-word check draft.docx -o checked` | required for `respond`, `bind-numbers`, `draft` |
+| `andamentum-llm-judge` | Score a text, or compare two, against criteria with one judge or a panel | `andamentum-llm-judge score "TEXT" --model M` | required |
+| `andamentum-figures` | Draw a publication-quality chart from a CSV or JSON table | `andamentum-figures results.csv --kind bar --x group --y value -o figure.svg` | none |
+| `andamentum-vision-critique` | Check a rendered figure for overlapping labels, legibility and layout | `andamentum-vision-critique figure.png --model ollama:qwen3.8` | required (vision) |
+| `andamentum-typeset` | Render markdown to a styled HTML page or PDF (`article`, `cv`, `report`) | `andamentum-typeset notes.md -o notes.html` | none |
+| `andamentum-agentic-dialect` | Show the house style for agentic systems and check code against it | `andamentum-agentic-dialect check src/mypipeline` | none |
+| `andamentum-forge` | Build a small runnable function package from a plain-language brief, tested in a sandbox | `andamentum-forge build "BRIEF" --model M -o wordcount` | required |
+
+`M` is a model id such as `anthropic:claude-haiku-4-5` or `ollama:gemma4:31b`.
 
 ## Documentation
 
-Writing a document from a task into a folder (`andamentum-compose`):
-[`docs/compose.md`](./docs/compose.md). Working on a Word file
-(`andamentum-word`: check, respond, refresh, citations, MCP):
-[`docs/word.md`](./docs/word.md).
-
-See [`docs/`](./docs/) for module-level documentation and
-[`examples/`](./examples/) for runnable code demonstrating common workflows.
+- [User guide](docs/guide.md): what each tool does, with commands to copy.
+- [Writing a document from a task](docs/compose.md) (`andamentum-compose`).
+- [Working on a Word file](docs/word.md) (`andamentum-word`: check, respond,
+  refresh, citations, MCP).
+- [Reviewing your own draft](docs/whetstone.html) (`andamentum-whetstone`).
+- [The interface rules](docs/interface.md) that every tool follows.
+- [`docs/`](./docs/) for the design of each module and
+  [`examples/`](./examples/) for runnable Python examples.
 
 ## Intended use and limits
 

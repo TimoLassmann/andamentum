@@ -53,6 +53,6 @@ The repo's visual design system lives in `docs/design/`. It covers both document
 
 ## Interface notes
 
-- `from andamentum.typeset import *` always works: `render_pdf` is always defined and, without WeasyPrint, raises `PdfUnavailableError` (also an `ImportError`) whose message gives the one install hint, `pip install 'andamentum[pdf]'`, and names the system libraries.
+- `from andamentum.typeset import *` always works: `render_pdf` is always defined and, without WeasyPrint, raises `PdfUnavailableError` (also an `ImportError`) whose message gives the one install hint (the `pdf` extra, installed from GitHub), and names the system libraries.
 - Errors derive from `TypesetError` (a `ValueError`).
 - CLI: `andamentum-typeset SOURCE [-o FILE]`; exit 0 / 2 usage / 3 input unreadable / 4 render failed (including a PDF without the extra).

@@ -36,7 +36,7 @@ In Python, `andamentum.TOOLS` holds the same list: for each tool its name, summa
    | 4 | the run failed: model or network error, or a crash |
 
 6. **Errors** go to stderr as one line that starts with `error:` and says what to do.
-7. **Help.** `--help` explains every flag in plain words. `--version` prints the andamentum version.
+7. **Help.** `--help` explains every flag in plain words and ends with one to three examples that a user can copy, the most common job first. `--version` prints the andamentum version.
 8. **Subcommands** only when a tool really does several different jobs. A tool with one job has no subcommand.
 9. **Plain words.** Flags and help text use words a user already knows (file, folder, output, model, references). No internal names.
 10. **Credentials** (API keys) come from the environment, as each provider documents. They are never flags and never configuration.
@@ -59,4 +59,4 @@ In Python, `andamentum.TOOLS` holds the same list: for each tool its name, summa
 
 ## Checks
 
-`src/andamentum/tests/test_interface.py` holds every tool to the command-line rules it can check mechanically: each console script is registered in `andamentum.TOOLS` and the reverse; each command has `--help` and `--version`; output flags are `-o/--out`; a model tool requires `--model`; no command module reads configuration from the environment.
+`src/andamentum/tests/test_interface.py` holds every tool to the command-line rules it can check mechanically: each console script is registered in `andamentum.TOOLS` and the reverse; each command has `--help` and `--version`; output flags are `-o/--out`; a model tool requires `--model`; every command and subcommand shows an example in its `--help`, and every example there and in [guide.md](./guide.md) is accepted by the command; no command module reads configuration from the environment.

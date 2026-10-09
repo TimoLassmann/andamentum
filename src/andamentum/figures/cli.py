@@ -47,7 +47,11 @@ def build_parser() -> argparse.ArgumentParser:
         "in your data file; no generative AI. Journal-matched sizing. `plot` is "
         "the default command: andamentum-figures DATA --x A --y B -o FILE.svg. "
         "Also: palettes, journals (list the choices).",
-        epilog=_EXIT_CODES,
+        epilog="examples:\n"
+        "  andamentum-figures results.csv --kind bar --x group --y value -o figure.svg\n"
+        "  andamentum-figures results.csv --x group --y value --journal showcase -o slide.png\n"
+        "  andamentum-figures palettes\n"
+        f"{_EXIT_CODES}",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
@@ -70,7 +74,13 @@ def build_parser() -> argparse.ArgumentParser:
         "plot",
         help="draw a figure from a data file",
         description="Draw a figure from a CSV or JSON table and write it to the file named with -o.",
-        epilog=_EXIT_CODES,
+        epilog="examples:\n"
+        "  andamentum-figures plot results.csv --kind bar --x group --y value -o figure.svg\n"
+        "  andamentum-figures plot results.csv --x group --y value --error sd "
+        "--error-type sd -o figure.pdf\n"
+        "  andamentum-figures plot results.csv --x group --y value --journal report "
+        "--style andamentum --svg-inline -o figure.svg\n"
+        f"{_EXIT_CODES}",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     plot.add_argument(
@@ -170,10 +180,22 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     # palettes subcommand
-    sub.add_parser("palettes", help="list the colour palettes")
+    sub.add_parser(
+        "palettes",
+        help="list the colour palettes",
+        description="List the colour palettes that --style accepts.",
+        epilog="example: andamentum-figures palettes",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
 
     # journals subcommand
-    sub.add_parser("journals", help="list the journal size presets")
+    sub.add_parser(
+        "journals",
+        help="list the journal size presets",
+        description="List the journal size presets that --journal accepts.",
+        epilog="example: andamentum-figures journals",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
 
     return parser
 

@@ -40,6 +40,26 @@ exit codes:
 """
 
 
+def _epilog(*examples: str) -> str:
+    """Examples first, then the exit codes."""
+    head = "example:" if len(examples) == 1 else "examples:"
+    lines = "\n".join(f"  {e}" for e in examples)
+    return f"{head}\n{lines}\n\n{_EXIT_CODES}"
+
+
+_M = "--model anthropic:claude-haiku-4-5"
+_E = "--embedding-model embeddinggemma-2:latest"
+_ASK = (
+    'andamentum-epistemic ask "Does salt marsh restoration increase carbon '
+    f'storage?" \\\n      {_M} {_E} --browser -o marsh'
+)
+_VERIFY = (
+    'andamentum-epistemic verify "Restored salt marshes store more carbon than '
+    f'bare mudflats." \\\n      {_M} {_E} \\\n'
+    "      --searxng-url http://127.0.0.1:4070 --json"
+)
+
+
 class _UsageError(Exception):
     """A wrong or missing argument that argparse cannot see (exit 2)."""
 
@@ -123,7 +143,7 @@ def build_parser() -> argparse.ArgumentParser:
             "Answer a question or check a claim by weighing evidence for and "
             "against it. Experimental: output and flags may change."
         ),
-        epilog=_EXIT_CODES,
+        epilog=_epilog(_ASK, _VERIFY),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     from andamentum import __version__ as _ver
@@ -141,7 +161,7 @@ def build_parser() -> argparse.ArgumentParser:
             "Prints the verdict, the claims behind it and their evidence; with "
             "--out the database and an HTML report are kept in that folder."
         ),
-        epilog=_EXIT_CODES,
+        epilog=_epilog(_ASK),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     ask_parser.add_argument("question", help="The research question to investigate")
@@ -154,7 +174,7 @@ def build_parser() -> argparse.ArgumentParser:
             "Check one claim: the text is taken as a single claim (no "
             "decomposition) and the evidence for and against it is weighed."
         ),
-        epilog=_EXIT_CODES,
+        epilog=_epilog(_VERIFY),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     verify_parser.add_argument("claim", help="The claim to check")
@@ -163,7 +183,10 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser = sub.add_parser(
         "run",
         help="(for development) Run one agent and print its output as JSON",
-        epilog=_EXIT_CODES,
+        epilog=_epilog(
+            "andamentum-epistemic run epistemic_classify_question \\\n"
+            f'      question="Why do salt marshes store carbon?" {_M}'
+        ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     run_parser.add_argument(
@@ -182,14 +205,18 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser(
         "agents",
         help="(for development) List the agents and what each returns",
-        epilog=_EXIT_CODES,
+        epilog=_epilog("andamentum-epistemic agents"),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
     pf_parser = sub.add_parser(
         "preflight",
         help="Check the model, the search address and the providers before a run",
-        epilog=_EXIT_CODES,
+        epilog=_epilog(
+            f"andamentum-epistemic preflight {_M} --browser",
+            f"andamentum-epistemic preflight {_M} --providers biomedical \\\n"
+            "      --searxng-url http://127.0.0.1:4070",
+        ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     _add_model(pf_parser)
@@ -221,7 +248,11 @@ def build_parser() -> argparse.ArgumentParser:
     stage_parser = sub.add_parser(
         "stage",
         help="(for development) Run one stage of the pipeline (preplanning, scrutiny_and_investigation, ...)",
-        epilog=_EXIT_CODES,
+        epilog=_epilog(
+            "andamentum-epistemic stage preplanning -o marsh \\\n"
+            '      --question "Does salt marsh restoration increase carbon storage?" \\\n'
+            f"      {_M} {_E} --browser",
+        ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     stage_parser.add_argument("name", choices=stage_names(), help="Stage to run")
@@ -253,7 +284,7 @@ def build_parser() -> argparse.ArgumentParser:
     inspect_parser = sub.add_parser(
         "inspect",
         help="Print the objective, verdict, claims and evidence of a finished run",
-        epilog=_EXIT_CODES,
+        epilog=_epilog("andamentum-epistemic inspect marsh"),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     inspect_parser.add_argument(
@@ -263,7 +294,10 @@ def build_parser() -> argparse.ArgumentParser:
     conf_parser = sub.add_parser(
         "confidence",
         help="Compute the posterior confidence of a finished run",
-        epilog=_EXIT_CODES,
+        epilog=_epilog(
+            "andamentum-epistemic confidence marsh",
+            "andamentum-epistemic confidence marsh --verbose",
+        ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     conf_parser.add_argument(

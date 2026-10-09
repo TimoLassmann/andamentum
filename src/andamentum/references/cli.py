@@ -44,6 +44,11 @@ _EXIT_FAILED = 4
 _TEXT_SUFFIXES = frozenset({".md", ".markdown", ".txt", ".text"})
 
 _EPILOG = """\
+examples:
+  andamentum-references draft.md
+  andamentum-references draft.md --offline --json -o report.json
+  andamentum-references draft.docx --model anthropic:claude-haiku-4-5
+
 exit codes:
   0  no problem found
   1  the check ran and found problems (or found no reference list)

@@ -39,6 +39,23 @@ exit codes:
   4  the run failed: model or sandbox error, or a crash
 """
 
+
+def _epilog(*examples: str) -> str:
+    """Examples first, then the exit codes."""
+    head = "example:" if len(examples) == 1 else "examples:"
+    lines = "\n".join(f"  {e}" for e in examples)
+    return f"{head}\n{lines}\n\n{_EXIT_CODES}"
+
+
+_M = "--model anthropic:claude-haiku-4-5"
+_BRIEF = '"Count the words in a text and return the ten most common."'
+_BUILD = f"andamentum-forge build {_BRIEF} \\\n      {_M} -o wordcount"
+_BUILD_LOCAL = (
+    f"andamentum-forge build {_BRIEF} \\\n"
+    f"      {_M} -o wordcount --stop-after render --verbose"
+)
+_DESIGN = f"andamentum-forge design {_BRIEF} \\\n      {_M} --json"
+
 _ABOUT = (
     "Build a small runnable function package from a plain-language brief. "
     "Forge refuses apps, agents and services, which keep running and are "
@@ -123,7 +140,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="andamentum-forge",
         description=_ABOUT,
-        epilog=_EXIT_CODES,
+        epilog=_epilog(_BUILD, _DESIGN),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     from andamentum import __version__ as _ver
@@ -135,7 +152,7 @@ def build_parser() -> argparse.ArgumentParser:
         "build",
         help="Design, render, write the code and test it in a sandbox",
         description=_ABOUT,
-        epilog=_EXIT_CODES,
+        epilog=_epilog(_BUILD, _BUILD_LOCAL),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     _add_common(build)
@@ -163,7 +180,7 @@ def build_parser() -> argparse.ArgumentParser:
         "design",
         help="Produce the validated design only; writes no files",
         description=_ABOUT_DESIGN,
-        epilog=_EXIT_CODES,
+        epilog=_epilog(_DESIGN),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     _add_common(design)

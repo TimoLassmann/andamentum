@@ -19,7 +19,8 @@ class PdfUnavailableError(TypesetError, ImportError):
 
 #: The one install hint, used in every message about PDF output.
 PDF_INSTALL_HINT = (
-    "Install the optional extra: pip install 'andamentum[pdf]'. "
+    "Install andamentum with the pdf extra: uv tool install 'andamentum[pdf] @ git+https://github.com/timolassmann/andamentum.git' "
+    "(or uv sync --extra pdf in a checkout). "
     "WeasyPrint also needs system libraries (pango and cairo; "
     "on macOS: brew install pango libffi)."
 )

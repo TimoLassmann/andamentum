@@ -125,7 +125,14 @@ def build_parser() -> argparse.ArgumentParser:
         prog="andamentum-compose",
         description="A task in, a finished document out, in a folder. Never "
         "sends anything. For an existing Word file use andamentum-word.",
-        epilog=EXIT_EPILOG,
+        epilog="examples:\n"
+        '  andamentum-compose write "A memo on the SaltLog pilot" -o memo '
+        "--model anthropic:claude-haiku-4-5\n"
+        '  andamentum-compose write "A grant application for the Apollo study" '
+        "-o grant --genre grant --research scholarly --model anthropic:claude-haiku-4-5\n"
+        "  andamentum-compose genres\n"
+        f"{EXIT_EPILOG}",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--version", action="version", version=_version())
     sub = parser.add_subparsers(dest="command", required=True, metavar="COMMAND")

@@ -42,7 +42,13 @@ def build_parser() -> argparse.ArgumentParser:
             "legibility, legend placement, aspect ratio, suggested fixes from a "
             "fixed set, and a confidence."
         ),
-        epilog=_EXIT_CODES,
+        epilog=(
+            "examples:\n"
+            "  andamentum-vision-critique figure.png --model ollama:qwen3.8\n"
+            "  andamentum-vision-critique figure.png --model ollama:qwen3.8 \\\n"
+            '      --context "a two-column journal figure" -o critique.json\n'
+            f"\n{_EXIT_CODES}"
+        ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(

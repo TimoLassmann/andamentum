@@ -36,6 +36,11 @@ _EXIT_INPUT = 3
 _EXIT_FAILED = 4
 
 _EPILOG = """\
+examples:
+  andamentum-proofread draft.md
+  andamentum-proofread draft.md --json -o report.json
+  andamentum-proofread talk.pptx --slides --allow MEK,RAS
+
 exit codes:
   0  success (findings do not change the exit code)
   2  usage error

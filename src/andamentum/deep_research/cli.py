@@ -77,6 +77,22 @@ exit status:
 """
 
 
+def _epilog(*examples: str) -> str:
+    """Examples first, then the shared notes and exit codes."""
+    head = "example:" if len(examples) == 1 else "examples:"
+    lines = "\n".join(f"  {e}" for e in examples)
+    return f"{head}\n{lines}\n\n{_EPILOG}"
+
+
+_Q = '"How much carbon do salt marshes store?"'
+_M = "anthropic:claude-haiku-4-5"
+_ASK_EXAMPLES = (
+    f"andamentum-research {_Q} --mode scholarly --model {_M}",
+    f"andamentum-research {_Q} --mode both --browser --model {_M} \\\n"
+    "      --depth deep -o marsh",
+)
+
+
 def _version() -> str:
     from andamentum import __version__
 
@@ -90,7 +106,7 @@ def build_parser() -> argparse.ArgumentParser:
         "the report cites verified findings by id. `ask` is the default command: "
         "andamentum-research QUESTION --mode M --model M. Modes web and both "
         "need --searxng-url URL or --browser.",
-        epilog=_EPILOG,
+        epilog=_epilog(*_ASK_EXAMPLES),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--version", action="version", version=_version())
@@ -109,7 +125,7 @@ def _add_ask(sub: argparse._SubParsersAction) -> None:  # type: ignore[type-arg]
         "findings by id. Without -o the report goes to stdout and no file is "
         "written; with -o DIR the folder gets report.md (or report.json), log.md "
         "and log.jsonl.",
-        epilog=_EPILOG,
+        epilog=_epilog(*_ASK_EXAMPLES),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     ask.add_argument("question", help="the research question; - reads it from stdin")
@@ -211,7 +227,9 @@ def _add_mcp(sub: argparse._SubParsersAction) -> None:  # type: ignore[type-arg]
         help="serve the engine and its store to an agent over MCP (stdio)",
         description="Serve the research engine and its store over MCP (stdio); "
         "example: claude mcp add research -- andamentum-research mcp --store research.db",
-        epilog=_EPILOG,
+        epilog=_epilog(
+            f"andamentum-research mcp --store research.db --model {_M}",
+        ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     mcp.add_argument(
@@ -252,18 +270,33 @@ def _add_cache(sub: argparse._SubParsersAction) -> None:  # type: ignore[type-ar
         "cache",
         help="look at, or trim, an HTTP cache file",
         description="Look at, or trim, an HTTP cache (the --cache file of ask).",
-        epilog=_EPILOG,
+        epilog=_epilog(
+            "andamentum-research cache info --cache cache.db",
+            "andamentum-research cache prune --cache cache.db --max-bytes 50000000",
+        ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     jobs = cache.add_subparsers(dest="cache_command", metavar="JOB", required=True)
     info = jobs.add_parser(
-        "info", help="size, rows per source, oldest and newest entry"
+        "info",
+        help="size, rows per source, oldest and newest entry",
+        description="Show the size of an HTTP cache, its rows per source, and "
+        "its oldest and newest entry.",
+        epilog="example: andamentum-research cache info --cache cache.db",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     info.add_argument(
         "--cache", required=True, metavar="PATH", help="the HTTP cache file"
     )
     prune = jobs.add_parser(
-        "prune", help="evict expired entries, then the least recently used"
+        "prune",
+        help="evict expired entries, then the least recently used",
+        description="Evict expired entries from an HTTP cache, then the least "
+        "recently used, until it is under the size cap.",
+        epilog="examples:\n"
+        "  andamentum-research cache prune --cache cache.db\n"
+        "  andamentum-research cache prune --cache cache.db --max-bytes 50000000",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     prune.add_argument(
         "--cache", required=True, metavar="PATH", help="the HTTP cache file"

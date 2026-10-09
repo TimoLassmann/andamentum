@@ -7,7 +7,7 @@ run of text).
 
 **Optional dependency.** Trafilatura (Apache-2.0, MIT-compatible) is kept
 out of the default install to keep the dependency surface small, not for
-licensing reasons; it's pulled in by ``pip install andamentum[html-articles]``.
+licensing reasons; it's pulled in by the ``html-articles`` extra.
 When the package isn't installed this backend raises ``ExtractionError``
 (a ``HarvestError`` subclass) which the dispatcher in ``harvest/api.py``
 catches and falls back to docling.
@@ -37,7 +37,7 @@ async def extract(data: bytes, source_url: str) -> str:
             "trafilatura is not installed",
             attempted=["trafilatura"],
             diagnostics={
-                "trafilatura": "missing; install with `pip install andamentum[html-articles]` to enable. Falling back to docling.",
+                "trafilatura": "missing; install with the html-articles extra (see the README, Installation) to enable. Falling back to docling.",
             },
         ) from exc
 

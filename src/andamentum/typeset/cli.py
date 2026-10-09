@@ -27,11 +27,15 @@ from .renderer import render, render_to_file
 from .styles import STYLES
 
 _EXIT_CODES = """\
+examples:
+  andamentum-typeset notes.md -o notes.html
+  andamentum-typeset notes.md --style report -o notes.pdf
+
 exit codes:
   0  success
   2  usage error (a wrong or missing argument)
   3  the input could not be read (missing file, not UTF-8 text)
-  4  the run failed (rendering failed, or PDF output needs: pip install 'andamentum[pdf]')
+  4  the run failed (rendering failed, or PDF output needs the pdf extra; see the README, Installation)
 """
 
 
@@ -43,7 +47,7 @@ def build_parser() -> argparse.ArgumentParser:
         description=(
             "Render a Markdown file to a typeset HTML or PDF document. "
             "The format follows the extension of the -o file (.html or .pdf). "
-            "PDF output needs the pdf extra: pip install 'andamentum[pdf]'."
+            "PDF output needs the pdf extra (see the README, Installation)."
         ),
         epilog=_EXIT_CODES,
         formatter_class=argparse.RawDescriptionHelpFormatter,

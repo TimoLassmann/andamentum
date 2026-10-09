@@ -244,7 +244,8 @@ def test_version_prints_the_package_version(name, capsys):
     assert tool.command in out and andamentum.__version__ in out
 
 
-_INTERNAL_WORDS = re.compile(r"\b(harness|kernel|v2|v3)\b", re.IGNORECASE)
+#: A word on its own; "v2" inside a model id such as bge-reranker-v2-m3 is not one.
+_INTERNAL_WORDS = re.compile(r"(?<![-/\w])(harness|kernel|v2|v3)\b", re.IGNORECASE)
 
 #: Tools whose help still shows internal words (tool name -> reason); fill in
 #: only to make a known gap visible, never to hide a new one.
@@ -335,3 +336,128 @@ def test_the_listed_main_function_exists(name):
     assert top in getattr(importlib.import_module(tool.module), "__all__", ()), (
         f"{tool.main}: {top} is not exported in {tool.module}.__all__"
     )
+
+
+# --- every command's --help ends with an example that parses -------------------------
+
+#: Tools whose first argument, when it is not a subcommand, goes to a default
+#: subcommand (each main() inserts it the same way).
+DEFAULT_COMMAND = {"research": "ask", "figures": "plot", "whetstone": "review"}
+
+
+def _subparser_map(parser: argparse.ArgumentParser) -> dict[str, argparse.ArgumentParser]:
+    for action in parser._actions:
+        if isinstance(action, argparse._SubParsersAction):
+            return dict(action.choices)
+    return {}
+
+
+def _examples(parser: argparse.ArgumentParser, command: str) -> list[list[str]]:
+    """The example command lines in a parser's epilog, each as argv without the
+    command name. A line counts when it starts with the command, optionally
+    after ``example:`` or ``examples:``; a trailing backslash continues it."""
+    import shlex
+
+    lines, found, pending = (parser.epilog or "").splitlines(), [], ""
+    for line in lines:
+        text = line.strip()
+        if pending:
+            text = pending + " " + text
+            pending = ""
+        else:
+            text = re.sub(r"^examples?:\s*", "", text)
+            if not text.startswith(command + " ") and text != command:
+                continue
+        if text.endswith("\\"):
+            pending = text[:-1].strip()
+            continue
+        found.append(shlex.split(text, comments=True)[1:])
+    return found
+
+
+def _with_default(tool: Tool, argv: list[str]) -> list[str]:
+    parser = _build_parser(tool)
+    default = DEFAULT_COMMAND.get(tool.name)
+    if default and argv and argv[0] not in _subparser_map(parser) and not argv[0].startswith("-"):
+        return [default, *argv]
+    return argv
+
+
+def _path_of(parser: argparse.ArgumentParser, argv: list[str]) -> list[str]:
+    """The subcommand names at the start of argv: the command an example runs."""
+    path = []
+    for token in argv:
+        subs = _subparser_map(parser)
+        if token not in subs:
+            break
+        path.append(token)
+        parser = subs[token]
+    return path
+
+
+def _commands(parser: argparse.ArgumentParser, path: list[str]):
+    yield path, parser
+    for name, sub in _subparser_map(parser).items():
+        yield from _commands(sub, [*path, name])
+
+
+def test_the_default_commands_match_the_tools():
+    """Mutation: rename a default subcommand in a tool and this fails."""
+    for name, default in DEFAULT_COMMAND.items():
+        tool = next(t for t in TOOLS if t.name == name)
+        cli = importlib.import_module(tool.cli)
+        assert default in cli._COMMANDS and default in _subparser_map(_build_parser(tool))
+
+
+@pytest.mark.parametrize("name", TOOL_IDS)
+def test_every_command_help_ends_with_an_example(name):
+    """Each command and subcommand shows at least one example of itself in the
+    epilog of its own --help. Mutation: delete an example line and this fails."""
+    tool = next(t for t in TOOLS if t.name == name)
+    missing = []
+    for path, parser in _commands(_build_parser(tool), []):
+        runs = [
+            _path_of(_build_parser(tool), _with_default(tool, argv))
+            for argv in _examples(parser, tool.command)
+        ]
+        if not any(r[: len(path)] == path for r in runs):
+            missing.append(" ".join([tool.command, *path]))
+    assert not missing, f"no example in --help of: {missing}"
+
+
+@pytest.mark.parametrize("name", TOOL_IDS)
+def test_every_help_example_parses(name):
+    """An example a user copies must be accepted by the parser.
+    Mutation: rename or remove a flag that an example uses and this fails."""
+    tool = next(t for t in TOOLS if t.name == name)
+    bad = []
+    for _path, parser in _commands(_build_parser(tool), []):
+        for argv in _examples(parser, tool.command):
+            try:
+                _build_parser(tool).parse_args(_with_default(tool, argv))
+            except SystemExit:
+                bad.append(" ".join([tool.command, *argv]))
+    assert not bad, f"these examples do not parse: {bad}"
+
+
+def test_every_example_in_the_user_guide_parses():
+    """docs/guide.md copies commands from --help; each must still be accepted.
+    Mutation: rename a flag that the guide uses and this fails."""
+    import shlex
+
+    text = (ROOT / "docs" / "guide.md").read_text()
+    blocks = re.findall(r"```bash\n(.*?)```", text, re.DOTALL)
+    commands = {t.command: t for t in TOOLS}
+    checked, bad = 0, []
+    for block in blocks:
+        for line in block.replace("\\\n", " ").splitlines():
+            argv = shlex.split(line, comments=True)
+            if not argv or argv[0] not in commands:
+                continue
+            tool = commands[argv[0]]
+            try:
+                _build_parser(tool).parse_args(_with_default(tool, argv[1:]))
+            except SystemExit:
+                bad.append(line)
+            checked += 1
+    assert checked >= 16 and not bad, bad

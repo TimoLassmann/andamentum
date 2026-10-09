@@ -28,7 +28,7 @@ An additional experimental sub-module ships installed but is not yet publicly do
 - **Responsible by construction.** Fetch gate (robots.txt + paywalled-publisher tripwire), whetstone confidentiality tripwire, AI-provenance watermarks, cloud-vs-local awareness — implemented as in-code refusals and stamps, not markdown disclaimers. (An opt-in cloud-call audit log and tiered cloud-call gates are planned — see [`../RESPONSIBLE_USE.md`](../RESPONSIBLE_USE.md).)
 - **Explicit model argument.** Every public function that calls an LLM takes `model=` as a keyword-only argument. No hidden defaults, no silent fallbacks, no shared config module.
 - **No environment-variable configuration.** Configuration flows top-down from the CLI / caller through explicit keyword arguments. Env vars are ambient state that hides at the call site.
-- **One distribution, no extras.** Dependencies are the flat union of what the sub-modules need. There are no optional installs.
+- **One distribution.** Dependencies are the flat union of what the sub-modules need. Three optional extras add heavier capabilities: `pdf` (PDF output from typeset), `html-articles` (better HTML article extraction) and `vlm` (harvest's accurate mode).
 - **Public API in `__init__.py`.** Each sub-module's `__init__.py` defines `__all__` explicitly; everything not listed is internal.
 - **Tests next to code.** `pytest.ini_options.testpaths = ["src/andamentum"]` — tests live next to what they test, not in a top-level `tests/` directory.
 
@@ -50,7 +50,7 @@ from andamentum.llm_judge import judge_score, judge_compare
 
 ## CLIs
 
-Sixteen tools are installed with the package, each with its own command. `andamentum list` prints this list (`andamentum list --json` for programs and agents), `andamentum <tool> ...` runs a tool, and every command follows the rules in [interface.md](./interface.md): `-o/--out`, `--json`, `-` for stdin, `--model` with no default, and the same exit codes. Run `--help` on any command for its options.
+Sixteen tools are installed with the package, each with its own command. `andamentum list` prints this list (`andamentum list --json` for programs and agents), `andamentum <tool> ...` runs a tool, and every command follows the rules in [interface.md](./interface.md): `-o/--out`, `--json`, `-` for stdin, `--model` with no default, and the same exit codes. Run `--help` on any command for its options and examples; the [user guide](./guide.md) shows each tool with commands to copy.
 
 | Command | What it does | Model? |
 |---|---|---|

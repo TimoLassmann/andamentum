@@ -33,6 +33,13 @@ exit codes:
   3  the path given to check does not exist or cannot be read
 """
 
+
+def _epilog(*examples: str) -> str:
+    """Examples first, then the exit codes."""
+    head = "example:" if len(examples) == 1 else "examples:"
+    lines = "\n".join(f"  {e}" for e in examples)
+    return f"{head}\n{lines}\n\n{_EXIT_CODES}"
+
 _DESCRIPTION = """\
 The agentic dialect: the house style for agentic graph systems, as numbered
 laws, role briefs and checks you can run over code.
@@ -53,7 +60,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="andamentum-agentic-dialect",
         description=_DESCRIPTION.format(roles=", ".join(ROLES)),
-        epilog=_EXIT_CODES,
+        epilog=_epilog(
+            "andamentum-agentic-dialect check src/mypipeline",
+            "andamentum-agentic-dialect role worker",
+            "andamentum-agentic-dialect law L7",
+        ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
@@ -66,30 +77,64 @@ def build_parser() -> argparse.ArgumentParser:
     def _json_flag(sp: argparse.ArgumentParser) -> None:
         sp.add_argument("--json", action="store_true", help="print the result as JSON")
 
-    p = sub.add_parser("laws", help="list all laws (id, name, one-sentence statement)")
+    def add(name: str, summary: str, *examples: str) -> argparse.ArgumentParser:
+        return sub.add_parser(
+            name,
+            help=summary,
+            description=summary[0].upper() + summary[1:] + ".",
+            epilog=_epilog(*examples),
+            formatter_class=argparse.RawDescriptionHelpFormatter,
+        )
+
+    p = add(
+        "laws",
+        "list all laws (id, name, one-sentence statement)",
+        "andamentum-agentic-dialect laws",
+        "andamentum-agentic-dialect laws --json",
+    )
     _json_flag(p)
-    p = sub.add_parser("law", help="show one law with its checklist")
+    p = add(
+        "law",
+        "show one law with its checklist",
+        "andamentum-agentic-dialect law L7",
+    )
     p.add_argument("id", metavar="ID", help="law id, L1 to L9 (e.g. L7); see `laws`")
     _json_flag(p)
-    p = sub.add_parser("roles", help="list the roles you can ask a brief for")
+    p = add(
+        "roles",
+        "list the roles you can ask a brief for",
+        "andamentum-agentic-dialect roles",
+    )
     _json_flag(p)
-    p = sub.add_parser("role", help="print the prompt-slice for one role")
+    p = add(
+        "role",
+        "print the prompt-slice for one role",
+        "andamentum-agentic-dialect role worker",
+        "andamentum-agentic-dialect role reviewer --json",
+    )
     p.add_argument(
         "role",
         metavar="ROLE",
         help=f"kind of step you are writing: {', '.join(ROLES)}; see `roles`",
     )
     _json_flag(p)
-    p = sub.add_parser(
-        "checklist", help="print the pre-commit checklist, one item per line"
+    p = add(
+        "checklist",
+        "print the pre-commit checklist, one item per line",
+        "andamentum-agentic-dialect checklist",
     )
     _json_flag(p)
-    sub.add_parser("skeleton", help="print the runnable copy-paste skeleton")
-    p = sub.add_parser(
+    add(
+        "skeleton",
+        "print the runnable copy-paste skeleton; save it as graph.py, the only "
+        "file that may import the graph engine (law L2), or `check` reports it",
+        "andamentum-agentic-dialect skeleton",
+    )
+    p = add(
         "check",
-        help="run the portable checks over a file or folder of Python code",
-        epilog=_EXIT_CODES,
-        formatter_class=argparse.RawDescriptionHelpFormatter,
+        "run the portable checks over a file or folder of Python code",
+        "andamentum-agentic-dialect check src/mypipeline",
+        "andamentum-agentic-dialect check graph.py --strict --json",
     )
     p.add_argument(
         "path", metavar="PATH", help="a Python file, or a folder searched recursively"

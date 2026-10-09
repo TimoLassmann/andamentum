@@ -25,6 +25,10 @@ from pathlib import Path
 from .splitter import ChunkerError, chunk
 
 _EXIT_CODES = """\
+examples:
+  andamentum-chunker notes.md --max-chars 2000 -o chunks.json
+  andamentum-chunker notes.md --max-chars 2000 --text-only
+
 exit codes:
   0  success
   2  usage error (a wrong or missing argument)

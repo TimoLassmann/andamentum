@@ -9,7 +9,7 @@ Working on an existing Word file (checking it, answering reviewers' comments, re
 ## Install
 
 ```bash
-uv tool install andamentum          # or: uv add andamentum
+uv tool install "andamentum @ git+https://github.com/timolassmann/andamentum.git"
 andamentum-compose --help
 ```
 

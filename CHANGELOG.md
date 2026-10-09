@@ -49,6 +49,14 @@ the same shape (`docs/interface.md`).
     `text`, `figures.figure(output=)` and `forge.run_forge(dest=)` → `out=`,
     `compose_bundle` → `continue_document`.
 
+### Documentation for users
+
+- New user guide, `docs/guide.md`: a table from the job you want done to the command, then each of the sixteen tools with commands to copy.
+- Every command and subcommand ends its `--help` with one to three examples. `tests/test_interface.py` checks that each command has one and that every example in `--help` and in the guide is accepted by the command.
+- The README has a command-line quickstart and a tool table with one example per tool.
+- Installation is from GitHub (`uv tool install "andamentum @ git+https://github.com/timolassmann/andamentum.git"`). The name `andamentum` on PyPI belongs to an unrelated project, so the README, the compose and word guides and the PDF and HTML extra hints no longer say `pip install andamentum`. `docs/index.md` no longer says there are no extras.
+- `andamentum-agentic-dialect skeleton --help` says to save the skeleton as `graph.py`, the only file that may import the graph engine.
+
 ### Fewer flags, presets instead (round 2)
 
 Breaking: command lines lost flags that only tuned numbers or repeated

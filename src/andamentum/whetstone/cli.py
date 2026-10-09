@@ -129,58 +129,58 @@ EXAMPLES
 
     # The default run: review, rewrites as tracked changes, and the
     # reference check with its Crossref lookup — one Word file, one report
-    andamentum-whetstone draft.docx --model openai:gpt-5.4-nano \\
+    andamentum-whetstone draft.docx --model anthropic:claude-haiku-4-5 \\
         -o draft.reviewed.docx
 
     # Turn parts off: comments only, and no network call besides the model
-    andamentum-whetstone draft.docx --model openai:gpt-5.4-nano \\
+    andamentum-whetstone draft.docx --model anthropic:claude-haiku-4-5 \\
         --no-editor --offline -o draft.reviewed.docx
 
     # Several output formats in one pass
-    andamentum-whetstone paper.pdf --model openai:gpt-5.4-nano \\
+    andamentum-whetstone paper.pdf --model anthropic:claude-haiku-4-5 \\
         -o review.md -o review.html -o paper.reviewed.docx
 
     # A second round over the first round's output. No round flag: the input
     # file carries round one's changes, and the review reads them as accepted.
     # Give it its own name or Word shows both rounds as one reviewer.
-    andamentum-whetstone draft.reviewed.docx --model openai:gpt-5.4-nano \\
+    andamentum-whetstone draft.reviewed.docx --model anthropic:claude-haiku-4-5 \\
         --patch-author "Second pass (AI)" --allow-author-override \\
         -o draft.reviewed2.docx
 
     # Review against your own brief: journal guidelines, or what you want
     # looked at, in plain words (one model call turns it into criteria)
-    andamentum-whetstone draft.md --model openai:gpt-5.4-nano \\
+    andamentum-whetstone draft.md --model anthropic:claude-haiku-4-5 \\
         --brief @author-guidelines.md -o review.md
 
     # A named reviewer: its own criteria, probes and stance
-    andamentum-whetstone draft.md --model openai:gpt-5.4-nano \\
+    andamentum-whetstone draft.md --model anthropic:claude-haiku-4-5 \\
         --reviewer methods -o review.md
 
     # Revise until a condition in your words holds (or stop honestly): a
     # separate model call judges it every round, never the pass that edited
-    andamentum-whetstone revise draft.docx --model openai:gpt-5.4-nano \\
+    andamentum-whetstone revise draft.docx --model anthropic:claude-haiku-4-5 \\
         --reviewer reader --until "the flow is correct" \\
         -o draft.revised.docx
 
     # Revise until the reference check comes back clean: its problems go to
     # the editor, and the loop stops once the citations and the list agree,
     # twice running
-    andamentum-whetstone revise draft.docx --model openai:gpt-5.4-nano \\
+    andamentum-whetstone revise draft.docx --model anthropic:claude-haiku-4-5 \\
         --until-clean citations -o draft.revised.docx
 
     # Which reviewers exist, and which suit this kind of document
     andamentum-whetstone reviewers --document-type academic
 
     # Multi-expert panel review (different shape — N expert reviews + synthesis)
-    andamentum-whetstone panel draft.md --model openai:gpt-5.4-nano \\
+    andamentum-whetstone panel draft.md --model anthropic:claude-haiku-4-5 \\
         --n-experts 4 --i-am-the-author -o panel-review.md
 
     # Checklist: one quota-driven probe per defect class + coverage table
-    andamentum-whetstone checklist draft.md --model openai:gpt-5.4-nano \\
+    andamentum-whetstone checklist draft.md --model anthropic:claude-haiku-4-5 \\
         -o checklist.md
 
     # Checklist against the non-academic bank, straight into Word
-    andamentum-whetstone checklist memo.docx --model openai:gpt-5.4-nano \\
+    andamentum-whetstone checklist memo.docx --model anthropic:claude-haiku-4-5 \\
         --document-type external_communication -o memo.reviewed.docx
 
     # Apply a pre-built JSON patch list to a .docx (no model)
@@ -206,15 +206,15 @@ _REVISE_EPILOG = """\
 EXAMPLES
 
     # A condition in your own words, judged every round by a separate call
-    andamentum-whetstone revise draft.docx --model openai:gpt-5.4-nano \\
+    andamentum-whetstone revise draft.docx --model anthropic:claude-haiku-4-5 \\
         --until "the introduction motivates the study" -o draft.revised.docx
 
     # Until the review raises no major or moderate problem
-    andamentum-whetstone revise draft.docx --model openai:gpt-5.4-nano \\
+    andamentum-whetstone revise draft.docx --model anthropic:claude-haiku-4-5 \\
         --until-clean structure -o draft.revised.docx
 
     # Until every named figure matches its caption and the text
-    andamentum-whetstone revise draft.docx --model openai:gpt-5.4-nano \\
+    andamentum-whetstone revise draft.docx --model anthropic:claude-haiku-4-5 \\
         --until-clean figures --figure "Figure 1=fig1.png" \\
         --figure-model ollama:qwen3.8 -o draft.revised.docx
 
@@ -228,6 +228,70 @@ EXIT CODES
     4  the run failed (model or network error, crash)
 """
 
+
+_REVIEW_EPILOG = """\
+EXAMPLES
+
+    # Review: findings as comments, rewrites as tracked changes, and the
+    # reference check, in one Word file
+    andamentum-whetstone review draft.docx --model anthropic:claude-haiku-4-5 \\
+        -o draft.reviewed.docx
+
+    # Comments only, no network call besides the model, Markdown and Word
+    andamentum-whetstone review draft.docx --model anthropic:claude-haiku-4-5 \\
+        --no-editor --offline -o review.md -o draft.reviewed.docx
+
+    # A named reviewer, against your own guidelines
+    andamentum-whetstone review draft.md --model anthropic:claude-haiku-4-5 \\
+        --reviewer methods --brief @guidelines.md -o review.md
+"""
+
+_CHECKLIST_EPILOG = """\
+EXAMPLES
+
+    # The standard check, with its coverage table
+    andamentum-whetstone checklist draft.md --model anthropic:claude-haiku-4-5 \\
+        -o checklist.md
+
+    # The non-academic probe bank, straight into Word
+    andamentum-whetstone checklist memo.docx --model anthropic:claude-haiku-4-5 \\
+        --document-type external_communication -o memo.reviewed.docx
+"""
+
+_PANEL_EPILOG = """\
+EXAMPLES
+
+    # Four simulated experts and a synthesis of their reviews
+    andamentum-whetstone panel draft.md --model anthropic:claude-haiku-4-5 \\
+        --i-am-the-author -o panel-review.md
+
+    # Three experts from disciplines you name
+    andamentum-whetstone panel draft.md --model anthropic:claude-haiku-4-5 \\
+        --n-experts 3 --panel-disciplines "ecology,statistics" \\
+        --i-am-the-author -o panel-review.md
+"""
+
+_REVIEWERS_EPILOG = """\
+EXAMPLES
+
+    andamentum-whetstone reviewers
+    andamentum-whetstone reviewers --document-type academic --json
+"""
+
+_APPLY_PATCHES_EPILOG = """\
+EXAMPLES
+
+    # Apply a JSON patch list as tracked changes and comments
+    andamentum-whetstone apply-patches draft.docx --patches patches.json \\
+        -o draft.patched.docx
+"""
+
+_PROVENANCE_EPILOG = """\
+EXAMPLES
+
+    andamentum-whetstone verify-provenance draft.reviewed.docx
+    andamentum-whetstone verify-provenance draft.reviewed.docx --json
+"""
 
 _SUPPORTED_OUT_EXTENSIONS = {".md", ".html", ".docx"}
 
@@ -314,7 +378,7 @@ def _add_run_flags(parser: argparse.ArgumentParser) -> None:
         "--model",
         required=True,
         metavar="MODEL",
-        help="Language model to use, for example openai:gpt-5.4-nano or "
+        help="Language model to use, for example anthropic:claude-haiku-4-5 or "
         "ollama:gemma4:31b.",
     )
     io.add_argument(
@@ -490,6 +554,7 @@ def build_parser() -> argparse.ArgumentParser:
         "review",
         "Review a draft: findings as comments, rewrites as tracked changes, "
         "the reference check (the default command).",
+        epilog=_REVIEW_EPILOG,
     )
     review.set_defaults(mode="review")
     _add_run_flags(review)
@@ -606,6 +671,7 @@ def build_parser() -> argparse.ArgumentParser:
         "checklist",
         "Run the standard check: a fixed probe bank and a deterministic "
         "coverage table.",
+        epilog=_CHECKLIST_EPILOG,
     )
     checklist.set_defaults(mode="checklist")
     _add_run_flags(checklist)
@@ -615,6 +681,7 @@ def build_parser() -> argparse.ArgumentParser:
     panel = add(
         "panel",
         "Simulated multi-expert peer review of your own draft.",
+        epilog=_PANEL_EPILOG,
     )
     panel.set_defaults(mode="panel")
     _add_run_flags(panel)
@@ -644,6 +711,7 @@ def build_parser() -> argparse.ArgumentParser:
         "reviewers",
         "List the named reviewers, and which suit a document type. Needs no "
         "input and no model.",
+        epilog=_REVIEWERS_EPILOG,
     )
     reviewers.set_defaults(mode="reviewers")
     reviewers.add_argument(
@@ -664,6 +732,7 @@ def build_parser() -> argparse.ArgumentParser:
         "apply-patches",
         "Apply a pre-built JSON patch list to a .docx as tracked changes and "
         "comments. No model.",
+        epilog=_APPLY_PATCHES_EPILOG,
     )
     patches.set_defaults(mode="apply-patches")
     _add_author_flags(patches)
@@ -703,6 +772,7 @@ def build_parser() -> argparse.ArgumentParser:
         "Report which whetstone AI-provenance markers a .docx contains. "
         "Read-only: never modifies the file. Exit 0 if a marker is present, "
         "1 if none, 3 if the file cannot be read.",
+        epilog=_PROVENANCE_EPILOG,
     )
     provenance.set_defaults(mode="verify-provenance")
     provenance.add_argument("input", type=Path, help="Path to a .docx file.")

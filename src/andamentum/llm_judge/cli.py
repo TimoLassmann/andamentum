@@ -44,6 +44,30 @@ exit codes:
 """
 
 
+def _epilog(*examples: str) -> str:
+    """Examples first, then the exit codes."""
+    head = "example:" if len(examples) == 1 else "examples:"
+    lines = "\n".join(f"  {e}" for e in examples)
+    return f"{head}\n{lines}\n\n{_EXIT_CODES}"
+
+
+_M = "--model anthropic:claude-haiku-4-5"
+_SCORE = (
+    'andamentum-llm-judge score "SaltLog records salinity every ten minutes." '
+    f"{_M}"
+)
+_SCORE_PANEL = (
+    "andamentum-llm-judge score - --criteria criteria.json \\\n"
+    f"      {_M} --model ollama:gemma4:31b -o verdict.json"
+    "  # text on stdin; two judges"
+)
+_COMPARE = (
+    'andamentum-llm-judge compare "Paris is the capital of France." \\\n'
+    '      "The capital of France is Lyon." --context "What is the capital of '
+    f'France?" {_M}'
+)
+
+
 class _Exit(Exception):
     """Stops the run with an exit code and a one-line message."""
 
@@ -90,7 +114,7 @@ def build_parser() -> argparse.ArgumentParser:
             "times (or comma-separated) for a sequential panel with an "
             "agreement gate. Prints JSON."
         ),
-        epilog=_EXIT_CODES,
+        epilog=_epilog(_SCORE, _COMPARE),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
@@ -140,7 +164,7 @@ def build_parser() -> argparse.ArgumentParser:
         "score",
         help="score one text against criteria",
         description="Score one text against criteria. Prints JSON.",
-        epilog=_EXIT_CODES,
+        epilog=_epilog(_SCORE, _SCORE_PANEL),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     score_parser.add_argument(
@@ -154,7 +178,7 @@ def build_parser() -> argparse.ArgumentParser:
         description=(
             "Compare two texts. Both presentation orders are always run. Prints JSON."
         ),
-        epilog=_EXIT_CODES,
+        epilog=_epilog(_COMPARE),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     compare_parser.add_argument(

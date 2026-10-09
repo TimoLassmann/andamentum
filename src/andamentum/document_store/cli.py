@@ -69,6 +69,55 @@ what each enricher needs:
   --multi applies to classify only.
 """
 
+_EMBED = "embeddinggemma-2:latest"
+_RERANK = "BAAI/bge-reranker-v2-m3"
+
+_TOP_EXAMPLES = f"""\
+examples:
+  andamentum-docstore ingest store.db paper.pdf notes.md
+  andamentum-docstore sync store.db --embedding-model {_EMBED}
+  andamentum-docstore search store.db "what limits the method?" \\
+      --embedding-model {_EMBED} --reranker-model {_RERANK}
+"""
+
+_EXAMPLES = {
+    "ingest": """\
+examples:
+  andamentum-docstore ingest store.db paper.pdf notes.md
+  andamentum-docstore ingest store.db notes.md --key notes --metadata '{"kind": "notes"}'
+""",
+    "sync": f"""\
+example: andamentum-docstore sync store.db --embedding-model {_EMBED}
+""",
+    "search": f"""\
+examples:
+  andamentum-docstore search store.db "what limits the method?" \\
+      --embedding-model {_EMBED} --reranker-model {_RERANK}
+  andamentum-docstore search store.db "sample size" --where '{{"kind": "notes"}}' \\
+      --embedding-model {_EMBED} --reranker-model {_RERANK} --json
+""",
+    "get": """\
+examples:
+  andamentum-docstore get store.db notes
+  andamentum-docstore get store.db notes --rev 1 --json
+""",
+    "list": """\
+examples:
+  andamentum-docstore list store.db
+  andamentum-docstore list store.db --where '{"kind": "notes"}' --limit 20
+""",
+    "delete": """\
+example: andamentum-docstore delete store.db notes
+""",
+    "enrich": """\
+examples:
+  andamentum-docstore enrich store.db identifiers
+  andamentum-docstore enrich store.db classify --decision-model tev1:4b \\
+      --labels '{"trial": "a clinical trial report", "review": "a review"}' \\
+      --max-text-chars 8000
+""",
+}
+
 _ENRICHERS = ("identifiers", "facts", "bibliographic", "extract", "classify")
 
 
@@ -90,7 +139,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="andamentum-docstore",
         description="Store documents in one SQLite file; index and search them.",
-        epilog=_EPILOG,
+        epilog=_TOP_EXAMPLES + "\n" + _EPILOG,
         formatter_class=_formatter(),
     )
     p.add_argument(
@@ -103,7 +152,7 @@ def build_parser() -> argparse.ArgumentParser:
             name,
             help=help,
             description=help,
-            epilog=epilog,
+            epilog=_EXAMPLES[name] + "\n" + epilog,
             formatter_class=_formatter(),
         )
         sp.add_argument(

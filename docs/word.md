@@ -11,7 +11,7 @@ All examples below use the synthetic SaltLog project that ships with the package
 ## Install
 
 ```bash
-uv tool install andamentum          # or: uv add andamentum
+uv tool install "andamentum @ git+https://github.com/timolassmann/andamentum.git"
 andamentum-word --help
 ```
 

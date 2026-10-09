@@ -95,7 +95,14 @@ def build_parser() -> argparse.ArgumentParser:
         description="Work on an existing Word file: check it, answer reviewer "
         "comments, bind and refresh numbers, insert citations, or draft into it. "
         "The input file is never edited; results go into --out DIR.",
-        epilog=EXIT_EPILOG,
+        epilog="examples:\n"
+        "  andamentum-word check draft.docx -o checked\n"
+        "  andamentum-word respond draft.docx --reviews reviews.txt -o answered "
+        "--model anthropic:claude-haiku-4-5\n"
+        '  andamentum-word draft "A methods paragraph on the SaltLog assay" '
+        "--into draft.docx -o drafted --model anthropic:claude-haiku-4-5\n"
+        f"{EXIT_EPILOG}",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--version", action="version", version=_version())
     sub = parser.add_subparsers(dest="command", required=True, metavar="COMMAND")
@@ -339,7 +346,8 @@ def build_parser() -> argparse.ArgumentParser:
         "mcp",
         "Serve these jobs to Claude Code or Claude for Word over MCP (stdio). "
         "Each tool call names the file it writes.",
-        "claude mcp add word -- andamentum-word mcp",
+        "andamentum-word mcp\n"
+        "to register it with Claude Code: claude mcp add word -- andamentum-word mcp",
     )
     return parser
 
