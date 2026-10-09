@@ -77,6 +77,10 @@ ErrorKind = Literal[
     "offline",  # an offline run: the answer is not in the store's cache
 ]
 
+# The environment variables the sources read their API keys from (a command
+# reads them after ``core.secrets.load_secrets``; the library never does).
+API_KEY_NAMES = ("OPENALEX_API_KEY", "SEMANTIC_SCHOLAR_API_KEY")
+
 # Smallest gap between two network requests to one source, in seconds.
 # OpenAlex and Crossref allow bursts; arXiv's API terms ask for one request in
 # three seconds on a single connection; Semantic Scholar's key allows one

@@ -19,6 +19,7 @@ from .finder import FINDER_SOURCES, FinderModelError, FinderResult, find_works
 from .novelty import NoveltyResearch, run_novelty_check
 from .read import locate_quote
 from .sources import (
+    API_KEY_NAMES,
     SourceClient,  # noqa: F401  (importable, not exported)
     SourceConfig,
     SourceError,
@@ -44,6 +45,7 @@ from .types import (
 )
 
 __all__ = [
+    "API_KEY_NAMES",
     "FINDER_SOURCES",
     "Budget",
     "Candidate",

@@ -57,7 +57,7 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, NoReturn, Sequence
 
-from dotenv import load_dotenv
+from andamentum.core.secrets import load_secrets
 from rich.console import Console
 from rich.logging import RichHandler
 from rich.panel import Panel
@@ -2094,7 +2094,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     flag, it is taken to be the document to review.
     """
     # Secrets only (API keys), here in the CLI and never in the library.
-    load_dotenv()
+    load_secrets()
     raw = list(sys.argv[1:] if argv is None else argv)
     if raw and raw[0] not in _COMMANDS and not raw[0].startswith("-"):
         raw = ["review", *raw]

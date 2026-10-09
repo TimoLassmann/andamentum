@@ -13,7 +13,7 @@ write their text to stdout, or to the file ``-o/--out`` names.
 
 Every directory is named on the command line; nothing is read from or written to
 a default location. API keys and the OpenAlex contact address come from the
-environment (read here, after ``load_dotenv``, never in the library):
+environment (read here, after ``load_secrets``, never in the library):
 ``SEMANTIC_SCHOLAR_API_KEY``, ``OPENALEX_API_KEY``, ``OPENALEX_EMAIL``. A keyless
 experiment file (``keyless: true``) reads neither key: the source configuration is
 built without them whatever the environment holds. The exit status of
@@ -37,9 +37,9 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-from dotenv import load_dotenv
+from andamentum.core.secrets import key_status, load_secrets
 
-from ..sources.base import SourceConfig, process_pacing
+from ..sources.base import API_KEY_NAMES, SourceConfig, process_pacing
 from ..sources.extraction import PDF_EXTRACTIONS, PdfExtraction
 from ..store import ResearchStore
 from .attribution import collect_losses
@@ -321,6 +321,8 @@ async def _cmd_experiment_run(args: argparse.Namespace) -> int:
 
 async def _experiment_run(args: argparse.Namespace, cache: ResearchStore | None) -> int:
     exp = load_experiment(args.file)
+    if not exp.keyless:
+        print(key_status(API_KEY_NAMES), file=sys.stderr)
     if _live_web(exp, args.only_sets):
         if args.browser:
             health = await require_browser()
@@ -432,7 +434,7 @@ _HANDLERS: dict[str, Callable[[argparse.Namespace], Coroutine[Any, Any, int]]] =
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    load_dotenv()
+    load_secrets()
     args = build_parser().parse_args(argv)
     try:
         return asyncio.run(_HANDLERS[args.command](args))

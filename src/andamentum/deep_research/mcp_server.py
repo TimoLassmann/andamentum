@@ -645,9 +645,9 @@ def run(args: argparse.Namespace) -> int:
     flags (``cli.build_parser``). Returns the exit status."""
     import os
 
-    from dotenv import load_dotenv
+    from andamentum.core.secrets import load_secrets
 
-    load_dotenv()  # secrets only (API keys, contact mail); configuration is flags
+    load_secrets()  # secrets only (API keys, contact mail); configuration is flags
     store = ResearchStore(Path(args.store)) if args.store else ResearchStore.in_memory()
     sources = SourceConfig(
         mailto=args.mailto or os.environ.get("OPENALEX_EMAIL") or None,

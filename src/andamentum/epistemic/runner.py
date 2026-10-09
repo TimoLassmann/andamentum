@@ -53,14 +53,6 @@ class DefaultAgentRunner:
     """
 
     def __init__(self, *, model: str):
-        # Load .env from CWD so importing repos get their API keys picked up
-        try:
-            from dotenv import load_dotenv
-
-            load_dotenv()
-        except ImportError:
-            pass
-
         from andamentum.core.agents import AgentRunner
 
         self._runner = AgentRunner(model=model)

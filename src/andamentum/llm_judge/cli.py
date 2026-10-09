@@ -247,10 +247,10 @@ async def _run(args: argparse.Namespace) -> int:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    from dotenv import load_dotenv
+    from andamentum.core.secrets import load_secrets
 
     args = build_parser().parse_args(argv)
-    load_dotenv()  # provider API keys only
+    load_secrets()  # provider API keys only
     try:
         return asyncio.run(_run(args))
     except _Exit as exc:

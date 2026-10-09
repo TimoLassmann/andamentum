@@ -572,11 +572,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         anyio.run(serve_stdio)
         return EXIT_OK
 
-    from dotenv import load_dotenv
+    from andamentum.core.secrets import load_secrets
 
     from andamentum.compose.harness.errors import WordInputError, WordUsageError
 
-    load_dotenv()  # credentials only (API keys); configuration comes from flags
+    load_secrets()  # credentials only (API keys); configuration comes from flags
     try:
         return asyncio.run(_dispatch(args))
     except WordUsageError as exc:

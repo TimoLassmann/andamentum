@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import sys
 from collections.abc import Callable, Collection
 from dataclasses import dataclass
 from pathlib import Path
@@ -252,8 +253,10 @@ def research_setup(
 ) -> ResearchSetup:
     """The research settings from CLI flags; credentials come from the
     environment (``.env`` is loaded by the CLI), never from flags."""
-    from andamentum.deep_research import SourceConfig
+    from andamentum.core.secrets import key_status
+    from andamentum.deep_research import API_KEY_NAMES, SourceConfig
 
+    print(key_status(API_KEY_NAMES), file=sys.stderr)
     return ResearchSetup(
         sources=SourceConfig(
             mailto=mailto or os.environ.get("OPENALEX_EMAIL") or None,
