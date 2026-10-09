@@ -315,13 +315,55 @@ async def find_with(
     results_per_query: int,
     clock: Callable[[], float] = time.monotonic,
 ) -> FinderResult:
-    """``find_works`` over the given adapters (the tests pass stand-ins)."""
+    """``find_works`` over the given adapters (the tests pass stand-ins).
+
+    The call is one run in *store*: started here and finished on every path,
+    with the stats and the degraded list, or with the failure.
+    """
     run_id = store.start_run(
         question=sentence,
         mode="scholarly",
         config={"finder": {"follow_citations": follow_citations}},
         models={"model": model if isinstance(model, str) else repr(model)},
     )
+    try:
+        result = await _find_steps(
+            sentence,
+            paragraph=paragraph,
+            model=model,
+            follow_citations=follow_citations,
+            search_sources=search_sources,
+            expand_sources=expand_sources,
+            store=store,
+            results_per_query=results_per_query,
+            clock=clock,
+            run_id=run_id,
+        )
+    except BaseException as error:
+        store.finish_run(
+            run_id, stats={}, degraded=[f"run failed: {type(error).__name__}: {error}"]
+        )
+        raise
+    store.finish_run(
+        run_id, stats=result.stats.model_dump(mode="json"), degraded=result.degraded
+    )
+    return result
+
+
+async def _find_steps(
+    sentence: str,
+    *,
+    paragraph: str,
+    model: str | Model,
+    follow_citations: bool,
+    search_sources: Sequence[Source],
+    expand_sources: Sequence[ExpandingSource],
+    store: ResearchStore,
+    results_per_query: int,
+    clock: Callable[[], float] = time.monotonic,
+    run_id: str,
+) -> FinderResult:
+    """The finder's steps for one run already started in *store*."""
     log = RunLogger(clock=clock, run_id=run_id)
     stats = RunStats()
     asker = Asker(

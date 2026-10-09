@@ -395,3 +395,39 @@ async def test_find_works_runs_over_the_real_adapter(follow: bool) -> None:
 async def test_find_works_refuses_an_empty_sentence() -> None:
     with pytest.raises(ValueError, match="needs a sentence"):
         await find_works("  ", model="test")
+
+
+async def test_every_finder_run_is_finished_in_its_store() -> None:
+    store = ResearchStore.in_memory()
+    try:
+        await find_with(
+            SENTENCE,
+            paragraph="",
+            model=scripted().model,
+            follow_citations=False,
+            search_sources=[StubSource("semantic_scholar")],
+            expand_sources=[],
+            store=store,
+            results_per_query=20,
+        )
+        with pytest.raises(FinderModelError):
+            await find_with(
+                SENTENCE,
+                paragraph="",
+                model=scripted(fail="queries").model,
+                follow_citations=False,
+                search_sources=[StubSource("semantic_scholar")],
+                expand_sources=[],
+                store=store,
+                results_per_query=20,
+            )
+        runs = store.list_runs()
+        assert len(runs) == 2
+        assert all(r.finished_at is not None for r in runs)
+        failed = [
+            r for r in runs if r.degraded and r.degraded[0].startswith("run failed")
+        ]
+        assert len(failed) == 1 and "FinderModelError" in failed[0].degraded[0]
+        assert any(r.stats for r in runs if r not in failed)
+    finally:
+        store.close()
