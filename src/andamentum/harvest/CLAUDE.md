@@ -14,7 +14,7 @@ Moved from the root `CLAUDE.md`, word for word. Claude Code loads this file when
 
 ## Layering
 
-- `harvest` depends only on `httpx`, `trafilatura`, `docling`, `pypdfium2` (declared, not inherited: `pdf_probe` imports it directly so the text-layer probe costs no docling/torch import), and stdlib. The optional `vlm` extra adds `docling[vlm]` + `transformers` + `mlx-vlm`. MUST NOT depend on any other andamentum sub-module — it's a leaf service. Other modules MAY depend on `harvest` to convert URLs/files to markdown before further processing (e.g. chunker, whetstone, future deep_research consolidation).
+- `harvest` depends only on `httpx`, `trafilatura`, `docling`, `pypdfium2` (declared, not inherited: `pdf_probe` imports it directly so the text-layer probe costs no docling/torch import), and stdlib. The optional `vlm` extra adds `docling[vlm]` + `transformers` + `mlx-vlm`. MUST NOT depend on any andamentum sub-module except `core`, and of `core` only its shared utilities (`core.url_safety`, the URL-safety check also used by `references`, `vision_critique` and `deep_research`; `core.fetch_gate`, the fetch-policy check also used by `deep_research`) — it's a leaf service. Other modules MAY depend on `harvest` to convert URLs/files to markdown before further processing (e.g. chunker, whetstone, future deep_research consolidation).
 
 ## Design
 
