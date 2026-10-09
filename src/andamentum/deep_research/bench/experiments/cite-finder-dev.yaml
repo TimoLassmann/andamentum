@@ -6,10 +6,10 @@
 # Run (LS the litsearch-local download, OUT a folder under data/benchmarks/cite-finder/):
 #   B="uv run python -m andamentum.deep_research.bench"
 #   F=src/andamentum/deep_research/bench/experiments/cite-finder-dev.yaml
-#   $B experiment run $F --out-dir $OUT --litsearch-local-dir $LS \
+#   $B experiment run $F -o $OUT --litsearch-local-dir $LS \
 #     --patient semantic_scholar --cache $OUT/http-cache.db
 #   (concurrency 1: a B1 cell alone has up to 4 model calls in flight, the cloud cap)
-#   $B experiment report $F --out-dir $OUT
+#   $B experiment report $F --runs $OUT
 # A source outage (a failed search or citation call, a 429 after the patient
 # retries, Semantic Scholar given up for the process) stops the run without
 # recording the cell; the same command resumes.

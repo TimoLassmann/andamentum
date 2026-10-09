@@ -57,7 +57,7 @@ def test_the_cli_flag_sets_the_patient_sources() -> None:
             "experiment",
             "run",
             "f.yaml",
-            "--out-dir",
+            "-o",
             "o",
             "--patient",
             "semantic_scholar",
@@ -65,12 +65,12 @@ def test_the_cli_flag_sets_the_patient_sources() -> None:
     )
     assert args.patient == ["semantic_scholar"]
     assert (
-        parser.parse_args(["experiment", "run", "f.yaml", "--out-dir", "o"]).patient
+        parser.parse_args(["experiment", "run", "f.yaml", "-o", "o"]).patient
         is None
     )
     with pytest.raises(SystemExit):
         parser.parse_args(
-            ["experiment", "run", "f.yaml", "--out-dir", "o", "--patient", "web"]
+            ["experiment", "run", "f.yaml", "-o", "o", "--patient", "web"]
         )
 
 

@@ -44,6 +44,7 @@ from andamentum.references import Work
 from . import fusion
 from .ask import MODEL_ERRORS, UNTRUSTED, Asker, BudgetExhausted, fence
 from .choose import site_of
+from .errors import ResearchError
 from .lexical import bm25_scores
 from .queries import fresh_queries
 from .runlog import RunLogger
@@ -79,7 +80,7 @@ FINDER_TAG = "finder"
 FINDER_BUDGET = Budget(max_llm_calls=10)
 
 
-class FinderModelError(RuntimeError):
+class FinderModelError(ResearchError):
     """A finder model call gave no usable answer (``step`` names it); the
     finder has no fallback. ``run_log`` is the log up to the failure."""
 
