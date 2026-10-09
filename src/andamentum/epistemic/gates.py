@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 import hashlib
 import logging
-from typing import TYPE_CHECKING, Any, Awaitable, Callable, Iterable, Optional
+from typing import TYPE_CHECKING, Awaitable, Callable, Iterable, Optional
 
 from .entities import Claim, ClaimStage, Evidence, Uncertainty
 from .thresholds import (
@@ -1170,92 +1170,3 @@ def describe_all_gates() -> str:
             reqs.append("custom check")
         lines.append(f"  → {stage.value}: {', '.join(reqs)}")
     return "\n".join(lines)
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# LEGACY COMPATIBILITY SHIMS
-# These functions provide backward compatibility with the old gates API
-# used by the validation module.
-# ══════════════════════════════════════════════════════════════════════════════
-
-
-def get_gate(from_stage: ClaimStage, to_stage: ClaimStage) -> Optional[StageGate]:
-    """Get the stage gate for a transition.
-
-    Legacy compatibility shim. The new API uses STAGE_GATES directly.
-
-    Args:
-        from_stage: Current claim stage
-        to_stage: Target claim stage
-
-    Returns:
-        StageGate or None if transition is not valid
-    """
-    # Only valid if to_stage is the next stage
-    next_stage = get_next_stage(from_stage)
-    if next_stage != to_stage:
-        return None
-    return STAGE_GATES.get(to_stage)
-
-
-def check_promotion_gate(
-    claim_id: str,
-    current_stage: ClaimStage,
-    proposed_stage: ClaimStage,
-    evidence_count: int,
-    has_uncertainties_listed: bool,
-    has_skeptic_review: bool,
-    justification_links: Optional[dict[str, Any]] = None,
-) -> GateResult:
-    """Check if a claim can be promoted through a stage gate.
-
-    Legacy compatibility shim. The new API uses validate_promotion with
-    a Claim object and repository.
-
-    This synchronous version performs basic checks without repository access.
-    For full validation including blocking uncertainties, use validate_promotion.
-
-    Args:
-        claim_id: ID of the claim to promote
-        current_stage: Current claim stage
-        proposed_stage: Target stage for promotion
-        evidence_count: Number of evidence items linked to claim
-        has_uncertainties_listed: Whether claim has uncertainty annotations
-        has_skeptic_review: Whether claim has been reviewed by skeptic
-
-    Returns:
-        GateResult with pass/fail and reasoning
-    """
-    gate = STAGE_GATES.get(proposed_stage)
-    if not gate:
-        return GateResult(
-            passed=False,
-            blocking_reasons=[f"No gate defined for stage: {proposed_stage}"],
-        )
-
-    # Verify sequential progression
-    next_stage = get_next_stage(current_stage)
-    if next_stage != proposed_stage:
-        return GateResult(
-            passed=False,
-            blocking_reasons=[
-                f"Cannot promote from {current_stage.value} to {proposed_stage.value} - "
-                f"must go to {next_stage.value if next_stage else 'none'} first"
-            ],
-        )
-
-    reasons: list[str] = []
-
-    # Evidence count
-    if evidence_count < gate.min_evidence:
-        reasons.append(f"Need {gate.min_evidence} evidence, have {evidence_count}")
-
-    # Scrutiny check
-    if gate.requires_scrutiny and not has_skeptic_review:
-        reasons.append("Scrutiny not passed")
-
-    return GateResult(
-        passed=len(reasons) == 0,
-        blocking_reasons=reasons,
-        reason=reasons[0] if reasons else None,
-    )
