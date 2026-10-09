@@ -140,13 +140,16 @@ async def gather_works(
 
 
 def work_source(
-    work: CitableWork, *, number: int, bundle_dir: str | Path
+    work: CitableWork, *, number: int, bundle_dir: str | Path, text: str | None = None
 ) -> tuple[Source, str]:
     """The compose ``Source`` for *work* (id ``src<number>``) and its text.
 
-    The text is written to the place the evidence worker reads sources from.
+    The text is the work's title and abstract, or *text* when given (the paper
+    the cite loop read). It is written to the place the evidence worker reads
+    sources from.
     """
-    text = f"# {work.title}\n\n{work.abstract.strip()}\n"
+    if text is None:
+        text = f"# {work.title}\n\n{work.abstract.strip()}\n"
     doi = doi_of(work.csl)
     source = Source(
         id=f"src{number}",

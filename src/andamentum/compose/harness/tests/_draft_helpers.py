@@ -215,3 +215,36 @@ def install_script(
         "andamentum.compose.harness.checks.numbers.run_agent_with_usage", script
     )
     return script
+
+
+def no_cite_tools(store_dir: Path):  # noqa: ANN201
+    """An ``open_cite`` for ``run_draft`` whose finder finds nothing: the cite
+    loop runs over a real document store in *store_dir* and cites nothing."""
+    from contextlib import asynccontextmanager
+
+    from andamentum.compose.harness.draft.cite import CiteTools
+    from andamentum.document_store import Store
+
+    async def nothing(sentence: str, *, paragraph: str) -> list:  # noqa: ARG001
+        return []
+
+    async def unreadable(work, *, query: str):  # noqa: ANN001, ANN202, ARG001
+        raise AssertionError("nothing is found, so nothing is read")
+
+    async def unverifiable(work) -> str:  # noqa: ANN001
+        raise AssertionError("nothing is found, so nothing is verified")
+
+    @asynccontextmanager
+    async def open_cite(**_kwargs: object):  # noqa: ANN202
+        path = store_dir / "papers.db"
+        async with await Store.open(path) as papers:
+            yield CiteTools(
+                library=None,
+                finder=nothing,
+                read=unreadable,
+                verify=unverifiable,
+                papers=papers,
+                store_path=path,
+            )
+
+    return open_cite

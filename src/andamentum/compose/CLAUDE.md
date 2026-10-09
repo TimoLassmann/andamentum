@@ -53,7 +53,7 @@ Four roles name the model for each job: `drafter`, `critic`, `judge`, `reader`. 
 
 ## Layering
 
-compose depends on `core`, `compose.bundle`, `whetstone` (public API), `proofread`, `llm_judge`, `harvest`, `references`, `figures`; `deep_research` only behind `--research` (deferred import). Nothing depends on compose except `figures.bundle_glue`, which imports the model-free `compose.bundle` only. It MUST NOT depend on `epistemic` or `document_store`. Only `graph.py` imports `pydantic_graph`; workers are plain async functions with a keyword-only `model=`. `tests/test_dialect_conformance.py` enforces this and runs the dialect check in strict mode.
+compose depends on `core`, `compose.bundle`, `whetstone` (public API), `proofread`, `llm_judge`, `harvest`, `references`, `figures`; `deep_research` behind `--research` and in the Word draft's cite loop, and `document_store` in the cite loop only (the papers it reads are kept in a store), both through deferred imports. Nothing depends on compose except `figures.bundle_glue`, which imports the model-free `compose.bundle` only. It MUST NOT depend on `epistemic`. Only `graph.py` imports `pydantic_graph`; workers are plain async functions with a keyword-only `model=`. `tests/test_dialect_conformance.py` enforces this and runs the dialect check in strict mode.
 
 The writing harness (`harness/`: a format-neutral kernel, `.docx` and markdown adapters, deterministic and model-assisted checks, the `check FILE.docx` verb and the planted-defect benchmark) is documented in `harness/CLAUDE.md`; the harness is the implementation of the separate `andamentum-word` tool. `andamentum-compose check DIR` is the folder's own one-pass check. Nothing outside compose and `andamentum.word` imports `compose.harness`.
 

@@ -15,15 +15,20 @@ there is verified but not quotable and the report lists it as not used.
 
 from __future__ import annotations
 
+import os
 import re
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
+from dataclasses import replace
 from pathlib import Path
 
 from andamentum.compose.genres import Genre
 from andamentum.compose.research import ResearchSetup, run_research
 from andamentum.references import ReferenceHttp
+from andamentum.references import Work as ScholarlyWork
 
 from ..literature import Sources, Unverified, Work, find_works, resolve
+from .cite import CANDIDATES_PER_SENTENCE, CiteTools, work_from_csl
 from .works import (
     CitableWork,
     LiteratureFinding,
@@ -113,3 +118,90 @@ def research_literature(
         return finding
 
     return run
+
+
+LIBRARY_PER_SENTENCE = 3  # library or Zotero works a sentence may take, best first
+
+
+@asynccontextmanager
+async def cite_tools(
+    *,
+    sources: Sources,
+    http: ReferenceHttp,
+    model: str,
+    store: Path,
+    cache: Path,
+    mailto: str | None,
+) -> AsyncIterator[CiteTools]:
+    """The cite loop's tools over the real services (see ``cite.py``).
+
+    *store* is the document store the papers read go into: an existing store is
+    opened, a path that does not exist becomes a new store. *cache* is a
+    research store whose HTTP cache the finder and the reader share. Library
+    works come from the user's library file and Zotero (never Crossref, which
+    gives no text to read); the finder is ``deep_research.find_works`` with one
+    step of citation following; every work is verified by ``resolve``. API keys
+    come from the environment (the command loads ``.env``), never from flags.
+    """
+    from andamentum.deep_research import (
+        FINDER_SOURCES,
+        READ_SOURCES,
+        ResearchStore,
+        WorkText,
+        read_work,
+    )
+    from andamentum.deep_research import find_works as find_scholarly
+    from andamentum.document_store import Store
+
+    keys = {
+        "openalex_api_key": os.environ.get("OPENALEX_API_KEY") or None,
+        "semantic_scholar_api_key": os.environ.get("SEMANTIC_SCHOLAR_API_KEY") or None,
+        "mailto": mailto or os.environ.get("OPENALEX_EMAIL") or None,
+    }
+    finder_sources = FINDER_SOURCES.model_copy(update=keys)
+    read_sources = READ_SOURCES.model_copy(update=keys)
+    own = replace(sources, crossref=None)
+    has_library = own.library is not None or own.zotero is not None
+
+    async def library(sentence: str) -> list[ScholarlyWork]:
+        found = await find_works(sentence, sources=own, limit=LIBRARY_PER_SENTENCE)
+        return [work_from_csl(w.csl) for w in found]
+
+    http_cache = ResearchStore(cache)
+    papers = await Store.open(store)
+    try:
+
+        async def finder(sentence: str, *, paragraph: str) -> list[ScholarlyWork]:
+            result = await find_scholarly(
+                sentence,
+                model=model,
+                paragraph=paragraph,
+                sources=finder_sources,
+                http_cache=http_cache,
+            )
+            return result.works[:CANDIDATES_PER_SENTENCE]
+
+        async def read(work: ScholarlyWork, *, query: str) -> WorkText:
+            return await read_work(
+                work, query=query, sources=read_sources, http_cache=http_cache
+            )
+
+        async def verify(work: ScholarlyWork) -> CitableWork | str:
+            csl: dict[str, object] = dict(work.to_csl())
+            verdict = await resolve(Work(csl=csl, source="crossref"), http=http)
+            if isinstance(verdict, Unverified):
+                year = f" ({verdict.work.year})" if verdict.work.year else ""
+                return f"{verdict.work.title}{year}: {verdict.reason}"
+            return CitableWork(csl=verdict.work.csl, abstract="", uri=verdict.work.uri)
+
+        yield CiteTools(
+            library=library if has_library else None,
+            finder=finder,
+            read=read,
+            verify=verify,
+            papers=papers,
+            store_path=store,
+        )
+    finally:
+        await papers.close()
+        http_cache.close()

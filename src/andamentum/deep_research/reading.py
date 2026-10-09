@@ -98,12 +98,15 @@ async def read_work(
     )
     if not result.text and work.abstract.strip() and work.redistributable:
         result.text, result.via, result.access = work.abstract, "abstract", "abstract"
-    if result.text:
-        passages = build_window(
-            result.text,
-            work_id=work.work_id or "work",
-            query=query,
-            max_chars=window_chars,
-        )
-        result.window = WINDOW_GAP.join(p.text for p in passages)
+    result.window = text_window(result.text, query=query, max_chars=window_chars)
     return result
+
+
+def text_window(text: str, *, query: str, max_chars: int = DEFAULT_WINDOW_CHARS) -> str:
+    """The part of *text* most relevant to *query*, as ``read_work`` cuts it: BM25
+    passages in document order, at most about *max_chars*, gaps marked; the
+    whole text when it fits; "" for an empty text."""
+    if not text.strip():
+        return ""
+    passages = build_window(text, work_id="work", query=query, max_chars=max_chars)
+    return WINDOW_GAP.join(p.text for p in passages)

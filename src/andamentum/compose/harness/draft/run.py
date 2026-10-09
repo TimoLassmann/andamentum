@@ -103,6 +103,7 @@ from .claims import (
 )
 from .disclosure import HEADING as AI_HEADING
 from .disclosure import ai_use_statement
+from .cite import CiteTools, cite_sentences
 from .works import LiteratureSearch, ResearchRun, gather_works, work_source
 
 DEFAULT_MAX_ROUNDS = 2
@@ -557,6 +558,35 @@ async def _draft_all(
     return drafts
 
 
+async def _cite(
+    run: _Run, tools: CiteTools, *, drafts: list[SectionDraft], evidence: _Evidence
+) -> None:
+    """The cite loop over the drafted sections; changed sections are analysed again."""
+    outcome = await cite_sentences(
+        drafts,
+        sources=evidence.sources,
+        facts=evidence.facts,
+        infos=evidence.infos,
+        tools=tools,
+        bundle_dir=run.work,
+        model=run.roles.judge,
+        progress=run.progress,
+        log=run.log,
+    )
+    run.step(
+        "cite",
+        role="judge",
+        model=run.roles.judge,
+        detail=f"{len(outcome.cited)} cited, {len(outcome.changed)} changed",
+    )
+    evidence.notes += outcome.notes
+    for section in drafts:
+        if section.key in outcome.changed_sections:
+            await _refresh(run, section, evidence)
+    bundle_store.save_sources(run.work, evidence.sources)
+    bundle_store.save_facts(run.work, evidence.facts)
+
+
 # ----------------------------------------------------------- check & repair
 
 
@@ -944,6 +974,7 @@ async def draft_document(
     results: str | Path | None = None,
     literature: LiteratureSearch | None = None,
     research: ResearchRun | None = None,
+    cite: CiteTools | None = None,
     template: str | Path | None = None,
     max_rounds: int = DEFAULT_MAX_ROUNDS,
     offline: bool = False,
@@ -962,7 +993,10 @@ async def draft_document(
     verified works; without it nothing is cited. *research* runs
     ``deep_research`` once in the genre's mode over ``<project>/research.db``; *project* is the folder that keeps the ledger and logs (default ``state/`` beside *out*)
     and adds each verified work that has a finding (its quotes are checked
-    passages) as a source; without it nothing is searched. *genre* is a compose genre
+    passages) as a source; without it nothing is searched. *cite* runs the cite
+    loop after the draft (``cite.py``: sentences that cite nothing get a paper
+    that was read and supports them; the papers read go into its document
+    store); without it no sentence is cited after drafting. *genre* is a compose genre
     pack name or YAML path; ``None`` lets the brief compiler choose.
 
     Returns a :class:`DraftResult`; ``exit_code`` is 0 when no check error is
@@ -1065,6 +1099,8 @@ async def draft_document(
         placements=placements,
         view=base_view if into_path else None,
     )
+    if cite is not None and genre_pack.cites:
+        await _cite(run, cite, drafts=drafts, evidence=evidence)
     document_notes = [
         f"Not cited, could not be verified: {line}" for line in evidence.unverified
     ]

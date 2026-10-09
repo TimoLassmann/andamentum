@@ -29,6 +29,7 @@ from ..tests._draft_helpers import (
     WORK_CSL,
     install_script,
     make_project,
+    no_cite_tools,
 )
 from ...tests._research_helpers import FakeResearch, make_result, study
 
@@ -234,6 +235,7 @@ async def test_the_word_verb_replaces_crossref_discovery_with_research(
         ),
         transport=httpx.MockTransport(handler),
         url_check=lambda url: (True, ""),
+        open_cite=no_cite_tools(tmp_path),
     )
     assert fake.calls[0]["mode"] == "scholarly"
     assert crossref_search_calls == []  # Crossref only verifies; it no longer discovers

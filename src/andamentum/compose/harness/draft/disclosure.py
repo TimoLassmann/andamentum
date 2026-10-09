@@ -80,6 +80,7 @@ def ai_use_statement(events: Sequence[dict[str, object]]) -> str:
         ]
     )
     researched = [e for e in steps if e.get("step") == "research"]
+    cited_by = [_text(e.get("model")) for e in steps if e.get("step") == "cite"]
     checks = _check_ids(events)
     runs = [e for e in events if e.get("type") == "draft_run"]
     citations = sum(_count(e.get("citations")) for e in runs)
@@ -106,6 +107,14 @@ def ai_use_statement(events: Sequence[dict[str, object]]) -> str:
     for model, titles in drafted.items():
         sentences.append(
             f"{_sections(titles)} {'was' if len(titles) == 1 else 'were'} drafted by {model}."
+        )
+    if cited_by:
+        sentences.append(
+            f"After drafting, {_listing(cited_by)} looked for published work for "
+            "sentences that cited nothing, read the papers found and cited one only "
+            "where a passage of it, quoted word for word, supports the sentence; "
+            "where a paper supports a narrower claim, the sentence was changed to "
+            "match it."
         )
     for model, titles in revised.items():
         sentences.append(

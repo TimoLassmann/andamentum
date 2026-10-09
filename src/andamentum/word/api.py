@@ -188,6 +188,7 @@ async def draft_document(
     results: str | Path | None = None,
     library: str | Path | None = None,
     zotero: bool = False,
+    store: str | Path | None = None,
     template: str | Path | None = None,
     max_rounds: int | None = None,
     offline: bool = False,
@@ -204,7 +205,12 @@ async def draft_document(
     The text arrives as tracked changes, comments, verified citations and
     numbers bound to *results*. With *into*, the drafting extends a copy of
     that .docx (never edited). Writes into *out*: ``draft.docx``, ``draft.report.md``
-    and ``.json``, the claims ledger and ``state/``. *model* serves every job;
+    and ``.json``, the claims ledger and ``state/``. After drafting, sentences
+    that cite nothing are sent through the cite loop (library first, then the
+    scholarly finder; a paper is cited only when a passage of it supports the
+    sentence); every paper it reads goes into the document store *store* (an
+    existing store is reused, a new path makes one; default
+    ``state/papers.db``). *model* serves every job;
     *drafter* and *judge* override it for that job. ``result.exit_code`` is 1
     while anything is left for the authors.
     """
@@ -221,6 +227,7 @@ async def draft_document(
         results=Path(results) if results is not None else None,
         library=Path(library) if library is not None else None,
         zotero=zotero,
+        store=Path(store) if store is not None else None,
         template=Path(template) if template is not None else None,
         model=model,
         drafter=drafter,
