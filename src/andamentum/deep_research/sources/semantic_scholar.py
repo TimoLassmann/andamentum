@@ -134,11 +134,24 @@ class SemanticScholarSource:
         self, work: Work, endpoint: str, key: str, limit: int
     ) -> list[Candidate]:
         paper = _paper_id(work)
-        body = await self._get(
-            f"{API}/paper/{quote(paper, safe=':')}/{endpoint}",
-            {"fields": FIELDS, "limit": min(limit, MAX_LINKS)},
-            ttl_s=TTL_METADATA_S,
-        )
+        try:
+            body = await self._get(
+                f"{API}/paper/{quote(paper, safe=':')}/{endpoint}",
+                {"fields": FIELDS, "limit": min(limit, MAX_LINKS)},
+                ttl_s=TTL_METADATA_S,
+            )
+        except SourceError as error:
+            if error.status != 404:
+                raise
+            # Semantic Scholar does not hold the paper: the same answer as a
+            # work with no usable identifier, not an outage.
+            raise SourceError(
+                NAME,
+                f"cannot place the work in Semantic Scholar: {paper} not found",
+                kind="config",
+                status=404,
+                url=error.url,
+            ) from error
         found: list[Candidate] = []
         for item in as_list(body.get("data")):  # None when the publisher withheld it
             linked = work_from_paper(as_mapping(as_mapping(item).get(key)))

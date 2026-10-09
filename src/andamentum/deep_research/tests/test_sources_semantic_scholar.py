@@ -152,6 +152,28 @@ async def test_a_work_with_no_usable_identifier_cannot_be_placed() -> None:
     assert caught.value.kind == "config"
 
 
+async def test_a_paper_semantic_scholar_does_not_hold_cannot_be_placed() -> None:
+    def unknown(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(404, json={"error": "Paper with id DOI:x not found"})
+
+    kit = SourceKit(unknown)
+    work = Work(title="An invented unindexed work", doi="10.1000/invented.404")
+    for follow in (source(kit).references, source(kit).citations):
+        with pytest.raises(SourceError) as caught:
+            await follow(work, limit=5)
+        assert caught.value.kind == "config"
+        assert "DOI:10.1000/invented.404 not found" in caught.value.reason
+
+
+async def test_a_server_error_on_references_stays_an_outage() -> None:
+    kit = SourceKit(lambda _r: httpx.Response(500), retries=0)
+    with pytest.raises(SourceError) as caught:
+        await source(kit).references(
+            Work(title="An invented work", doi="10.1000/invented.500"), limit=5
+        )
+    assert caught.value.kind == "http"
+
+
 def test_a_paper_without_a_title_or_id_is_skipped() -> None:
     assert work_from_paper({"paperId": APOLLO, "title": ""}) is None
     assert work_from_paper({"paperId": None, "title": "No id"}) is None
