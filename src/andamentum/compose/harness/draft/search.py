@@ -18,7 +18,7 @@ from __future__ import annotations
 import os
 import re
 from collections.abc import AsyncIterator, Callable
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import replace
 from pathlib import Path
 
@@ -167,9 +167,20 @@ async def cite_tools(
         found = await find_works(sentence, sources=own, limit=LIBRARY_PER_SENTENCE)
         return [work_from_csl(w.csl) for w in found]
 
-    http_cache = ResearchStore(cache)
-    papers = await Store.open(store)
-    try:
+    source_notes: list[str] = []
+
+    def note(prefix: str, lines: list[str]) -> None:
+        for line in lines:
+            full = f"{prefix}{line}"
+            if full not in source_notes:
+                source_notes.append(full)
+
+    # Both are closed on every path, including when opening the second raises.
+    async with AsyncExitStack() as stack:
+        http_cache = ResearchStore(cache)
+        stack.callback(http_cache.close)
+        papers = await Store.open(store)
+        stack.push_async_callback(papers.close)
 
         async def finder(sentence: str, *, paragraph: str) -> list[ScholarlyWork]:
             result = await find_scholarly(
@@ -179,12 +190,15 @@ async def cite_tools(
                 sources=finder_sources,
                 http_cache=http_cache,
             )
+            note("search outage: ", result.degraded)
             return result.works[:CANDIDATES_PER_SENTENCE]
 
         async def read(work: ScholarlyWork, *, query: str) -> WorkText:
-            return await read_work(
+            text = await read_work(
                 work, query=query, sources=read_sources, http_cache=http_cache
             )
+            note("read failed: ", text.failed)
+            return text
 
         async def verify(work: ScholarlyWork) -> CitableWork | str:
             csl: dict[str, object] = dict(work.to_csl())
@@ -201,7 +215,5 @@ async def cite_tools(
             verify=verify,
             papers=papers,
             store_path=store,
+            source_notes=source_notes,
         )
-    finally:
-        await papers.close()
-        http_cache.close()

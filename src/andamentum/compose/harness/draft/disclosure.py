@@ -10,6 +10,8 @@ into the run report.
 
 from __future__ import annotations
 
+import re
+
 from collections.abc import Sequence
 
 HEADING = "Statement on the use of AI"
@@ -80,7 +82,7 @@ def ai_use_statement(events: Sequence[dict[str, object]]) -> str:
         ]
     )
     researched = [e for e in steps if e.get("step") == "research"]
-    cited_by = [_text(e.get("model")) for e in steps if e.get("step") == "cite"]
+    cite_steps = [e for e in steps if e.get("step") == "cite"]
     checks = _check_ids(events)
     runs = [e for e in events if e.get("type") == "draft_run"]
     citations = sum(_count(e.get("citations")) for e in runs)
@@ -108,14 +110,29 @@ def ai_use_statement(events: Sequence[dict[str, object]]) -> str:
         sentences.append(
             f"{_sections(titles)} {'was' if len(titles) == 1 else 'were'} drafted by {model}."
         )
-    if cited_by:
-        sentences.append(
-            f"After drafting, {_listing(cited_by)} looked for published work for "
-            "sentences that cited nothing, read the papers found and cited one only "
-            "where a passage of it, quoted word for word, supports the sentence; "
-            "where a paper supports a narrower claim, the sentence was changed to "
-            "match it."
+    for step in cite_steps:
+        model = _text(step.get("model"))
+        counts = _cite_counts(_text(step.get("detail")))
+        checked, cited = counts.get("checked", 0), counts.get("cited", 0)
+        noun = "sentence" if checked == 1 else "sentences"
+        if cited == 0:
+            sentences.append(
+                f"After drafting, {model} checked {checked} {noun} that cited "
+                "nothing and found no supporting paper, so none was cited."
+            )
+            continue
+        changed = counts.get("changed", 0)
+        text = (
+            f"After drafting, {model} checked {checked} {noun} that cited nothing, "
+            "read the papers found and cited one only where a passage of it, "
+            f"quoted word for word, supports the sentence; {cited} "
+            f"{'sentence was' if cited == 1 else 'sentences were'} cited"
         )
+        if changed:
+            text += (
+                f", {changed} of them changed to match a narrower claim in the paper"
+            )
+        sentences.append(text + ".")
     for model, titles in revised.items():
         sentences.append(
             f"{_sections(titles)} {'was' if len(titles) == 1 else 'were'} "
@@ -138,3 +155,11 @@ def ai_use_statement(events: Sequence[dict[str, object]]) -> str:
         "The authors are responsible for the content of this document."
     )
     return " ".join(sentences)
+
+
+def _cite_counts(detail: str) -> dict[str, int]:
+    """The counts in a cite step's detail ("3 checked, 1 cited, 1 changed")."""
+    return {
+        word: int(number)
+        for number, word in re.findall(r"(\d+) (checked|cited|changed)", detail)
+    }

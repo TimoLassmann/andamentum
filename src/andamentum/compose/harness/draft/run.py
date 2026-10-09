@@ -103,7 +103,7 @@ from .claims import (
 )
 from .disclosure import HEADING as AI_HEADING
 from .disclosure import ai_use_statement
-from .cite import CiteTools, cite_sentences
+from .cite import CiteTools, Rewrite, cite_sentences
 from .works import LiteratureSearch, ResearchRun, gather_works, work_source
 
 DEFAULT_MAX_ROUNDS = 2
@@ -167,6 +167,7 @@ class _Evidence:
     infos: dict[str, SourceInfo]
     unverified: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
+    rewrites: list[Rewrite] = field(default_factory=list)
 
 
 @dataclass
@@ -573,12 +574,17 @@ async def _cite(
         progress=run.progress,
         log=run.log,
     )
-    run.step(
-        "cite",
-        role="judge",
-        model=run.roles.judge,
-        detail=f"{len(outcome.cited)} cited, {len(outcome.changed)} changed",
-    )
+    if outcome.checked > 0:
+        run.step(
+            "cite",
+            role="judge",
+            model=run.roles.judge,
+            detail=(
+                f"{outcome.checked} checked, {len(outcome.cited)} cited, "
+                f"{len(outcome.changed)} changed"
+            ),
+        )
+    evidence.rewrites += outcome.rewrites
     evidence.notes += outcome.notes
     for section in drafts:
         if section.key in outcome.changed_sections:
@@ -674,6 +680,7 @@ async def _build_and_check(
         infos=evidence.infos,
         document_notes=document_notes,
         reason=f"write: round {round_no}",
+        rewrites=evidence.rewrites,
     )
     run.progress(f"Check: round {round_no}")
     return built, await _check(run, built.docx, round_no=round_no)

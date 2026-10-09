@@ -15,6 +15,7 @@ import sys
 from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
 from dataclasses import replace
+import sqlite3
 from pathlib import Path
 from typing import Literal
 
@@ -156,6 +157,39 @@ def _research_setup(params: DraftParams) -> ResearchSetup | None:
     )
 
 
+def _check_store_file(path: Path) -> None:
+    """An existing *path* must be a document store (SQLite with a ``documents``
+    table, or a SQLite file with no tables); anything else is a usage error."""
+    if not path.exists():
+        return
+    try:
+        with path.open("rb") as fh:
+            header = fh.read(16)
+    except OSError as exc:
+        raise DraftUsageError(f"--store {path} cannot be read: {exc}") from exc
+    if header == b"":  # an empty file is a valid fresh SQLite database
+        return
+    if header != b"SQLite format 3\x00":
+        raise DraftUsageError(f"--store {path} is not a document store file")
+    try:
+        con = sqlite3.connect(f"file:{path.resolve().as_posix()}?mode=ro", uri=True)
+        try:
+            tables = {
+                row[0]
+                for row in con.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                )
+            }
+        finally:
+            con.close()
+    except sqlite3.Error as exc:
+        raise DraftUsageError(f"--store {path} is not a document store: {exc}") from exc
+    if tables and "documents" not in tables:
+        raise DraftUsageError(
+            f"--store {path} is a database of another kind, not a document store"
+        )
+
+
 PAPERS_STORE = "papers.db"  # the document store of the papers read, in the state folder
 CITE_CACHE = "cite-http.db"  # the HTTP cache the cite loop's finder and reader share
 
@@ -226,6 +260,7 @@ async def run_draft(
     papers = params.store or project / PAPERS_STORE
     if papers.is_dir():
         raise DraftUsageError(f"--store {papers} is a folder; name a store file")
+    _check_store_file(papers)
     async with open_literature(
         library=params.library,
         zotero=params.zotero,

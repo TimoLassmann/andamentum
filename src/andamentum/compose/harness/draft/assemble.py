@@ -28,6 +28,7 @@ from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import docx
 from docx.enum.style import WD_STYLE_TYPE
@@ -47,6 +48,9 @@ from ..kernel.csl import work_key
 from ..kernel.ops import CitationItem, InsertCitation, Operation, UpdateBibliography
 from .body import BodyParagraph
 from .claims import SectionAnalysis, SourceInfo
+
+if TYPE_CHECKING:
+    from .cite import Rewrite
 
 AUTHOR = "andamentum compose"
 HEADING = "heading"
@@ -430,6 +434,7 @@ def build_round(
     infos: Mapping[str, SourceInfo],
     document_notes: Sequence[str],
     reason: str,
+    rewrites: Sequence[Rewrite] = (),
 ) -> BuiltRound:
     """Write the sections into copies of *base* (see the module docstring)."""
     adapter = DocxAdapter()
@@ -507,6 +512,29 @@ def build_round(
                         kind="number",
                     )
                 )
+    for rewrite in rewrites:
+        section = by_key.get(rewrite.section_key)
+        if section is None:
+            continue
+        for number, paragraph in enumerate(section.paragraphs):
+            found = paragraph.text.find(rewrite.new)
+            if found < 0 or not rewrite.new:
+                continue
+            pid, at = where[(section.key, BODY, number)]
+            mark_ops.append(
+                CommentOp(
+                    paragraph_id=pid,
+                    start=at.start(found),
+                    end=at.end(found + len(rewrite.new)),
+                    text=f"Changed to match the cited paper. Drafted text was: {rewrite.old}",
+                )
+            )
+            break
+        else:
+            notes.append(
+                f"a sentence changed to match its cited paper could not be marked "
+                f"with a comment (a revise round changed it): {rewrite.new}"
+            )
     for note in document_notes:
         mark_ops.append(
             CommentOp(

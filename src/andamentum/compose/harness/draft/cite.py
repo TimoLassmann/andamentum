@@ -42,6 +42,8 @@ from andamentum.compose.schemas import Fact, Source
 from andamentum.references import Work
 
 from .assemble import SectionDraft
+from ..literature import LiteratureError
+from .body import TO_FILL, sentence_spans
 from .claims import Sentence, SourceInfo
 from .works import CitableWork, work_source
 
@@ -54,6 +56,7 @@ CANDIDATES_PER_SENTENCE = 6  # works considered for one sentence, library first
 READS_PER_SENTENCE = 2  # papers read for one sentence before it stays uncited
 CITE_KINDS = ("background", "interpretation")
 WINDOW_CHARS = 12_000  # the part of a paper the decision reads
+MIN_QUOTE_WORDS = 8  # a shorter quote shows nothing a title does not
 
 _TAG = re.compile(r"<[^>]+>")
 
@@ -86,6 +89,18 @@ class CiteTools:
     verify: Verifier
     papers: Store
     store_path: Path
+    source_notes: list[str] = field(default_factory=list)
+    """Lines the tools record about search or read outages; the loop moves
+    them into the outcome's notes."""
+
+
+@dataclass(frozen=True)
+class Rewrite:
+    """A sentence changed to match the paper that supports it."""
+
+    section_key: str
+    old: str  # the sentence as drafted (cleaned text)
+    new: str  # the sentence now in the body, without its marker
 
 
 class CiteVerdict(BaseModel):
@@ -112,6 +127,7 @@ class CiteOutcome:
     reused: int = 0
     changed_sections: set[str] = field(default_factory=set)
     notes: list[str] = field(default_factory=list)
+    rewrites: list[Rewrite] = field(default_factory=list)
 
     def summary(self, store_path: Path) -> str:
         return (
@@ -149,8 +165,30 @@ def candidate_sentences(
         (section, sentence)
         for section in drafts
         for sentence in section.analysis.sentences
-        if sentence.kind in CITE_KINDS and not sentence.fact_ids
+        if sentence.kind in CITE_KINDS
+        and not sentence.fact_ids
+        and not TO_FILL.search(sentence.text)
+        and not _in_placeholder(section, sentence)
     ]
+
+
+def _in_placeholder(section: SectionDraft, sentence: Sentence) -> bool:
+    """Whether *sentence* overlaps a ``[TO FILL: ...]`` placeholder (one with a
+    full stop inside is split into two sentences, neither matching TO_FILL)."""
+    ranges = section.paragraphs[sentence.paragraph].to_fill()
+    return any(start < sentence.end and sentence.start < end for start, end in ranges)
+
+
+def _usable_rewrite(text: str) -> bool:
+    """A changed sentence the loop may put into the draft: one sentence, one
+    line, no fact marker and no placeholder."""
+    return (
+        bool(text)
+        and "\n" not in text
+        and "[[" not in text
+        and not TO_FILL.search(text)
+        and len(sentence_spans(text)) == 1
+    )
 
 
 def paper_key(work: Work) -> str | None:
@@ -212,7 +250,12 @@ async def _candidates(
 
     found: list[Work] = []
     if tools.library is not None:
-        found += await tools.library(sentence)
+        try:
+            found += await tools.library(sentence)
+        except LiteratureError as exc:
+            note = f"library search failed: {exc}"
+            if note not in outcome.notes:
+                outcome.notes.append(note)
     try:
         for work in await tools.finder(sentence, paragraph=paragraph):
             if not any(_same(work, seen) for seen in found):
@@ -290,12 +333,37 @@ async def _decide(
     )
 
 
-def _replace_sentence(body: str, old: str, new: str, marker: str) -> str | None:
-    """*body* with *old* replaced by *new* plus *marker*; None when *old* is not
-    found exactly once (markdown inside the sentence)."""
-    if body.count(old) != 1:
+_AT_START = re.compile(
+    r"(?:\A\s*\Z"
+    r"|\n[ \t]*(?:[-*\u2022]|\d+[.)])?[ \t]*\Z"
+    r"|[.!?][\"')\]\u201d\u2019]*(?:\s*\[\[f\d+\]\])*\s+\Z)"
+)
+
+
+def _locate_sentence(body: str, text: str) -> tuple[int, int] | None:
+    """Where *text* (a sentence's cleaned text) stands in the raw *body* as a
+    whole sentence, any whitespace run (a hard-wrapped line) standing for a
+    space; None unless there is exactly one such place."""
+    words = text.split()
+    if not words:
         return None
-    return body.replace(old, f"{new.rstrip()} {marker}", 1)
+    pattern = re.compile(r"\s+".join(re.escape(w) for w in words))
+    spans = [
+        m.span()
+        for m in pattern.finditer(body)
+        if _AT_START.search(body[: m.start()])
+        and (m.end() == len(body) or body[m.end()].isspace())
+    ]
+    return spans[0] if len(spans) == 1 else None
+
+
+def _replace_sentence(body: str, old: str, new: str, marker: str) -> str | None:
+    """*body* with the sentence *old* replaced by *new* plus *marker*; None when
+    *old* is not found exactly once as a whole sentence."""
+    span = _locate_sentence(body, old)
+    if span is None:
+        return None
+    return f"{body[: span[0]]}{new.rstrip()} {marker}{body[span[1] :]}"
 
 
 async def cite_sentences(
@@ -319,6 +387,7 @@ async def cite_sentences(
     from andamentum.deep_research import locate_quote
 
     outcome = CiteOutcome()
+    made: set[str] = set()  # ids of the sources this loop made, with full text
     wanted = candidate_sentences(drafts)
     if len(wanted) > MAX_SENTENCES:
         outcome.notes.append(
@@ -326,8 +395,14 @@ async def cite_sentences(
             f"citation were not checked (at most {MAX_SENTENCES} per draft)"
         )
     for section, sentence in wanted[:MAX_SENTENCES]:
-        outcome.checked += 1
         paragraph = section.paragraphs[sentence.paragraph].text
+        if _locate_sentence(section.body, sentence.text) is None:
+            outcome.notes.append(
+                f"{sentence.text[:80]!r}: the sentence could not be placed in the "
+                "draft text (found zero or several times); not checked"
+            )
+            continue
+        outcome.checked += 1
         progress(f"Cite: {sentence.text[:60]}")
         cited = False
         reads = 0
@@ -351,6 +426,11 @@ async def cite_sentences(
             )
             if verdict.supports == "no":
                 continue
+            if len(verdict.quote.split()) < MIN_QUOTE_WORDS:
+                outcome.notes.append(
+                    f"{work.title!r}: quote too short to show support; not cited"
+                )
+                continue
             span = locate_quote(verdict.quote, text)
             if span is None:
                 outcome.notes.append(
@@ -361,11 +441,16 @@ async def cite_sentences(
             if isinstance(checked, str):
                 outcome.notes.append(f"not cited, could not be verified: {checked}")
                 continue
-            new_text = (
-                verdict.sentence.strip()
-                if verdict.supports == "after_change" and verdict.sentence.strip()
-                else sentence.text
-            )
+            new_text = sentence.text
+            if verdict.supports == "after_change":
+                new_text = verdict.sentence.strip()
+                if not _usable_rewrite(new_text):
+                    outcome.notes.append(
+                        f"{work.title!r} supports a changed version of "
+                        f"{sentence.text[:80]!r}, but the changed sentence is not "
+                        "one plain sentence; not cited"
+                    )
+                    continue
             fact_id = f"f{len(facts) + 1}"
             edited = _replace_sentence(
                 section.body, sentence.text, new_text, f"[[{fact_id}]]"
@@ -376,13 +461,14 @@ async def cite_sentences(
                     "sentence could not be placed in the draft text; not cited"
                 )
                 break
-            source = _source_of(checked, infos)
+            source = _source_of(checked, infos, made)
             if source is None:  # a paper cited twice is one source
                 source, _ = work_source(
                     checked, number=len(sources) + 1, bundle_dir=bundle_dir, text=text
                 )
                 sources.append(source)
                 infos[source.id] = SourceInfo(source=source, work=checked)
+                made.add(source.id)
             facts.append(
                 Fact(
                     id=fact_id,
@@ -398,19 +484,29 @@ async def cite_sentences(
             outcome.cited.append(new_text)
             if new_text != sentence.text:
                 outcome.changed.append(f"{sentence.text} -> {new_text}")
+                outcome.rewrites.append(
+                    Rewrite(section_key=section.key, old=sentence.text, new=new_text)
+                )
             cited = True
             break
         if not cited:
             outcome.uncited.append(sentence.text)
     outcome.notes.insert(0, outcome.summary(tools.store_path))
+    outcome.notes[1:1] = tools.source_notes
+    tools.source_notes.clear()
     outcome.notes += [f"no citation found for: {text}" for text in outcome.uncited]
     outcome.notes += [f"changed to match the paper: {line}" for line in outcome.changed]
     return outcome
 
 
-def _source_of(work: CitableWork, infos: dict[str, SourceInfo]) -> Source | None:
-    """The source the loop already made for *work*, if any."""
-    for info in infos.values():
-        if info.work is not None and info.work.key == work.key:
+def _source_of(
+    work: CitableWork, infos: dict[str, SourceInfo], made: set[str]
+) -> Source | None:
+    """The source this loop made for *work*, if any. Sources made elsewhere
+    (the literature step) hold only a title and abstract, so a fact quoting the
+    full paper cannot point into them."""
+    for source_id in made:
+        info = infos.get(source_id)
+        if info is not None and info.work is not None and info.work.key == work.key:
             return info.source
     return None

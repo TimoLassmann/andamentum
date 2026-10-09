@@ -45,6 +45,7 @@ from andamentum.compose.harness.respond.triage import (
 from andamentum.compose.schemas import Outline, ReaderQuestion, SectionPlan
 from andamentum.compose.write import SectionBody
 
+from ._draft_helpers import no_cite_tools
 from ._helpers import copy_of
 from .test_bindings_bind import StubModel
 
@@ -193,6 +194,7 @@ async def test_write_into_a_new_word_file_from_the_example(
         ),
         transport=fixture_transport_for_example(),
         url_check=scheme_only_url_check,
+        open_cite=no_cite_tools(project.root),
     )
     assert (sha(project.notes), sha(project.library)) == (notes_before, refs_before)
     assert result.exit_code == 0, (result.open_errors, result.refused)
@@ -267,7 +269,12 @@ async def test_a_changed_csv_value_is_a_tracked_change_and_a_comment(
     monkeypatch.setattr(bind_module, "run_agent_with_usage", StubModel(picks))
     before = sha(project.collaborator)
     bound = await run_bind(
-        BindParams(out=copy_of(project.collaborator, "bound"), file=project.collaborator, results=project.results, model="stub:m")
+        BindParams(
+            out=copy_of(project.collaborator, "bound"),
+            file=project.collaborator,
+            results=project.results,
+            model="stub:m",
+        )
     )
     assert sha(project.collaborator) == before
     assert len(bound.report.bound) == 5, bound.report.unmatched
@@ -278,7 +285,8 @@ async def test_a_changed_csv_value_is_a_tracked_change_and_a_comment(
     bound_before = sha(bound.output)
     refreshed = run_refresh(
         RefreshParams(
-            out=copy_of(bound.output, "refreshed"), file=bound.output,
+            out=copy_of(bound.output, "refreshed"),
+            file=bound.output,
             results=project.results,
             project=Path(bound.report.project_dir),
         )
@@ -370,7 +378,8 @@ async def test_respond_answers_comments_and_writes_a_response_letter(
     original = {c.id: c for c in open_docx(project.collaborator).comments}
     result = await run_respond(
         RespondParams(
-            out=copy_of(project.collaborator, "responded"), file=project.collaborator,
+            out=copy_of(project.collaborator, "responded"),
+            file=project.collaborator,
             reviews=project.reviews,
             model="stub:m",
             offline=True,
