@@ -18,6 +18,7 @@ from .identity import merge  # noqa: F401  (importable, not exported)
 from .finder import FINDER_SOURCES, FinderModelError, FinderResult, find_works
 from .novelty import NoveltyResearch, run_novelty_check
 from .read import locate_quote
+from .reading import READ_SOURCES, WorkText, read_work
 from .sources import (
     API_KEY_NAMES,
     SourceClient,  # noqa: F401  (importable, not exported)
@@ -57,6 +58,7 @@ __all__ = [
     "Mode",
     "NoveltyResearch",
     "Passage",
+    "READ_SOURCES",
     "ReportWriterError",
     "ResearchError",
     "ResearchResult",
@@ -69,8 +71,10 @@ __all__ = [
     "SubQuestion",
     "SubQuestionResult",
     "VerifyFlag",
+    "WorkText",
     "find_works",
     "locate_quote",
+    "read_work",
     "research",
     "run_novelty_check",
 ]
