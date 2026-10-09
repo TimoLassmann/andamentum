@@ -13,11 +13,8 @@ from pydantic_ai.usage import RunUsage
 from andamentum.compose.brief import BriefDraft
 from andamentum.compose.evidence import RawFact, RawFacts
 from andamentum.compose.harness.checks.numbers import NumericClaims
-from andamentum.compose.harness.draft import (
-    CitableWork,
-    LiteratureFinding,
-    LiteratureSearch,
-)
+from andamentum.compose.harness.draft import CitableWork
+from andamentum.compose.harness.draft.cite import CiteVerdict
 from andamentum.compose.harness.draft.claims import ClaimLabel, ClaimLabels
 from andamentum.compose.schemas import Outline, ReaderQuestion, Roles, SectionPlan
 from andamentum.compose.write import SectionBody
@@ -51,13 +48,18 @@ WORK_CSL: dict[str, object] = {
     "DOI": "10.5555/saltlog.2020.1",
     "abstract": WORK_ABSTRACT,
 }
-UNVERIFIED_LINE = "A study that does not exist (2019): no such work in Crossref"
+# The invented paper the cite loop finds, reads and cites for the Introduction's
+# background sentence (the stand-in tools below).
+WORK_PAPER = (
+    f"# {WORK_TITLE}\n\n{WORK_ABSTRACT} In the invented trial, teachers in "
+    "twelve schools logged every session for a school year.\n"
+)
 
 SECTIONS = ("Abstract", "Introduction", "Methods", "Results", "Discussion")
 BODIES = {
     "Abstract": "We piloted structured session logging. Reading scores rose in the treatment group [[f2]].",
     "Introduction": (
-        "Structured logging of reading sessions improves delivery fidelity [[f3]].\n\n"
+        "Structured logging of reading sessions improves delivery fidelity.\n\n"
         "Whether this carries over to reading outcomes is not yet known."
     ),
     "Methods": (
@@ -80,22 +82,6 @@ def make_project(root: Path) -> tuple[Path, Path]:
     results.mkdir()
     (results / "scores.csv").write_text(SCORES, encoding="utf-8")
     return notes, results
-
-
-def fixed_literature(finding: LiteratureFinding) -> LiteratureSearch:
-    async def search(query: str, *, limit: int) -> LiteratureFinding:
-        return finding
-
-    return search
-
-
-def saltlog_literature() -> LiteratureSearch:
-    return fixed_literature(
-        LiteratureFinding(
-            works=[CitableWork(csl=WORK_CSL, abstract=WORK_ABSTRACT)],
-            unverified=[UNVERIFIED_LINE],
-        )
-    )
 
 
 def _section_of(message: str) -> str:
@@ -133,6 +119,8 @@ def _labels(message: str) -> ClaimLabels:
         kind = (
             "interpretation"
             if "suggests" in text or "carries over" in text
+            else "background"
+            if "improves" in text
             else "method"
         )
         labels.append(ClaimLabel(number=int(number), kind=kind))
@@ -182,7 +170,18 @@ def default_script() -> dict[type, Callable[[str], BaseModel]]:
         SectionBody: lambda m: SectionBody(body=BODIES[_section_of(m)]),
         ClaimLabels: _labels,
         NumericClaims: lambda _: NumericClaims(claims=[]),
+        CiteVerdict: _cite_verdict,
     }
+
+
+def _cite_verdict(message: str) -> CiteVerdict:
+    """The SaltLog paper supports the sentences that say logging improves fidelity."""
+    sentence = next(
+        (line for line in message.splitlines() if line.startswith("SENTENCE: ")), ""
+    )
+    if WORK_TITLE in message and "improves" in sentence:
+        return CiteVerdict(supports="yes", quote=WORK_ABSTRACT)
+    return CiteVerdict(supports="no")
 
 
 class Script:
@@ -215,3 +214,87 @@ def install_script(
         "andamentum.compose.harness.checks.numbers.run_agent_with_usage", script
     )
     return script
+
+
+def no_cite_tools(store_dir: Path):  # noqa: ANN201
+    """An ``open_cite`` for ``run_draft`` whose finder finds nothing: the cite
+    loop runs over a real document store in *store_dir* and cites nothing."""
+    from contextlib import asynccontextmanager
+
+    from andamentum.compose.harness.draft.cite import CiteTools
+    from andamentum.document_store import Store
+
+    async def nothing(sentence: str, *, paragraph: str) -> list:  # noqa: ARG001
+        return []
+
+    async def unreadable(work, *, query: str):  # noqa: ANN001, ANN202, ARG001
+        raise AssertionError("nothing is found, so nothing is read")
+
+    async def unverifiable(work) -> str:  # noqa: ANN001
+        raise AssertionError("nothing is found, so nothing is verified")
+
+    @asynccontextmanager
+    async def open_cite(**_kwargs: object):  # noqa: ANN202
+        path = store_dir / "papers.db"
+        async with await Store.open(path) as papers:
+            yield CiteTools(
+                library=None,
+                finder=nothing,
+                read=unreadable,
+                verify=unverifiable,
+                papers=papers,
+                store_path=path,
+            )
+
+    return open_cite
+
+
+def saltlog_cite_tools(
+    store_dir: Path,
+    *,
+    csl: dict[str, object] = WORK_CSL,
+    paper: str = WORK_PAPER,
+    asked: list[str] | None = None,
+):  # noqa: ANN201
+    """An async context manager giving cite tools that find, read and verify one
+    invented paper (*csl*, text *paper*) over a real document store in
+    *store_dir*; every sentence the finder is asked about goes into *asked*."""
+    from contextlib import asynccontextmanager
+
+    from andamentum.compose.harness.draft.cite import CiteTools
+    from andamentum.deep_research import WorkText
+    from andamentum.document_store import Store
+    from andamentum.references import Work
+
+    paper_work = Work(
+        doi=str(csl["DOI"]),
+        title=str(csl["title"]),
+        year=2020,
+        authors=["Ada Okafor"],
+    )
+
+    async def finder(sentence: str, *, paragraph: str) -> list[Work]:  # noqa: ARG001
+        if asked is not None:
+            asked.append(sentence)
+        return [paper_work]
+
+    async def read(work: Work, *, query: str) -> WorkText:  # noqa: ARG001
+        return WorkText(work=work, text=paper, window=paper, via="fetched")
+
+    async def verify(work: Work) -> CitableWork:  # noqa: ARG001
+        return CitableWork(csl=csl, abstract="")
+
+    @asynccontextmanager
+    async def opened():  # noqa: ANN202
+        path = store_dir / "papers.db"
+        async with await Store.open(path) as papers:
+            yield CiteTools(
+                library=None,
+                finder=finder,
+                read=read,
+                verify=verify,
+                papers=papers,
+                store_path=path,
+            )
+
+    return opened()

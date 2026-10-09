@@ -5,7 +5,8 @@ fixed before the run; this module only reads it. The verdict is ``accepted``
 when the whole bootstrap interval is on the right side of the margin or
 threshold, ``not accepted`` when the whole interval is on the wrong side, and
 ``inconclusive`` when it straddles the line (or there is nothing to compare):
-a small sample is allowed to say "I cannot tell". The one exception is
+a small sample is allowed to say "I cannot tell". ``exceeds_by`` reads the
+mean difference against its margin and reports the interval. The other exception is
 ``no_harm`` (a guard): it is ``not accepted`` when the mean difference is below
 ``-margin`` or the whole interval is below 0, and ``accepted`` otherwise.
 
@@ -25,7 +26,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
-from .experiment import Aggregate, Rule
+from .experiment import SHIFT_TESTS, Aggregate, Rule
 from .stats import paired_bootstrap_ci
 
 Outcome = Literal["accepted", "not accepted", "inconclusive"]
@@ -151,7 +152,7 @@ def judge_rule(
         return _judge_reduction(
             rule, arm=arm, reference=reference, resamples=resamples, seed=seed
         )
-    paired = rule.test in ("noninferior", "superior", "no_harm")
+    paired = rule.test in SHIFT_TESTS
     if paired:
         if reference is None:
             raise ValueError(f"rule {rule.id} needs the reference arm's values")
@@ -166,6 +167,8 @@ def judge_rule(
             )
         if rule.test == "no_harm":
             return _judge_no_harm(rule, interval)
+        if rule.test == "exceeds_by":
+            return _judge_exceeds(rule, interval)
         bound = -rule.margin if rule.test == "noninferior" else rule.margin
         outcome: Outcome
         if interval.low > bound:
@@ -220,6 +223,21 @@ def judge_rule(
         f"{rule.arm} {rule.aggregate} {rule.metric}: {interval.estimate:.3f} "
         f"(95% interval {interval.low:.3f} to {interval.high:.3f}, "
         f"{interval.n_items} items); bar: {bar}"
+    )
+    return _verdict(rule, outcome, interval, statement)
+
+
+def _judge_exceeds(rule: Rule, interval: Interval) -> Verdict:
+    """``exceeds_by``: the registered bar is the mean paired difference itself
+    (at least ``margin``); the interval is reported beside it, not tested."""
+    outcome: Outcome = (
+        "accepted" if interval.estimate >= rule.margin else "not accepted"
+    )
+    statement = (
+        f"{rule.arm} minus {rule.reference}, oriented so that higher is better: "
+        f"{_fmt(interval.estimate)} (95% interval {_fmt(interval.low)} to "
+        f"{_fmt(interval.high)}, {interval.n_items} items); bar: the mean at least "
+        f"+{rule.margin:g}"
     )
     return _verdict(rule, outcome, interval, statement)
 

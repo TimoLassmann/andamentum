@@ -14,6 +14,7 @@ from ..store import ResearchStore
 from ..types import Mode
 from .arxiv import ArxivSource
 from .base import (
+    API_KEY_NAMES,
     ExpandingSource,
     FetchedText,
     HttpResult,
@@ -35,6 +36,7 @@ from .semantic_scholar import SemanticScholarSource
 from .web import WebSource
 
 __all__ = [
+    "API_KEY_NAMES",
     "ArxivSource",
     "CrossrefSource",
     "EuropePmcSource",

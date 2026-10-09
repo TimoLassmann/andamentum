@@ -148,9 +148,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     from andamentum import __version__ as _ver
 
-    parser.add_argument(
-        "--version", action="version", version=f"%(prog)s {_ver}"
-    )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {_ver}")
     sub = parser.add_subparsers(dest="command", metavar="COMMAND")
 
     ask_parser = sub.add_parser(
@@ -239,9 +237,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Check podman (for the isolated Chrome) instead of SearXNG",
     )
-    pf_parser.add_argument(
-        "--verbose", action="store_true", help="Print extra details"
-    )
+    pf_parser.add_argument("--verbose", action="store_true", help="Print extra details")
 
     from .graph.stages import stage_names
 
@@ -642,6 +638,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command is None:
         parser.print_help(sys.stderr)
         return 2
+    from andamentum.core.secrets import load_secrets
+
+    load_secrets()  # secrets only (API keys); configuration comes from flags
 
     # The notice goes to stderr for the commands that run the pipeline, after
     # the arguments are accepted and before any work.

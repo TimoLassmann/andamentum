@@ -6,10 +6,13 @@ way through the run: search snippets, the fetched page texts, the text given to
 the note-taking call, the findings, the reflect answer, the report. For a
 LitSearch query the question is the same for each gold work: was it among the
 search results, was it chosen, was it read, was it cited, was it ranked in the
-top 20.
+top 20. A finder cell is traced from the step lists its output keeps
+(``ArmOutput.finder``): was it returned by the searches or by the citation hop,
+was it among the candidates shown to the ranking call, did the model choose it,
+did it rank in the top 20 (``trace_finder``).
 
 The functions ``trace_simpleqa`` and ``trace_litsearch`` are pure over a
-``RunLog`` and the gold; ``collect_losses`` reads the registry, the data and the
+``RunLog`` and the gold, ``trace_finder`` over a finder arm's output; ``collect_losses`` reads the registry, the data and the
 logs an experiment run left, and ``Losses.to_markdown`` / ``model_dump_json``
 render the result. A SimpleQA item counts as failed when it was not graded
 correct. The events and their fields are those of the run log catalogue
@@ -43,6 +46,7 @@ from andamentum.references import Work
 from andamentum.references.works import canonical_url
 
 from ..types import LogEvent, RunLog
+from .arms import ArmOutput
 from .experiment import Experiment
 from .experiment_run import DataDirs, Item, cell_log_path, load_items
 from .matching import contains_phrase
@@ -91,6 +95,22 @@ LIT_STAGES: tuple[LitStage, ...] = (
     "cited",
     "ranked_top_20",
 )
+# A finder cell: the step lists of ``FinderResult``. ``retrieved`` is searched or
+# followed; ``lost_at`` is the first of FINDER_CHAIN a gold work is missing from
+# (``chosen`` is shown, not chained: a work the model left out may still rank in
+# the top 20 by the code's order).
+FinderStage = Literal[
+    "searched", "followed", "retrieved", "shown", "chosen", "ranked_top_20"
+]
+FINDER_STAGES: tuple[FinderStage, ...] = (
+    "searched",
+    "followed",
+    "retrieved",
+    "shown",
+    "chosen",
+    "ranked_top_20",
+)
+FINDER_CHAIN: tuple[FinderStage, ...] = ("retrieved", "shown", "ranked_top_20")
 TOP = 20
 FOUND = "found"
 
@@ -220,7 +240,7 @@ class GoldTrace(BaseModel):
     first stage it is missing from, or ``found``."""
 
     title: str
-    stages: dict[LitStage, bool] = Field(default_factory=dict)
+    stages: dict[str, bool] = Field(default_factory=dict)
     lost_at: str
 
 
@@ -282,7 +302,7 @@ def trace_litsearch(log: RunLog | None, gold: Sequence[Work]) -> list[GoldTrace]
     ]
     traces: list[GoldTrace] = []
     for work in gold:
-        present: dict[LitStage, bool] = {
+        present: dict[str, bool] = {
             "search_results": _any_match(searched, work),
             "choice": _any_match(chosen, work),
             "read": _any_match(read, work),
@@ -295,6 +315,42 @@ def trace_litsearch(log: RunLog | None, gold: Sequence[Work]) -> list[GoldTrace]
         )
         lost = next((s for s in LIT_STAGES if not present[s]), FOUND)
         traces.append(GoldTrace(title=work.title, stages=present, lost_at=lost))
+    return traces
+
+
+def trace_finder(output: ArmOutput, gold: Sequence[Work]) -> list[GoldTrace]:
+    """For each gold work, the finder steps it reached (``FINDER_STAGES``) and
+    the first of ``FINDER_CHAIN`` it is missing from, or ``found``.
+
+    The step lists of ``output.finder`` hold work ids of ``output.works``;
+    ``ranked_top_20`` is the first 20 of ``output.works`` (what recall@20
+    reads). Matching is ``metrics.work_matches``.
+    """
+    if output.finder is None:
+        raise ValueError("trace_finder needs a finder arm's output")
+    steps = output.finder
+    by_id = {w.work_id: w for w in output.works if w.work_id}
+
+    def works_of(ids: Sequence[str]) -> list[Work]:
+        return [by_id[i] for i in ids if i in by_id]
+
+    lists: dict[FinderStage, list[Work]] = {
+        "searched": works_of(steps.searched),
+        "followed": works_of(steps.followed),
+        "shown": works_of(steps.shown),
+        "chosen": works_of(steps.chosen),
+        "ranked_top_20": list(output.works[:TOP]),
+    }
+    traces: list[GoldTrace] = []
+    for work in gold:
+        present: dict[str, bool] = {
+            stage: any(work_matches(w, work) for w in found)
+            for stage, found in lists.items()
+        }
+        present["retrieved"] = present["searched"] or present["followed"]
+        ordered = {s: present[s] for s in FINDER_STAGES}
+        lost = next((s for s in FINDER_CHAIN if not ordered[s]), FOUND)
+        traces.append(GoldTrace(title=work.title, stages=ordered, lost_at=lost))
     return traces
 
 
@@ -323,6 +379,8 @@ class ArmLosses(BaseModel):
     simpleqa: list[SimpleQALoss] = Field(default_factory=list)
     litsearch_items: int = 0
     litsearch: list[LitSearchRow] = Field(default_factory=list)
+    # the stage columns of the LitSearch rows: the engine's, or the finder's
+    litsearch_stages: list[str] = Field(default_factory=lambda: list(LIT_STAGES))
 
 
 class Losses(BaseModel):
@@ -413,6 +471,12 @@ def collect_losses(
                 )
             elif item.litsearch is not None:
                 losses.litsearch_items += 1
+                output = record.output
+                if output is not None and output.finder is not None:
+                    traces = trace_finder(output, item.litsearch.gold)
+                    losses.litsearch_stages = list(FINDER_STAGES)
+                else:
+                    traces = trace_litsearch(log, item.litsearch.gold)
                 losses.litsearch += [
                     LitSearchRow(
                         item_id=item.item_id,
@@ -420,7 +484,7 @@ def collect_losses(
                         query=item.question,
                         gold=g,
                     )
-                    for g in trace_litsearch(log, item.litsearch.gold)
+                    for g in traces
                 ]
         result.append(losses)
     return Losses(experiment=exp.name, arms=result)
@@ -481,7 +545,8 @@ def _simpleqa_section(losses: ArmLosses) -> list[str]:
 def _litsearch_section(losses: ArmLosses, *, only_failed: bool) -> list[str]:
     rows = [r for r in losses.litsearch if not only_failed or r.gold.lost_at != FOUND]
     counts = Counter(r.gold.lost_at for r in losses.litsearch)
-    order = [*LIT_STAGES, "no_log", FOUND]
+    stages = losses.litsearch_stages
+    order = [*stages, "no_log", FOUND]
     lines = [
         f"{losses.litsearch_items} queries, {len(losses.litsearch)} gold works.",
         "",
@@ -495,7 +560,7 @@ def _litsearch_section(losses: ArmLosses, *, only_failed: bool) -> list[str]:
     if rows:
         lines += [
             table(
-                ["query", "gold work", "lost at", *LIT_STAGES],
+                ["query", "gold work", "lost at", *stages],
                 [
                     [
                         _label(r.item_id, r.repeat),
@@ -503,7 +568,7 @@ def _litsearch_section(losses: ArmLosses, *, only_failed: bool) -> list[str]:
                         r.gold.lost_at,
                         *[
                             _MARK[r.gold.stages[s]] if s in r.gold.stages else "n/a"
-                            for s in LIT_STAGES
+                            for s in stages
                         ],
                     ]
                     for r in rows
@@ -538,6 +603,7 @@ def render_markdown(losses: Losses, *, only_failed: bool = False) -> str:
 
 __all__ = [
     "DIAGNOSES",
+    "FINDER_STAGES",
     "STAGES",
     "ArmLosses",
     "GoldTrace",
@@ -545,6 +611,7 @@ __all__ = [
     "SimpleQATrace",
     "collect_losses",
     "render_markdown",
+    "trace_finder",
     "trace_litsearch",
     "trace_simpleqa",
 ]

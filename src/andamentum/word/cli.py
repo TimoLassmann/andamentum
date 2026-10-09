@@ -249,6 +249,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _library(draft)
     draft.add_argument(
+        "--store",
+        type=Path,
+        metavar="PATH",
+        help="document store that keeps the papers read to cite the draft: an "
+        "existing store is reused, a new path makes a new one (default: "
+        "state/papers.db in the --out folder)",
+    )
+    draft.add_argument(
         "--template", type=Path, help="a .docx or .dotx whose styles the document uses"
     )
     _offline(draft)
@@ -474,6 +482,7 @@ async def _dispatch(args: argparse.Namespace) -> int:
             results=args.results,
             library=args.library,
             zotero=args.zotero,
+            store=args.store,
             template=args.template,
             offline=args.offline,
             confirm_own_sources=args.confirm_own_sources,
@@ -572,11 +581,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         anyio.run(serve_stdio)
         return EXIT_OK
 
-    from dotenv import load_dotenv
+    from andamentum.core.secrets import load_secrets
 
     from andamentum.compose.harness.errors import WordInputError, WordUsageError
 
-    load_dotenv()  # credentials only (API keys); configuration comes from flags
+    load_secrets()  # credentials only (API keys); configuration comes from flags
     try:
         return asyncio.run(_dispatch(args))
     except WordUsageError as exc:

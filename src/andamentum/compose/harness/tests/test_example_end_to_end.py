@@ -7,6 +7,7 @@ fixtures, so nothing here touches a network. The project is synthetic.
 from __future__ import annotations
 
 import hashlib
+from contextlib import asynccontextmanager
 import json
 import re
 from pathlib import Path
@@ -27,6 +28,8 @@ from andamentum.compose.harness.bindings.bind import BindParams, run_bind
 from andamentum.compose.harness.bindings.refresh import RefreshParams, run_refresh
 from andamentum.compose.harness.checks.numbers import NumericClaims
 from andamentum.compose.harness.docx.reader import open_docx
+from andamentum.compose.harness.draft import search
+from andamentum.compose.harness.draft.cite import CiteVerdict
 from andamentum.compose.harness.draft.claims import ClaimLabel, ClaimLabels
 from andamentum.compose.harness.draft.verb import DraftParams, run_draft
 from andamentum.compose.harness.examples import (
@@ -122,9 +125,25 @@ class WriteScript:
             return SectionBody(body=self.body(message))
         if kind is ClaimLabels:
             numbers = [int(n) for n in re.findall(r"^(\d+): ", message, re.MULTILINE)]
+            lines = dict(re.findall(r"^(\d+): (.*)$", message, re.MULTILINE))
             return ClaimLabels(
-                labels=[ClaimLabel(number=n, kind="method") for n in numbers]
+                labels=[
+                    ClaimLabel(
+                        number=n,
+                        kind="background"
+                        if "blood pressure" in lines.get(str(n), "")
+                        else "method",
+                    )
+                    for n in numbers
+                ]
             )
+        if kind is CiteVerdict:
+            if (
+                "SENTENCE: Higher sodium intake goes with higher blood pressure"
+                in message
+            ):
+                return CiteVerdict(supports="yes", quote=OKAFOR)
+            return CiteVerdict(supports="no")
         if kind is NumericClaims:
             return NumericClaims(claims=[])
         raise AssertionError(f"unscripted call for {kind.__name__}")
@@ -162,14 +181,36 @@ class WriteScript:
         assert section
         marked = {s: i for i, s in self.statements(message)}
         if section.group(1) == "Introduction":
-            (marker,) = [i for s, i in marked.items() if "blood pressure" in s]
-            return f"Higher sodium intake goes with higher blood pressure [[{marker}]]."
+            # cited after drafting, by the cite loop, from the library
+            return "Higher sodium intake goes with higher blood pressure."
         mean = next(i for s, i in marked.items() if "mean reduction" in s)
         done = next(i for s, i in marked.items() if "48 participants" in s)
         return (
             f"Mean daily sodium fell by 412 mg [[{mean}]]. "
             f"Of those enrolled, 48 participants completed the four weeks [[{done}]]."
         )
+
+
+@asynccontextmanager
+async def library_cite_tools(**kwargs: object):  # noqa: ANN201
+    """The real cite tools (library search, Crossref verification over the
+    example fixtures, a real document store) with the network-bound finder and
+    reader replaced: nothing is found beyond the library, and a library item is
+    read from its abstract."""
+    from andamentum.deep_research import WorkText
+
+    async with search.cite_tools(**kwargs) as tools:  # type: ignore[arg-type]
+
+        async def nothing(sentence: str, *, paragraph: str) -> list:  # noqa: ARG001
+            return []
+
+        async def read(work, *, query: str) -> WorkText:  # noqa: ANN001, ARG001
+            text = f"# {work.title}\n\n{work.abstract}\n"
+            return WorkText(work=work, text=text, window=text, via="abstract")
+
+        tools.finder = nothing
+        tools.read = read
+        yield tools
 
 
 async def test_write_into_a_new_word_file_from_the_example(
@@ -193,6 +234,7 @@ async def test_write_into_a_new_word_file_from_the_example(
         ),
         transport=fixture_transport_for_example(),
         url_check=scheme_only_url_check,
+        open_cite=library_cite_tools,
     )
     assert (sha(project.notes), sha(project.library)) == (notes_before, refs_before)
     assert result.exit_code == 0, (result.open_errors, result.refused)
@@ -267,7 +309,12 @@ async def test_a_changed_csv_value_is_a_tracked_change_and_a_comment(
     monkeypatch.setattr(bind_module, "run_agent_with_usage", StubModel(picks))
     before = sha(project.collaborator)
     bound = await run_bind(
-        BindParams(out=copy_of(project.collaborator, "bound"), file=project.collaborator, results=project.results, model="stub:m")
+        BindParams(
+            out=copy_of(project.collaborator, "bound"),
+            file=project.collaborator,
+            results=project.results,
+            model="stub:m",
+        )
     )
     assert sha(project.collaborator) == before
     assert len(bound.report.bound) == 5, bound.report.unmatched
@@ -278,7 +325,8 @@ async def test_a_changed_csv_value_is_a_tracked_change_and_a_comment(
     bound_before = sha(bound.output)
     refreshed = run_refresh(
         RefreshParams(
-            out=copy_of(bound.output, "refreshed"), file=bound.output,
+            out=copy_of(bound.output, "refreshed"),
+            file=bound.output,
             results=project.results,
             project=Path(bound.report.project_dir),
         )
@@ -370,7 +418,8 @@ async def test_respond_answers_comments_and_writes_a_response_letter(
     original = {c.id: c for c in open_docx(project.collaborator).comments}
     result = await run_respond(
         RespondParams(
-            out=copy_of(project.collaborator, "responded"), file=project.collaborator,
+            out=copy_of(project.collaborator, "responded"),
+            file=project.collaborator,
             reviews=project.reviews,
             model="stub:m",
             offline=True,

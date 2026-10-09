@@ -197,7 +197,7 @@ andamentum-compose genres
 
 ### word: work on an existing Word file
 
-Every command writes a copy into `-o DIR`. Your file is never changed. `check` looks at citations, retractions, web addresses, cross-references, statistics and numbers. `respond` answers comments and reviewer reports. `bind-numbers` and `refresh` keep the numbers in the text the same as your result files. `draft` writes new text into the file as tracked changes.
+Every command writes a copy into `-o DIR`. Your file is never changed. `check` looks at citations, retractions, web addresses, cross-references, statistics and numbers. `respond` answers comments and reviewer reports. `bind-numbers` and `refresh` keep the numbers in the text the same as your result files. `draft` writes new text into the file as tracked changes, then cites it: each uncited background sentence gets a paper that was read and supports it, and the papers read are kept in a document store (`--store PATH`).
 
 ```bash
 andamentum-word check draft.docx -o checked

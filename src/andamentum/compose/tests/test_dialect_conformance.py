@@ -13,10 +13,10 @@ from andamentum.agentic_dialect.checks import check_code
 MODULE_ROOT = Path(__file__).resolve().parents[1]
 
 # compose may use: core, compose.bundle, whetstone (public API), proofread, llm_judge,
-# harvest, figures; deep_research only behind --research (deferred import).
+# harvest, figures; deep_research and document_store only through deferred imports
+# (the Word draft's cite loop finds and reads papers and keeps them in a store).
 FORBIDDEN_MODULES = {
     "andamentum.epistemic",
-    "andamentum.document_store",
     "andamentum.forge",
     "andamentum.chunker",
     "andamentum.vision_critique",
@@ -84,6 +84,13 @@ def test_deep_research_is_only_imported_lazily():
         for name, top in _imports(path):
             if name.startswith("andamentum.deep_research"):
                 assert not top, f"{path.name} imports deep_research at module level"
+
+
+def test_document_store_is_only_imported_lazily():
+    for path in _source_files():
+        for name, top in _imports(path):
+            if name.startswith("andamentum.document_store"):
+                assert not top, f"{path.name} imports document_store at module level"
 
 
 def test_nothing_else_in_the_package_imports_compose():

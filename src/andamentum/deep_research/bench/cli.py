@@ -1,7 +1,8 @@
 """The benchmark runner: ``python -m andamentum.deep_research.bench``.
 
     download litsearch-local --dir DIR [--force]
-    experiment run FILE -o DIR [--arm NAME ...] [--only-sets NAME ...] ...
+    experiment run FILE -o DIR [--arm NAME ...] [--only-sets NAME ...]
+                        [--patient SOURCE ...] ...
     experiment report FILE --runs DIR [-o FILE.md]
     experiment losses FILE --runs DIR --simpleqa-dir DIR [--arm NAME]
                            [--only-failed] [--json] [-o FILE]
@@ -12,11 +13,15 @@ write their text to stdout, or to the file ``-o/--out`` names.
 
 Every directory is named on the command line; nothing is read from or written to
 a default location. API keys and the OpenAlex contact address come from the
-environment (read here, after ``load_dotenv``, never in the library):
+environment (read here, after ``load_secrets``, never in the library):
 ``SEMANTIC_SCHOLAR_API_KEY``, ``OPENALEX_API_KEY``, ``OPENALEX_EMAIL``. A keyless
 experiment file (``keyless: true``) reads neither key: the source configuration is
 built without them whatever the environment holds. The exit status of
 ``experiment run`` is 2 when any cell failed (the failure is in the registry).
+``--patient SOURCE`` gives every arm's HTTP client the patient retry schedule
+for that source (``sources.base.PATIENT_RETRY_WAITS_S``); the run ends with one
+line per source on stderr: requests answered 429, patient waits and seconds
+waited in this process, and whether the source was given up.
 """
 
 from __future__ import annotations
@@ -25,15 +30,16 @@ import argparse
 import asyncio
 import os
 import sys
+import time
 from collections.abc import Callable, Coroutine, Sequence
 from datetime import date
 from pathlib import Path
 from typing import Any
 
 import httpx
-from dotenv import load_dotenv
+from andamentum.core.secrets import key_status, load_secrets
 
-from ..sources.base import SourceConfig
+from ..sources.base import API_KEY_NAMES, SourceConfig, process_pacing
 from ..sources.extraction import PDF_EXTRACTIONS, PdfExtraction
 from ..store import ResearchStore
 from .attribution import collect_losses
@@ -53,6 +59,8 @@ from .registry import RegistryMismatch
 from .simpleqa import AnswerGrader
 
 DEFAULT_SEARXNG_URL = "http://127.0.0.1:4070"
+# the API sources a run may ask on the patient retry schedule
+PATIENT_CHOICES = ("semantic_scholar", "openalex", "europepmc", "arxiv")
 EXIT_ITEM_FAILED = 2
 # The bench reads PDFs from their text layer (fast); the library default is docling.
 BENCH_PDF_EXTRACTION: PdfExtraction = "fast"
@@ -149,6 +157,18 @@ def build_parser() -> argparse.ArgumentParser:
         default=BENCH_PDF_EXTRACTION,
         help="how a fetched PDF becomes text: 'fast' (the PDF's text layer, "
         "no OCR; the bench default) or 'docling' (layout-aware, slow)",
+    )
+    run.add_argument(
+        "--patient",
+        action="append",
+        default=None,
+        choices=PATIENT_CHOICES,
+        metavar="SOURCE",
+        help="ask this source on the patient retry schedule (repeatable; every "
+        "arm alike): up to 8 retries waiting 5 to 60 s, the source refused for "
+        "the rest of the process after 3 requests in a row ran out of retries or "
+        "45 minutes of waiting; a cell whose search then failed is not recorded, "
+        f"so the same command resumes it. Choices: {', '.join(PATIENT_CHOICES)}",
     )
 
     summary = actions.add_parser("report", help="the experiment's markdown report")
@@ -301,6 +321,8 @@ async def _cmd_experiment_run(args: argparse.Namespace) -> int:
 
 async def _experiment_run(args: argparse.Namespace, cache: ResearchStore | None) -> int:
     exp = load_experiment(args.file)
+    if not exp.keyless:
+        print(key_status(API_KEY_NAMES), file=sys.stderr)
     if _live_web(exp, args.only_sets):
         if args.browser:
             health = await require_browser()
@@ -319,19 +341,26 @@ async def _experiment_run(args: argparse.Namespace, cache: ResearchStore | None)
         http_cache=cache,
         keyless=exp.keyless,
         grader=(AnswerGrader(model=exp.grader) if exp.grader is not None else None),
+        patient=tuple(dict.fromkeys(args.patient or ())),
     )
-    written = await run_experiment(
-        exp,
-        out_dir=args.out,
-        dirs=DataDirs(
-            litsearch_local=args.litsearch_local_dir, simpleqa=args.simpleqa_dir
-        ),
-        services=services,
-        progress=lambda line: print(line, file=sys.stderr),
-        only_sets=args.only_sets,
-        only_arms=args.arm,
-        concurrency=args.concurrency,
-    )
+    started = time.monotonic()
+    try:
+        written = await run_experiment(
+            exp,
+            out_dir=args.out,
+            dirs=DataDirs(
+                litsearch_local=args.litsearch_local_dir, simpleqa=args.simpleqa_dir
+            ),
+            services=services,
+            progress=lambda line: print(line, file=sys.stderr),
+            only_sets=args.only_sets,
+            only_arms=args.arm,
+            concurrency=args.concurrency,
+        )
+    finally:
+        for line in traffic_lines(services.patient):
+            print(line, file=sys.stderr)
+        print(f"wall {time.monotonic() - started:.0f} s", file=sys.stderr)
     failed = [r for r in written if r.error]
     print(
         f"{len(written)} runs recorded in {args.out / 'experiments.jsonl'}, "
@@ -344,6 +373,20 @@ async def _experiment_run(args: argparse.Namespace, cache: ResearchStore | None)
             file=sys.stderr,
         )
     return EXIT_ITEM_FAILED if failed else 0
+
+
+def traffic_lines(patient: Sequence[str]) -> list[str]:
+    """This process's rate-limit traffic: one line per source that answered 429
+    or was asked patiently."""
+    pacing = process_pacing()
+    names = sorted(set(pacing.rate_limited) | set(patient))
+    return [
+        f"traffic {name}: {pacing.rate_limited[name]} answers 429, "
+        f"{pacing.patient_waits[name]} patient waits, "
+        f"{pacing.patient_waited.get(name, 0.0):.0f} s waited"
+        + (", given up for this process" if name in pacing.gave_up else "")
+        for name in names
+    ]
 
 
 def _emit(text: str, out: Path | None) -> None:
@@ -391,7 +434,7 @@ _HANDLERS: dict[str, Callable[[argparse.Namespace], Coroutine[Any, Any, int]]] =
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    load_dotenv()
+    load_secrets()
     args = build_parser().parse_args(argv)
     try:
         return asyncio.run(_HANDLERS[args.command](args))

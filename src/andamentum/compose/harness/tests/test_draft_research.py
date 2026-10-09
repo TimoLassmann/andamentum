@@ -27,8 +27,10 @@ from ..draft.verb import DraftParams, run_draft
 from ..tests._draft_helpers import (
     ROLES,
     WORK_CSL,
+    default_script,
     install_script,
     make_project,
+    no_cite_tools,
 )
 from ...tests._research_helpers import FakeResearch, make_result, study
 
@@ -61,6 +63,20 @@ def _run_with(finding: ResearchFinding, calls: list[tuple[str, Genre, Path]]):
     return run
 
 
+def _script():  # noqa: ANN202
+    """The SaltLog script with the Introduction citing the research fact f3."""
+    handlers = default_script()
+    drafted = handlers[SectionBody]
+    handlers[SectionBody] = lambda m: (
+        SectionBody(
+            body="Structured logging of reading sessions improves delivery fidelity [[f3]]."
+        )
+        if "SECTION: Introduction" in m
+        else drafted(m)
+    )
+    return handlers
+
+
 async def _write(tmp_path: Path, research) -> DraftResult:  # type: ignore[no-untyped-def]
     notes, results = make_project(tmp_path)
     return await draft_document(
@@ -77,7 +93,7 @@ async def _write(tmp_path: Path, research) -> DraftResult:  # type: ignore[no-un
 async def test_a_verified_research_work_is_cited_from_its_finding(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    script = install_script(monkeypatch)
+    script = install_script(monkeypatch, _script())
     calls: list[tuple[str, Genre, Path]] = []
     result = await _write(tmp_path, _run_with(_finding(), calls))
 
@@ -98,7 +114,7 @@ async def test_a_verified_research_work_is_cited_from_its_finding(
 async def test_the_work_without_a_doi_is_reported_not_cited(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    install_script(monkeypatch)
+    install_script(monkeypatch, _script())
     result = await _write(tmp_path, _run_with(_finding(), []))
     assert any("no DOI" in note for note in result.notes)
     assert "Apollo" not in open_docx(tmp_path / "paper.docx").text()
@@ -107,7 +123,7 @@ async def test_the_work_without_a_doi_is_reported_not_cited(
 async def test_an_unverified_research_work_is_an_author_question(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    install_script(monkeypatch)
+    install_script(monkeypatch, _script())
     line = "A study that does not exist (2019): no such work in Crossref"
     result = await _write(tmp_path, _run_with(_finding(unverified=[line]), []))
     assert any(line in q for q in result.author_questions)
@@ -117,7 +133,7 @@ async def test_an_unverified_research_work_is_an_author_question(
 async def test_the_statement_says_what_searched(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    install_script(monkeypatch)
+    install_script(monkeypatch, _script())
     result = await _write(tmp_path, _run_with(_finding(), []))
     assert (
         "Further evidence was found by searching scholarly databases"
@@ -130,7 +146,7 @@ async def test_the_statement_says_what_searched(
 async def test_without_research_the_statement_is_silent_about_it(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    install_script(monkeypatch)
+    install_script(monkeypatch, _script())
     result = await _write(tmp_path, None)
     assert "Further evidence" not in result.statement
 
@@ -209,7 +225,7 @@ async def test_research_literature_never_cites_a_work_crossref_does_not_know(
 async def test_the_word_verb_replaces_crossref_discovery_with_research(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    install_script(monkeypatch)
+    install_script(monkeypatch, _script())
     fake = FakeResearch()
     monkeypatch.setattr("andamentum.deep_research.research", fake)
     notes, results = make_project(tmp_path)
@@ -234,6 +250,7 @@ async def test_the_word_verb_replaces_crossref_discovery_with_research(
         ),
         transport=httpx.MockTransport(handler),
         url_check=lambda url: (True, ""),
+        open_cite=no_cite_tools(tmp_path),
     )
     assert fake.calls[0]["mode"] == "scholarly"
     assert crossref_search_calls == []  # Crossref only verifies; it no longer discovers

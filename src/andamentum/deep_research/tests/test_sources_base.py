@@ -7,6 +7,8 @@ import pytest
 
 from andamentum.core import fetch_gate, url_safety
 from andamentum.deep_research.sources.base import (
+    DEFAULT_INFLIGHT,
+    DEFAULT_INTERVAL_S,
     SourceClient,
     SourceConfig,
     SourceError,
@@ -159,6 +161,20 @@ async def test_requests_to_one_source_are_spaced_but_cached_ones_are_not() -> No
     assert kit.time.sleeps == [pytest.approx(3.0)]
     await kit.client.get("arxiv", "https://api.example/x", params={"q": "2"}, ttl_s=60)
     assert kit.time.sleeps == [pytest.approx(3.0)]  # from the cache: no wait
+
+
+async def test_semantic_scholar_is_asked_less_than_once_a_second() -> None:
+    """The key allows one request a second across all endpoints: starts are
+    spaced by more than a second and one request is in flight at a time."""
+    gap = DEFAULT_INTERVAL_S["semantic_scholar"]
+    assert gap > 1.0
+    assert "semantic_scholar" not in DEFAULT_INFLIGHT
+    kit = SourceKit(json_ok, intervals={"semantic_scholar": gap})
+    for q in ("1", "2", "3"):
+        await kit.client.get(
+            "semantic_scholar", "https://api.example/x", params={"q": q}, ttl_s=60
+        )
+    assert kit.time.sleeps == [pytest.approx(gap), pytest.approx(gap)]
 
 
 async def test_rate_and_cost_headers_are_read() -> None:

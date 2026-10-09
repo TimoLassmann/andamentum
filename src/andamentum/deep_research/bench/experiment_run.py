@@ -14,7 +14,8 @@ nothing else of the experiment shares their wall time.
 
 Every cell is live. The web is probed before each cell that searches it (a
 web set), and a cell whose search reports failed
-searches is not a result. By default the run stops with an ``InfrastructureDown``
+searches is not a result (a patient source that ran out of retries or was
+refused for the rest of the process is such a failed search). By default the run stops with an ``InfrastructureDown``
 error before that cell is recorded, so a resume runs it again once the outage
 is over. An arm registered with ``outage: record`` goes on instead: the cell is
 recorded as failed (``outage`` set, error text, no metric values at all, so it
@@ -36,7 +37,13 @@ from ..runlog import write_log
 from ..sources.base import SourceConfig
 from ..store import ResearchStore
 from ..types import Mode, RunLog
-from .arms import AnswerArm, ArmOutput, ResearchArm
+from .arms import (
+    AnswerArm,
+    ArmOutput,
+    FinderArm,
+    ResearchArm,
+    SemanticScholarArm,
+)
 from .concurrency import resolve_concurrency, run_bounded
 from .experiment import ArmSpec, Experiment, SetSpec
 from .health import SearxDown, SearxHealth
@@ -83,6 +90,11 @@ class Item:
     question: str
     litsearch: LitSearchItem | None = None
     simpleqa: SimpleQAItem | None = None
+
+    @property
+    def group(self) -> str | None:
+        """The item's subgroup, reported beside the set (LitSearch: query_set)."""
+        return self.litsearch.query.query_set if self.litsearch is not None else None
 
 
 @dataclass
@@ -161,7 +173,11 @@ class InfrastructureDown(RuntimeError):
     about the system, so the run stops without recording it."""
 
 
-SEARCH_FAILURE_MARKERS = ("search failed for", "searches failed")
+SEARCH_FAILURE_MARKERS = (
+    "search failed for",
+    "searches failed",
+    "citation following failed",
+)
 
 
 def infrastructure_failure(output: ArmOutput) -> str | None:
@@ -181,6 +197,9 @@ class Services:
     grader: AnswerGrader | None = None
     # a shared read-through HTTP cache for the arms
     http_cache: ResearchStore | None = None
+    # the sources every arm asks on the patient retry schedule (a shared,
+    # rate-limited pool such as keyless Semantic Scholar); recorded in the registry
+    patient: tuple[str, ...] = ()
     # no API key is read or used (the experiment file says so); recorded in the registry
     keyless: bool = False
     # probes the web search before each cell that uses it (the CLI sets it; None: no probe)
@@ -192,11 +211,30 @@ class Services:
 def build_answer_arm(spec: ArmSpec, mode: Mode, services: Services) -> AnswerArm:
     if services.answer_arm is not None:
         return services.answer_arm(spec, mode)
+    if spec.system == "s2_search":
+        return SemanticScholarArm(
+            sources=services.source_config,
+            http_cache=services.http_cache,
+            patient=services.patient,
+            name=spec.name,
+        )
+    if spec.model is None:  # the arm validator requires one for these systems
+        raise ValueError(f"arm {spec.name}: a {spec.system} arm needs a model")
+    if spec.system == "finder":
+        return FinderArm(
+            model=spec.model,
+            follow_citations=bool(spec.follow_citations),
+            sources=services.source_config,
+            http_cache=services.http_cache,
+            patient=services.patient,
+            name=spec.name,
+        )
     return ResearchArm(
         mode=mode,
         model=spec.model,
         sources=services.source_config,
         http_cache=services.http_cache,
+        patient=services.patient,
         name=spec.name,
     )
 
@@ -320,6 +358,7 @@ async def run_experiment(
             notes=exp.notes,
             concurrency=concurrency,
             keyless=exp.keyless,
+            patient=list(services.patient),
         ),
     )
     done = {r.cell for r in runs_of(path, experiment_hash=exp.config_hash())}
@@ -424,6 +463,7 @@ async def _run_cell(
         arm=spec.name,
         set=item.set_name,
         item_id=item.item_id,
+        group=item.group,
         repeat=repeat,
         started_at=clock(),
         model=info.model,

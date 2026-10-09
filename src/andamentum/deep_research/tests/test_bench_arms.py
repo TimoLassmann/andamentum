@@ -16,6 +16,7 @@ from andamentum.deep_research.bench.arms import (
     report_claims,
 )
 from andamentum.deep_research.sources.base import SourceConfig
+from andamentum.deep_research.store import ResearchStore
 from andamentum.deep_research.types import (
     Budget,
     Finding,
@@ -126,15 +127,17 @@ async def test_the_research_arm_calls_research_with_the_new_signature(
     )
     out = await arm.run("Does SaltLog work?")
     assert arm.name == "research-both"
+    store, client = seen.pop("store"), seen.pop("source_client")
     assert seen == {
         "question": "Does SaltLog work?",
         "mode": "both",
         "model": "ollama:stub",
-        "store": None,  # nothing persists
         "budget": Budget(max_rounds=1),
         "sources": sources,
-        "http_cache": None,
     }
+    # a fresh in-memory store per question, its client the arm's own
+    assert isinstance(store, ResearchStore) and client.store is store
+    assert client.pdf_extraction == sources.pdf_extraction
     assert out.cost.llm_calls == 7
     assert out.result is not None and out.result.passages == []  # slimmed
     assert out.log is not None  # the run log travels to the cell log files
@@ -143,8 +146,6 @@ async def test_the_research_arm_calls_research_with_the_new_signature(
 async def test_the_research_arm_takes_a_name_and_a_shared_http_cache(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from andamentum.deep_research.store import ResearchStore
-
     seen: dict[str, Any] = {}
 
     async def research(question: str, **kwargs: Any) -> ResearchResult:
@@ -162,7 +163,8 @@ async def test_the_research_arm_takes_a_name_and_a_shared_http_cache(
     )
     await arm.run("Does SaltLog work?")
     assert arm.name == "new-engine"
-    assert seen["http_cache"] is cache and seen["store"] is None
+    # the arm's store reads through the shared cache
+    assert seen["store"]._shared is cache
 
 
 def test_the_run_log_is_kept_out_of_the_registry_dump() -> None:

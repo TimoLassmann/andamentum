@@ -209,8 +209,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     if brief == "-":
         brief = sys.stdin.read()
     if not brief.strip():
-        print("error: the brief is empty; say what the function should do", file=sys.stderr)
+        print(
+            "error: the brief is empty; say what the function should do",
+            file=sys.stderr,
+        )
         return 2
+    from andamentum.core.secrets import load_secrets
+
+    load_secrets()  # secrets only (API keys); configuration comes from flags
 
     if args.command == "design":
         dest, stop_after, sandbox = None, "design", "podman"

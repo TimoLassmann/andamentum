@@ -66,7 +66,7 @@ def test_draft_offers_exactly_these_flags():
     flags = {o for a in sub._actions for o in a.option_strings if o.startswith("--")}
     assert flags == {
         "--help", "--out", "--model", "--into", "--genre", "--source",
-        "--results", "--library", "--zotero", "--template", "--offline",
+        "--results", "--library", "--zotero", "--store", "--template", "--offline",
         "--confirm-own-sources", "--mailto", "--research", "--searxng-url",
         "--browser", "--json",
     }  # fmt: skip
@@ -315,7 +315,16 @@ def test_draft_research_passes_each_place(tmp_path, monkeypatch, where):
         raise RuntimeError("stop here")
 
     monkeypatch.setattr(word, "draft_document", fake_draft)
-    argv = ["draft", "t", "-o", str(tmp_path / "d"), "--model", "m", "--research", where]
+    argv = [
+        "draft",
+        "t",
+        "-o",
+        str(tmp_path / "d"),
+        "--model",
+        "m",
+        "--research",
+        where,
+    ]
     assert cli.main(argv) == 4
     assert seen["research"] is True and seen["research_mode"] == where
 
@@ -327,7 +336,19 @@ def test_draft_offline_refuses_a_web_source(tmp_path, monkeypatch, capsys):
         raise AssertionError("the draft must not start")
 
     monkeypatch.setattr(word, "draft_document", never)
-    argv = ["draft", "t", "-o", str(tmp_path / "d"), "--model", "m", "--offline",
-            "--source", "https://example.org/saltlog.html"]
+    argv = [
+        "draft",
+        "t",
+        "-o",
+        str(tmp_path / "d"),
+        "--model",
+        "m",
+        "--offline",
+        "--source",
+        "https://example.org/saltlog.html",
+    ]
     assert cli.main(argv) == 2
-    assert "--offline rules out fetching https://example.org/saltlog.html" in capsys.readouterr().err
+    assert (
+        "--offline rules out fetching https://example.org/saltlog.html"
+        in capsys.readouterr().err
+    )

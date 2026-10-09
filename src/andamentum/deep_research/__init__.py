@@ -6,16 +6,21 @@
 answer the research reached for each sub-question, and a report that cites
 findings by id, verified. The loop is plan, then per sub-question: queries,
 search, choose what to read, read, take notes, reflect (is it answered?), then
-one write and a code-only verify. See ``CLAUDE.md`` for the design.
+one write and a code-only verify. ``find_works(sentence, *, model, ...)`` is
+the finder: one sentence in, the works it could cite out, ranked (metadata
+only). See ``CLAUDE.md`` for the design.
 """
 
-from .ask import MODEL_ERRORS, Asker, BudgetExhausted  # noqa: F401  (importable, not exported)
+from .ask import MODEL_ERRORS, UNTRUSTED, Asker, BudgetExhausted, fence  # noqa: F401  (Asker, BudgetExhausted, MODEL_ERRORS: importable, not exported)
 from .engine import research
 from .errors import ResearchError
 from .identity import merge  # noqa: F401  (importable, not exported)
+from .finder import FINDER_SOURCES, FinderModelError, FinderResult, find_works
 from .novelty import NoveltyResearch, run_novelty_check
 from .read import locate_quote
+from .reading import READ_SOURCES, WorkText, read_work, text_window
 from .sources import (
+    API_KEY_NAMES,
     SourceClient,  # noqa: F401  (importable, not exported)
     SourceConfig,
     SourceError,
@@ -41,14 +46,19 @@ from .types import (
 )
 
 __all__ = [
+    "API_KEY_NAMES",
+    "FINDER_SOURCES",
     "Budget",
     "Candidate",
     "Depth",
+    "FinderModelError",
+    "FinderResult",
     "Finding",
     "LogEvent",
     "Mode",
     "NoveltyResearch",
     "Passage",
+    "READ_SOURCES",
     "ReportWriterError",
     "ResearchError",
     "ResearchResult",
@@ -60,8 +70,14 @@ __all__ = [
     "StoreError",
     "SubQuestion",
     "SubQuestionResult",
+    "UNTRUSTED",
     "VerifyFlag",
+    "WorkText",
+    "fence",
+    "find_works",
     "locate_quote",
+    "read_work",
     "research",
     "run_novelty_check",
+    "text_window",
 ]

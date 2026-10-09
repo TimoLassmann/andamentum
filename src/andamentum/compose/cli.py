@@ -618,11 +618,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(list(argv) if argv is not None else sys.argv[1:])
 
-    from dotenv import load_dotenv
+    from andamentum.core.secrets import load_secrets
 
     from .errors import ComposeError, ComposeInputError
 
-    load_dotenv()  # credentials only (API keys); configuration comes from flags
+    load_secrets()  # credentials only (API keys); configuration comes from flags
     try:
         if args.command == "write":
             return asyncio.run(_write(args, parser))

@@ -20,7 +20,7 @@ the Python function ``research()``.
 Every model and address is a flag; nothing has a hidden default. Without
 ``--store`` nothing persists. The contact address for the OpenAlex and Crossref
 polite pools is ``--mailto``. Secrets are read here only, from the environment
-after ``load_dotenv()``: ``OPENALEX_API_KEY``, ``SEMANTIC_SCHOLAR_API_KEY`` and,
+after ``load_secrets()``: ``OPENALEX_API_KEY``, ``SEMANTIC_SCHOLAR_API_KEY`` and,
 as a fallback when ``--mailto`` is not given, ``OPENALEX_EMAIL``.
 
 Output of ``ask``: without ``-o`` the report (Markdown, or the whole result as
@@ -45,11 +45,11 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Literal, get_args
 
-from dotenv import load_dotenv
+from andamentum.core.secrets import key_status, load_secrets
 
 from .engine import research
 from .runlog import write_log
-from .sources import SourceConfig
+from .sources import API_KEY_NAMES, SourceConfig
 from .store import ResearchStore
 from .types import Budget, Depth, Mode, ResearchResult, RunLog
 
@@ -384,7 +384,9 @@ def _ask(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
     if args.local_corpus is not None and not args.local_corpus.exists():
         _error(f"--local-corpus {args.local_corpus} does not exist")
         return EXIT_INPUT
-    load_dotenv()  # secrets only (API keys, contact mail); configuration is flags
+    load_secrets()  # secrets only (API keys, contact mail); configuration is flags
+    if not args.quiet:
+        print(key_status(API_KEY_NAMES), file=sys.stderr)
     try:
         result = asyncio.run(_run(args))
     except KeyboardInterrupt as stop:

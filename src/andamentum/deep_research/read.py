@@ -415,6 +415,7 @@ class _Text:
     text: str = ""
     via: PageVia = "none"
     access: WorkAccess = "metadata"
+    url: str = ""
     notes: list[str] = field(default_factory=list)
     failed: list[str] = field(default_factory=list)
     status: int | None = None
@@ -429,14 +430,47 @@ async def _load_text(candidate: Candidate, deps: ReadDeps) -> _Text:
     miss) is also listed in ``failed``: the page is unreadable if nothing else
     is left, but a single page does not make the run degraded.
     """
-    work = candidate.work
-    found = _Text()
-    notes, failed = found.notes, found.failed
-    had_failure = False
-    for provider in deps.providers:
+
+    def before_fetch() -> None:
         _sync_fetched_bytes(deps)
         if deps.asker.stats.fetched_bytes >= deps.asker.budget.max_fetch_bytes:
             raise BudgetExhausted("max_fetch_bytes")
+
+    found, had_failure = await provider_text(
+        candidate.work,
+        deps.providers,
+        before_fetch=before_fetch,
+        after_fetch=lambda: _sync_fetched_bytes(deps),
+    )
+    if found.text:
+        return found
+    work = candidate.work
+    if work.abstract.strip() and work.redistributable:
+        found.text, found.via, found.access = work.abstract, "abstract", "abstract"
+    elif work.redistributable and len(candidate.snippet.strip()) >= SNIPPET_MIN_CHARS:
+        found.text, found.via = candidate.snippet, "snippet"
+        found.access = "metadata"
+    else:
+        found.access = "unreadable" if had_failure else "metadata"
+    return found
+
+
+async def provider_text(
+    work: Work,
+    providers: Sequence[TextSource],
+    *,
+    before_fetch: Callable[[], None] = lambda: None,
+    after_fetch: Callable[[], None] = lambda: None,
+) -> tuple[_Text, bool]:
+    """The text of *work* from the first provider that holds it, and whether a
+    provider failed on the way. An abstract the licence forbids is skipped.
+    ``before_fetch`` runs before each request (it may raise to stop) and
+    ``after_fetch`` after it."""
+    found = _Text()
+    notes, failed = found.notes, found.failed
+    had_failure = False
+    for provider in providers:
+        before_fetch()
         try:
             fetched = await provider.fetch_text(work)
         except SourceError as exc:
@@ -452,13 +486,14 @@ async def _load_text(candidate: Candidate, deps: ReadDeps) -> _Text:
                 )
             continue
         finally:
-            _sync_fetched_bytes(deps)
+            after_fetch()
         if fetched is None:
             continue
         if fetched.access == "abstract" and not work.redistributable:
             continue  # the licence forbids using the record's abstract
         found.text = fetched.text
         found.access = fetched.access
+        found.url = fetched.url
         found.status, found.error = None, ""
         if fetched.access == "abstract":
             found.via = "abstract"
@@ -470,17 +505,7 @@ async def _load_text(candidate: Candidate, deps: ReadDeps) -> _Text:
         else:
             found.via = "fetched"
         break
-    else:
-        if work.abstract.strip() and work.redistributable:
-            found.text, found.via, found.access = work.abstract, "abstract", "abstract"
-        elif (
-            work.redistributable and len(candidate.snippet.strip()) >= SNIPPET_MIN_CHARS
-        ):
-            found.text, found.via = candidate.snippet, "snippet"
-            found.access = "metadata"
-        else:
-            found.access = "unreadable" if had_failure else "metadata"
-    return found
+    return found, had_failure
 
 
 def _span(passage: Passage) -> list[int]:

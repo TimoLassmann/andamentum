@@ -5,9 +5,10 @@ this module sequences them around a ``.docx`` instead of a bundle folder:
 
 1. a project folder ``state/`` beside ``out`` (the harness store; or *project*) and a scratch
    folder inside it for the workers' artefacts;
-2. sources, result files, the text of the document being extended and verified
-   literature become compose sources; one call per source extracts quote-checked
-   facts (``[[fN]]`` markers in the drafts point at them);
+2. sources, result files and the text of the document being extended become
+   compose sources; one call per source extracts quote-checked facts
+   (``[[fN]]`` markers in the drafts point at them); literature enters only
+   after drafting, through the cite loop (``cite.py``);
 3. an outline, then one draft per target section; every sentence is analysed
    (``claims``): what it rests on, which numbers bind to result files;
 4. a build writes the sections into a copy of the base document as tracked
@@ -103,7 +104,8 @@ from .claims import (
 )
 from .disclosure import HEADING as AI_HEADING
 from .disclosure import ai_use_statement
-from .works import LiteratureSearch, ResearchRun, gather_works, work_source
+from .cite import CiteTools, Rewrite, cite_sentences
+from .works import ResearchRun
 
 DEFAULT_MAX_ROUNDS = 2
 EXIT_OK, EXIT_OPEN, EXIT_USAGE = 0, 1, 2
@@ -166,6 +168,7 @@ class _Evidence:
     infos: dict[str, SourceInfo]
     unverified: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
+    rewrites: list[Rewrite] = field(default_factory=list)
 
 
 @dataclass
@@ -305,7 +308,6 @@ async def _gather_evidence(
     sources: Sequence[str],
     existing: Path | None,
     brief_genre: Genre | None,
-    literature: LiteratureSearch | None,
     research: ResearchRun | None,
     confirm_own_sources: bool,
 ) -> tuple[Brief, Genre, _Evidence]:
@@ -350,17 +352,6 @@ async def _gather_evidence(
     bundle_store.save_brief(run.work, brief)
 
     evidence = _Evidence(sources=list(ingested), facts=[], infos=infos)
-    if literature is not None and genre.cites:
-        found = await gather_works(brief, search=literature, progress=run.progress)
-        evidence.unverified = found.unverified
-        evidence.notes += [f"work not used: {line}" for line in found.unused]
-        for work in found.works:
-            source, text = work_source(
-                work, number=len(evidence.sources) + 1, bundle_dir=run.work
-            )
-            evidence.sources.append(source)
-            evidence.infos[source.id] = SourceInfo(source=source, work=work)
-            text_of[source.id] = text
     for source in evidence.sources:
         run.progress(f"Evidence: reading {source.title}")
         found_facts = await extract_facts(
@@ -557,6 +548,40 @@ async def _draft_all(
     return drafts
 
 
+async def _cite(
+    run: _Run, tools: CiteTools, *, drafts: list[SectionDraft], evidence: _Evidence
+) -> None:
+    """The cite loop over the drafted sections; changed sections are analysed again."""
+    outcome = await cite_sentences(
+        drafts,
+        sources=evidence.sources,
+        facts=evidence.facts,
+        infos=evidence.infos,
+        tools=tools,
+        bundle_dir=run.work,
+        model=run.roles.judge,
+        progress=run.progress,
+        log=run.log,
+    )
+    if outcome.checked > 0:
+        run.step(
+            "cite",
+            role="judge",
+            model=run.roles.judge,
+            detail=(
+                f"{outcome.checked} checked, {len(outcome.cited)} cited, "
+                f"{len(outcome.changed)} changed"
+            ),
+        )
+    evidence.rewrites += outcome.rewrites
+    evidence.notes += outcome.notes
+    for section in drafts:
+        if section.key in outcome.changed_sections:
+            await _refresh(run, section, evidence)
+    bundle_store.save_sources(run.work, evidence.sources)
+    bundle_store.save_facts(run.work, evidence.facts)
+
+
 # ----------------------------------------------------------- check & repair
 
 
@@ -644,6 +669,7 @@ async def _build_and_check(
         infos=evidence.infos,
         document_notes=document_notes,
         reason=f"write: round {round_no}",
+        rewrites=evidence.rewrites,
     )
     run.progress(f"Check: round {round_no}")
     return built, await _check(run, built.docx, round_no=round_no)
@@ -942,8 +968,8 @@ async def draft_document(
     genre: str | None = None,
     sources: Sequence[str] = (),
     results: str | Path | None = None,
-    literature: LiteratureSearch | None = None,
     research: ResearchRun | None = None,
+    cite: CiteTools | None = None,
     template: str | Path | None = None,
     max_rounds: int = DEFAULT_MAX_ROUNDS,
     offline: bool = False,
@@ -958,11 +984,13 @@ async def draft_document(
 
     *roles* names the model for each job (the drafter writes, the judge labels
     claims and runs the numbers check; the critic and reader roles are part of
-    the compose roles and unused here). *literature* answers queries with
-    verified works; without it nothing is cited. *research* runs
+    the compose roles and unused here). *research* runs
     ``deep_research`` once in the genre's mode over ``<project>/research.db``; *project* is the folder that keeps the ledger and logs (default ``state/`` beside *out*)
     and adds each verified work that has a finding (its quotes are checked
-    passages) as a source; without it nothing is searched. *genre* is a compose genre
+    passages) as a source; without it nothing is searched. *cite* runs the cite
+    loop after the draft (``cite.py``: sentences that cite nothing get a paper
+    that was read and supports them; the papers read go into its document
+    store); without it no sentence is cited after drafting. *genre* is a compose genre
     pack name or YAML path; ``None`` lets the brief compiler choose.
 
     Returns a :class:`DraftResult`; ``exit_code`` is 0 when no check error is
@@ -1026,7 +1054,6 @@ async def draft_document(
         sources=sources,
         existing=existing,
         brief_genre=preset,
-        literature=literature,
         research=research,
         confirm_own_sources=confirm_own_sources,
     )
@@ -1065,6 +1092,8 @@ async def draft_document(
         placements=placements,
         view=base_view if into_path else None,
     )
+    if cite is not None and genre_pack.cites:
+        await _cite(run, cite, drafts=drafts, evidence=evidence)
     document_notes = [
         f"Not cited, could not be verified: {line}" for line in evidence.unverified
     ]

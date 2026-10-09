@@ -42,7 +42,7 @@ def calls(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
     monkeypatch.setattr(cli, "research", research)
     for name in ("OPENALEX_API_KEY", "OPENALEX_EMAIL", "SEMANTIC_SCHOLAR_API_KEY"):
         monkeypatch.delenv(name, raising=False)
-    monkeypatch.setattr(cli, "load_dotenv", lambda: None)
+    monkeypatch.setattr(cli, "load_secrets", lambda: None)
     return seen
 
 
@@ -161,7 +161,7 @@ def test_a_degraded_run_exits_1_after_writing_the_result(
         return _result(degraded=["web search failed for 'x': HTTP 500"])
 
     monkeypatch.setattr(cli, "research", research)
-    monkeypatch.setattr(cli, "load_dotenv", lambda: None)
+    monkeypatch.setattr(cli, "load_secrets", lambda: None)
     code = cli.main(
         ["ask", "q", "--mode", "web", "--browser", "--model", "m", "--quiet"]
     )
@@ -178,7 +178,7 @@ def test_a_failed_run_exits_4_with_an_error_line(
         raise RuntimeError("model unreachable")
 
     monkeypatch.setattr(cli, "research", research)
-    monkeypatch.setattr(cli, "load_dotenv", lambda: None)
+    monkeypatch.setattr(cli, "load_secrets", lambda: None)
     code = cli.main(["ask", "q", "--mode", "scholarly", "--model", "m", "--quiet"])
     assert code == 4
     assert capsys.readouterr().err.startswith("error: RuntimeError: model unreachable")

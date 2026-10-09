@@ -77,16 +77,23 @@ ErrorKind = Literal[
     "offline",  # an offline run: the answer is not in the store's cache
 ]
 
+# The environment variables the sources read their API keys from (a command
+# reads them after ``core.secrets.load_secrets``; the library never does).
+API_KEY_NAMES = ("OPENALEX_API_KEY", "SEMANTIC_SCHOLAR_API_KEY")
+
 # Smallest gap between two network requests to one source, in seconds.
 # OpenAlex and Crossref allow bursts; arXiv's API terms ask for one request in
-# three seconds on a single connection; Semantic Scholar's key allows one a
-# second. Cached answers cost no network request and are never spaced.
+# three seconds on a single connection; Semantic Scholar's key allows one
+# request a second across all its endpoints, so its requests start 1.1 s apart
+# (the margin absorbs network jitter) and only one is in flight at a time
+# (it is not in DEFAULT_INFLIGHT). Cached answers cost no network request and
+# are never spaced.
 DEFAULT_INTERVAL_S: dict[str, float] = {
     "openalex": 0.1,
     "crossref": 0.1,
     "europepmc": 0.2,
     "arxiv": 3.0,
-    "semantic_scholar": 1.0,
+    "semantic_scholar": 1.1,
     "web": SEARXNG_MIN_INTERVAL_S,  # SearxNG: its upstream engines suspend a fast caller
 }
 # arxiv.org's robots.txt asks for a 15 second crawl delay on its pages and
@@ -338,8 +345,12 @@ class SharedPacing:
     # sources that are no longer asked in this process
     patient_failures: dict[str, int] = field(default_factory=dict)
     gave_up: set[str] = field(default_factory=set)
-    # seconds spent waiting on each patient source in this process
+    # seconds spent waiting on each patient source in this process, and how
+    # many waits that was
     patient_waited: dict[str, float] = field(default_factory=dict)
+    patient_waits: Counter[str] = field(default_factory=Counter)
+    # 429 answers by source (a bench reports a run's traffic from these)
+    rate_limited: Counter[str] = field(default_factory=Counter)
 
 
 _PROCESS_PACING: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, SharedPacing] = (
@@ -352,7 +363,7 @@ def process_pacing() -> SharedPacing:
 
     A source's rate limit belongs to the server, not to an item: however many
     items run at once in a process, requests to arXiv start 3 s apart, to
-    Semantic Scholar 1 s apart, and so on (``DEFAULT_INTERVAL_S``), and a
+    Semantic Scholar 1.1 s apart, and so on (``DEFAULT_INTERVAL_S``), and a
     source that said its budget is spent is not asked again by any of them.
     The locks and semaphores belong to an event loop, hence one pacing per
     loop. Raises ``RuntimeError`` outside a running loop.
@@ -458,6 +469,8 @@ class SourceClient:
         self._patient_failures = shared.patient_failures
         self._gave_up = shared.gave_up
         self._patient_waited = shared.patient_waited
+        self._patient_waits = shared.patient_waits
+        self._rate_limited = shared.rate_limited
         self.rate_info: dict[str, RateInfo] = {}
         self.requests: Counter[str] = Counter()
         self.spent_usd: defaultdict[str, float] = defaultdict(float)
@@ -647,6 +660,8 @@ class SourceClient:
                     self._patient_exhausted(source)
                 raise SourceError(source, reason, kind="transport", url=url) from exc
             info = self._read_rate_headers(source, response)
+            if response.status_code == 429:
+                self._rate_limited[source] += 1
             if response.status_code == 200:
                 self.fetched_bytes += len(response.content)
                 if patient:
@@ -696,6 +711,7 @@ class SourceClient:
 
     async def _patient_sleep(self, source: str, wait_s: float) -> None:
         self._patient_waited[source] = self._patient_waited.get(source, 0.0) + wait_s
+        self._patient_waits[source] += 1
         await self._sleep(wait_s)
 
     def _patient_exhausted(self, source: str) -> None:

@@ -47,6 +47,10 @@ class StartRecord(BaseModel):
     keyless: bool = Field(
         default=False, description="No API key was read or used (the file says so)."
     )
+    patient: list[str] = Field(
+        default_factory=list,
+        description="The sources every arm asked on the patient retry schedule.",
+    )
 
 
 class RunRecord(BaseModel):
@@ -56,6 +60,10 @@ class RunRecord(BaseModel):
     arm: str
     set: str
     item_id: str
+    group: str | None = Field(
+        default=None,
+        description="The item's subgroup within its set (LitSearch: the query_set).",
+    )
     repeat: int = Field(ge=1)
     started_at: float
     model: str | None = None
