@@ -1,8 +1,11 @@
-"""A verb never writes over a file: a copy from an earlier run may hold edits.
+"""A verb given an exact path never writes over a file there.
 
 Each verb that writes a copy refuses, before anything is written (``state/``
-included), when the copy or its report already exists. The refusal comes before
-the document is opened, so an empty ``paper.docx`` is enough here.
+included), when the copy or its report already exists: a program that named
+the file must find its result in it. The refusal comes before the document is
+opened, so an empty ``paper.docx`` is enough here. The command line and
+``andamentum.word`` choose the names themselves and write a new version instead
+(``test_output_versions.py``).
 """
 
 from __future__ import annotations
@@ -18,7 +21,6 @@ from andamentum.compose.harness.check import CheckParams, run_check
 from andamentum.compose.harness.errors import WordUsageError
 from andamentum.compose.harness.literature.verbs import InsertParams, run_insert
 from andamentum.compose.harness.respond.run import RespondParams, run_respond
-from andamentum.compose.harness.spike.make import make_spike_docx
 
 
 async def _check(file: Path, out: Path) -> object:
@@ -80,19 +82,3 @@ async def test_a_taken_name_is_refused_and_nothing_is_written(
 
     assert sorted(p.name for p in out_dir.iterdir()) == [taken]
     assert (out_dir / taken).read_text(encoding="utf-8") == "edited in Word"
-
-
-def test_the_command_line_exits_2_and_keeps_the_copy(tmp_path: Path, capsys):
-    from andamentum.word import cli
-
-    file = make_spike_docx(tmp_path / "paper.docx")
-    out_dir = tmp_path / "out"
-    args = ["check", str(file), "--out", str(out_dir), "--offline"]
-    assert cli.main(args) in (0, 1)
-    copy = out_dir / "paper.checked.docx"
-    copy.write_bytes(b"edited in Word")
-    capsys.readouterr()
-
-    assert cli.main(args) == 2
-    assert "never overwrites" in capsys.readouterr().err
-    assert copy.read_bytes() == b"edited in Word"

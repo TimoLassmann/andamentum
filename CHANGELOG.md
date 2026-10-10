@@ -18,10 +18,14 @@
 
 ### Fixed
 
-  - **andamentum-word:** `check`, `respond`, `refresh`, `bind-numbers` and
-    `insert-citation` no longer write over an existing copy or report in
-    `-o DIR` (a copy edited in Word was lost on a rerun); they stop with
-    exit 2 before writing anything, as `draft` already did.
+  - **andamentum-word:** a rerun into the same `-o DIR` no longer writes over
+    a copy you edited (it was lost before). The tool fingerprints what it
+    writes (`state/outputs.json`): an unchanged earlier copy is written over,
+    a changed one is kept and the run writes `-2`, `-3`, ... (the copy, its
+    report, `draft-N.docx`, `response-letter-N.docx`). A run on the original
+    while the folder holds a changed copy of it prints that copy's name. A
+    caller that names an exact path (MCP tools, the harness params) gets
+    exit 2 instead of a renamed file.
   - **whetstone editor:** an edit without a title is kept and labelled from
     its rationale, instead of costing the section all its edits; when the
     tool-call run fails (gemma4 on Ollama sometimes returns an empty reply),

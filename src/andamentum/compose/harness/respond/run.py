@@ -61,7 +61,7 @@ from ..project import project_dir, refuse_taken, write_copy, written_files
 from .collab import changed_paragraph_ids, previous_texts
 from .edits import EditRefused, SpanOp, span_ops
 from .items import Item, comment_items, read_reviews, review_items
-from .letter import LetterEntry, existing_letters, write_letter
+from .letter import LetterEntry, default_letter, existing_letters, write_letter
 from .quotes import find_in_paragraph, find_in_view
 from .triage import (
     CATEGORIES,
@@ -99,6 +99,11 @@ class RespondParams(BaseModel):
     out: Path = Field(description="the responded copy to write (a .docx path)")
     report: Path | None = Field(
         default=None, description="markdown report (default: beside --out)"
+    )
+    letter: Path | None = Field(
+        default=None,
+        description="the response letter's .docx, with the .md beside it "
+        "(default: response-letter.docx beside --out)",
     )
     project: Path | None = Field(
         default=None, description="folder that keeps the ledger and logs (default: state/ beside the output)"
@@ -407,7 +412,7 @@ async def _respond(
     started = time.monotonic()
     out, report_md = _outputs(params)
     if params.reviews is not None:
-        kept = existing_letters(out.parent)
+        kept = existing_letters(params.letter or default_letter(out.parent))
         if kept:
             raise RespondUsageError(
                 f"{', '.join(str(p) for p in kept)} already exists and may hold your "
@@ -540,7 +545,7 @@ async def _respond(
             _letter_entry(o, view) for o in outcomes if o.item.source == "review"
         ]
         letter_docx, letter_md = write_letter(
-            out.parent, entries, unanswered=unverified
+            params.letter or default_letter(out.parent), entries, unanswered=unverified
         )
 
     counts = Counter(o.category for o in outcomes)

@@ -5,6 +5,13 @@ the edited copy of the document (the input is never edited), the report, and
 ``state/`` (the ledger, event log and snapshots a later run into the same
 folder picks up). Nothing is written next to the input.
 
+A copy or report from an earlier run is written over only when it is unchanged
+since the tool wrote it; one that changed (edited in Word) is kept and the run
+writes the next version, ``paper.checked-2.docx`` and so on
+(``compose.harness.outputs``). A run on ``paper.docx`` while the folder holds a
+copy of it that changed logs a warning naming that copy. Both messages go to
+the ``andamentum.word`` logger.
+
 The work is done in ``andamentum.compose.harness``; this module names the jobs,
 turns ``out`` into the file names the harness writes, and checks the input
 file first. Imports are deferred so that importing ``andamentum.word`` is cheap.
@@ -12,13 +19,22 @@ file first. Imports are deferred so that importing ``andamentum.word`` is cheap.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, Field
 
 from andamentum.compose.harness.errors import WordInputError
+from andamentum.compose.harness.outputs import (
+    Names,
+    OutputPlan,
+    copy_names,
+    versioned,
+    warn_changed_copies,
+)
+from andamentum.compose.harness.project import STATE_DIR
 
 if TYPE_CHECKING:
     from andamentum.compose.harness.bindings.bind import BindRun
@@ -63,9 +79,57 @@ def _require_docx(path: str | Path) -> Path:
     return file
 
 
-def _copy_in(out: str | Path, file: Path, suffix: str) -> Path:
-    """Where the edited copy of *file* goes: ``<out>/<stem>.<suffix>.docx``."""
-    return Path(out) / f"{file.stem}.{suffix}.docx"
+@contextmanager
+def _outputs(
+    out: str | Path, names: Names, *, input_file: Path | None
+) -> Iterator[OutputPlan]:
+    """The files this run writes in *out* (an unchanged earlier version is
+    written over, a changed one kept), after warning about changed copies of
+    *input_file* in *out*."""
+    folder = Path(out)
+    state = folder / STATE_DIR
+    if input_file is not None:
+        warn_changed_copies(input_file, folder=folder, state=state)
+    with versioned(names, state=state) as plan:
+        yield plan
+
+
+def _copy_names(out: str | Path, file: Path, suffix: str, *, report: bool = True) -> Names:
+    """``<out>/<stem>.<suffix>.docx`` and its report, version n with ``-n``."""
+    return copy_names(Path(out), f"{file.stem}.{suffix}", report=report)
+
+
+def _draft_names(out: str | Path) -> Names:
+    """``draft.docx`` with ``draft.report.md`` and ``.json``; version n is ``draft-n``."""
+    folder = Path(out)
+    stem = Path(DRAFT_NAME).stem
+
+    def names(version: int) -> tuple[Path, ...]:
+        base = stem if version == 1 else f"{stem}-{version}"
+        return (
+            folder / f"{base}.docx",
+            folder / f"{base}.report.md",
+            folder / f"{base}.report.json",
+        )
+
+    return names
+
+
+def _respond_names(out: str | Path, file: Path, *, letter: bool) -> Names:
+    """The responded copy and its report, and with *letter* the response
+    letter (``response-letter.docx`` and ``.md``; version n with ``-n``)."""
+    from andamentum.compose.harness.respond.letter import LETTER_STEM
+
+    copy = _copy_names(out, file, "responded")
+
+    def names(version: int) -> tuple[Path, ...]:
+        files = copy(version)
+        if letter:
+            base = LETTER_STEM if version == 1 else f"{LETTER_STEM}-{version}"
+            files += (Path(out) / f"{base}.docx", Path(out) / f"{base}.md")
+        return files
+
+    return names
 
 
 async def check_document(
@@ -91,17 +155,18 @@ async def check_document(
     from andamentum.compose.harness.check import CheckParams, run_check
 
     file = _require_docx(path)
-    params = CheckParams(
-        file=file,
-        out=_copy_in(out, file, "checked"),
-        results=Path(results) if results is not None else None,
-        checks=list(checks),
-        model=model,
-        decision_model=decision_model,
-        mailto=mailto,
-        offline=offline,
-    )
-    return await run_check(params)
+    with _outputs(out, _copy_names(out, file, "checked"), input_file=file) as plan:
+        params = CheckParams(
+            file=file,
+            out=plan.files[0],
+            results=Path(results) if results is not None else None,
+            checks=list(checks),
+            model=model,
+            decision_model=decision_model,
+            mailto=mailto,
+            offline=offline,
+        )
+        return await run_check(params)
 
 
 async def respond_to_reviews(
@@ -126,17 +191,20 @@ async def respond_to_reviews(
     from andamentum.compose.harness.respond.run import RespondParams, run_respond
 
     file = _require_docx(path)
-    params = RespondParams(
-        file=file,
-        out=_copy_in(out, file, "responded"),
-        reviews=Path(reviews) if reviews is not None else None,
-        model=model,
-        decision_model=decision_model,
-        results=Path(results) if results is not None else None,
-        mailto=mailto,
-        offline=offline,
-    )
-    return await run_respond(params)
+    names = _respond_names(out, file, letter=reviews is not None)
+    with _outputs(out, names, input_file=file) as plan:
+        params = RespondParams(
+            file=file,
+            out=plan.files[0],
+            letter=plan.files[3] if reviews is not None else None,
+            reviews=Path(reviews) if reviews is not None else None,
+            model=model,
+            decision_model=decision_model,
+            results=Path(results) if results is not None else None,
+            mailto=mailto,
+            offline=offline,
+        )
+        return await run_respond(params)
 
 
 async def refresh_numbers(
@@ -151,10 +219,9 @@ async def refresh_numbers(
     from andamentum.compose.harness.bindings.refresh import RefreshParams, run_refresh
 
     file = _require_docx(path)
-    params = RefreshParams(
-        file=file, out=_copy_in(out, file, "refreshed"), results=Path(results)
-    )
-    return run_refresh(params)
+    with _outputs(out, _copy_names(out, file, "refreshed"), input_file=file) as plan:
+        params = RefreshParams(file=file, out=plan.files[0], results=Path(results))
+        return run_refresh(params)
 
 
 async def bind_numbers(
@@ -169,10 +236,11 @@ async def bind_numbers(
     from andamentum.compose.harness.bindings.bind import BindParams, run_bind
 
     file = _require_docx(path)
-    params = BindParams(
-        file=file, out=_copy_in(out, file, "bound"), results=Path(results), model=model
-    )
-    return await run_bind(params)
+    with _outputs(out, _copy_names(out, file, "bound"), input_file=file) as plan:
+        params = BindParams(
+            file=file, out=plan.files[0], results=Path(results), model=model
+        )
+        return await run_bind(params)
 
 
 async def draft_document(
@@ -216,32 +284,32 @@ async def draft_document(
     """
     from andamentum.compose.harness.draft.verb import DraftParams, run_draft
 
-    if into is not None:
-        _require_docx(into)
-    params = DraftParams(
-        task=task,
-        out=Path(out) / DRAFT_NAME,
-        into=Path(into) if into is not None else None,
-        genre=genre,
-        source=list(sources),
-        results=Path(results) if results is not None else None,
-        library=Path(library) if library is not None else None,
-        zotero=zotero,
-        store=Path(store) if store is not None else None,
-        template=Path(template) if template is not None else None,
-        model=model,
-        drafter=drafter,
-        judge=judge,
-        max_rounds=max_rounds,
-        offline=offline,
-        confirm_own_sources=confirm_own_sources,
-        mailto=mailto,
-        research=research,
-        research_mode=research_mode,
-        searxng_url=searxng_url,
-        browser=browser,
-    )
-    return await run_draft(params, progress=progress)
+    into_file = _require_docx(into) if into is not None else None
+    with _outputs(out, _draft_names(out), input_file=into_file) as plan:
+        params = DraftParams(
+            task=task,
+            out=plan.files[0],
+            into=Path(into) if into is not None else None,
+            genre=genre,
+            source=list(sources),
+            results=Path(results) if results is not None else None,
+            library=Path(library) if library is not None else None,
+            zotero=zotero,
+            store=Path(store) if store is not None else None,
+            template=Path(template) if template is not None else None,
+            model=model,
+            drafter=drafter,
+            judge=judge,
+            max_rounds=max_rounds,
+            offline=offline,
+            confirm_own_sources=confirm_own_sources,
+            mailto=mailto,
+            research=research,
+            research_mode=research_mode,
+            searxng_url=searxng_url,
+            browser=browser,
+        )
+        return await run_draft(params, progress=progress)
 
 
 class FoundWork(BaseModel):
@@ -327,25 +395,27 @@ async def insert_citation(
     from andamentum.compose.harness.literature.verbs import InsertParams, run_insert
 
     file = _require_docx(path)
-    output = _copy_in(out, file, "cited")
-    params = InsertParams(
-        file=file,
-        out=output,
-        paragraph_id=paragraph_id,
-        at=at,
-        doi=list(doi),
-        key=list(key),
-        library=Path(library) if library is not None else None,
-        zotero=zotero,
-        locator=locator,
-        prefix=prefix,
-        suffix=suffix,
-        mailto=mailto,
-    )
-    code, message = await run_insert(params)
-    return CitationInsertion(
-        cited=code == 0, output=output if code == 0 else None, message=message
-    )
+    names = _copy_names(out, file, "cited", report=False)
+    with _outputs(out, names, input_file=file) as plan:
+        output = plan.files[0]
+        params = InsertParams(
+            file=file,
+            out=output,
+            paragraph_id=paragraph_id,
+            at=at,
+            doi=list(doi),
+            key=list(key),
+            library=Path(library) if library is not None else None,
+            zotero=zotero,
+            locator=locator,
+            prefix=prefix,
+            suffix=suffix,
+            mailto=mailto,
+        )
+        code, message = await run_insert(params)
+        return CitationInsertion(
+            cited=code == 0, output=output if code == 0 else None, message=message
+        )
 
 
 class ParagraphInfo(BaseModel):
