@@ -56,29 +56,34 @@ def write_docx(
     document.save(str(path))
 
 
-def letter_paths(folder: Path) -> tuple[Path, Path]:
-    """Where the letter goes in *folder*: the .docx and the .md."""
-    return folder / f"{LETTER_STEM}.docx", folder / f"{LETTER_STEM}.md"
+def default_letter(folder: Path) -> Path:
+    """The letter's .docx when the caller names none: ``response-letter.docx`` in *folder*."""
+    return folder / f"{LETTER_STEM}.docx"
 
 
-def existing_letters(folder: Path) -> list[Path]:
-    """The letter files already in *folder*; they may hold the authors' edits."""
-    return [path for path in letter_paths(folder) if path.exists()]
+def letter_paths(letter: Path) -> tuple[Path, Path]:
+    """The letter's files: the .docx *letter* and the .md beside it."""
+    return letter, letter.with_suffix(".md")
+
+
+def existing_letters(letter: Path) -> list[Path]:
+    """The letter files that already exist; they may hold the authors' edits."""
+    return [path for path in letter_paths(letter) if path.exists()]
 
 
 def write_letter(
-    folder: Path, entries: list[LetterEntry], *, unanswered: list[str]
+    letter: Path, entries: list[LetterEntry], *, unanswered: list[str]
 ) -> tuple[Path, Path]:
-    """Write ``response-letter.docx`` and ``response-letter.md`` into *folder*.
+    """Write the letter: the .docx *letter* and the .md beside it.
 
     Raises ``FileExistsError`` when either exists: the letter is edited by hand
     between rounds and is never overwritten.
     """
-    found = existing_letters(folder)
+    found = existing_letters(letter)
     if found:
         raise FileExistsError(", ".join(str(path) for path in found))
-    folder.mkdir(parents=True, exist_ok=True)
-    docx_path, md_path = letter_paths(folder)
+    letter.parent.mkdir(parents=True, exist_ok=True)
+    docx_path, md_path = letter_paths(letter)
     write_docx(docx_path, entries, unanswered=unanswered)
     md_path.write_text(
         render_markdown(entries, unanswered=unanswered), encoding="utf-8"

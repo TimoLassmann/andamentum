@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import logging
 import sys
 import traceback
 from collections.abc import Sequence
@@ -586,6 +587,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     from andamentum.compose.harness.errors import WordInputError, WordUsageError
 
     load_secrets()  # credentials only (API keys); configuration comes from flags
+    # Which earlier copy was kept and which changed copy the input may miss
+    # (compose.harness.outputs) are printed as "note:" lines on stderr.
+    notes = logging.getLogger("andamentum.word")
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setFormatter(logging.Formatter("note: %(message)s"))
+    notes.addHandler(handler)
+    notes.setLevel(logging.WARNING)
+    notes.propagate = False
     try:
         return asyncio.run(_dispatch(args))
     except WordUsageError as exc:
@@ -598,6 +607,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         traceback.print_exc()
         print(f"error: {type(exc).__name__}: {exc}", file=sys.stderr)
         return EXIT_FAILED
+    finally:
+        notes.removeHandler(handler)
+        notes.propagate = True
 
 
 if __name__ == "__main__":  # pragma: no cover
