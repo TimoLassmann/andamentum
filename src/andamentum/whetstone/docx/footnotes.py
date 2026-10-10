@@ -80,7 +80,10 @@ def add_footnotes(path: str | Path, notes: list[str]) -> None:
             '<w:footnote w:type="separator" w:id="-1"><w:p><w:r><w:separator/></w:r></w:p></w:footnote>',
             '<w:footnote w:type="continuationSeparator" w:id="0"><w:p><w:r><w:continuationSeparator/></w:r></w:p></w:footnote>',
         ] + [
-            f'<w:footnote w:id="{n}"><w:p><w:r><w:t xml:space="preserve">{escape(note)}</w:t></w:r></w:p></w:footnote>'
+            f'<w:footnote w:id="{n}"><w:p>'
+            '<w:r><w:rPr><w:vertAlign w:val="superscript"/></w:rPr><w:footnoteRef/></w:r>'
+            f'<w:r><w:t xml:space="preserve"> {escape(note)}</w:t></w:r>'
+            "</w:p></w:footnote>"
             for n, note in enumerate(notes, start=1)
         ]
         target.writestr(

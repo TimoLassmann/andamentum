@@ -472,12 +472,17 @@ def test_add_footnotes_replaces_placeholders_with_numbered_references(
         footnote.get(_q("id")): "".join(node.text or "" for node in footnote.iter(_q("t")))
         for footnote in footnotes.findall(_q("footnote"))
     }
+    # Each note body starts with its number (footnoteRef), then a space and the
+    # text. Without the footnoteRef Word shows the text with no number.
     assert by_id == {
         "-1": "",
         "0": "",
-        "1": "Invented note one.",
-        "2": "Invented note two & more.",
+        "1": " Invented note one.",
+        "2": " Invented note two & more.",
     }
+    for note_id in ("1", "2"):
+        note = next(f for f in footnotes.findall(_q("footnote")) if f.get(_q("id")) == note_id)
+        assert note.find(f".//{_q('footnoteRef')}") is not None
     assert footnotes.findall(_q("footnote"))[0].get(_q("type")) == "separator"
     assert footnotes.findall(_q("footnote"))[1].get(_q("type")) == "continuationSeparator"
 
