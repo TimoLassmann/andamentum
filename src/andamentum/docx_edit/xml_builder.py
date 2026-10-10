@@ -13,6 +13,17 @@ from docx.oxml.ns import qn
 NS = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
 
 
+def utc_timestamp() -> str:
+    """Now, as Word writes a comment date: UTC, ``YYYY-MM-DDTHH:MM:SSZ``."""
+    return datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def comment_initials(author: str) -> str:
+    """Up to three capitals from the author's words, as Word shows them on a comment."""
+    letters = "".join(word[0] for word in author.split() if word[:1].isalnum())
+    return (letters or "AC")[:3].upper()
+
+
 class XMLElementBuilder:
     """Element factories for the parts of a .docx the editor writes."""
 
@@ -88,14 +99,21 @@ class XMLElementBuilder:
         return range_start, range_end, ref_run
 
     @staticmethod
-    def create_comment_element(cid: int, author: str, text: str) -> etree.Element:
+    def create_comment_element(
+        cid: int, author: str, text: str, *, date: str
+    ) -> etree.Element:
         """
-        Create a complete comment element for comments.xml.
+        Create a Word-shaped ``w:comment`` for comments.xml.
+
+        ``text`` is split on newlines: the first line goes in the first paragraph,
+        each further line in a paragraph of its own. The first paragraph starts
+        with the annotation-reference run that Word uses for the comment mark.
 
         Args:
             cid: Comment ID
             author: Comment author
-            text: Comment text
+            text: Comment text; newlines start new paragraphs
+            date: The comment's date, as :func:`utc_timestamp` writes it
 
         Returns:
             Complete comment element
@@ -103,12 +121,20 @@ class XMLElementBuilder:
         comment = etree.Element(f"{{{NS['w']}}}comment")
         comment.set(f"{{{NS['w']}}}id", str(cid))
         comment.set(f"{{{NS['w']}}}author", author)
-        comment.set(f"{{{NS['w']}}}date", datetime.datetime.now().isoformat())
+        comment.set(f"{{{NS['w']}}}date", date)
+        comment.set(f"{{{NS['w']}}}initials", comment_initials(author))
 
-        # Create paragraph inside comment
-        para = etree.SubElement(comment, f"{{{NS['w']}}}p")
-        run = etree.SubElement(para, f"{{{NS['w']}}}r")
-        text_elem = etree.SubElement(run, f"{{{NS['w']}}}t")
-        XMLElementBuilder.set_text_content(text_elem, text)
+        lines = text.split("\n")
+        first = etree.SubElement(comment, f"{{{NS['w']}}}p")
+        etree.SubElement(
+            etree.SubElement(first, f"{{{NS['w']}}}r"), f"{{{NS['w']}}}annotationRef"
+        )
+        for index, line in enumerate(lines):
+            paragraph = first if index == 0 else etree.SubElement(
+                comment, f"{{{NS['w']}}}p"
+            )
+            run = etree.SubElement(paragraph, f"{{{NS['w']}}}r")
+            text_elem = etree.SubElement(run, f"{{{NS['w']}}}t")
+            XMLElementBuilder.set_text_content(text_elem, line)
 
         return comment

@@ -32,7 +32,7 @@ from docx.oxml.ns import qn
 
 from andamentum.docx_edit.atoms import paragraph_atoms, projection
 from andamentum.docx_edit.body import body_paragraphs, main_document_part
-from andamentum.docx_edit.xml_builder import XMLElementBuilder
+from andamentum.docx_edit.xml_builder import XMLElementBuilder, utc_timestamp
 
 # Logger for this module
 logger = logging.getLogger(__name__)
@@ -398,7 +398,10 @@ class DocxEditor:
             for cid, placed in enumerate(self.placed_comments, start=first_cid):
                 comments_root.append(
                     XMLElementBuilder.create_comment_element(
-                        cid=cid, author=placed.author, text=placed.text
+                        cid=cid,
+                        author=placed.author,
+                        text=placed.text,
+                        date=utc_timestamp(),
                     )
                 )
                 self._place_comment_range(placed.start_run, placed.end_run, cid)

@@ -137,7 +137,6 @@ from .ooxml import (
     W14_NS,
     W15_NS,
     W_NS,
-    XML_NS,
     parse_xml,
     related_part,
     w,
@@ -1273,19 +1272,9 @@ class _CommentParts:
     ) -> int:
         comment_id = self._next_id
         self._next_id += 1
-        lines = text.split("\n")
-        element = XMLElementBuilder.create_comment_element(comment_id, author, lines[0])
-        element.set(w("date"), writer.date)
-        element.set(w("initials"), _initials(author))
-        first = element.find(w("p"))
-        run = etree.Element(w("r"))
-        etree.SubElement(run, w("annotationRef"))
-        first.insert(0, run)
-        for line in lines[1:]:
-            extra = etree.SubElement(element, w("p"))
-            piece = etree.SubElement(etree.SubElement(extra, w("r")), w("t"))
-            piece.set(f"{{{XML_NS}}}space", "preserve")
-            piece.text = line
+        element = XMLElementBuilder.create_comment_element(
+            comment_id, author, text, date=writer.date
+        )
         for paragraph in element.iter(w("p")):
             paragraph.set(w14("paraId"), self._new_para_id())
         self.comments_root.append(element)
@@ -1344,11 +1333,6 @@ def _is_hex(value: str) -> bool:
     except ValueError:
         return False
     return True
-
-
-def _initials(author: str) -> str:
-    letters = "".join(word[0] for word in author.split() if word[:1].isalnum())
-    return (letters or "AC")[:3].upper()
 
 
 # --------------------------------------------------------------- verification
