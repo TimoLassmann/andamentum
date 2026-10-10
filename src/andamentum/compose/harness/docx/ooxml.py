@@ -8,7 +8,7 @@ from typing import Any
 
 from lxml import etree  # type: ignore
 
-W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+from andamentum.docx_edit.atoms import W_NS
 W14_NS = "http://schemas.microsoft.com/office/word/2010/wordml"
 W15_NS = "http://schemas.microsoft.com/office/word/2012/wordml"
 W16CID_NS = "http://schemas.microsoft.com/office/word/2016/wordml/cid"

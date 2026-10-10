@@ -82,6 +82,7 @@ from typing import Any
 
 from lxml import etree  # type: ignore
 
+from andamentum.docx_edit.atoms import MC_NS
 from andamentum.docx_edit import (
     AtomKind,
     AtomSpan,
@@ -145,7 +146,6 @@ from .ooxml import (
 )
 from .reader import ParsedDocx, parse_docx
 
-MC_NS = "http://schemas.openxmlformats.org/markup-compatibility/2006"
 _COMMENTS_TYPE = f"{R_NS}/comments"
 _COMMENTS_EXT_TYPE = (
     "http://schemas.microsoft.com/office/2011/relationships/commentsExtended"

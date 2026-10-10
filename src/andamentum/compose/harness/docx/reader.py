@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import Any
 
 from andamentum.references import Hint, scan
+from andamentum.docx_edit.body import _DEFAULT_DOCUMENT_PART, _PACKAGE_RELS
 from andamentum.docx_edit import (
     Atom,
     body_paragraphs,
@@ -50,8 +51,6 @@ from .ooxml import (
     w15,
 )
 
-_PACKAGE_RELS = "_rels/.rels"
-_DEFAULT_DOCUMENT_PART = "word/document.xml"
 
 _DELETED_TAGS = frozenset({w("del"), w("moveFrom")})
 _HEADING_NAME = re.compile(r"^heading\s*(\d)$", re.IGNORECASE)
