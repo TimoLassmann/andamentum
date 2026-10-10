@@ -78,6 +78,7 @@ from .pipeline.reviewers import PROFILES, ReviewerProfile
 from .renderers import render_docx, render_html, render_markdown
 from .reviewed_document import ReviewedDocument, open_source
 from .revise import FigureRef, RevisionResult, RevisionSpec, revise_document
+from .accept import AcceptedEdits, NotApplied, accept_edits
 from .schemas import (  # noqa: F401
     AuthorQuestion,
     CheckableItem,
@@ -127,6 +128,7 @@ __all__ = [
     "run_checklist",
     "revise_document",
     "open_source",
+    "accept_edits",
     # renderers
     "render_docx",
     "render_html",
@@ -146,6 +148,8 @@ __all__ = [
     "Quote",
     "AuthorQuestion",
     "RevisionResult",
+    "AcceptedEdits",
+    "NotApplied",
     # provenance and the confidentiality check
     "check_confidentiality",
     "stamp_provenance",

@@ -94,6 +94,18 @@ class ReviewedDocument:
             return self.text
         return f"{self.header_and_note_text}\n{self.text}"
 
+    @classmethod
+    def from_markdown(cls, markdown: str) -> ReviewedDocument:
+        """The document for *markdown* given as text, which is never read as a path.
+
+        :func:`open_source` reads a string that names an existing file, and
+        fetches one that is a URL. A caller whose text comes from someone else
+        (a request to a server) uses this instead, so a "note" that reads
+        ``/home/someone/secret.md`` is reviewed as those words. The caller owns
+        the generated baseline and calls :meth:`cleanup`.
+        """
+        return _open_docx(_write_baseline_docx(markdown), is_temp=True)
+
     def cleanup(self) -> None:
         """Remove the generated baseline, if this document owns one."""
         if not self.docx_is_temp:

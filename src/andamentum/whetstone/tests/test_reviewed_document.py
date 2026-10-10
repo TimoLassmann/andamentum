@@ -176,6 +176,26 @@ async def test_a_hash_that_is_not_a_heading_stays_body_text() -> None:
         document.cleanup()
 
 
+def test_from_markdown_reviews_a_path_as_its_words(tmp_path: Path) -> None:
+    secret = tmp_path / "secret.md"
+    secret.write_text("The launch code is SaltLog-42.", encoding="utf-8")
+    document = ReviewedDocument.from_markdown(str(secret))
+    try:
+        assert document.text == str(secret)
+        assert "SaltLog-42" not in document.text
+        assert document.docx_is_temp is True
+    finally:
+        document.cleanup()
+
+
+def test_from_markdown_keeps_inline_markup_in_the_text() -> None:
+    document = ReviewedDocument.from_markdown("# Apollo\n\nThe **rover** moved.")
+    try:
+        assert "The **rover** moved." in document.text
+    finally:
+        document.cleanup()
+
+
 async def test_a_missing_path_raises_rather_than_being_reviewed() -> None:
     with pytest.raises(FileNotFoundError, match="not found"):
         await open_source("/tmp/whetstone-no-such-draft-xyz.md")
