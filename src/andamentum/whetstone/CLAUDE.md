@@ -30,6 +30,15 @@ The docx primitives (the character stream, body helpers, tracked-change surgery,
 
 `classify(..., decision_model=None)` in `_document_type.py` (keyword-only, threaded from `run_review` / `review_document` / `run_checklist` / `checklist_document` / `revise_document`; CLI `--decision-model NAME` on review, revise and checklist, opened and checked at the start of the run) asks a local `core.decisions` model one six-way `choice` question (`QUESTION`, options from the same `_TYPE_DESCRIPTIONS` the classifier schema uses) and uses its top choice INSTEAD of the LLM call, which is then not made or counted. Without it the LLM classifier runs exactly as before; the flag is refused under `panel` and with an explicit `--document-type`. `andamentum-references` has the same flag.
 
+## Markdown notes: edit ids and `accept_edits`
+
+For a caller that shows a reader the editor's rewrites and lets them accept some (`andamentum-serve`'s `review_document` and `accept_edits` routes).
+
+- **`Edit.id`** is made with the edit (`default_factory`, 8 hex characters), like `Finding.id`, so no producer has to set it. A caller names edits by it.
+- **`ReviewedDocument.from_markdown(text)`** builds the document from the text and never reads it as a path or fetches it as a URL, which `open_source` does for a string that names a file or a web address. Use it for text that comes from someone else. The caller calls `cleanup()`.
+- **`accept_edits(markdown, edits)`** (`accept.py`) → `AcceptedEdits(text, applied, not_applied)`. A review of markdown addresses the projection of the generated baseline `.docx`, not the markdown (heading marks, block breaks and entities differ), and writing through Word (`carry_forward_edits`) would hand back that projection. So it finds each edit's `original_text` in the markdown itself and replaces it; a span that is not there verbatim (it crosses a heading mark or a decoded entity) goes to `not_applied` with a reason. Every edit given is in exactly one of the two lists. Measured on one review: 19 of 19 edits applied alone, 18 of 19 applied together.
+- **Editor robustness** (`pipeline/editor.py`): an edit without a `title` is kept and labelled from the first eight words of its rationale (`_title_from`), because some models leave the title out on every retry and the section then lost all its edits. When the tool-call run fails (`UnexpectedModelBehavior` or `ModelHTTPError`), the editor runs once more with `build_pydantic_ai_agent(..., prompted=True)` (the schema in the prompt, the answer as text) and the same output validator, as `core.agents.AgentRunner` does. Reason: gemma4 on Ollama returned an empty reply to a tool-call request in 6 of 24 editor calls, which spent every output retry; the same request without a tool always came back with text. The other whetstone agent calls have no such fallback yet.
+
 
 ## Novelty on deep_research (`--check-novelty`)
 

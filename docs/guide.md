@@ -30,6 +30,7 @@ andamentum list
 | draw a chart from a table | [`andamentum-figures`](#figures-charts-from-a-table) |
 | check a chart image for layout problems | [`andamentum-vision-critique`](#vision-critique-check-a-chart-image) |
 | turn markdown into a styled HTML page or PDF | [`andamentum-typeset`](#typeset-markdown-to-html-or-pdf) |
+| let another program on this machine search my library, review a note or run research | [`andamentum-serve`](#serve-a-local-http-server) |
 | build or check an agentic system in the house style | [`andamentum-agentic-dialect`](#agentic-dialect-the-house-style) and [`andamentum-forge`](#forge-a-small-package-from-a-brief) |
 
 `andamentum <tool> ...` is the same as `andamentum-<tool> ...`.
@@ -276,6 +277,25 @@ andamentum-forge design "Count the words in a text and return the ten most commo
 ```
 
 Design: [forge-architecture.html](./forge-architecture.html).
+
+## Serving other programs
+
+### serve: a local HTTP server
+
+`andamentum-serve` answers HTTP requests on 127.0.0.1 only, for a program that does not use Python. It needs the `serve` extra (`pip install 'andamentum[serve]'`). Each request is one `POST` with a JSON body, and the answer comes when the work is done; an error answer is `{"error": "..."}`. The routes:
+
+- `/library/search` and `/library/read` search and read the document store given with `--store` (never write to it). Without `--store` they answer 503.
+- `/procedure/review_document` reviews a markdown note sent as text (`{"note", "model"}`); each suggested edit has an `id`.
+- `/procedure/accept_edits` applies the edits you accepted to the note (`{"note", "edits"}`) and says which ones it could not apply. No model.
+- `/procedure/research` researches a question (`{"question", "mode", "depth", "model"}`); web research needs `--searxng-url` or `--browser`.
+
+Each procedure request names its model. Requests on a local Ollama model run one at a time; cloud models run side by side, at most four. Every procedure call is written to the `--out` folder (`request.json`, then `result.json` or `error.json`).
+
+```bash
+andamentum-serve --out records/
+andamentum-serve --out records/ --store library.db \
+    --embedding-model embeddinggemma-2:latest --reranker-model BAAI/bge-reranker-v2-m3
+```
 
 ## From Python
 

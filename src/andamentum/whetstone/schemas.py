@@ -126,6 +126,10 @@ class Edit(BaseModel):
       • HTML: a side-by-side card with old → new
     """
 
+    # What a caller names when it accepts or rejects this rewrite (see
+    # :func:`~andamentum.whetstone.accept.accept_edits`); made here, like
+    # ``Finding.id``, so no producer has to remember to set it.
+    id: str = Field(default_factory=lambda: uuid.uuid4().hex[:8])
     title: str
     severity: Literal["minor", "moderate", "major"] = "minor"
     confidence: Literal["low", "medium", "high"] = "medium"

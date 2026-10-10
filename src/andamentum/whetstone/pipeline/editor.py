@@ -31,6 +31,7 @@ from typing import Any, Literal, cast
 
 from pydantic import BaseModel, Field
 from pydantic_ai import ModelRetry, RunContext
+from pydantic_ai.exceptions import ModelHTTPError, UnexpectedModelBehavior
 
 from andamentum.core.agents import AgentDefinition, build_pydantic_ai_agent
 from andamentum.core.models import resolve_model
@@ -197,7 +198,8 @@ class EditProposal(BaseModel):
         ),
     )
     title: str = Field(
-        description="Short label for this edit, e.g. 'Tighten sentence'."
+        default="",
+        description="Short label for this edit, e.g. 'Tighten sentence'.",
     )
     rationale: str = Field(
         description=(
@@ -448,7 +450,8 @@ async def _run_editor_on_section(
         # back empty.
         output_retries=4,
     )
-    agent = build_pydantic_ai_agent(defn, resolve_model(agent_model))
+    model = resolve_model(agent_model)
+    agent = build_pydantic_ai_agent(defn, model)
 
     # In document order, so two findings on one sentence are adjacent in the
     # list and the agent can see that it must answer them with one rewrite.
@@ -496,10 +499,28 @@ async def _run_editor_on_section(
         f"already well-written."
     )
     # Registered per call: the lock is closure state and must start empty for
-    # each section.
-    agent.output_validator(make_edit_validator(section.text, len(ordered)))
+    # each section. The fallback agent shares it, so entries the first run
+    # accepted stay accepted.
+    validator = make_edit_validator(section.text, len(ordered))
+    agent.output_validator(validator)
 
-    res = await agent.run(user_prompt)
+    try:
+        res = await agent.run(user_prompt)
+    except (UnexpectedModelBehavior, ModelHTTPError) as exc:
+        # gemma4 on Ollama returns an empty reply to a tool-call request often
+        # enough (measured: 6 of 24 editor calls) to spend every output retry;
+        # the same request without a tool always came back with text. So the
+        # schema goes in the prompt and the run is made again, as
+        # core.agents.AgentRunner does.
+        logger.info(
+            "[editor] section %s: tool-based output failed (%s), falling back "
+            "to PromptedOutput",
+            section.id,
+            exc,
+        )
+        fallback = build_pydantic_ai_agent(defn, model, prompted=True)
+        fallback.output_validator(validator)
+        res = await fallback.run(user_prompt)
     from ._metrics import bump_from_result
 
     bump_from_result(res)
@@ -576,7 +597,7 @@ async def _run_editor_on_section(
         # the one the editor was reading.
         edits.append(
             Edit(
-                title=prop.title or "(untitled edit)",
+                title=prop.title or _title_from(prop.rationale),
                 severity=prop.severity,
                 confidence=prop.confidence,
                 rationale=prop.rationale,
@@ -610,6 +631,18 @@ async def _run_editor_on_section(
 
 
 # ── Orchestrator (semaphore-bounded fanout) ─────────────────────────────────
+
+
+def _title_from(rationale: str) -> str:
+    """A label for an edit the model left untitled: the rationale's first words.
+
+    The title is only a label, so a model that leaves it out (some do, every
+    time and after every retry) must not cost the section its edits.
+    """
+    words = rationale.split()
+    if not words:
+        return "(untitled edit)"
+    return " ".join(words[:8]) + (" …" if len(words) > 8 else "")
 
 
 async def run_editor(

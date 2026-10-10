@@ -109,6 +109,7 @@ andamentum-llm-judge    = "andamentum.llm_judge.cli:main"
 andamentum-docstore     = "andamentum.document_store.cli:main"
 andamentum-references   = "andamentum.references.cli:main"
 andamentum-word         = "andamentum.word.cli:main"
+andamentum-serve        = "andamentum.serve.cli:main"
 
 [project.optional-dependencies]
 # trafilatura (Apache-2.0, MIT-compatible) is kept out of the default
@@ -157,6 +158,13 @@ vlm = [
 # `andamentum[bench-data]` to fetch the data.
 bench-data = [
     "pyarrow>=20,<26",
+]
+# `andamentum-serve`, the local HTTP server (andamentum.serve). Nothing else
+# imports it; the command exits 2 naming this extra without it. Install
+# `andamentum[serve]` to run the server.
+serve = [
+    "fastapi>=0.109,<1",
+    "uvicorn>=0.27,<1",
 ]
 dev = [
     "pytest>=8.0.0,<9",

@@ -70,5 +70,6 @@ Sixteen tools are installed with the package, each with its own command. `andame
 | `andamentum-typeset` | Render markdown to a styled HTML page or PDF. | none |
 | `andamentum-agentic-dialect` | Show the house style for agentic systems and check code against it. | none |
 | `andamentum-forge` | Build a small runnable function package from a plain-language brief, tested in a sandbox. | required |
+| `andamentum-serve` | Serve the document library, document review and research over HTTP on this machine only. | named in each request |
 
 Every LLM-using CLI takes `--model anthropic:claude-haiku-4-5` on the command line. There is no environment variable and no default model.

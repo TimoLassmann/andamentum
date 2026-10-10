@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+### Added
+
+  - **`andamentum-serve`**, a local HTTP server (127.0.0.1 only) over the
+    document library (search and read), whetstone review of a markdown
+    note, `accept_edits` and research. The model is named in each request;
+    calls on a local Ollama model run one at a time; every procedure call is
+    kept under `-o DIR`. Needs the new `serve` extra (FastAPI, uvicorn).
+  - **whetstone:** every `Edit` has an `id`;
+    `ReviewedDocument.from_markdown(text)` reviews text without reading it as
+    a path or a URL; `accept_edits(markdown, edits)` applies the edits a
+    reader accepted to the markdown and lists each one it could not apply.
+  - **core:** `build_pydantic_ai_agent(..., prompted=True)` builds the
+    PromptedOutput agent (schema in the prompt, answer as text).
+
+### Fixed
+
+  - **whetstone editor:** an edit without a title is kept and labelled from
+    its rationale, instead of costing the section all its edits; when the
+    tool-call run fails (gemma4 on Ollama sometimes returns an empty reply),
+    the editor runs again with the schema in the prompt.
+
 ### Removed
 
   - **`andamentum-whetstone apply-patches`** is removed, with

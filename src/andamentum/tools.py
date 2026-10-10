@@ -147,6 +147,13 @@ TOOLS: tuple[Tool, ...] = (
         "andamentum.forge.run_forge",
         "yes",
     ),
+    Tool(
+        "serve",
+        "Serve the document library, document review and research over HTTP on this machine only.",
+        "andamentum.serve",
+        "andamentum.serve.create_app",
+        "some",
+    ),
 )
 
 

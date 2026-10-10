@@ -66,10 +66,19 @@ with the code — possibility is not endorsement.
 
 Manuscripts, grant proposals, theses, peer reviews, and similar
 artifacts that incorporate output from andamentum's LLM-using
-sub-modules (`epistemic`, `deep_research`, `whetstone`, `chunker`,
-`vision_critique`, and `document_store`'s metadata extractor) must
-disclose that use under the rules of your journal, funder, and
-institution.
+tools must disclose that use under the rules of your journal, funder,
+and institution. These tools send your text to a model:
+
+- **They write or rewrite text:** `compose`, `word` (`draft`,
+  `respond`, `bind-numbers`), and `whetstone` (the editor, `revise`).
+- **They judge or extract:** `epistemic`, `deep_research`,
+  `references` (only with `--model` or `--decision-model`),
+  `llm_judge`, `vision_critique`, `harvest --mode accurate`,
+  `document_store`'s `extract` and `classify` enrichers, and `forge`.
+- **The same review and research, called by another program through
+  `andamentum-serve`** (see "Serving other programs" below).
+
+`chunker`, `figures`, `proofread` and `typeset` use no model.
 
 The policy landscape is evolving; **confirm the current version** of
 each relevant policy before drafting your disclosure. Key sources to
@@ -93,10 +102,25 @@ check:
 - **The current policy of the specific journal / publisher / funder**
   whose work you are reviewing or to whom you are submitting.
 
-`andamentum` does not insert disclosure language for you. The
-`compose.bundle` `Bundle.validate()` pass surfaces `[ai-drafted]` / `[ai-edited]`
-markers as warnings if you choose to use them in your draft, but
-that is a convention, not enforcement.
+What `andamentum` marks for you:
+
+- **`whetstone`** stamps every `.docx` it writes with a provenance line
+  (tool, version, model) in the document properties and in a separate
+  customXml part; `andamentum-whetstone verify-provenance` reads it.
+- **`compose`** stamps the same line on every output it renders (the
+  `.docx` stamp, or a footer in `.md`, `.html` and `.txt`).
+  `--no-provenance` leaves it out, and the `grant` genre refuses that
+  flag.
+- **`word draft`** adds an AI-use statement to the document, built from
+  the run's own record of which model did which step, and stamps the
+  file.
+- **`compose.bundle`**'s `Bundle.validate()` reports `[ai-drafted]` /
+  `[ai-edited]` markers as warnings if you choose to use them in your
+  draft; that is a convention, not enforcement.
+
+These marks help a reader trace the output. They are not the
+disclosure your journal, funder or institution asks for: write that
+yourself.
 
 ## Source-access expectations
 
@@ -193,6 +217,28 @@ home.
 > planned for a future release, alongside the cloud-call gates. Until
 > then, treat it as an API your own code can call, not a guarantee.
 
+## Serving other programs
+
+`andamentum-serve` lets other programs on your machine search your
+document store, review a note with whetstone, apply the edits you
+accept, and run research, over HTTP.
+
+- **It listens on 127.0.0.1 only**, and no flag changes that. It does
+  not check which program calls it: any program on this machine can.
+- **The caller names the model in every request.** A cloud model gets
+  the full note or question, so the "Cloud inference" section above
+  applies to every call. A program that forwards notes for an agent
+  decides where they go; check what it sends.
+- **Every procedure call is kept under `--out`** (`request.json` with
+  the note, and `result.json` or `error.json`). That folder holds your
+  notes in plain text: keep it where you keep the notes themselves.
+- **The confidentiality tripwire still runs.** A note marked as
+  material received under confidentiality is refused (HTTP 422), as on
+  the command line. There is no `--confirm-own-draft` over HTTP.
+- **A note is reviewed as the text sent**, never opened as a file path
+  or fetched as a web address, and search results leave out where
+  each document came from.
+
 ## Reporting misuse
 
 The MIT license permits any use technically. Socially-responsible
@@ -204,5 +250,4 @@ for the canonical URL once published).
 
 - `src/andamentum/whetstone/RESPONSIBLE_USE.md` — whetstone-specific
   guidance: peer-review prohibition, data classification, novelty
-  check warnings, `apply-patches` provenance, suggested
-  ICMJE-style disclosure wording.
+  check warnings, suggested ICMJE-style disclosure wording.
