@@ -755,3 +755,36 @@ def test_citation_in_a_zotero_document_is_a_zotero_field_with_the_display_text(
     assert len(zotero) == 2
     assert zotero[1].display == "(Smith and Jones 2021)"
     assert _in_field_result(_root(result.output)) == []
+
+
+def test_output_is_removed_when_an_untargeted_paragraph_changes_without_its_text(
+    adapter: DocxAdapter, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Byte identity, not text equality, is the check on untargeted paragraphs.
+
+    The attribute change leaves every character of p1 as it was, so a
+    text-only check would pass this output. The writer must refuse it.
+    """
+    real = writer_module._Writer.apply_edits
+
+    def also_mark_p1(self, origin):
+        real(self, origin)
+        self.elements[1].set(w("rsidR"), "00AA11BB")  # p1 is not targeted
+
+    monkeypatch.setattr(writer_module._Writer, "apply_edits", also_mark_p1)
+    view = adapter.open(plain_two_paragraphs(tmp_path))
+    start, end = _span(view, "p0", "Jane")
+    output = tmp_path / "out.docx"
+    with pytest.raises(
+        DocxApplyError, match="not byte-identical"
+    ):
+        adapter.apply(
+            view,
+            _txn(
+                Replace(
+                    paragraph_id="p0", start=start, end=end, text="Joan", expect="Jane"
+                )
+            ),
+            output=output,
+        )
+    assert not output.exists()
