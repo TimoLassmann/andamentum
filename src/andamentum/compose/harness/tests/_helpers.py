@@ -59,3 +59,10 @@ def field(
 def copy_of(path: Path, suffix: str) -> Path:
     """Where a verb writes its copy of *path*: next to it, ``<stem>.<suffix>.docx``."""
     return path.with_name(f"{path.stem}.{suffix}.docx")
+
+
+def clear_outputs(copy: Path) -> None:
+    """Remove a verb's copy and its report, keeping ``state/``: what a user does
+    before running a verb into the same folder again (a verb never overwrites)."""
+    for path in (copy, copy.with_suffix(".md"), copy.with_suffix(".json")):
+        path.unlink(missing_ok=True)

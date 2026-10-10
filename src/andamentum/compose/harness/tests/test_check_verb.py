@@ -21,7 +21,7 @@ from andamentum.compose.harness.check import (
 )
 from andamentum.compose.harness.docx.reader import open_docx
 from andamentum.compose.harness.kernel import ProjectStore
-from ._helpers import copy_of
+from ._helpers import clear_outputs, copy_of
 from andamentum.core.decisions.testing import StubDecisions, noul_answer
 
 
@@ -104,6 +104,7 @@ async def test_report_files_events_and_snapshot(manuscript: Path):
 
 async def test_second_run_uses_the_project_caches(manuscript: Path):
     first = await run(manuscript)
+    clear_outputs(first.output)
     second = await run(manuscript)
     assert first.report.checks_from_cache == []
     assert set(second.report.checks_from_cache) == {
@@ -211,6 +212,7 @@ async def test_a_fixed_field_payload_is_not_served_from_the_cache(tmp_path: Path
 
     # The display text is unchanged; only the field's payload is repaired.
     _field_document(path, json.dumps({"citationItems": [{"id": "x"}]}))
+    clear_outputs(first.output)
     second = await run(path, offline=True, checks=["crossrefs"])
     assert second.report.checks_from_cache == []
     assert not any(

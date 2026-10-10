@@ -7,6 +7,7 @@ a later run into the same folder finds the same ledger, event log and snapshots.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from pathlib import Path
 
 from .docx.writer import DocxAdapter
@@ -14,6 +15,27 @@ from .kernel import ApplyResult, DocumentView, Transaction
 
 
 STATE_DIR = "state"
+
+
+def written_files(out: Path, report: Path | None) -> tuple[Path, Path, Path]:
+    """The files a verb writes beside ``state/``: the copy *out* and the report
+    pair (*report*, default ``out`` with ``.md``, and the same with ``.json``)."""
+    report_md = report or out.with_suffix(".md")
+    return out, report_md, report_md.with_suffix(".json")
+
+
+def refuse_taken(paths: Iterable[Path], *, error: type[Exception]) -> None:
+    """Raise *error* naming each of *paths* that already exists.
+
+    A verb never writes over a file: a copy from an earlier run may hold edits
+    made in Word since. Called before anything is written, ``state/`` included.
+    """
+    taken = [str(p) for p in paths if p.exists()]
+    if taken:
+        raise error(
+            f"{', '.join(taken)} already exists and may hold your edits; the tool "
+            "never overwrites a file. Move or rename it, or give --out another folder"
+        )
 
 
 def project_dir(out: Path, project: Path | None) -> Path:

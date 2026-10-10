@@ -20,7 +20,7 @@ from andamentum.compose.harness.bindings.common import UsageError
 from andamentum.compose.harness.docx.reader import open_docx
 from andamentum.compose.harness.kernel import ProjectStore
 
-from ._helpers import copy_of
+from ._helpers import clear_outputs, copy_of
 from ._bindings_helpers import (
     EFFECT,
     INTERVAL,
@@ -402,6 +402,7 @@ def test_the_verb_exit_codes(bound, capsys, tmp_path):
     args = ["refresh", str(docx), "--results", str(results), "--out", str(folder)]
     assert cli.main(args) == 0
     make_results(results, p="0.9")
+    clear_outputs(folder / f"{docx.stem}.refreshed.docx")
     assert cli.main(args) == 1
     missing = ["refresh", str(docx), "--results", str(results / "x"), "--out", str(folder)]
     assert cli.main(missing) == 3

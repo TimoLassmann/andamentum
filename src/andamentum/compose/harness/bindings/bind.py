@@ -54,7 +54,7 @@ from .common import (
     open_document,
     output_path,
 )
-from ..project import write_copy
+from ..project import refuse_taken, write_copy, written_files
 from .ledger import Ledger, NumberBinding
 from .results import Catalogue, ResultEntry, load_catalogue
 from .written import WrittenNumber, parse_written, scale_for
@@ -412,10 +412,11 @@ async def run_bind(params: BindParams) -> BindRun:
     started = time.monotonic()
     if not params.model:
         raise UsageError("bind-numbers needs --model (the model proposes the matches)")
+    out = output_path(params.file, params.out)
+    refuse_taken(written_files(params.out, params.report), error=UsageError)
     adapter, view, store, project_id = open_document(
         params.file, out=params.out, project=params.project, results=params.results
     )
-    out = output_path(params.file, params.out)
     catalogue = load_catalogue(params.results)
     if not catalogue.entries:
         raise UsageError(f"no numbers found in the result files under {params.results}")
