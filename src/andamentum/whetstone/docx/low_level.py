@@ -178,6 +178,9 @@ class DocxEditor:
         is cleaned up in :meth:`_zip` after the final output is written.
         """
         with zipfile.ZipFile(docx_path, "r") as z:
+            # The archive's own entry order, kept so the output lists parts
+            # in the same order the input did.
+            self._entry_order = z.namelist()
             z.extractall(self.tmpdir)
 
     def _detect_document_filename(self) -> str:
@@ -350,12 +353,17 @@ class DocxEditor:
         editor instance should not be used further because its
         working directory no longer exists.
         """
+        present: set[str] = set()
+        for folder, _, files in os.walk(self.tmpdir):
+            for fn in files:
+                present.add(os.path.relpath(os.path.join(folder, fn), self.tmpdir))
+        original = set(self._entry_order)
+        # Parts from the input keep their input order; parts added here go last.
+        order = [name for name in self._entry_order if name in present]
+        order += sorted(present - original)
         with zipfile.ZipFile(output_path, "w", zipfile.ZIP_DEFLATED) as z:
-            for folder, _, files in os.walk(self.tmpdir):
-                for fn in files:
-                    full = os.path.join(folder, fn)
-                    arc = os.path.relpath(full, self.tmpdir)
-                    z.write(full, arc)
+            for arc in order:
+                z.write(os.path.join(self.tmpdir, arc), arc)
         shutil.rmtree(self.tmpdir)
 
     # ── markdown → Word paragraph helpers ─────────────────────────────
@@ -377,24 +385,32 @@ class DocxEditor:
         Args:
             output_path: Path for the output ``.docx`` file.
         """
-        comments_path, comments_tree = self._load_or_create_comments_tree()
-        comments_root = comments_tree.getroot()
-
-        first_cid = self._next_comment_id(comments_root)
-        for cid, placed in enumerate(self.placed_comments, start=first_cid):
-            comments_root.append(
-                XMLElementBuilder.create_comment_element(
-                    cid=cid, author=placed.author, text=placed.text
-                )
-            )
-            self._place_comment_range(placed.start_run, placed.end_run, cid)
-
+        # Only two parts can change: the document (runs are cut and tracked
+        # changes added, and the run normalisation at load touches it too) and,
+        # when comments are placed, the comments part. Every other part is
+        # copied from the input unchanged, byte for byte.
+        written = [self._doc_path]
         if self.placed_comments:
+            comments_path, comments_tree = self._load_or_create_comments_tree()
+            comments_root = comments_tree.getroot()
+
+            first_cid = self._next_comment_id(comments_root)
+            for cid, placed in enumerate(self.placed_comments, start=first_cid):
+                comments_root.append(
+                    XMLElementBuilder.create_comment_element(
+                        cid=cid, author=placed.author, text=placed.text
+                    )
+                )
+                self._place_comment_range(placed.start_run, placed.end_run, cid)
+
             self._ensure_comments_relationship()
             self._ensure_comments_content_type()
+            written.append(comments_path)
 
-        for path, tree in self.trees.items():
-            tree.write(path, xml_declaration=True, encoding="UTF-8", standalone="yes")
+        for path in written:
+            self.trees[path].write(
+                path, xml_declaration=True, encoding="UTF-8", standalone="yes"
+            )
         self._zip(output_path)
 
     def _next_comment_id(self, comments_root) -> int:

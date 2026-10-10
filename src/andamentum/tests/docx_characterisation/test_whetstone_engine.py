@@ -676,8 +676,16 @@ def test_overlapping_rewrite_is_refused_and_reported_not_applied(
         *_span(text, "first SaltLog"), "third SaltLog", "Other", label="two"
     )
 
-    with caplog.at_level(logging.WARNING, logger="andamentum.docx_edit"):
-        report = _annotate(source, target, rewrites=(winner, loser))
+    # The surgery module logs to "andamentum.whetstone". The CLI tests turn
+    # propagation off on that logger and never restore it, so the capture
+    # handler is attached to it directly instead of relying on propagation.
+    logger = logging.getLogger("andamentum.whetstone")
+    logger.addHandler(caplog.handler)
+    try:
+        with caplog.at_level(logging.WARNING, logger="andamentum.whetstone"):
+            report = _annotate(source, target, rewrites=(winner, loser))
+    finally:
+        logger.removeHandler(caplog.handler)
 
     assert report.total == 2
     assert report.applied_rewrites == 1
