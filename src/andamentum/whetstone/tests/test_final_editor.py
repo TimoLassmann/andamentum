@@ -414,3 +414,20 @@ async def test_a_point_both_reviewers_raised_is_one_comment_in_the_docx(
     assert "Methods reviewer says the goal is not shown." in comments
     assert "Also raised by: Claims reviewer." in comments
     assert "Claims reviewer says" not in comments
+
+
+def test_an_edit_without_a_title_is_kept_and_labelled_from_its_rationale() -> None:
+    # Some models leave the title out of every edit; the label must not cost
+    # the section its edits.
+    output = editor_mod.EditorOutput.model_validate(
+        {"edits": [{"rationale": "The verb does not agree with its subject.",
+                    "original_text": "the tests passes", "new_text": "the tests pass"}]}
+    )
+    assert output.edits[0].title == ""
+    assert editor_mod._title_from(output.edits[0].rationale) == (
+        "The verb does not agree with its subject."
+    )
+    assert editor_mod._title_from("one two three four five six seven eight nine") == (
+        "one two three four five six seven eight …"
+    )
+    assert editor_mod._title_from("") == "(untitled edit)"

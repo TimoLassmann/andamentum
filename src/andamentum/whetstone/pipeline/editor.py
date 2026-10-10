@@ -197,7 +197,8 @@ class EditProposal(BaseModel):
         ),
     )
     title: str = Field(
-        description="Short label for this edit, e.g. 'Tighten sentence'."
+        default="",
+        description="Short label for this edit, e.g. 'Tighten sentence'.",
     )
     rationale: str = Field(
         description=(
@@ -576,7 +577,7 @@ async def _run_editor_on_section(
         # the one the editor was reading.
         edits.append(
             Edit(
-                title=prop.title or "(untitled edit)",
+                title=prop.title or _title_from(prop.rationale),
                 severity=prop.severity,
                 confidence=prop.confidence,
                 rationale=prop.rationale,
@@ -610,6 +611,18 @@ async def _run_editor_on_section(
 
 
 # ── Orchestrator (semaphore-bounded fanout) ─────────────────────────────────
+
+
+def _title_from(rationale: str) -> str:
+    """A label for an edit the model left untitled: the rationale's first words.
+
+    The title is only a label, so a model that leaves it out (some do, every
+    time and after every retry) must not cost the section its edits.
+    """
+    words = rationale.split()
+    if not words:
+        return "(untitled edit)"
+    return " ".join(words[:8]) + (" …" if len(words) > 8 else "")
 
 
 async def run_editor(
