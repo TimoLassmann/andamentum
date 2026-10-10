@@ -37,7 +37,7 @@ from lxml import etree  # type: ignore
 
 from andamentum.references import Hint
 
-from .atoms import AtomKind, document_atoms, paragraph_atoms, projection, qn
+from andamentum.docx_edit.atoms import AtomKind, document_atoms, paragraph_atoms, projection, qn
 from .reading import read_docx
 
 _CITATION_FIELD_MARKERS = (

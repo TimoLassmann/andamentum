@@ -9,14 +9,15 @@ from __future__ import annotations
 from docx import Document
 from lxml import etree  # type: ignore
 
-from andamentum.whetstone.docx.atoms import document_atoms, projection, qn
+from andamentum.docx_edit.atoms import document_atoms, projection, qn
 from andamentum.whetstone.docx.headings import (
     StyleLevels,
     document_headings,
     heading_level,
     paragraph_spans,
 )
-from andamentum.whetstone.docx.reading import body_paragraphs, read_docx
+from andamentum.docx_edit.body import body_paragraphs
+from andamentum.whetstone.docx.reading import read_docx
 
 _STYLES_XML = """<w:styles xmlns:w="{ns}">
   <w:style w:type="paragraph" w:styleId="Heading1">

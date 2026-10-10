@@ -60,27 +60,7 @@ from ._watermark import (
     stamp_docx_core_properties,
     write_provenance_customxml,
 )
-from .docx.atoms import (  # noqa: F401  (read by compose.harness; not part of __all__)
-    EXCLUDED_SUBTREES,
-    Atom,
-    AtomKind,
-    document_atoms,
-    paragraph_atoms,
-)
 from .docx.exceptions import DocumentReviewError
-from .docx.reading import body_paragraphs, main_document_part  # noqa: F401
-from .docx.surgery import (  # noqa: F401  (read by compose.harness; not part of __all__)
-    Edit as SpanEdit,
-    EditReport,
-    apply_edits,
-    next_change_id,
-    run_bounds,
-    split_at_boundaries,
-    tracked_paragraph,
-    translate_span,
-)
-from .docx.textmap import AtomSpan, TextMap  # noqa: F401
-from .docx.xml_builder import XMLElementBuilder  # noqa: F401
 from .errors import WhetstoneError
 from .pipeline import (
     Criterion,

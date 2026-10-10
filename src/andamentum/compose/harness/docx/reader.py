@@ -30,7 +30,7 @@ from pathlib import Path
 from typing import Any
 
 from andamentum.references import Hint, scan
-from andamentum.whetstone import (
+from andamentum.docx_edit import (
     Atom,
     body_paragraphs,
     main_document_part,

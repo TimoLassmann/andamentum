@@ -51,17 +51,17 @@ import time
 from dataclasses import dataclass, field
 from typing import Sequence
 
-from .atoms import Atom, document_atoms, projection
+from andamentum.docx_edit.atoms import Atom, document_atoms, projection
 from .exceptions import DocumentReviewError
 from .low_level import DocxEditor, PlacedComment
-from .surgery import (
+from andamentum.docx_edit.surgery import (
     Edit,
     apply_edits,
     run_bounds,
     split_at_boundaries,
     translate_span,
 )
-from .textmap import AtomSpan, TextMap
+from andamentum.docx_edit.textmap import AtomSpan, TextMap
 
 logger = logging.getLogger("andamentum.whetstone")
 

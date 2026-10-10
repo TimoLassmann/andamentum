@@ -17,7 +17,7 @@ from docx import Document
 from rich.console import Console
 
 from andamentum.whetstone import cli as cli_mod
-from andamentum.whetstone.docx.atoms import document_atoms, projection
+from andamentum.docx_edit.atoms import document_atoms, projection
 from andamentum.whetstone.docx.reading import read_docx
 from andamentum.whetstone.renderers.docx import DEFAULT_AI_AUTHOR
 from andamentum.whetstone.reviewed_document import ReviewedDocument

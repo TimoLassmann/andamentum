@@ -40,7 +40,7 @@ from docx import Document
 from lxml import etree  # type: ignore
 
 from andamentum.whetstone.docx.annotate import Note, Rewrite, apply_annotations
-from andamentum.whetstone.docx.atoms import document_atoms, projection, qn
+from andamentum.docx_edit.atoms import document_atoms, projection, qn
 from andamentum.whetstone.docx.low_level import DocxEditor
 
 CASES = 60

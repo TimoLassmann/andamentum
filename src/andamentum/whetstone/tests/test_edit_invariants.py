@@ -22,9 +22,9 @@ import pytest
 from docx import Document
 from lxml import etree  # type: ignore
 
-from andamentum.whetstone.docx.atoms import document_atoms, projection, qn
-from andamentum.whetstone.docx.surgery import Edit, apply_edits
-from andamentum.whetstone.docx.textmap import TextMap
+from andamentum.docx_edit.atoms import document_atoms, projection, qn
+from andamentum.docx_edit.surgery import Edit, apply_edits
+from andamentum.docx_edit.textmap import TextMap
 
 SENTENCE = "The evidence layer earns its place in the analysis."
 TAIL = "A closing sentence that mentions the deliberation layer."

@@ -20,7 +20,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from andamentum.whetstone import EXCLUDED_SUBTREES, Atom
+from andamentum.docx_edit import EXCLUDED_SUBTREES, Atom
 
 from .ooxml import w
 

@@ -9,7 +9,7 @@ from __future__ import annotations
 from docx import Document
 from lxml import etree  # type: ignore
 
-from andamentum.whetstone.docx.atoms import (
+from andamentum.docx_edit.atoms import (
     AtomKind,
     document_atoms,
     paragraph_atoms,

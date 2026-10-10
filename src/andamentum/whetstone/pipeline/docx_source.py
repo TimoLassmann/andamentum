@@ -25,7 +25,7 @@ from typing import Any, Sequence
 
 from andamentum.chunker.structural import Heading
 
-from ..docx.atoms import document_atoms, projection
+from andamentum.docx_edit.atoms import document_atoms, projection
 from ..docx.headings import document_headings
 from ..docx.reading import read_docx
 from .model import Section

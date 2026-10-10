@@ -267,7 +267,7 @@ class Outcome:
 
 
 def _paragraph_texts(docx_path: Path) -> list[str]:
-    from andamentum.whetstone.docx.atoms import paragraph_atoms, projection
+    from andamentum.docx_edit.atoms import paragraph_atoms, projection
     from andamentum.whetstone.docx.low_level import DocxEditor
 
     editor = DocxEditor(str(docx_path))
@@ -282,7 +282,7 @@ def _marker_free_atoms(paragraph_texts: list[str]) -> list:
     score the matcher down for the scaffolding. ``paragraph`` carries the
     paragraph number so a match can be scored against the key.
     """
-    from andamentum.whetstone.docx.atoms import Atom, AtomKind
+    from andamentum.docx_edit.atoms import Atom, AtomKind
 
     stream: list[Atom] = []
     for number, text in enumerate(paragraph_texts):
@@ -319,7 +319,7 @@ def run_case(case: Case, docx_path: Path, markdown: str) -> Outcome:
     Block identity is captured BEFORE stripping, so the answer key
     survives while staying invisible to the thing being measured.
     """
-    from andamentum.whetstone.docx.textmap import TextMap
+    from andamentum.docx_edit.textmap import TextMap
 
     raw = _paragraph_texts(docx_path)
     block_of = [marker_in(t) for t in raw]

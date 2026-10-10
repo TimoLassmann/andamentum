@@ -26,7 +26,7 @@ from lxml import etree  # type: ignore
 from andamentum.tests.docx_corpus import builder
 from andamentum.tests.docx_corpus._xml import _CT, _REL, _para, _run, _write_package
 from andamentum.whetstone.docx.annotate import Note, Rewrite, apply_annotations
-from andamentum.whetstone.docx.atoms import document_atoms, projection
+from andamentum.docx_edit.atoms import document_atoms, projection
 from andamentum.whetstone.docx.footnotes import add_footnotes
 from andamentum.whetstone.docx.low_level import DocxEditor
 
@@ -676,7 +676,7 @@ def test_overlapping_rewrite_is_refused_and_reported_not_applied(
         *_span(text, "first SaltLog"), "third SaltLog", "Other", label="two"
     )
 
-    with caplog.at_level(logging.WARNING, logger="andamentum.whetstone"):
+    with caplog.at_level(logging.WARNING, logger="andamentum.docx_edit"):
         report = _annotate(source, target, rewrites=(winner, loser))
 
     assert report.total == 2

@@ -51,7 +51,7 @@ from .constants import (
     SECTION_SEPARATOR,
 )
 from .low_level import NS, ParagraphData, logger
-from .reading import REVIEW_REPORT_BOOKMARK_PREFIX
+from andamentum.docx_edit.body import REVIEW_REPORT_BOOKMARK_PREFIX
 from .model_utils import categorize_review_fields, extract_fields, normalize_to_dict
 
 

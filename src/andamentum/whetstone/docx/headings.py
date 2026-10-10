@@ -35,8 +35,8 @@ import re
 from dataclasses import dataclass
 from typing import Any, Sequence
 
-from .atoms import Atom, AtomKind, projection, qn
-from .reading import has_ancestor
+from andamentum.docx_edit.atoms import Atom, AtomKind, projection, qn
+from andamentum.docx_edit.body import has_ancestor
 
 _TABLE_TAG = qn("tbl")
 _STYLE_TAG = qn("style")

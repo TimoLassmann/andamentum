@@ -82,10 +82,10 @@ from typing import Any
 
 from lxml import etree  # type: ignore
 
-from andamentum.whetstone import (
+from andamentum.docx_edit import (
     AtomKind,
     AtomSpan,
-    SpanEdit,
+    Edit as SpanEdit,
     TextMap,
     XMLElementBuilder,
     apply_edits,

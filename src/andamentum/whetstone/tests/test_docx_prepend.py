@@ -472,7 +472,7 @@ def test_a_report_bookmark_with_no_end_hides_nothing(tmp_path):
     break to the end of the file out of the review, silently.
     """
     from andamentum.whetstone.docx.low_level import DocxEditor
-    from andamentum.whetstone.docx.reading import body_paragraphs
+    from andamentum.docx_edit.body import body_paragraphs
 
     src = tmp_path / "draft.docx"
     document = Document()

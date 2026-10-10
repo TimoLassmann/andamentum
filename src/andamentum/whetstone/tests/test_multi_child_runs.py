@@ -22,9 +22,9 @@ import pytest
 from docx import Document
 from lxml import etree  # type: ignore
 
-from andamentum.whetstone.docx.atoms import document_atoms, projection, qn
-from andamentum.whetstone.docx.surgery import Edit, apply_edits
-from andamentum.whetstone.docx.textmap import TextMap
+from andamentum.docx_edit.atoms import document_atoms, projection, qn
+from andamentum.docx_edit.surgery import Edit, apply_edits
+from andamentum.docx_edit.textmap import TextMap
 
 
 def _paragraph_with(children: list[tuple[str, str | None]]):
@@ -183,7 +183,7 @@ def test_an_existing_paragraph_mark_revision_keeps_its_author() -> None:
     proposal cannot sit beside the first. Overwriting it restamped a
     co-author's revision with the AI's name — content survived, the audit
     trail did not."""
-    from andamentum.whetstone.docx.surgery import _mark_paragraph_mark
+    from andamentum.docx_edit.surgery import _mark_paragraph_mark
 
     doc = Document()
     paragraph = doc.add_paragraph("The first thought ends here")._p
@@ -200,7 +200,7 @@ def test_an_existing_paragraph_mark_revision_keeps_its_author() -> None:
 def test_a_paragraph_mark_is_still_marked_when_nobody_claimed_it() -> None:
     doc = Document()
     paragraph = doc.add_paragraph("A paragraph")._p
-    from andamentum.whetstone.docx.surgery import _mark_paragraph_mark
+    from andamentum.docx_edit.surgery import _mark_paragraph_mark
 
     _mark_paragraph_mark(paragraph, "ins", author="whetstone (AI)", cid=1)
     marks = paragraph.findall(f"{qn('pPr')}/{qn('rPr')}/{qn('ins')}")
@@ -220,7 +220,7 @@ def test_the_survivor_of_a_collision_does_not_depend_on_input_order() -> None:
     runs over an unchanged document. WHICH one wins is still arbitrary; that it
     is the same one every time is not.
     """
-    from andamentum.whetstone.docx.textmap import TextMap
+    from andamentum.docx_edit.textmap import TextMap
 
     def survivor(order):
         _, paragraph = _paragraph_with(
@@ -248,7 +248,7 @@ def test_the_survivor_of_a_collision_does_not_depend_on_input_order() -> None:
 def test_a_collision_is_reported_with_both_sides() -> None:
     """A refusal the caller cannot see is a silent loss. The report names the
     edit that was dropped and the one that displaced it."""
-    from andamentum.whetstone.docx.textmap import TextMap
+    from andamentum.docx_edit.textmap import TextMap
 
     _, paragraph = _paragraph_with(
         [("t", "We found that the results show a large effect on outcomes.")]
@@ -274,7 +274,7 @@ def test_a_collision_is_reported_with_both_sides() -> None:
 
 def test_many_edits_over_one_span_keep_exactly_one() -> None:
     """N mutually overlapping edits refuse N-1. No cascade, nothing composed."""
-    from andamentum.whetstone.docx.textmap import TextMap
+    from andamentum.docx_edit.textmap import TextMap
 
     _, paragraph = _paragraph_with([("t", "alpha beta gamma delta epsilon zeta")])
     textmap = TextMap(document_atoms([paragraph]))

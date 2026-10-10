@@ -14,7 +14,7 @@ from .annotate import (
     Rewrite,
     apply_annotations,
 )
-from .atoms import Atom, AtomKind, document_atoms, paragraph_atoms, projection
+from andamentum.docx_edit.atoms import Atom, AtomKind, document_atoms, paragraph_atoms, projection
 from .exceptions import FinalizationError
 from .finalization import finalize_annotated_document
 from .headings import (
@@ -25,15 +25,10 @@ from .headings import (
     heading_level,
     paragraph_spans,
 )
-from .reading import (
-    DocxParts,
-    auxiliary_text,
-    body_paragraphs,
-    main_document_part,
-    read_docx,
-)
+from andamentum.docx_edit.body import body_paragraphs, main_document_part
+from .reading import DocxParts, auxiliary_text, read_docx
 from .low_level import DocxEditor, ParagraphData, PlacedComment
-from .surgery import (
+from andamentum.docx_edit.surgery import (
     Edit,
     EditReport,
     apply_edits,
@@ -41,7 +36,7 @@ from .surgery import (
     split_at_boundaries,
     split_run_at,
 )
-from .textmap import AtomSpan, TextMap
+from andamentum.docx_edit.textmap import AtomSpan, TextMap
 
 __all__ = [
     "AnnotationReport",

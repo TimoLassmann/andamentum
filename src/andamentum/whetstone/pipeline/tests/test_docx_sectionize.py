@@ -10,9 +10,9 @@ from __future__ import annotations
 from docx import Document
 from lxml import etree  # type: ignore
 
-from andamentum.whetstone.docx.atoms import document_atoms, projection, qn
+from andamentum.docx_edit.atoms import document_atoms, projection, qn
 from andamentum.whetstone.docx.reading import read_docx
-from andamentum.whetstone.docx.textmap import TextMap
+from andamentum.docx_edit.textmap import TextMap
 from andamentum.whetstone.pipeline.docx_source import load_docx, sectionize_docx
 
 

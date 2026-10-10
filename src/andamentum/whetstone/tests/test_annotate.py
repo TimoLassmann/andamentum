@@ -23,7 +23,7 @@ from andamentum.whetstone.docx.annotate import (
     Rewrite,
     apply_annotations,
 )
-from andamentum.whetstone.docx.atoms import document_atoms, projection
+from andamentum.docx_edit.atoms import document_atoms, projection
 from andamentum.whetstone.docx.low_level import DocxEditor
 from andamentum.whetstone.docx.reading import read_docx
 

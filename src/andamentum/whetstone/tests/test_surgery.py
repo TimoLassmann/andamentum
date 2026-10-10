@@ -9,9 +9,9 @@ from __future__ import annotations
 from docx import Document
 from lxml import etree  # type: ignore
 
-from andamentum.whetstone.docx.atoms import document_atoms, projection, qn
-from andamentum.whetstone.docx.surgery import Edit, apply_edits
-from andamentum.whetstone.docx.textmap import TextMap
+from andamentum.docx_edit.atoms import document_atoms, projection, qn
+from andamentum.docx_edit.surgery import Edit, apply_edits
+from andamentum.docx_edit.textmap import TextMap
 
 
 def _doc(*paragraph_texts: str):
@@ -290,7 +290,7 @@ def test_a_second_round_edits_what_the_first_round_inserted() -> None:
 
 def test_change_ids_are_read_off_the_document_not_restarted() -> None:
     """Any revision marker counts, not just the ones this module writes."""
-    from andamentum.whetstone.docx.surgery import FIRST_CHANGE_ID, next_change_id
+    from andamentum.docx_edit.surgery import FIRST_CHANGE_ID, next_change_id
 
     _, paragraphs = _doc("The evidence layer earns its place.")
     root = paragraphs[0].getroottree().getroot()
@@ -304,7 +304,7 @@ def test_change_ids_are_read_off_the_document_not_restarted() -> None:
 
 
 def test_tracked_paragraph_is_one_insertion_with_its_mark():
-    from andamentum.whetstone.docx.surgery import tracked_paragraph
+    from andamentum.docx_edit.surgery import tracked_paragraph
 
     paragraph = tracked_paragraph("New text.", author="A", cid=7, style_id="Heading1")
     ins = paragraph.findall(qn("ins"))
@@ -317,7 +317,7 @@ def test_tracked_paragraph_is_one_insertion_with_its_mark():
 
 
 def test_tracked_paragraph_without_a_style_has_no_pstyle():
-    from andamentum.whetstone.docx.surgery import tracked_paragraph
+    from andamentum.docx_edit.surgery import tracked_paragraph
 
     paragraph = tracked_paragraph("Plain.", author="A", cid=1)
     assert paragraph.find(f"{qn('pPr')}/{qn('pStyle')}") is None

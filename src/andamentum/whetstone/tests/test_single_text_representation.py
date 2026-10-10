@@ -111,7 +111,7 @@ def test_the_atom_projection_is_what_visible_text_returns() -> None:
     from docx import Document
     from lxml import etree  # type: ignore
 
-    from andamentum.whetstone.docx.atoms import paragraph_atoms, projection, qn
+    from andamentum.docx_edit.atoms import paragraph_atoms, projection, qn
     from andamentum.whetstone.docx.low_level import visible_text
 
     doc = Document()

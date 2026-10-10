@@ -30,9 +30,9 @@ from typing import Any
 from lxml import etree  # type: ignore
 from docx.oxml.ns import qn
 
-from .atoms import paragraph_atoms, projection
-from .reading import body_paragraphs, main_document_part
-from .xml_builder import XMLElementBuilder
+from andamentum.docx_edit.atoms import paragraph_atoms, projection
+from andamentum.docx_edit.body import body_paragraphs, main_document_part
+from andamentum.docx_edit.xml_builder import XMLElementBuilder
 
 # Logger for this module
 logger = logging.getLogger(__name__)
@@ -109,7 +109,7 @@ class ParagraphData:
     @property
     def text(self) -> str:
         """What this paragraph says, from the one text representation."""
-        from .atoms import paragraph_atoms, projection
+        from andamentum.docx_edit.atoms import paragraph_atoms, projection
 
         return projection(list(paragraph_atoms(self.p_elem)))
 

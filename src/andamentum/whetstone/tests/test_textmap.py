@@ -5,8 +5,8 @@ from __future__ import annotations
 from docx import Document
 from lxml import etree  # type: ignore
 
-from andamentum.whetstone.docx.atoms import document_atoms, qn
-from andamentum.whetstone.docx.textmap import AtomSpan, TextMap
+from andamentum.docx_edit.atoms import document_atoms, qn
+from andamentum.docx_edit.textmap import AtomSpan, TextMap
 
 
 def _map(*paragraph_texts: str) -> TextMap:
@@ -125,7 +125,7 @@ def test_closest_on_an_empty_map_is_silent() -> None:
 
 
 def test_a_match_may_span_two_runs_of_one_paragraph() -> None:
-    from andamentum.whetstone.docx.atoms import paragraph_atoms
+    from andamentum.docx_edit.atoms import paragraph_atoms
 
     doc = Document()
     para = doc.add_paragraph()
