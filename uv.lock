@@ -160,6 +160,10 @@ html-articles = [
 pdf = [
     { name = "weasyprint" },
 ]
+serve = [
+    { name = "fastapi" },
+    { name = "uvicorn" },
+]
 vlm = [
     { name = "docling", extra = ["vlm"] },
     { name = "mlx-vlm", marker = "platform_machine == 'arm64' and sys_platform == 'darwin'" },
@@ -172,6 +176,7 @@ requires-dist = [
     { name = "docling", specifier = ">=2.121.0,<3" },
     { name = "docling", extras = ["vlm"], marker = "extra == 'vlm'", specifier = ">=2.54.0,<3" },
     { name = "fastapi", marker = "extra == 'dev'", specifier = ">=0.109,<1" },
+    { name = "fastapi", marker = "extra == 'serve'", specifier = ">=0.109,<1" },
     { name = "httpx", specifier = ">=0.28.1,<1" },
     { name = "lxml", specifier = ">=5.0.0,<7" },
     { name = "markdown", specifier = ">=3.5.0,<4" },
@@ -208,9 +213,10 @@ requires-dist = [
     { name = "trafilatura", marker = "extra == 'html-articles'", specifier = ">=2.0.0,<3" },
     { name = "transformers", marker = "extra == 'vlm'", specifier = ">=4.45,<6" },
     { name = "uvicorn", marker = "extra == 'dev'", specifier = ">=0.27,<1" },
+    { name = "uvicorn", marker = "extra == 'serve'", specifier = ">=0.27,<1" },
     { name = "weasyprint", marker = "extra == 'pdf'", specifier = ">=60,<67" },
 ]
-provides-extras = ["html-articles", "pdf", "vlm", "bench-data", "dev", "benchmark"]
+provides-extras = ["html-articles", "pdf", "vlm", "bench-data", "serve", "dev", "benchmark"]
 
 [[package]]
 name = "annotated-doc"
