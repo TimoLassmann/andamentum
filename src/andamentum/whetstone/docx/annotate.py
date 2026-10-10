@@ -38,12 +38,10 @@ Comments are bracketed first, rewrites applied second:
    covers (:func:`~.surgery._rewrite_run`) and a comment already bracketing one
    of those would be left pointing at a detached element.
 
-Which is also why a note overlapping a rewrite is dropped: the rewrite is about
-to consume its anchor. The test is one integer comparison, and it reaches one
-character to the left of the rewrite, because
-:func:`~.surgery._anchor_for_insertion` attaches inserted text to the run of
-the character BEFORE the span — so a note ending exactly where a rewrite begins
-shares a run with it after all.
+A note that overlaps a rewrite is moved, not dropped. Its span is translated
+across the rewrite, so the note brackets the rewrite's new text. A note whose
+span has nothing left to bracket is listed in ``shadowed_notes``; a note whose
+span changed is listed in ``moved_notes``.
 """
 
 from __future__ import annotations

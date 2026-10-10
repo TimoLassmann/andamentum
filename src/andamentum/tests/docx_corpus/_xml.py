@@ -236,6 +236,11 @@ def accepted_text(path: Path) -> str:
 
     ``w:delText`` (deleted text) is never collected, so a ``w:del`` disappears
     and a ``w:ins`` stays, which is what accepting all changes gives.
+
+    Limit: each ``w:p`` is read on its own. Word also merges two paragraphs
+    when the first one's paragraph mark is deleted; this helper does not model
+    that, so a deleted paragraph break reads as a separate (possibly empty)
+    line. Tests that depend on the merge use their own reader.
     """
     root = ET.fromstring(document_xml(path))
     lines = []

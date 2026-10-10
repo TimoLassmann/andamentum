@@ -3,10 +3,22 @@
 python-docx has no footnote API. A caller that wants footnotes writes a
 placeholder run ``⟦FNn⟧`` where each mark goes, saves, and calls
 :func:`add_footnotes` with the notes' texts in order: each placeholder run
-becomes a ``<w:footnoteReference>``, and a ``footnotes.xml`` part is added
-with its relationship and content type. The placeholder is not text the
-reader sees — it is replaced whole — so the document's projection is the
+becomes a superscript ``<w:footnoteReference>``, and a ``footnotes.xml`` part
+is added with its relationship and content type. The placeholder is not text
+the reader sees — it is replaced whole — so the document's projection is the
 text with the marks where Word shows them.
+
+Requirements, each enforced by :func:`add_footnotes`:
+
+- The placeholder must be the whole text of its own run. A placeholder that
+  shares a run with other words is not replaced, and the call raises
+  ``ValueError`` ("found 0 times").
+- Each placeholder ``⟦FNn⟧`` must occur exactly once; any other count raises
+  ``ValueError``.
+- A document that already has ``word/footnotes.xml`` is refused with
+  ``ValueError``. The function does not add to existing footnotes.
+- The run's own formatting is replaced by superscript; the placeholder's
+  formatting is not kept.
 """
 
 from __future__ import annotations

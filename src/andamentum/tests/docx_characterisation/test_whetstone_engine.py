@@ -330,10 +330,10 @@ def test_deleting_a_whole_paragraph_marks_the_break_and_the_text_deleted(
 def test_deleting_paragraph_text_without_its_break_leaves_an_empty_paragraph(
     tmp_path: Path,
 ) -> None:
-    """Surprise: deleting only the words of paragraph two keeps the paragraph.
+    """Deleting only the words of a paragraph leaves its paragraph mark in place.
 
-    On accept the paragraph is still there, empty, so the result is two
-    paragraphs with the second blank.
+    The paragraph therefore stays, empty, on accept. Removing the paragraph
+    needs its mark deleted as well (the test above does that).
     """
     source = builder.plain_two_paragraphs(tmp_path / "src")
     target = tmp_path / "out.docx"
@@ -509,7 +509,11 @@ def test_add_footnotes_registers_the_part_in_rels_and_content_types(tmp_path: Pa
 
 
 def test_add_footnotes_refuses_a_placeholder_inside_a_text_run(tmp_path: Path) -> None:
-    """Surprise: a placeholder sharing a run with words is refused, not replaced."""
+    """A placeholder that shares a run with other words is refused.
+
+    add_footnotes does not split runs, so the placeholder must be the whole
+    text of its run; otherwise it raises ValueError.
+    """
     path = _write_package(
         tmp_path / "bad.docx",
         _para(_run("Jane Doe recorded readings⟦FN1⟧ at Apollo.")),
@@ -602,11 +606,14 @@ def test_co_author_revision_elements_are_unchanged_by_an_edit_elsewhere(
 def test_edit_inside_a_co_author_insertion_nests_the_deletion_in_it(
     tmp_path: Path,
 ) -> None:
-    """Surprise: the reviewer's deletion of ``every`` is nested inside Jane Doe's insertion.
+    """The reviewer's deletion of ``every`` is nested inside Jane Doe's insertion.
 
-    Jane Doe's ``w:ins`` keeps its author and id; the reviewer's ``w:del`` (id
-    103) sits inside it, and the reviewer's insertion ``each`` (id 104) is a
-    sibling placed before Jane Doe's insertion.
+    This is the markup whetstone's CLAUDE.md describes for a second reviewer
+    editing text an earlier author inserted. Jane Doe's ``w:ins`` keeps its
+    author and id; the reviewer's ``w:del`` (id 103) sits inside it, and the
+    reviewer's insertion ``each`` (id 104) is a sibling placed before Jane
+    Doe's insertion. Whether Word displays this nesting as intended has not
+    been checked in Word.
     """
     source = builder.existing_tracked(tmp_path / "src")
     target = tmp_path / "out.docx"
@@ -728,3 +735,35 @@ def test_replacement_spanning_a_run_boundary_keeps_each_run_formatting(
         "2": "vertAlign",
         "red": "color",
     }
+
+
+def test_note_overlapping_a_rewrite_is_moved_onto_the_new_text(tmp_path: Path) -> None:
+    """A note whose span overlaps a rewrite is placed, not dropped.
+
+    The note covers ``recorded the first SaltLog`` and the rewrite replaces
+    ``first``. The rewrite is applied, the note is placed on the text that now
+    stands in its place, and the report lists the note in ``moved_notes``.
+    """
+    source = builder.plain_two_paragraphs(tmp_path / "src")
+    target = tmp_path / "out.docx"
+    text = _reviewed_text(source)
+    rewrite = _rewrite(text, "first", "second", label="rewrite")
+    note_start, note_end = _span(text, "recorded the first SaltLog")
+
+    report = _annotate(
+        source,
+        target,
+        rewrites=(rewrite,),
+        notes=(Note(note_start, note_end, "Overlap note.", AUTHOR),),
+    )
+
+    assert report.applied_rewrites == 1
+    assert report.conflicted_rewrites == []
+    assert report.applied_notes == 1
+    assert report.shadowed_notes == []
+    assert [note.body for note in report.moved_notes] == ["Overlap note."]
+    assert _comments(target) == {1: (AUTHOR, "Overlap note.")}
+    assert _text_between_comment_markers(target, 1) == "recorded the second SaltLog"
+    assert _accepted(target)[0] == (
+        "Jane Doe recorded the second SaltLog reading at Apollo."
+    )
