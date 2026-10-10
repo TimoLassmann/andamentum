@@ -43,7 +43,7 @@ from .common import (
     open_document,
     output_path,
 )
-from ..project import write_copy
+from ..project import refuse_taken, write_copy, written_files
 from .ledger import Ledger, NumberBinding
 from .results import load_catalogue
 from .significance import Change, find_flips
@@ -132,10 +132,11 @@ class _Planned(BaseModel):
 def run_refresh(params: RefreshParams) -> RefreshRun:
     """Run ``refresh``; the programmatic entry the verb handler wraps."""
     started = time.monotonic()
+    out = output_path(params.file, params.out)
+    refuse_taken(written_files(params.out, params.report), error=UsageError)
     adapter, view, store, project_id = open_document(
         params.file, out=params.out, project=params.project, results=params.results
     )
-    out = output_path(params.file, params.out)
     catalogue = load_catalogue(params.results)
     ledger = Ledger(store)
     bindings = ledger.bindings()

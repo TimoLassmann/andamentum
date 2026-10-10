@@ -59,7 +59,7 @@ from .kernel import (
     get_verb,
 )
 from .kernel.verbs import load_builtin_verbs
-from .project import project_dir, write_copy
+from .project import project_dir, refuse_taken, write_copy
 
 SERVER_NAME = "andamentum-word"
 REPORT_URI = "compose://report/last"
@@ -201,6 +201,7 @@ def show_section(params: ShowSectionParams) -> dict[str, object]:
 def apply_edits(params: ApplyEditsParams) -> dict[str, object]:
     if params.out.resolve() == params.path.resolve():
         raise ValueError("out must not be the input file; edits are written to a copy")
+    refuse_taken([params.out], error=ValueError)
     citation_ops = [
         op.op
         for op in params.transaction.ops

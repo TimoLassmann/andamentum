@@ -282,6 +282,24 @@ async def test_apply_edits_refuses_to_overwrite_the_input(
 
 
 @with_client
+async def test_apply_edits_refuses_an_existing_copy(
+    client: ClientSession, manuscript: Path, tmp_path: Path
+):
+    out = tmp_path / "edited.docx"
+    out.write_bytes(b"edited in Word")
+    result = await client.call_tool(
+        "apply_edits",
+        {
+            "path": str(manuscript),
+            "out": str(out),
+            "transaction": _first_word_replacement(manuscript, "Zzyzx"),
+        },
+    )
+    assert result.isError and "never overwrites" in message(result)
+    assert out.read_bytes() == b"edited in Word"
+
+
+@with_client
 async def test_apply_edits_reports_invalid_operations(
     client: ClientSession, manuscript: Path, tmp_path: Path
 ):

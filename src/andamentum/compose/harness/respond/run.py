@@ -57,7 +57,7 @@ from ..kernel import (
 )
 from ..kernel.models import open_decision_model
 from ..errors import WordUsageError
-from ..project import project_dir, write_copy
+from ..project import project_dir, refuse_taken, write_copy, written_files
 from .collab import changed_paragraph_ids, previous_texts
 from .edits import EditRefused, SpanOp, span_ops
 from .items import Item, comment_items, read_reviews, review_items
@@ -353,7 +353,9 @@ def _outputs(params: RespondParams) -> tuple[Path, Path]:
         raise RespondUsageError(
             "the output must not be the input file; respond never edits it"
         )
-    return out, params.report or out.with_suffix(".md")
+    files = written_files(out, params.report)
+    refuse_taken(files, error=RespondUsageError)
+    return out, files[1]
 
 
 def _validate(params: RespondParams) -> None:

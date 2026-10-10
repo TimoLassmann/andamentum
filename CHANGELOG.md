@@ -18,6 +18,10 @@
 
 ### Fixed
 
+  - **andamentum-word:** `check`, `respond`, `refresh`, `bind-numbers` and
+    `insert-citation` no longer write over an existing copy or report in
+    `-o DIR` (a copy edited in Word was lost on a rerun); they stop with
+    exit 2 before writing anything, as `draft` already did.
   - **whetstone editor:** an edit without a title is kept and labelled from
     its rationale, instead of costing the section all its edits; when the
     tool-call run fails (gemma4 on Ollama sometimes returns an empty reply),

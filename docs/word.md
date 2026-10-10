@@ -4,7 +4,7 @@
 
 (Writing a finished document from a task into a folder of markdown sections is the separate tool `andamentum-compose`; see `docs/compose.md`.)
 
-Every command that writes puts its files into the folder named by `-o/--out DIR` and nowhere else: the edited copy of your file, the report, and a `state/` folder with what a later run into the same folder picks up. Nothing is written next to the input, in the current folder or in your home folder. A command that only prints (`find-citation`) writes nothing.
+Every command that writes puts its files into the folder named by `-o/--out DIR` and nowhere else: the edited copy of your file, the report, and a `state/` folder with what a later run into the same folder picks up. Nothing is written next to the input, in the current folder or in your home folder. A command that only prints (`find-citation`) writes nothing. Nothing in the folder is overwritten: when the copy or the report a command would write is already there (you may have edited it in Word), the command stops with exit 2 before it writes anything. Move or rename the file, or give another `--out`; `state/` is kept either way.
 
 All examples below use the synthetic SaltLog project that ships with the package (an invented pilot study; every name and DOI is made up).
 
@@ -115,7 +115,7 @@ Bring the numbers in a document up to date after the results change.
 andamentum-word refresh bound/collaborator.bound.docx --results results --out bound
 ```
 
-Every bound number is recomputed from the result files. A changed value becomes a tracked change in the original precision and units, and the claim that cites it gets a comment ("value changed 48 -> 52; check the claim still holds"). A change that flips a significance statement (p crossing .05, a confidence interval crossing 0 or 1) is flagged as an error. Numbers that are not bound are left alone. The report lists every change. Writes `collaborator.bound.refreshed.docx` and a report. The bindings are read from `state/` in the output folder, so give the folder that `bind-numbers` or `draft` wrote them to. Exit 0 no errors, 1 when a change flips a significance statement or a bound number cannot be found any more.
+Every bound number is recomputed from the result files. A changed value becomes a tracked change in the original precision and units, and the claim that cites it gets a comment ("value changed 48 -> 52; check the claim still holds"). A change that flips a significance statement (p crossing .05, a confidence interval crossing 0 or 1) is flagged as an error. Numbers that are not bound are left alone. The report lists every change. Writes `collaborator.bound.refreshed.docx` and a report. The bindings are read from `state/` in the output folder, so give the folder that `bind-numbers` or `draft` wrote them to. Exit 0 no errors, 1 when a change flips a significance statement or a bound number cannot be found any more. To refresh again into the same folder, first move or remove the earlier `.refreshed.docx` and its report; the bindings in `state/` stay.
 
 ### bind-numbers
 

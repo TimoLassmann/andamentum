@@ -66,7 +66,7 @@ from .kernel.checks import (
 )
 from .kernel.models import open_decision_model
 from .kernel.store import ANSWER_MAX_AGE, ProjectCache
-from .project import project_dir, write_copy
+from .project import project_dir, refuse_taken, write_copy, written_files
 
 # Importing the check modules registers them.
 from .checks import (  # noqa: F401  (imported for registration)
@@ -262,8 +262,9 @@ def _outputs(params: CheckParams) -> tuple[Path, Path]:
     out = params.out
     if out.resolve() == source.resolve():
         raise CheckUsageError("the output must not be the input file; check never edits it")
-    report = params.report or out.with_suffix(".md")
-    return out, report
+    files = written_files(out, params.report)
+    refuse_taken(files, error=CheckUsageError)
+    return out, files[1]
 
 
 async def _run_one(

@@ -35,7 +35,7 @@ from ..bindings.common import (
 )
 from ..docx.reader import DocxReadError
 from ..docx.writer import DocxAdapter
-from ..project import project_dir, write_copy
+from ..project import project_dir, refuse_taken, write_copy
 from ..kernel import (
     InsertCitation,
     ProjectStore,
@@ -201,6 +201,7 @@ async def run_insert(
         raise UsageError(f"{file} is not a .docx file")
     if params.library is not None and not params.library.is_file():
         raise UsageError(f"--library {params.library} is not a file")
+    refuse_taken([params.out], error=UsageError)
     adapter = DocxAdapter()
     try:
         view = adapter.open(file)
