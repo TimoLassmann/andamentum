@@ -431,3 +431,47 @@ def test_an_edit_without_a_title_is_kept_and_labelled_from_its_rationale() -> No
         "one two three four five six seven eight …"
     )
     assert editor_mod._title_from("") == "(untitled edit)"
+
+
+async def test_an_empty_tool_call_reply_falls_back_to_prompted_output(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # gemma4 on Ollama sometimes answers a tool-call request with nothing at
+    # all, until the output retries run out; the editor then asks again with
+    # the schema in the prompt instead of losing the section.
+    from types import SimpleNamespace
+
+    from pydantic_ai.exceptions import UnexpectedModelBehavior
+
+    text = "The rover moved slow across the crater."
+    proposal = editor_mod.EditorOutput.model_validate(
+        {"edits": [{"rationale": "Adverb needed.", "original_text": "moved slow",
+                    "new_text": "moved slowly"}]}
+    )
+    built: list[bool] = []
+
+    class _Agent:
+        def __init__(self, prompted: bool) -> None:
+            self.prompted = prompted
+            self.validators: list[Any] = []
+
+        def output_validator(self, validator: Any) -> None:
+            self.validators.append(validator)
+
+        async def run(self, prompt: str) -> Any:
+            if not self.prompted:
+                raise UnexpectedModelBehavior("Exceeded maximum output retries (4)")
+            return SimpleNamespace(output=proposal, usage=None)
+
+    def _build(defn: Any, model: Any, *, prompted: bool = False) -> _Agent:
+        built.append(prompted)
+        return _Agent(prompted)
+
+    monkeypatch.setattr(editor_mod, "build_pydantic_ai_agent", _build)
+    monkeypatch.setattr(editor_mod, "resolve_model", lambda model: None)
+    section = Section(id="s1", title="Log", text=text, start=0, end=len(text))
+    edits, _ = await editor_mod._run_editor_on_section(
+        section, ["clarity"], [], agent_model="stub:none"
+    )
+    assert built == [False, True]
+    assert [(e.original_text, e.new_text) for e in edits] == [("moved slow", "moved slowly")]

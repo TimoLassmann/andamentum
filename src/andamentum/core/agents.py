@@ -246,7 +246,7 @@ class AgentRunner:
         self._cache.clear()
 
 
-def build_pydantic_ai_agent(defn: AgentDefinition, model: Any) -> Any:
+def build_pydantic_ai_agent(defn: AgentDefinition, model: Any, *, prompted: bool = False) -> Any:
     """Build a pydantic-ai ``Agent`` from an ``AgentDefinition`` + model.
 
     Used by sub-modules whose graph nodes need direct access to the agent
@@ -258,11 +258,17 @@ def build_pydantic_ai_agent(defn: AgentDefinition, model: Any) -> Any:
     Callers are responsible for resolving the model upstream (typically via
     ``core.models.resolve_model``) so this stays a pure shape adapter.
 
+    ``prompted=True`` builds the PromptedOutput fallback agent instead: the
+    schema goes in the prompt and the answer comes back as text, with no tool
+    call. A node that catches the tool-based run's failure retries with it,
+    as :class:`AgentRunner` does.
+
     Raises:
         ValueError: If ``defn.output_model`` is None — node-based agents
             must declare a concrete output type.
     """
     from pydantic_ai import Agent
+    from pydantic_ai.output import PromptedOutput
 
     if defn.output_model is None:
         raise ValueError(
@@ -272,7 +278,7 @@ def build_pydantic_ai_agent(defn: AgentDefinition, model: Any) -> Any:
     return Agent(
         model,
         instructions=defn.prompt,
-        output_type=defn.output_model,
+        output_type=PromptedOutput(defn.output_model) if prompted else defn.output_model,
         retries={"tools": defn.retries, "output": defn.output_retries},
     )
 
