@@ -13,9 +13,6 @@ tracked changes). Tracked changes are now made in :mod:`.surgery`, which
 cuts only the runs a resolved span covers, and :meth:`write` emits
 comments and re-zips — it rebuilds nothing.
 
-:class:`PatchDocxEditor` (in ``patch_editor.py``) extends this engine
-with ``DocumentPatch`` application.
-
 Most consumers should use the higher-level
 ``whetstone.renderers.render_docx`` function rather than constructing
 ``DocxEditor`` directly.
@@ -127,9 +124,9 @@ class DocxEditor:
     are applied to those elements in place by :mod:`.surgery`;
     :meth:`write` writes the comment parts and re-zips.
 
-    This is the core engine used by :class:`PatchDocxEditor` and the
-    ``render_docx`` renderer. Most callers should use those higher-level
-    interfaces rather than constructing ``DocxEditor`` directly.
+    This is the core engine used by the
+    ``render_docx`` renderer. Most callers should use that higher-level
+    interface rather than constructing ``DocxEditor`` directly.
     """
 
     def __init__(self, input_path, author="Python"):

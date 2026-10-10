@@ -48,7 +48,6 @@ def test_the_commands_are_exactly_the_documented_ones() -> None:
         "panel",
         "checklist",
         "reviewers",
-        "apply-patches",
         "verify-provenance",
     }
 
@@ -99,12 +98,10 @@ def test_each_command_has_only_its_own_flags() -> None:
     assert not {"--until", "--editor", "--offline", "--reviewer"} & flags("panel")
     assert not {"--until", "--editor", "--offline"} & flags("checklist")
     assert "--reviewer" in flags("checklist")
-    assert "--patches" in flags("apply-patches")
-    assert not {"--model", "--reviewer", "--until"} & flags("apply-patches")
     assert flags("reviewers") >= {"--document-type"}
     # One way to do each thing: no hidden mode flag, no flag twin of a command.
     for name in cli_mod._COMMANDS:
-        assert not {"--mode", "--apply-patches", "--list-reviewers"} & flags(name)
+        assert not {"--mode", "--list-reviewers"} & flags(name)
 
 
 # ── the defaults are the library's ─────────────────────────────────────────

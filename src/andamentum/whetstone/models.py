@@ -4,12 +4,8 @@
 It contains the two types the ``whetstone.docx`` subpackage operates on:
 
 * ``DocumentPatch`` — a single edit/comment/analysis instruction that the
-  finalisation pipeline applies as a Word tracked change or comment. The
-  current whetstone ``renderers/docx.py`` adapts each ``Edit`` and
-  ``Finding`` into one of these before invoking
-  ``finalize_reviewed_document``.
-* ``PatchApplicationResult`` — the return type from
-  ``finalize_reviewed_document`` (counts of applied / failed patches).
+  finalisation pipeline applies as a Word tracked change or comment.
+* ``PatchApplicationResult`` — counts of applied / failed patches.
 """
 
 import uuid

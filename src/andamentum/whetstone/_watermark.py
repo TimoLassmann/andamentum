@@ -18,8 +18,7 @@ Three layers:
 
 3. **Visible banner** — default ON for standalone review reports
    (markdown / HTML / docx that summarise the review), default OFF
-   for ``apply-patches`` output (the user's manuscript with edits
-   applied). Override via ``--visible-watermark`` /
+   where the output is the user's manuscript with edits applied. Override via ``--visible-watermark`` /
    ``--no-visible-watermark``.
 
 All three layers stamp the same ``provenance_line()``. The

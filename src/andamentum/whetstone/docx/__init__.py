@@ -16,7 +16,7 @@ from .annotate import (
 )
 from .atoms import Atom, AtomKind, document_atoms, paragraph_atoms, projection
 from .exceptions import FinalizationError
-from .finalization import finalize_annotated_document, finalize_reviewed_document
+from .finalization import finalize_annotated_document
 from .headings import (
     DocxHeading,
     ParagraphSpan,
@@ -33,7 +33,6 @@ from .reading import (
     read_docx,
 )
 from .low_level import DocxEditor, ParagraphData, PlacedComment
-from .patch_editor import PatchDocxEditor
 from .surgery import (
     Edit,
     EditReport,
@@ -77,8 +76,6 @@ __all__ = [
     "read_docx",
     "PlacedComment",
     "FinalizationError",
-    "finalize_reviewed_document",
     "DocxEditor",
     "ParagraphData",
-    "PatchDocxEditor",
 ]

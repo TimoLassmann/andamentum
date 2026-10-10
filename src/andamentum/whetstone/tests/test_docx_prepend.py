@@ -21,12 +21,12 @@ NS = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
 
 
 def _editor_for_blank_doc(tmp_path: Path):
-    """Build a PatchDocxEditor over a fresh empty .docx file."""
-    from andamentum.whetstone.docx.patch_editor import PatchDocxEditor
+    """Build a DocxEditor over a fresh empty .docx file."""
+    from andamentum.whetstone.docx.low_level import DocxEditor
 
     src = tmp_path / "blank.docx"
     Document().save(str(src))
-    return PatchDocxEditor(str(src), author="Whetstone Test")
+    return DocxEditor(str(src), author="Whetstone Test")
 
 
 def _prepended_body_paragraphs(editor):

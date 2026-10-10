@@ -649,7 +649,6 @@ andamentum-whetstone draft.docx --brief @journal-guidelines.md \
       <tr><td><code>checklist</code></td><td>Probe bank plus coverage table.</td><td><span class="badge badge--warn">required</span></td></tr>
       <tr><td><code>panel</code></td><td>Multi-expert simulated review. Needs <code>--i-am-the-author</code>.</td><td><span class="badge badge--warn">required</span></td></tr>
       <tr><td><code>reviewers</code></td><td>List the named reviewers, with the fit for a <code>--document-type</code>. Needs no input; <code>--json</code> prints the list as JSON.</td><td><span class="badge badge--success">none</span></td></tr>
-      <tr><td><code>apply-patches</code></td><td>Apply a pre-built JSON patch list to a <code>.docx</code>: <code>apply-patches draft.docx --patches p.json -o out.docx</code>.</td><td><span class="badge badge--success">none</span></td></tr>
       <tr><td><code>verify-provenance</code></td><td>Read-only: report the AI-provenance markers a <code>.docx</code> carries.</td><td><span class="badge badge--success">none</span></td></tr>
     </tbody>
   </table>
@@ -951,9 +950,7 @@ andamentum-references draft.pdf --model ollama:gemma4:26b</code></pre>
 
   <p><strong>A review does not search for where a comment goes.</strong> The reviewer reads the text of the Word file that it annotates: a <code>.docx</code> is read as the text of its own paragraphs, and any other input is first written out as a Word file and read as that file. So each quote and each edit carries offsets into the file being written, and a comment is placed at those offsets. A document whose text does not match what was reviewed stops the render with an error, and nothing falls back to a search. The design that this replaced searched a converted rendering for each quote, and lost 15 of 43 rewrites on one real manuscript.</p>
 
-  <p>One path still searches: <code>apply-patches</code>, whose input is a list of text patterns with no offsets. There, matching is <strong>exact after normalisation</strong>, never fuzzy. A retry strips decoration the converter added, which is still an exact match of a smaller target and so cannot land on text that is not there. When a target occurs more than once the match is <strong>refused</strong> rather than guessed: a comment on the wrong sentence is worse than no comment, because the reader cannot tell it has moved.</p>
-
-  <p>A deterministic benchmark for that path — no model, no network — generates a corpus with a known answer key and scores three outcomes.</p>
+  <p>A deterministic benchmark for the text-pattern matcher — no model, no network — generates a corpus with a known answer key and scores three outcomes.</p>
 
   <pre><code>uv run python -m andamentum.whetstone.tests.anchor_bench</code></pre>
 

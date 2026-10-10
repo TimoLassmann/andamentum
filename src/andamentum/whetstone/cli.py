@@ -21,9 +21,6 @@ changes in Word. Subcommands:
     andamentum-whetstone reviewers [--document-type TYPE]
         List the named reviewers. No model, no input.
 
-    andamentum-whetstone apply-patches INPUT.docx --patches P.json -o OUT.docx
-        Apply a pre-built JSON patch list to a .docx (no model).
-
     andamentum-whetstone verify-provenance INPUT.docx [--json]
         Read-only: report which whetstone AI-provenance markers a .docx
         contains.
@@ -36,7 +33,7 @@ Exit codes:
     0 — success
     1 — ran, negative result: ``revise`` stopped before its condition held
         (its output is still written); ``verify-provenance`` found no
-        marker; ``apply-patches`` could not apply some patches
+        marker
     2 — usage error: a wrong or missing argument, or a refusal (for example
         the confidentiality check)
     3 — the input could not be read (missing file, unreachable URL,
@@ -104,9 +101,8 @@ first argument is a file):
   panel       simulated multi-expert peer review of your own draft
   reviewers   list the named reviewers you can pass to --reviewer
 
-Two further commands, neither of them a review:
+One further command, not a review:
 
-  apply-patches      apply a pre-built JSON patch list to a .docx (no model)
   verify-provenance  read-only: report AI-provenance markers in a .docx
 
 INPUT is a path or URL to a document. Supported: .pdf, .docx, .html,
@@ -183,11 +179,6 @@ EXAMPLES
     andamentum-whetstone checklist memo.docx --model anthropic:claude-haiku-4-5 \\
         --document-type external_communication -o memo.reviewed.docx
 
-    # Apply a pre-built JSON patch list to a .docx (no model)
-    andamentum-whetstone apply-patches draft.docx \\
-        --patches patches.json -o draft.reviewed.docx \\
-        --patch-author "Claude" --allow-author-override --patch-report review.md
-
     # Read-only: report AI-provenance markers in a .docx
     andamentum-whetstone verify-provenance suspicious.docx
     andamentum-whetstone verify-provenance suspicious.docx --json
@@ -195,8 +186,7 @@ EXAMPLES
 EXIT CODES
     0  success
     1  ran, negative result: revise stopped before its condition held (output
-       still written); verify-provenance found no marker; apply-patches could
-       not apply some patches
+       still written); verify-provenance found no marker
     2  usage error: a wrong or missing argument, or a refusal
     3  the input could not be read (missing file, unreachable URL, unsupported format)
     4  the run failed (model or network error, crash)
@@ -278,14 +268,6 @@ EXAMPLES
     andamentum-whetstone reviewers --document-type academic --json
 """
 
-_APPLY_PATCHES_EPILOG = """\
-EXAMPLES
-
-    # Apply a JSON patch list as tracked changes and comments
-    andamentum-whetstone apply-patches draft.docx --patches patches.json \\
-        -o draft.patched.docx
-"""
-
 _PROVENANCE_EPILOG = """\
 EXAMPLES
 
@@ -303,7 +285,6 @@ _COMMANDS: tuple[str, ...] = (
     "panel",
     "checklist",
     "reviewers",
-    "apply-patches",
     "verify-provenance",
 )
 
@@ -727,45 +708,6 @@ def build_parser() -> argparse.ArgumentParser:
         "with --document-type, whether each suits it.",
     )
 
-    # ── apply-patches ──────────────────────────────────────────────────
-    patches = add(
-        "apply-patches",
-        "Apply a pre-built JSON patch list to a .docx as tracked changes and "
-        "comments. No model.",
-        epilog=_APPLY_PATCHES_EPILOG,
-    )
-    patches.set_defaults(mode="apply-patches")
-    _add_author_flags(patches)
-    patches.add_argument("input", help="The .docx file to patch (never modified).")
-    patches.add_argument(
-        "--patches",
-        required=True,
-        type=Path,
-        metavar="FILE",
-        help="JSON file holding an array of DocumentPatch objects.",
-    )
-    patches.add_argument(
-        "-o",
-        "--out",
-        required=True,
-        type=Path,
-        metavar="FILE",
-        help="The patched .docx to write.",
-    )
-    patches.add_argument(
-        "--patch-report",
-        type=Path,
-        default=None,
-        metavar="FILE",
-        help="Optional markdown file prepended as a review-summary section.",
-    )
-    patches.add_argument(
-        "-v",
-        "--verbose",
-        action="store_true",
-        help="Print progress to stderr.",
-    )
-
     # ── verify-provenance ──────────────────────────────────────────────
     provenance = add(
         "verify-provenance",
@@ -791,9 +733,6 @@ def _validate_args(args: argparse.Namespace) -> None:
     Raises ``SystemExit(2)`` with a friendly message on any violation.
     """
     if args.command in ("reviewers", "verify-provenance"):
-        return
-    if args.command == "apply-patches":
-        _validate_apply_patches_args(args)
         return
 
     _validate_author_args(args)
@@ -1068,32 +1007,8 @@ def _reject_a_review_that_would_review_nothing(args: argparse.Namespace) -> None
     )
 
 
-def _validate_apply_patches_args(args: argparse.Namespace) -> None:
-    """Validate the apply-patches command."""
-    input_path = Path(args.input)
-    if not input_path.exists():
-        _die(
-            _EXIT_INPUT,
-            f"apply-patches needs INPUT to be a local .docx file (got {args.input!r}).",
-        )
-    if input_path.suffix.lower() != ".docx":
-        _die(
-            _EXIT_USAGE,
-            "apply-patches needs INPUT to be a .docx file "
-            f"(got {input_path.suffix!r}).",
-        )
-    if args.out.suffix.lower() != ".docx":
-        _die(_EXIT_USAGE, "apply-patches needs -o FILE to end in .docx.")
-    if not args.patches.exists():
-        _die(_EXIT_INPUT, f"patches file not found: {args.patches}")
-    if args.patch_report is not None and not args.patch_report.exists():
-        _die(_EXIT_INPUT, f"patch report file not found: {args.patch_report}")
-    _validate_author_args(args)
-
-
 def _outputs(args: argparse.Namespace) -> list[Path]:
-    """The files the run writes: a list for the review commands, the one
-    patched file for apply-patches."""
+    """The files the run writes."""
     out = args.out
     return list(out) if isinstance(out, list) else [out]
 
@@ -2112,8 +2027,6 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         console = Console(stderr=True)
         _configure_logging(console, args.verbose)
-        if args.command == "apply-patches":
-            return _apply_patches_only(args, console)
         return asyncio.run(_run(args, console))
     except KeyboardInterrupt:
         print("error: interrupted", file=sys.stderr)
@@ -2124,64 +2037,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         if exc.code is None:
             return 0
         return exc.code if isinstance(exc.code, int) else _EXIT_USAGE
-
-
-def _apply_patches_only(args: argparse.Namespace, console: Console) -> int:
-    """Patch-only path: load JSON patches and apply to INPUT.docx → OUT.docx.
-
-    No LLM, no review pipeline. Reuses ``finalize_reviewed_document`` so
-    the output is byte-identical to what the full review pipeline would
-    produce given the same patches. Returns 1 when some patches could not be
-    applied (the output is still written).
-    """
-    import json
-
-    from .docx.finalization import finalize_reviewed_document
-    from .models import DocumentPatch
-
-    try:
-        raw = json.loads(args.patches.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as exc:
-        _die(_EXIT_INPUT, f"could not read patches file {args.patches}: {exc}")
-    if not isinstance(raw, list):
-        _die(
-            _EXIT_INPUT,
-            f"patches file must contain a JSON array, got {type(raw).__name__}.",
-        )
-
-    try:
-        patches = [DocumentPatch(**p) for p in raw]
-    except Exception as exc:
-        _die(_EXIT_INPUT, f"invalid patch in {args.patches}: {exc}")
-
-    review_summary = ""
-    if args.patch_report is not None:
-        review_summary = args.patch_report.read_text(encoding="utf-8")
-
-    output_path: Path = args.out
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    resolved_author = _resolve_author(args)
-
-    try:
-        _, patch_result = finalize_reviewed_document(
-            original_file_path=Path(args.input),
-            patches=patches,
-            review_summary=review_summary,
-            issues_count=len(patches),
-            output_path=output_path,
-            author=resolved_author,
-        )
-        # Apply invisible AI-provenance metadata so the modified manuscript
-        # carries discoverable AI authorship even without a visible banner.
-        from ._watermark import stamp_docx_core_properties
-
-        stamp_docx_core_properties(output_path, model=None)
-    except Exception as exc:
-        _die(_EXIT_FAILED, f"patch application failed: {exc}")
-
-    _print_apply_patches_summary(console, patch_result, output_path)
-    return _EXIT_NEGATIVE if patch_result.failed_patches else 0
 
 
 def _warn_on_dropped_annotations(console: Console, report) -> None:
@@ -2229,33 +2084,6 @@ def _warn_on_dropped_annotations(console: Console, report) -> None:
         )
         for rewrite in report.conflicted_rewrites:
             console.print(f"  • {(rewrite.label or rewrite.new_text)[:70]}")
-
-
-def _print_apply_patches_summary(console: Console, result, output_path: Path) -> None:
-    """Render a Rich summary table after a patch-only run."""
-    table = Table(show_header=False, box=None, padding=(0, 1))
-    table.add_column(style="bold cyan", justify="right")
-    table.add_column()
-    table.add_row("total patches:", str(result.total_patches))
-    table.add_row(
-        "applied:",
-        f"{result.applied_patches} "
-        f"({result.applied_edits} edits, {result.applied_comments} comments)",
-    )
-    table.add_row("failed:", str(len(result.failed_patches)))
-    table.add_row("success rate:", f"{result.success_rate:.1f}%")
-    table.add_row("output:", str(output_path))
-    border = "yellow" if result.failed_patches else "green"
-    console.print(Panel(table, title="patches applied", border_style=border))
-
-    if result.failed_patches:
-        console.print(
-            f"[yellow]warning:[/yellow] {len(result.failed_patches)} "
-            f"patch(es) could not be applied:"
-        )
-        for p in result.failed_patches:
-            label = (p.text_pattern or p.patch_type)[:60]
-            console.print(f"  • [{p.patch_type}] {label}")
 
 
 def _configure_logging(console: Console, verbose: bool) -> None:

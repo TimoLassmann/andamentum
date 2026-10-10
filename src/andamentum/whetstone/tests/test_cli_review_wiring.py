@@ -207,7 +207,7 @@ async def test_the_review_path_attributes_changes_to_the_named_author(
 ) -> None:
     """``--patch-author`` is how round two gets its own name in Word.
 
-    The flag used to be refused outside ``--apply-patches``, so two review
+    The flag used to be refused on the review path, so two review
     rounds through the CLI were both written by the default AI name and Word
     showed them as one reviewer. Nothing else about round two is a flag: the
     input file already carries round one's changes.

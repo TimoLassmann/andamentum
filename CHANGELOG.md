@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Removed
+
+  - **`andamentum-whetstone apply-patches`** is removed, with
+    `finalize_reviewed_document` and `PatchDocxEditor`, which only it used.
+
 ### Interface (every tool)
 
 Breaking: command lines and some Python names changed so that every tool has

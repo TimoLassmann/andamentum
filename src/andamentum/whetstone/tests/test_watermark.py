@@ -5,8 +5,7 @@ Three layers:
 - customXml provenance part (docx only): always on; survives core-property
   scrubbing.
 - Visible banner: ON by default for review-report renderers, can be
-  suppressed via visible_watermark=False (e.g. for --apply-patches
-  output).
+  suppressed via visible_watermark=False.
 """
 
 from __future__ import annotations

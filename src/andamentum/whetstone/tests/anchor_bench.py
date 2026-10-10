@@ -1,6 +1,6 @@
 """Deterministic benchmark for .docx comment anchoring. No LLM, no network.
 
-Scope note: this measures the ``apply-patches`` path — locating a supplied text
+Scope note: this measures locating a supplied text
 pattern in a Word file. The review path no longer searches for anything (see
 :mod:`andamentum.whetstone.docx.annotate`), so its placement rate is 100% by
 construction and a benchmark of it would only ever be measuring a bug.

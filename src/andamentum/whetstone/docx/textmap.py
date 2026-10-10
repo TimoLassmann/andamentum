@@ -39,9 +39,7 @@ _LIST_MARKER = re.compile(r"^\s*(?:\d+[.)]|[-*•])\s+")
 def strip_converter_decoration(target: str) -> str:
     """Drop markup that provably exists on one side only.
 
-    Only reachable from the ``apply-patches`` path now — a pattern supplied by
-    an outside agent may well have come from a converted rendering. The review
-    path never sees a converter's output and never searches at all.
+    The review path never sees a converter's output and never searches at all.
 
     Not a fuzzy relaxation — the retry is still an exact match and still cannot
     land on text that is not there. Pipes become spaces rather than vanishing,

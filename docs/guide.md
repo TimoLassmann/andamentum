@@ -152,7 +152,7 @@ andamentum-whetstone review draft.md --model anthropic:claude-haiku-4-5 \
 - `--reviewer` picks a named reviewer: `default`, `claims`, `methods`, `framing`, `reader`, `adversary` or `editor`. `andamentum-whetstone reviewers` lists them. A comma-separated list runs them one after another.
 - `--brief TEXT` (or `@FILE`) says what to review against, for example a journal's guidelines.
 - `--no-editor` gives comments only, `--no-references` skips the reference check, and `--offline` keeps the reference check but skips the Crossref lookup.
-- Other commands: `checklist` (a fixed set of checks and a coverage table that you can compare between versions), `panel` (several simulated experts), `apply-patches` and `verify-provenance` (no model).
+- Other commands: `checklist` (a fixed set of checks and a coverage table that you can compare between versions), `panel` (several simulated experts), `verify-provenance` (no model).
 
 Full guide: [whetstone.html](./whetstone.html).
 

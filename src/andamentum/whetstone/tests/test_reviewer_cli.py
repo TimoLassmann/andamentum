@@ -6,8 +6,7 @@ already existed, and the three renderers gain a block that only appears when
 a reviewer other than the default one produced the result.
 
 The rest is refusals. A flag that reaches a subcommand it cannot configure is
-rejected rather than ignored — panel writes its own reviewers, apply-patches
-runs no review at all, and the line editor selects no checks, so a checklist
+rejected rather than ignored — panel writes its own reviewers, and the line editor selects no checks, so a checklist
 run under it would print a coverage table with no rows and look like a
 document that passed everything.
 """
@@ -96,26 +95,6 @@ def test_panel_needs_the_flag_not_an_environment_variable(
     assert exc.value.code == 2
     assert "--i-am-the-author" in capsys.readouterr().err
     _validate(["panel", *BASE, "--i-am-the-author"])
-
-
-def test_apply_patches_refuses_a_reviewer(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    with pytest.raises(SystemExit) as exc:
-        _args(
-            [
-                "apply-patches",
-                str(tmp_path / "draft.docx"),
-                "--patches",
-                str(tmp_path / "patches.json"),
-                "-o",
-                str(tmp_path / "out.docx"),
-                "--reviewer",
-                "claims",
-            ]
-        )
-    assert exc.value.code == 2
-    assert "unrecognized arguments: --reviewer" in capsys.readouterr().err
 
 
 def test_checklist_refuses_the_line_editor(capsys: pytest.CaptureFixture[str]) -> None:

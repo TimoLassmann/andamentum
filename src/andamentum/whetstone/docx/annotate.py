@@ -26,7 +26,7 @@ fallback would be the deleted coordinate system growing back.
 annotation is a thinner review; a misplaced one is a reviewer pointing at a
 sentence the author did not write.
 
-Order of operations, and why it is the reverse of :mod:`.patch_editor`'s.
+Order of operations.
 Comments are bracketed first, rewrites applied second:
 
 1. Runs are split at every note boundary. Splitting a run does not change a

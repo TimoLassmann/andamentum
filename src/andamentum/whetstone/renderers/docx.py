@@ -16,9 +16,7 @@ the offsets away, and the docx layer then searched a *different* rendering of
 the document for that pattern. Measured on one real manuscript: 15 of 43
 rewrites lost, every one reporting a nearest match at 0.97 similarity or
 better, because Docling wrote ``aim 3,4 .`` where Word held
-``aim3,4.``. That path survives only for ``andamentum-whetstone
-apply-patches``, whose input is a pattern list from an outside agent that never
-saw the document's coordinates.
+``aim3,4.``. That search path no longer exists.
 
 **Every finding is also listed in the prepended report**, via the
 ``critical_issues`` payload — the comment is an anchored convenience, not the

@@ -448,7 +448,7 @@ def prepend_review_section(editor: Any, review_markdown: str) -> None:
     The resulting ``<w:tbl>`` elements are inserted into the body but
     are deliberately NOT registered in ``editor.paragraphs``: that list
     drives the run-level diff/track-changes machinery in
-    :meth:`write` and the patch matching in ``PatchDocxEditor``, and
+    :meth:`write`, and
     a table is neither an editable manuscript paragraph nor a valid
     input to either (it has no direct-child ``<w:r>`` runs).
 
@@ -486,7 +486,7 @@ def prepend_review_section(editor: Any, review_markdown: str) -> None:
     block = [start, *elements_to_prepend, end]
 
     # Create ParagraphData objects WITHOUT re-extracting from XML so
-    # any changes made by apply_patches() are preserved.
+    # earlier changes to the document are preserved.
     prepended_paragraphs = []
     for position, elem in enumerate(block):
         body.insert(position, elem)

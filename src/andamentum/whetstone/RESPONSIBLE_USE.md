@@ -70,7 +70,7 @@ andamentum-whetstone draft.md \
 
 Whetstone supports local-only operation in every mode that calls a
 model — `review`, `revise`, `panel` and `checklist` all accept an `ollama:*`
-id. The `apply-patches` and `verify-provenance` commands (and the
+id. The `verify-provenance` command (and the
 separate `andamentum-proofread`) involve no model calls at all.
 
 **What leaves the machine in a default review, besides the model
@@ -132,8 +132,7 @@ Track-changes in the produced `.docx` are attributed to
 `"andamentum-whetstone (AI)"` by default. Overriding this attribution
 requires `--allow-author-override` AND emits a stderr warning that
 misrepresenting AI-generated edits as a human reviewer's may
-constitute research misconduct. This applies to the `apply-patches`
-command too.
+constitute research misconduct.
 
 ### Tiered watermarking
 
@@ -169,9 +168,7 @@ but no markers found, 3 if the file can't be read as a .docx zip.
 For **review-report outputs** (the `.docx`/`.md`/`.html` summarising
 the review) there is also a **visible "AI-generated review content"
 banner** by default; `--no-visible-watermark` suppresses it. The
-`apply-patches` command (which produces your modified manuscript)
-writes no visible banner, to avoid polluting your submission — the
-invisible metadata and customXml provenance part are still written.
+invisible metadata and customXml provenance part are always written.
 
 ### Novelty-check network surface
 

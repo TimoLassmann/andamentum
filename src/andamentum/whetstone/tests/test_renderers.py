@@ -540,7 +540,7 @@ def test_docx_panel_passes_expert_payload_through():
     assert reviews is not None and len(reviews) == 1
     assert experts is not None and len(experts) == 1
     # The objects passed through are still the v2 pydantic models;
-    # finalize_reviewed_document calls model_dump() on them via
+    # the finalizer calls model_dump() on them via
     # normalize_to_dict.
     assert reviews[0].expert_name == "Dr. Jane Doe"
     assert experts[0].discipline == "Testology"
