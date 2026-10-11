@@ -8,10 +8,16 @@ a client that stopped waiting.
 
 No route takes a path, a store or a URL to read: a note is reviewed as the
 text sent, never opened as a file.
+
+Every request, on every route, must carry ``Authorization: Bearer <secret>``,
+the secret shared with the one caller (the home service). Without it the answer
+is 401, before any route runs: listening on 127.0.0.1 keeps other machines out,
+but not another program on this one.
 """
 
 from __future__ import annotations
 
+import hmac
 import json
 import logging
 import os
@@ -37,6 +43,9 @@ logger = logging.getLogger(__name__)
 
 #: Headers the home service adds to a forwarded call; kept in request.json.
 CALLER_HEADERS = ("x-agent", "x-run-session", "x-scope")
+
+#: The shortest secret the server accepts (``openssl rand -hex 32`` gives 64).
+MIN_SECRET_LENGTH = 32
 
 
 class ServeError(Exception):
@@ -88,6 +97,7 @@ class AcceptBody(_Body):
 def create_app(
     *,
     out: Path | str,
+    secret: str,
     store: Path | str | None = None,
     embedding_model: str | None = None,
     reranker_model: str | None = None,
@@ -96,13 +106,17 @@ def create_app(
 ) -> FastAPI:
     """The andamentum HTTP server as an ASGI app; ``andamentum-serve`` runs it.
 
-    *out* is the folder for procedure records; it is created. *store* opens the
+    *out* is the folder for procedure records; it is created. *secret* is the
+    shared secret every request must send as ``Authorization: Bearer <secret>``;
+    a request without it, or with another, is answered 401. *store* opens the
     document store for the library routes, with *embedding_model* and
     *reranker_model* (the models its index was built with; no defaults);
     without it the library routes answer 503. *searxng_url* or *browser* lets
-    research search the web. Raises :class:`ServeError` for a store given
-    without both models.
+    research search the web. Raises :class:`ServeError` for a secret shorter
+    than :data:`MIN_SECRET_LENGTH` characters or a store given without both models.
     """
+    if len(secret) < MIN_SECRET_LENGTH:
+        raise ServeError(f"the secret must be at least {MIN_SECRET_LENGTH} characters")
     if store is not None and not (embedding_model and reranker_model):
         raise ServeError("a store needs both --embedding-model and --reranker-model")
     out_dir = Path(out)
@@ -126,6 +140,20 @@ def create_app(
                 await state["store"].close()
 
     app = FastAPI(title="andamentum", lifespan=lifespan, docs_url=None, redoc_url=None)
+    expected = f"Bearer {secret}".encode()
+
+    @app.middleware("http")
+    async def _require_secret(request: Request, call_next: Any) -> Any:
+        # Checked before routing, so an unknown route is a 401 too: a caller
+        # without the secret learns nothing about the routes.
+        given = request.headers.get("authorization", "").encode()
+        if not hmac.compare_digest(given, expected):
+            return JSONResponse(
+                {"error": "missing or wrong secret: send Authorization: Bearer <secret>"},
+                status_code=401,
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        return await call_next(request)
 
     @app.exception_handler(Refused)
     async def _refused(_request: Request, exc: Refused) -> JSONResponse:

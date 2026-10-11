@@ -8,7 +8,11 @@
     document library (search and read), whetstone review of a markdown
     note, `accept_edits` and research. The model is named in each request;
     calls on a local Ollama model run one at a time; every procedure call is
-    kept under `-o DIR`. Needs the new `serve` extra (FastAPI, uvicorn).
+    kept under `-o DIR`. Every request must send
+    `Authorization: Bearer <secret>`, the shared secret the server reads
+    from `ANDAMENTUM_SERVE_SECRET` (at least 32 characters); any other
+    request gets 401, and the server does not start without the secret.
+    Needs the new `serve` extra (FastAPI, uvicorn).
   - **whetstone:** every `Edit` has an `id`;
     `ReviewedDocument.from_markdown(text)` reviews text without reading it as
     a path or a URL; `accept_edits(markdown, edits)` applies the edits a

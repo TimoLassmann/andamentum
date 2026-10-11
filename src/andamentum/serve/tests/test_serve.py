@@ -17,16 +17,18 @@ import andamentum.whetstone as whetstone
 from andamentum.document_store import Hit, Store
 from andamentum.serve import ServeError, create_app
 from andamentum.serve import app as app_mod
-from andamentum.serve.cli import main
+from andamentum.serve.cli import SECRET_ENV, main
 from andamentum.serve.queue import is_local
 from andamentum.whetstone import Edit
 
 SRC = Path(__file__).resolve().parents[2]
 NOTE = "# Apollo\n\nThe rover moved slow across the the crater.\n"
+SECRET = "s" * 32
+AUTH = {"Authorization": f"Bearer {SECRET}"}
 
 
 def _client(tmp_path: Path, **kwargs: Any) -> TestClient:
-    return TestClient(create_app(out=tmp_path / "records", **kwargs))
+    return TestClient(create_app(out=tmp_path / "records", secret=SECRET, **kwargs), headers=AUTH)
 
 
 def _records(tmp_path: Path) -> list[Path]:
@@ -67,7 +69,47 @@ def test_web_research_without_a_web_source_is_refused(tmp_path: Path) -> None:
 
 def test_a_store_without_its_models_is_refused(tmp_path: Path) -> None:
     with pytest.raises(ServeError):
-        create_app(out=tmp_path, store=tmp_path / "s.db", embedding_model="e")
+        create_app(out=tmp_path, secret=SECRET, store=tmp_path / "s.db", embedding_model="e")
+
+
+# --- the shared secret ---------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [{}, {"Authorization": "Bearer " + "x" * 32}, {"Authorization": SECRET},
+     {"Authorization": f"Bearer {SECRET}x"}],
+    ids=["none", "wrong", "no-scheme", "longer"],
+)
+@pytest.mark.parametrize(
+    "method,route", [("get", "/health"), ("post", "/procedure/accept_edits"), ("post", "/nowhere")]
+)
+def test_a_request_without_the_secret_is_a_401_and_runs_nothing(
+    tmp_path: Path, headers: dict[str, str], method: str, route: str
+) -> None:
+    """Mutation: drop the middleware, or compare only a prefix, and this fails."""
+    client = TestClient(create_app(out=tmp_path / "records", secret=SECRET))
+    body = {"note": NOTE, "edits": []} if method == "post" else None
+    reply = client.request(method.upper(), route, json=body, headers=headers)
+    assert reply.status_code == 401
+    assert set(reply.json()) == {"error"}
+    assert reply.headers["www-authenticate"] == "Bearer"
+    assert _records(tmp_path) == []
+
+
+def test_a_request_with_the_secret_is_answered(tmp_path: Path) -> None:
+    assert _client(tmp_path).get("/health").status_code == 200
+
+
+def test_the_secret_is_never_recorded(tmp_path: Path) -> None:
+    _client(tmp_path).post("/procedure/accept_edits", json={"note": NOTE, "edits": []})
+    (folder,) = _records(tmp_path)
+    assert SECRET not in (folder / "request.json").read_text()
+
+
+def test_a_short_secret_is_refused(tmp_path: Path) -> None:
+    with pytest.raises(ServeError, match="32"):
+        create_app(out=tmp_path, secret="s" * 31)
 
 
 # --- review: the note is text, never a path ---------------------------------------
@@ -192,9 +234,9 @@ async def _two_calls(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, model: str
         return _Result({"edits": []})
 
     monkeypatch.setattr(whetstone, "review_document", slow_review)
-    app = create_app(out=tmp_path / "records")
+    app = create_app(out=tmp_path / "records", secret=SECRET)
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+    async with httpx.AsyncClient(transport=transport, base_url="http://test", headers=AUTH) as client:
         replies = await asyncio.gather(*[
             client.post("/procedure/review_document", json={"note": NOTE, "model": model})
             for _ in range(2)
@@ -266,7 +308,26 @@ def test_the_command_refuses_a_store_without_models(capsys: pytest.CaptureFixtur
     assert exc.value.code == 2
 
 
-def test_the_command_reports_a_missing_store(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_the_command_refuses_to_start_without_a_secret(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.delenv(SECRET_ENV, raising=False)
+    assert main(["--out", str(tmp_path / "r")]) == 2
+    assert SECRET_ENV in capsys.readouterr().err
+
+
+def test_the_command_refuses_a_short_secret(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv(SECRET_ENV, "short")
+    assert main(["--out", str(tmp_path / "r")]) == 2
+    assert "32" in capsys.readouterr().err
+
+
+def test_the_command_reports_a_missing_store(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv(SECRET_ENV, SECRET)
     code = main(["--out", str(tmp_path / "r"), "--store", str(tmp_path / "none.db"),
                  "--embedding-model", "e", "--reranker-model", "r"])
     assert code == 3

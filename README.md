@@ -171,7 +171,7 @@ has more examples for each tool; `--help` lists every flag.
 | `andamentum-typeset` | Render markdown to a styled HTML page or PDF (`article`, `cv`, `report`) | `andamentum-typeset notes.md -o notes.html` | none |
 | `andamentum-agentic-dialect` | Show the house style for agentic systems and check code against it | `andamentum-agentic-dialect check src/mypipeline` | none |
 | `andamentum-forge` | Build a small runnable function package from a plain-language brief, tested in a sandbox | `andamentum-forge build "BRIEF" --model M -o wordcount` | required |
-| `andamentum-serve` | Serve the document library (search, read), document review and research over HTTP on 127.0.0.1, for programs that do not use Python; needs `andamentum[serve]` | `andamentum-serve --out records/` | named in each request |
+| `andamentum-serve` | Serve the document library (search, read), document review and research over HTTP on 127.0.0.1, for programs that do not use Python; answers only a caller that sends the shared secret from `ANDAMENTUM_SERVE_SECRET`; needs `andamentum[serve]` | `andamentum-serve --out records/` | named in each request |
 
 `M` is a model id such as `anthropic:claude-haiku-4-5` or `ollama:gemma4:31b`.
 

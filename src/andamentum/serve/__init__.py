@@ -7,6 +7,9 @@
 synchronous request with a JSON body; every error answer is
 ``{"error": "..."}``. The model is named in each procedure's body; calls on a
 local Ollama model run one at a time.
+Every request must send ``Authorization: Bearer <secret>``, the shared
+secret ``create_app(secret=...)`` is given (the command reads it from
+``ANDAMENTUM_SERVE_SECRET``); anything else is answered 401.
 
 Needs the ``serve`` extra (FastAPI and uvicorn). The names below are imported
 on first use, so the command can report a missing extra.
