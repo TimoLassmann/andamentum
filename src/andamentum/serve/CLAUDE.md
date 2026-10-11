@@ -4,9 +4,15 @@
 
 `andamentum.serve` is a small HTTP server for another program on the same machine (the first caller is a home service that forwards calls for agents). It is a thin layer over the Python functions, with no logic of its own: every route calls one library function. Public surface: `create_app` and `ServeError` (`__all__`, served by a lazy `__getattr__` so `import andamentum.serve` works without the `serve` extra and the command can report it missing). Command: `andamentum-serve -o DIR [--port 8765] [--store PATH --embedding-model M --reranker-model R] [--searxng-url URL | --browser]`. Needs the `serve` extra (FastAPI, uvicorn).
 
+## The shared secret
+
+Every request, on every route, must send `Authorization: Bearer <secret>`; anything else is a 401 `{"error": ...}` with `WWW-Authenticate: Bearer`. The check is an HTTP middleware, so it runs before routing and body validation: an unknown route is a 401 too, and a refused request writes no record. The comparison is `hmac.compare_digest` over the whole header. Reason: 127.0.0.1 keeps other machines out, not other programs on this machine (an agent's sandbox may reach the port directly and skip the home service's checks); the secret limits the server to the one caller that has it.
+
+`create_app(secret=...)` is required and refuses a secret shorter than 32 characters (`ServeError`). The command reads it from `ANDAMENTUM_SERVE_SECRET` — a credential, so environment and never a flag (a flag shows in `ps` and shell history); it is the one `ANDAMENTUM_*` name `test_interface.py` allows. No secret or a short one is exit 2. The secret is never logged or recorded: `request.json` keeps only `CALLER_HEADERS`.
+
 ## Routes (`app.py`)
 
-- `GET /health` → version, whether a library is open, and the queue state.
+- `GET /health` (needs the secret like every route) → version, whether a library is open, and the queue state.
 - `POST /library/search` `{query, limit}` → hits with `doc_id`, `key`, `title`, `rev`, `start`, `end`, `heading_path`, `text`, `score`. `POST /library/read` `{doc_id, start, end}` → the stored markdown, or a span of it. Both answer 503 when the server was started without `--store`.
 - `POST /procedure/review_document` `{note, model, reviewer}` → `ReviewResult` as JSON; every edit carries its `id`.
 - `POST /procedure/accept_edits` `{note, edits}` → `AcceptedEdits` (`text`, `applied`, `not_applied`). No model.
@@ -34,7 +40,7 @@ Every procedure call writes `out/<UTC time>-<6 hex>/request.json` (procedure, bo
 
 ## Tests
 
-`tests/test_serve.py` runs the app in process (`httpx.ASGITransport`) with the module-level helpers (`_open_store`, `_research`, `_review`, `_accept`) replaced by stubs: body validation, the error shape, the records, the queue (two local calls run one after the other, two cloud calls overlap), the library routes over a stub store, and the command's exit codes. No test calls a model or a real store.
+`tests/test_serve.py` runs the app in process (`httpx.ASGITransport`) with the module-level helpers (`_open_store`, `_research`, `_review`, `_accept`) replaced by stubs: the secret (no, wrong, unprefixed or longer header → 401 on a real, a procedure and an unknown route, with no record), body validation, the error shape, the records, the queue (two local calls run one after the other, two cloud calls overlap), the library routes over a stub store, and the command's exit codes. No test calls a model or a real store.
 
 ## Open questions (owner's decision)
 

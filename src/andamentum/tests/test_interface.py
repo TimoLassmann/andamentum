@@ -42,6 +42,7 @@ ALLOWED_ENV = {
     "AWS_REGION",
     "AWS_DEFAULT_REGION",
     "DYLD_LIBRARY_PATH",
+    "ANDAMENTUM_SERVE_SECRET",  # a credential: the secret andamentum-serve's caller sends
 }
 
 TOOL_IDS = [t.name for t in TOOLS]
@@ -170,6 +171,8 @@ def test_no_configuration_from_the_environment():
         # An ANDAMENTUM_* name in quotes is an environment variable's name
         # (bare ANDAMENTUM_* identifiers are ordinary constants).
         for name in re.findall(r"""["'](ANDAMENTUM_[A-Z_]+)["']""", text):
+            if name in ALLOWED_ENV:
+                continue
             found.setdefault(name, []).append(str(path.relative_to(ROOT)))
     assert not found, f"configuration read from the environment: {found}"
 

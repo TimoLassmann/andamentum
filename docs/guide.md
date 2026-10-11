@@ -291,7 +291,10 @@ Design: [forge-architecture.html](./forge-architecture.html).
 
 Each procedure request names its model. Requests on a local Ollama model run one at a time; cloud models run side by side, at most four. Every procedure call is written to the `--out` folder (`request.json`, then `result.json` or `error.json`).
 
+The server needs a shared secret: set `ANDAMENTUM_SERVE_SECRET` (at least 32 characters) in its environment, and give the same value to the one program that calls it. Every request, `/health` included, must send `Authorization: Bearer <secret>`; any other request gets 401 and nothing runs. 127.0.0.1 keeps other machines out, but not other programs on this one, so the secret is what limits the server to its caller. It is never a flag, because a flag shows in `ps` and in shell history.
+
 ```bash
+export ANDAMENTUM_SERVE_SECRET="$(openssl rand -hex 32)"
 andamentum-serve --out records/
 andamentum-serve --out records/ --store library.db \
     --embedding-model embeddinggemma-2:latest --reranker-model BAAI/bge-reranker-v2-m3

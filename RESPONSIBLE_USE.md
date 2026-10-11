@@ -223,8 +223,17 @@ home.
 document store, review a note with whetstone, apply the edits you
 accept, and run research, over HTTP.
 
-- **It listens on 127.0.0.1 only**, and no flag changes that. It does
-  not check which program calls it: any program on this machine can.
+- **It listens on 127.0.0.1 only**, and no flag changes that.
+- **It answers only the caller that sends the shared secret.** The
+  server will not start without `ANDAMENTUM_SERVE_SECRET` (at least 32
+  characters) in its environment, and every request must send it as
+  `Authorization: Bearer <secret>`; any other request gets 401 and
+  nothing runs. 127.0.0.1 keeps other machines out, but not other
+  programs on this one: an agent's sandbox could reach the port
+  directly and skip the checks of the program that forwards for it.
+  Give the secret to that one program only, and make a new one if it
+  leaks (`openssl rand -hex 32`). It is never a flag, because a flag
+  shows in `ps` and in shell history.
 - **The caller names the model in every request.** A cloud model gets
   the full note or question, so the "Cloud inference" section above
   applies to every call. A program that forwards notes for an agent
