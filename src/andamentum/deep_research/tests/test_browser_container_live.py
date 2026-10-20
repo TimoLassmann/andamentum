@@ -211,6 +211,7 @@ def downloaded_files(container: str) -> list[str]:
 
 async def test_a_download_leaves_no_file_and_the_control_proves_it_could() -> None:
     async with browser_session() as session:
+        assert session.container is not None  # browser_session always names one
         async with isolated_page(session.cdp_url) as page:
             await page.call("Page.enable")
             await page.call("Page.navigate", url=PUBLIC)

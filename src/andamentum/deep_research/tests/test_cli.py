@@ -10,6 +10,7 @@ from typing import Any
 import pytest
 
 from .. import cli
+from ..browser import BrowserSession
 from ..sources import SourceConfig
 from ..types import Budget, ResearchResult
 
@@ -87,6 +88,62 @@ def test_flags_become_the_research_arguments(
     out = capsys.readouterr()
     assert out.out == "# Why Apollo?\n\nIt is fast [F1].\n"
     assert "stop: answered" in out.err
+
+
+def test_cdp_url_passes_the_running_chrome_to_research(
+    calls: list[dict[str, Any]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    checked: list[str] = []
+
+    async def check(cdp_url: str) -> None:
+        checked.append(cdp_url)
+
+    monkeypatch.setattr(cli, "_check_chrome", check)
+    code = cli.main(
+        ["q", "--mode", "both", "--cdp-url", "http://127.0.0.1:9222", "--model", "m"]
+        + ["--quiet"]
+    )
+    assert code == 0 and checked == ["http://127.0.0.1:9222"]
+    (call,) = calls
+    assert call["sources"].browser is True
+    assert call["browser"] == BrowserSession(cdp_url="http://127.0.0.1:9222")
+    assert call["browser"].container is None
+
+
+def test_without_cdp_url_research_starts_its_own_chrome(
+    calls: list[dict[str, Any]],
+) -> None:
+    cli.main(["q", "--mode", "web", "--browser", "--model", "m", "--quiet"])
+    assert calls[0]["browser"] is None and calls[0]["sources"].browser is True
+
+
+def test_no_chrome_at_cdp_url_exits_4_before_the_run(
+    calls: list[dict[str, Any]], capsys: pytest.CaptureFixture[str]
+) -> None:
+    code = cli.main(
+        ["q", "--mode", "web", "--cdp-url", "http://127.0.0.1:1", "--model", "m"]
+        + ["--quiet"]
+    )
+    assert code == cli.EXIT_FAILED and calls == []
+    assert (
+        "no Chrome answers at --cdp-url http://127.0.0.1:1" in capsys.readouterr().err
+    )
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        ["--browser", "--cdp-url", "http://127.0.0.1:9222"],  # start one or use one
+        ["--cdp-url", "127.0.0.1:9222"],  # no scheme
+        ["--cdp-url", "ws://127.0.0.1:9222"],
+    ],
+)
+def test_cdp_url_usage_errors_exit_2(
+    extra: list[str], calls: list[dict[str, Any]]
+) -> None:
+    with pytest.raises(SystemExit) as stopped:
+        cli.main(["q", "--mode", "web", "--model", "m", "--quiet", *extra])
+    assert stopped.value.code == 2 and calls == []
 
 
 @pytest.mark.parametrize("flag", ["--preset", "--decision-model", "--embedding-model"])
@@ -253,7 +310,7 @@ def test_ask_offers_exactly_these_flags() -> None:
     flags = {f for a in _ask_parser()._actions for f in a.option_strings}
     assert flags == {
         "-h", "--help", "--mode", "--model", "-o", "--out", "--json", "--depth",
-        "--store", "--cache", "--searxng-url", "--browser", "--mailto",
+        "--store", "--cache", "--searxng-url", "--browser", "--cdp-url", "--mailto",
         "--local-corpus", "--tdm-host", "--quiet",
     }  # fmt: skip
 
