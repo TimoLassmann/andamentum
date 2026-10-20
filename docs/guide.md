@@ -98,12 +98,14 @@ Also: `get`, `list`, `delete` and `enrich` (add identifiers, facts, bibliographi
 
 ### research: research a question
 
-Plans the question, searches, reads, takes notes and writes a report. Every finding in the report is a quote that the code found in the page. `--mode` chooses where to search: `scholarly` (OpenAlex, Europe PMC, arXiv), `web` or `both`. Web search needs `--browser` (an isolated Chrome in a podman container) or a SearxNG address (`--searxng-url`). `--depth quick|standard|deep` sets how much it reads; `standard` is the default.
+Plans the question, searches, reads, takes notes and writes a report. Every finding in the report is a quote that the code found in the page. `--mode` chooses where to search: `scholarly` (OpenAlex, Europe PMC, arXiv), `web` or `both`. Web search needs `--browser` (an isolated Chrome in a podman container), a SearxNG address (`--searxng-url`), or `--cdp-url URL`, the DevTools address of a Chrome that is already running (for example inside the same container as the run, where podman cannot start a second one). `--depth quick|standard|deep` sets how much it reads; `standard` is the default.
 
 ```bash
 andamentum-research "How much carbon do salt marshes store?" --mode scholarly --model anthropic:claude-haiku-4-5
 andamentum-research "How much carbon do salt marshes store?" --mode both --browser --model anthropic:claude-haiku-4-5 \
     --depth deep -o marsh
+andamentum-research "How much carbon do salt marshes store?" --mode both --cdp-url http://127.0.0.1:9222 \
+    --model anthropic:claude-haiku-4-5
 ```
 
 Without `-o` the report goes to stdout. With `-o DIR` the folder gets the report and a log. `--store PATH` keeps what the run found for later runs. Design: [deep_research/overview.md](./deep_research/overview.md). Python: `andamentum.deep_research.research(question, mode=..., model=...)`.

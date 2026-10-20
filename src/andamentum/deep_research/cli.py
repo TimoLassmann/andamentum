@@ -2,7 +2,8 @@
 
     andamentum-research [ask] "QUESTION" --mode {web,scholarly,both} --model M
         [-o DIR] [--json] [--store PATH] [--cache PATH]
-        [--depth {quick,standard,deep}] [--searxng-url URL | --browser]
+        [--depth {quick,standard,deep}]
+        [--searxng-url URL | --browser | --cdp-url URL]
         [--mailto EMAIL] [--local-corpus PATH] [--tdm-host HOST ...] [--quiet]
     andamentum-research mcp [--store PATH] [--model M] [--searxng-url URL | --browser]
         [--mailto EMAIL]
@@ -11,7 +12,9 @@
 
 ``ask`` is the default: when the first argument is not a command or a flag it
 is taken to be the question. ``--mode web`` and ``--mode both`` need a search
-address, ``--searxng-url URL`` or ``--browser``. ``--depth`` picks one of three
+address: ``--searxng-url URL``, ``--browser`` (an isolated Chrome in a podman
+container the run starts) or ``--cdp-url URL`` (a Chrome that is already
+running, for example inside the same container as the run). ``--depth`` picks one of three
 named budgets (``Budget.for_depth``); ``standard``, the default, is ``Budget()``.
 The scholarly sources are OpenAlex, Europe PMC and arXiv; ``--local-corpus PATH``
 adds your own documents to them. Every other setting is a keyword argument of
@@ -40,13 +43,17 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
+import urllib.parse
 import sys
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Literal, get_args
 
+import httpx
+
 from andamentum.core.secrets import key_status, load_secrets
 
+from .browser import BrowserSession
 from .engine import research
 from .runlog import write_log
 from .sources import API_KEY_NAMES, SourceConfig
@@ -67,6 +74,7 @@ _COMMANDS = ("ask", "mcp", "cache")
 _EPILOG = """\
 web search needs an address:
   --mode web and --mode both need --searxng-url URL or --browser.
+  --cdp-url URL uses a Chrome that is already running instead of --browser.
 
 exit status:
   0  the run finished clean
@@ -90,6 +98,8 @@ _ASK_EXAMPLES = (
     f"andamentum-research {_Q} --mode scholarly --model {_M}",
     f"andamentum-research {_Q} --mode both --browser --model {_M} \\\n"
     "      --depth deep -o marsh",
+    f"andamentum-research {_Q} --mode both --cdp-url http://127.0.0.1:9222 \\\n"
+    f"      --model {_M}",
 )
 
 
@@ -195,6 +205,15 @@ def _add_ask(sub: argparse._SubParsersAction) -> None:  # type: ignore[type-arg]
         "container the run starts and removes, instead of SearxNG (needs podman; "
         "the image is built on first use); --mode web and --mode both need "
         "this or --searxng-url",
+    )
+    ask.add_argument(
+        "--cdp-url",
+        default=None,
+        metavar="URL",
+        help="search the web and read pages through a Chrome that is already "
+        "running, at this DevTools address (e.g. http://127.0.0.1:9222), "
+        "instead of starting the podman Chrome; you start and stop that Chrome, "
+        "and it has whatever network reach its machine has",
     )
     ask.add_argument(
         "--mailto",
@@ -319,7 +338,7 @@ def _source_config(args: argparse.Namespace) -> SourceConfig:
         openalex_api_key=os.environ.get("OPENALEX_API_KEY") or None,
         semantic_scholar_api_key=os.environ.get("SEMANTIC_SCHOLAR_API_KEY") or None,
         searxng_url=args.searxng_url,
-        browser=args.browser,
+        browser=args.browser or args.cdp_url is not None,
         tdm_allowed_hosts=frozenset(args.tdm_host),
         scholarly=scholarly,
         local_corpus=args.local_corpus,
@@ -339,6 +358,10 @@ async def _run(args: argparse.Namespace) -> ResearchResult:
         if not args.quiet:
             print(line, file=sys.stderr, flush=True)
 
+    browser = None
+    if args.cdp_url is not None:
+        await _check_chrome(args.cdp_url)
+        browser = BrowserSession(cdp_url=args.cdp_url)
     cache = ResearchStore(Path(args.cache)) if args.cache else None
     try:
         return await research(
@@ -349,11 +372,32 @@ async def _run(args: argparse.Namespace) -> ResearchResult:
             budget=budget,
             sources=_source_config(args),
             http_cache=cache,
+            browser=browser,
             progress=progress,
         )
     finally:
         if cache is not None:
             cache.close()
+
+
+class ChromeUnreachable(RuntimeError):
+    """No Chrome answers at the ``--cdp-url`` address."""
+
+
+async def _check_chrome(cdp_url: str) -> None:
+    """Fail before any model call when no Chrome answers at *cdp_url*: every web
+    search would fail and the run would only be degraded."""
+    url = f"{cdp_url.rstrip('/')}/json/version"
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as http:
+            response = await http.get(url)
+        response.raise_for_status()
+        response.json()["webSocketDebuggerUrl"]
+    except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
+        raise ChromeUnreachable(
+            f"no Chrome answers at --cdp-url {cdp_url} ({type(exc).__name__}); "
+            "start it with --remote-debugging-port first"
+        ) from exc
 
 
 def _write_log(out: str | None, log: RunLog) -> None:
@@ -373,8 +417,19 @@ def _ask(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
         args.question = sys.stdin.read().strip()
     if not args.question:
         parser.error("the question is empty")
-    if args.mode in ("web", "both") and not (args.searxng_url or args.browser):
-        parser.error(f"--mode {args.mode} needs --searxng-url or --browser")
+    if args.browser and args.cdp_url is not None:
+        parser.error(
+            "--browser starts a Chrome and --cdp-url uses a running one; give one"
+        )
+    if args.cdp_url is not None and urllib.parse.urlsplit(args.cdp_url).scheme not in (
+        "http",
+        "https",
+    ):
+        parser.error(f"--cdp-url must be an http:// address, not {args.cdp_url!r}")
+    if args.mode in ("web", "both") and not (
+        args.searxng_url or args.browser or args.cdp_url
+    ):
+        parser.error(f"--mode {args.mode} needs --searxng-url, --browser or --cdp-url")
     if args.local_corpus is not None and args.mode == "web":
         parser.error(
             "--local-corpus is searched with the scholarly sources; use --mode scholarly or both"

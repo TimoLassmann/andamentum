@@ -60,11 +60,12 @@ class BrowserUnavailable(RuntimeError):
 
 @dataclass(frozen=True)
 class BrowserSession:
-    """A running isolated Chrome: its debugging address on this machine and the
-    name of its container."""
+    """A running Chrome: its debugging address and the name of its container
+    (``None`` for a Chrome the caller started and stops, such as the one of
+    ``andamentum-research --cdp-url``)."""
 
     cdp_url: str
-    container: str
+    container: str | None = None
 
 
 def image_tag() -> str:
