@@ -13,10 +13,14 @@ from __future__ import annotations
 import pytest
 
 from andamentum.core.text_match import (
+    SPACE_CHARS,
+    DASH_CHARS,
     Match,
     find_span,
+    fold_typography,
     is_present,
     normalize_for_match,
+    plain_print_forms,
 )
 
 
@@ -265,3 +269,71 @@ def test_markdown_quote_against_plain_source() -> None:
     m = find_span("**robust** alignment", "the robust alignment is fine")
     assert m is not None
     assert m.method == "normalized"
+
+
+# ── hyphen and dash variants ──────────────────────────────────────────
+
+
+@pytest.mark.parametrize("dash", sorted(DASH_CHARS))
+def test_find_span_matches_any_dash_variant_against_a_plain_hyphen(dash: str) -> None:
+    source = "We report a state-of-the-art result."
+    target = f"state{dash}of{dash}the{dash}art"
+    m = find_span(target, source)
+    assert m is not None
+    assert m.method == "normalized"
+    assert source[m.start : m.end] == "state-of-the-art"
+
+
+def test_find_span_matches_a_plain_hyphen_against_an_en_dash_source() -> None:
+    source = "See pages 10\u201312 for the proof."
+    m = find_span("pages 10-12", source)
+    assert m is not None
+    assert source[m.start : m.end] == "pages 10\u201312"
+
+
+def test_find_span_matches_a_no_break_space() -> None:
+    """Already true through whitespace collapsing; pinned so a change to
+    that step cannot lose it."""
+    source = "The value is 5\u00a0mg per dose."
+    assert find_span("5 mg per dose", source) is not None
+
+
+def test_find_span_matches_a_curly_apostrophe_inside_the_quote() -> None:
+    source = "The paper's main claim holds."
+    m = find_span("the paper\u2019s main claim", source)
+    assert m is not None
+    assert source[m.start : m.end] == "The paper's main claim"
+
+
+def test_find_span_matches_curly_double_quotes_inside_the_quote() -> None:
+    source = "They call it a \u201cgold standard\u201d here."
+    assert find_span('call it a "gold standard" here', source) is not None
+
+
+@pytest.mark.parametrize("space", sorted(SPACE_CHARS))
+def test_find_span_matches_any_space_variant(space: str) -> None:
+    source = f"Fig.{space}1a shows the result."
+    assert find_span("Fig. 1a shows", source) is not None
+
+
+def test_normalize_typography_folding_can_be_disabled() -> None:
+    folded, _ = normalize_for_match("a\u2011b x\u2019y")
+    kept, _ = normalize_for_match("a\u2011b x\u2019y", fold_typography=False)
+    assert folded == "a-b x'y"
+    assert kept == "a\u2011b x\u2019y"
+    assert find_span("a-b", "x a\u2011b y", fold_typography=False) is None
+
+
+def test_fold_typography_keeps_length_and_line_breaks() -> None:
+    text = "x\u2013y\u2014z\u2212w\u202fv\u2019u\n\u201ct\u201d"
+    folded = fold_typography(text)
+    assert folded == 'x-y-z-w v\'u\n"t"'
+    assert len(folded) == len(text)
+
+
+def test_plain_print_forms_keeps_dashes_and_quotes_an_author_writes() -> None:
+    text = "state\u2011of\u2011the\u2011art, Fig.\u202f1, 5\u00a0mg \u2013 the paper\u2019s"
+    assert (
+        plain_print_forms(text)
+        == "state-of-the-art, Fig. 1, 5 mg \u2013 the paper\u2019s"
+    )

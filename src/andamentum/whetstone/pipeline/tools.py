@@ -31,6 +31,8 @@ from dataclasses import dataclass, field
 
 from pydantic_ai import ModelRetry, RunContext
 
+from andamentum.core.text_match import fold_typography, normalize_for_match
+
 from .model import DocumentModel, Section
 
 logger = logging.getLogger("andamentum.whetstone.pipeline")
@@ -153,10 +155,12 @@ async def search_paper(
 ) -> list[dict]:
     """Search across the paper for ``query``.
 
-    With ``regex=False`` (default) does a case-insensitive substring
-    search — always succeeds, no compile step, no failure modes. With
-    ``regex=True`` treats ``query`` as a Python regex with
-    ``re.IGNORECASE``; useful for alternation
+    With ``regex=False`` (default) does a substring search under the
+    same normalisation the quote check uses (case, runs of whitespace,
+    markdown marks, dash, space and quote variants) — always succeeds, no
+    compile step, no failure modes. With ``regex=True`` treats ``query``
+    as a Python regex with ``re.IGNORECASE``, dash, space and quote
+    variants folded in both pattern and text; useful for alternation
     (``(limitation|caveat|weakness)``), character classes
     (``Theorem [0-9]+``), and word boundaries (``\\bAdam\\b``).
 
@@ -189,7 +193,7 @@ async def search_paper(
                 f"search_paper with regex=False for plain substring search."
             )
         try:
-            pattern = re.compile(query, re.IGNORECASE)
+            pattern = re.compile(fold_typography(query), re.IGNORECASE)
         except re.error as e:
             logger.info(
                 "[tool] %ssearch_paper(%r, regex) → compile error: %s",
@@ -203,7 +207,9 @@ async def search_paper(
             )
         try:
             positions = await asyncio.wait_for(
-                asyncio.to_thread(_regex_positions, pattern, source, max_results),
+                asyncio.to_thread(
+                    _regex_positions, pattern, fold_typography(source), max_results
+                ),
                 timeout=_REGEX_TIMEOUT_S,
             )
         except asyncio.TimeoutError:
@@ -236,23 +242,26 @@ def _substring_positions(
     needle: str, source: str, max_results: int
 ) -> list[tuple[int, int]]:
     """All (start, end) char-ranges where ``needle`` appears in
-    ``source``, case-insensitive, up to ``max_results`` non-overlapping
-    hits. Empty needle returns no hits (otherwise every position would
-    match, which is meaningless)."""
-    if not needle:
+    ``source``, up to ``max_results`` non-overlapping hits, both read
+    through :func:`~andamentum.core.text_match.normalize_for_match`, the
+    rule the anchor validator uses. A search that says a quote is there
+    and a validator that says it is not sent the model round in circles.
+    Empty needle returns no hits (otherwise every position would match,
+    which is meaningless)."""
+    norm_needle, _ = normalize_for_match(needle)
+    if not norm_needle:
         return []
-    needle_lower = needle.lower()
-    source_lower = source.lower()
+    norm_source, idx_map = normalize_for_match(source)
     positions: list[tuple[int, int]] = []
     cursor = 0
     while True:
-        idx = source_lower.find(needle_lower, cursor)
+        idx = norm_source.find(norm_needle, cursor)
         if idx < 0:
             break
-        positions.append((idx, idx + len(needle)))
+        positions.append((idx_map[idx], idx_map[idx + len(norm_needle) - 1] + 1))
         if len(positions) >= max_results:
             break
-        cursor = idx + len(needle)
+        cursor = idx + len(norm_needle)
     return positions
 
 

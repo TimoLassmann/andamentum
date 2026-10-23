@@ -74,11 +74,13 @@ def _heading_stripped(section: Section) -> str:
     ``Methods``, because the heading is carried in the paragraph's style and
     the projection holds only what a reader sees. Stripping only the first
     made every gist on the .docx path read back as the section's own title.
+    A section that carries ``parents`` opens with those headings too.
     """
     body = section.text.lstrip()
-    first, newline, rest = body.partition("\n")
-    if first.startswith("#") or first.strip() == section.title:
-        body = rest if newline else ""
+    for title in [*section.parents, section.title]:
+        first, newline, rest = body.partition("\n")
+        if first.startswith("#") or first.strip() == title:
+            body = rest.lstrip() if newline else ""
     return body.strip()
 
 

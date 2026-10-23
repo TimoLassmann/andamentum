@@ -27,7 +27,7 @@ from pydantic_ai.exceptions import UnexpectedModelBehavior, UsageLimitExceeded
 from pydantic_ai.usage import UsageLimits
 
 from andamentum.core.models import resolve_model
-from andamentum.core.text_match import find_span
+from andamentum.core.text_match import find_span, normalize_for_match
 
 from .criteria import Criterion
 from .digest import citations_line
@@ -178,6 +178,52 @@ def _project(criterion: Criterion, model: DocumentModel) -> str:
 _VALIDATOR_REQUOTE_ATTEMPTS = 2
 
 
+# A matched opening shorter than this says nothing about where the quote
+# went wrong: a few common words are in any document.
+_MIN_MATCHED_OPENING = 12
+
+# Characters shown on each side of the point where a quote stops matching.
+_MISMATCH_CONTEXT = 40
+
+
+def where_quote_stops(quote: str, source: str) -> str:
+    """One line saying where *quote* stops matching *source*.
+
+    The validator used to repeat the failed quote and nothing more. A
+    model told only "not verbatim" searches for the opening of its own
+    quote, finds it, and sends the same quote again: the difference is
+    later in the quote, where it never looked. This names that point.
+    Matching uses :func:`normalize_for_match`, the rule ``find_span``
+    uses, so "matches up to" means what the validator means.
+    """
+    norm_quote, quote_map = normalize_for_match(quote)
+    norm_source, source_map = normalize_for_match(source)
+    # The longest opening of the quote that is in the source. Presence is
+    # monotone in the length of the opening, so a binary search finds it.
+    low, high = 0, len(norm_quote)
+    while low < high:
+        mid = (low + high + 1) // 2
+        if norm_quote[:mid] in norm_source:
+            low = mid
+        else:
+            high = mid - 1
+    if low < _MIN_MATCHED_OPENING:
+        return (
+            "its opening is not in the document; copy the passage from "
+            "read_section instead of writing it from memory"
+        )
+    at = norm_source.find(norm_quote[:low])
+    source_cut = source_map[at + low - 1] + 1
+    quote_cut = quote_map[low - 1] + 1
+    matched = quote[max(0, quote_cut - _MISMATCH_CONTEXT) : quote_cut]
+    document_next = source[source_cut : source_cut + _MISMATCH_CONTEXT]
+    quote_next = quote[quote_cut : quote_cut + _MISMATCH_CONTEXT]
+    return (
+        f"it matches the document up to {matched!r}; after that the "
+        f"document reads {document_next!r} but your quote reads {quote_next!r}"
+    )
+
+
 class _QuotedFinding(Protocol):
     """Structural type for the items in an anchor-validated output's
     ``findings`` list — ``_RawFinding`` and ``_ReexamineFinding`` both
@@ -259,14 +305,17 @@ def make_anchor_validator(
         unanchored = [f.quote for f in output.findings if f.quote not in locked]
         n_locked = sum(len(group) for group in locked.values())
 
+        shown = [(q, where_quote_stops(q, source)) for q in unanchored[:5]]
         if unanchored and ctx.retry < max_attempts:
-            preview = "\n".join(f"  - {q!r}" for q in unanchored[:5])
             logger.info(
                 "[validator] %d locked, %d unanchored on attempt %d — refining bad ones",
                 n_locked,
                 len(unanchored),
                 ctx.retry,
             )
+            for quote, where in shown:
+                logger.info("[validator]   unanchored %r: %s", quote, where)
+            preview = "\n".join(f"  - {q!r}\n    {where}" for q, where in shown)
             raise ModelRetry(
                 f"LOCKED FINDINGS ({n_locked} already verified verbatim "
                 f"in the source — these will be preserved). DO NOT re-emit "
@@ -274,7 +323,10 @@ def make_anchor_validator(
                 f"has them.\n\n"
                 f"FINDINGS TO FIX ({len(unanchored)} quote(s) are not "
                 f"present verbatim in the source — re-quote each exactly "
-                f"from the document, or remove the finding):\n{preview}"
+                f"from the document, or remove the finding. Under each "
+                f"quote is where it stops matching; searching for its "
+                f"opening will only find the part that already matches):"
+                f"\n{preview}"
             )
 
         if unanchored:
@@ -283,6 +335,8 @@ def make_anchor_validator(
                 n_locked,
                 len(unanchored),
             )
+            for quote, where in shown:
+                logger.info("[validator]   dropped %r: %s", quote, where)
         return output_class(findings=[f for group in locked.values() for f in group])
 
     return validator

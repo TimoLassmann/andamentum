@@ -35,6 +35,7 @@ from pydantic_ai.exceptions import ModelHTTPError, UnexpectedModelBehavior
 
 from andamentum.core.agents import AgentDefinition, build_pydantic_ai_agent
 from andamentum.core.models import resolve_model
+from andamentum.core.text_match import fold_typography, plain_print_forms
 
 from ..schemas import Edit
 from ..schemas import Finding as WFinding
@@ -589,6 +590,31 @@ async def _run_editor_on_section(
             continue
 
         start, end = span
+        original_text = section.text[start:end]
+        # New text loses the print forms a model types and an author does not
+        # (non-breaking hyphens, no-break spaces), so every renderer and
+        # ``accept_edits`` gets the same text the Word diff writes. A rewrite
+        # that differs from the original only in dash, space or quote forms
+        # changes nothing a reader sees, and is not an edit.
+        new_text = plain_print_forms(prop.new_text)
+        if fold_typography(new_text) == fold_typography(original_text):
+            logger.debug(
+                "[editor] dropped print-form-only edit in %s: %r",
+                section.id,
+                original_text[:60],
+            )
+            if addressed is not None:
+                declined.append(
+                    Declined(
+                        section_id=section.id,
+                        criterion=addressed.criterion,
+                        issue=addressed.issue,
+                        why="the proposed rewrite changed no words",
+                        finding_id=addressed.id,
+                    )
+                )
+            continue
+
         # The agent read one section, so `locate` answers in section
         # coordinates; `Edit` records document coordinates, because that is
         # what the docx renderer hands to the surgery layer as a span. The
@@ -604,8 +630,8 @@ async def _run_editor_on_section(
                 section_id=section.id,
                 char_start=section.start + start,
                 char_end=section.start + end,
-                original_text=section.text[start:end],
-                new_text=prop.new_text,
+                original_text=original_text,
+                new_text=new_text,
                 # The link, not a copy of the finding's text: the renderers
                 # show the rewrite with the finding it answers. Appending the
                 # finding to the rationale said the same thing twice.

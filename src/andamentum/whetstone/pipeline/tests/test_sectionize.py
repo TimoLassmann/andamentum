@@ -33,3 +33,55 @@ def test_preamble_before_first_heading_is_kept() -> None:
     src = "Title block and authors.\n\n# Introduction\n\nBody."
     secs = sectionize(src, target_max=10)
     assert any("Title block" in s.text for s in secs)
+
+
+# ── a parent heading with no text of its own ──────────────────────────
+
+
+def _results_with_subsections() -> str:
+    filler = "Sentence number {} with some filler content. ".format
+    return (
+        "# Introduction\n\nWe study X.\n\n"
+        "# Results\n\n"
+        "## Benchmark tasks\n\n" + "".join(filler(i) for i in range(10)) + "\n\n"
+        "## Scores\n\n" + "".join(filler(i) for i in range(10)) + "\n"
+    )
+
+
+def test_a_heading_only_parent_joins_its_first_subsection() -> None:
+    """A "# Results" heading straight into "## Benchmark tasks" is not an empty Results
+    section: no section holds only the heading, and the subsection after it
+    opens with it and names it as a parent."""
+    src = _results_with_subsections()
+    secs = sectionize(src, target_max=300)
+
+    assert [s.title for s in secs] == ["Introduction", "Benchmark tasks", "Scores"]
+    tasks = secs[1]
+    assert tasks.parents == ["Results"]
+    assert tasks.text.startswith("# Results\n\n## Benchmark tasks")
+    assert secs[2].parents == []
+    for s in secs:
+        assert s.text == src[s.start : s.end]
+
+
+def test_nested_heading_only_parents_are_all_named() -> None:
+    filler = "Sentence number {} with some filler content. ".format
+    src = (
+        "# Results\n\n## Part one\n\n"
+        "### Detail\n\n" + "".join(filler(i) for i in range(10)) + "\n\n"
+        "### More\n\n" + "".join(filler(i) for i in range(10)) + "\n"
+    )
+    secs = sectionize(src, target_max=200)
+    assert secs[0].title == "Detail"
+    assert secs[0].parents == ["Results", "Part one"]
+    assert secs[0].start == 0
+
+
+def test_an_empty_section_before_a_sibling_stays() -> None:
+    """A heading followed by a heading at its own level has no subsections to
+    join: that section is empty, and the review should be able to say so."""
+    filler = "Sentence number {} with some filler content. ".format
+    src = "# Results\n\n# Discussion\n\n" + "".join(filler(i) for i in range(10)) + "\n"
+    secs = sectionize(src, target_max=100)
+    assert [s.title for s in secs] == ["Results", "Discussion"]
+    assert all(s.parents == [] for s in secs)

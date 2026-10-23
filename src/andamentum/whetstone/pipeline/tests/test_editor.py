@@ -151,6 +151,44 @@ async def test_run_editor_anchors_proposals_to_section_text() -> None:
     assert s1.text[e.char_start : e.char_end] == e.original_text
 
 
+async def _edits_for(proposal: EditProposal):
+    fake = _patch_editor([EditorOutput(edits=[proposal]), EditorOutput(edits=[])])
+    with (
+        patch(
+            "andamentum.whetstone.pipeline.editor.build_pydantic_ai_agent",
+            return_value=fake,
+        ),
+        patch("andamentum.whetstone.pipeline.editor.resolve_model", return_value="stub"),
+    ):
+        return await run_editor(SECTIONS, criteria=["grammar"], agent_model="stub")
+
+
+async def test_run_editor_writes_plain_hyphens_and_spaces_into_new_text() -> None:
+    edits, _declined = await _edits_for(
+        EditProposal(
+            title="Agreement",
+            rationale="Plural noun takes plural verb.",
+            original_text="The data shows a clear trend.",
+            new_text="The data show a clear\u2011cut\u202ftrend.",
+        )
+    )
+    assert [e.new_text for e in edits] == ["The data show a clear-cut trend."]
+
+
+async def test_run_editor_drops_a_rewrite_that_changes_only_print_forms() -> None:
+    """The original retyped with other hyphens, spaces or apostrophes changes
+    no word, so it is not an edit."""
+    edits, _declined = await _edits_for(
+        EditProposal(
+            title="Retyped",
+            rationale="No change.",
+            original_text="The data shows a clear trend.",
+            new_text="The data\u202fshows a clear trend.",
+        )
+    )
+    assert edits == []
+
+
 async def test_run_editor_drops_unanchored_proposals_silently() -> None:
     """A proposal whose original_text isn't present in any section is
     dropped — locate returns None, the helper logs at debug, no Edit

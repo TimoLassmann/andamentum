@@ -29,6 +29,7 @@ from andamentum.whetstone.pipeline.review import (
     _CriterionFindings,
     _RawFinding,
     make_anchor_validator,
+    where_quote_stops,
 )
 from andamentum.whetstone.pipeline.tools import DocDeps
 
@@ -337,3 +338,48 @@ async def test_validator_state_is_per_factory_call() -> None:
     # v2 hasn't seen anything — its locked set is empty
     final = await v2(_ctx(retry=2), _CriterionFindings(findings=[]))
     assert len(final.findings) == 0
+
+
+# ── where a failed quote stops matching ────────────────────────────────
+
+
+async def test_retry_message_names_where_the_quote_stops_matching() -> None:
+    """A quote whose opening is right and whose end is reworded: the
+    message shows the point of difference, not only the quote, so the
+    model does not search for the opening, find it, and resend."""
+    model = _model()
+    validator = make_anchor_validator(model.source, _CriterionFindings)
+    quote = "The method exhibits invariance to all rescaling."
+    output = _CriterionFindings(
+        findings=[_RawFinding(issue="x", quote=quote, severity="minor")]
+    )
+    with pytest.raises(ModelRetry) as exc:
+        await validator(_ctx(retry=0), output)
+    msg = str(exc.value)
+    assert "matches the document up to" in msg
+    assert "document reads 'diagonal rescaling." in msg
+    assert "'all rescaling.'" in msg
+
+
+def test_where_quote_stops_names_both_sides_of_the_difference() -> None:
+    source = "The sample held 40 mice. Each mouse was weighed daily.\n"
+    where = where_quote_stops("The sample held 40 rats. Each rat was weighed.", source)
+    assert "'The sample held 40 '" in where
+    assert "document reads 'mice." in where
+    assert "your quote reads 'rats." in where
+
+
+def test_where_quote_stops_with_no_matching_opening() -> None:
+    source = "The sample held 40 mice.\n"
+    where = where_quote_stops("An entirely different sentence.", source)
+    assert "opening is not in the document" in where
+
+
+def test_where_quote_stops_reads_through_the_normalisation() -> None:
+    """Case, whitespace and dash variants are not the point of difference."""
+    source = "A  state-of-the-art   model\nreached 91% accuracy.\n"
+    where = where_quote_stops(
+        "a state\u2011of\u2011the\u2011art model reached 93% accuracy.", source
+    )
+    assert "document reads '1% accuracy." in where
+    assert "your quote reads '3% accuracy." in where
