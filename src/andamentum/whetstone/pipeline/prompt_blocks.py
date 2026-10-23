@@ -193,12 +193,15 @@ def sections_block(model: DocumentModel) -> str:
     ``read_section`` navigation aid — without it the agent has no valid section
     ids to pass. The size hint tells it where the substance lives; the gist
     gives it enough semantic flavour to choose a section without reading two.
+    A section that opens with headings above its own shows them as a path
+    ("Results › Benchmark tasks"), so a parent heading reads as holding its
+    subsections rather than as missing.
     """
     gist_by_id = {g.section_id: g.gist for g in model.gists}
     if not model.sections:
         return "SECTIONS: (none)"
     lines = [
-        f"  - [{s.id}] {s.title} ({len(s.text):,} chars)"
+        f"  - [{s.id}] {' › '.join([*s.parents, s.title])} ({len(s.text):,} chars)"
         + (f" — {gist}" if (gist := gist_by_id.get(s.id, "").strip()) else "")
         for s in model.sections
     ]

@@ -31,13 +31,20 @@ class Span(BaseModel):
 
 
 class Section(BaseModel):
-    """One reviewable unit (heading-delimited, size-banded), with offsets."""
+    """One reviewable unit (heading-delimited, size-banded), with offsets.
+
+    ``parents`` names the headings above ``title`` whose own text is only
+    the heading ("Results" directly followed by its first subsection).
+    Those headings open this section's text, outermost first; see
+    :func:`~.sectionize.sectionize_from_headings`.
+    """
 
     id: str
     title: str
     text: str
     start: int  # offset of the section in the full source
     end: int
+    parents: list[str] = Field(default_factory=list)
 
 
 class Claim(BaseModel):

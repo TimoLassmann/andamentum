@@ -43,23 +43,40 @@ def sectionize_from_headings(
     ``headings`` must be in document order with offsets into *source*; where
     they came from is not this function's business.
     """
-    pieces: list[tuple[int, int, str]] = []  # (start, end, title)
+    pieces: list[tuple[int, int, str, int]] = []  # (start, end, title, level)
 
     if not headings:
-        pieces.append((0, len(source), "(document)"))
+        pieces.append((0, len(source), "(document)", 0))
     else:
         first = headings[0].start
         if source[:first].strip():
-            pieces.append((0, first, "(preamble)"))
+            pieces.append((0, first, "(preamble)", 0))
         for top in build_section_tree(source, headings):
             for piece in split_section_recursively(top, target_max):
-                pieces.append((piece.start, piece.end, piece.title))
+                pieces.append((piece.start, piece.end, piece.title, piece.level))
 
+    # A parent too large for one section is split into its children plus an
+    # intro piece for the text before the first child. When that text is only
+    # the heading ("Results" straight into its first subsection), the intro
+    # piece is a section of one word, and a reviewer that reads it reports an
+    # empty Results section. Such a heading joins the piece after it, when
+    # that piece is its descendant, and is named in its ``parents``. A heading
+    # whose next piece is a sibling stays: that section is empty for real.
     out: list[Section] = []
-    for i, (start, end, title) in enumerate(pieces, 1):
+    held_start: int | None = None
+    held_titles: list[str] = []
+    for i, (start, end, title, level) in enumerate(pieces, 1):
         text = source[start:end]
         if not text.strip():
             continue
+        next_level = pieces[i][3] if i < len(pieces) else 0
+        if next_level > level and _heading_only(text, title):
+            if held_start is None:
+                held_start = start
+            held_titles.append(title.strip())
+            continue
+        if held_start is not None:
+            start, text = held_start, source[held_start:end]
         out.append(
             Section(
                 id=f"s{i}",
@@ -67,6 +84,20 @@ def sectionize_from_headings(
                 text=text,
                 start=start,
                 end=end,
+                parents=held_titles,
             )
         )
+        held_start, held_titles = None, []
     return out
+
+
+def _heading_only(text: str, title: str) -> bool:
+    """True when *text* is its heading line and nothing more.
+
+    A markdown section opens with ``## Title``; a Word section with the bare
+    title, because the projection holds only what a reader sees.
+    """
+    first, _, rest = text.strip().partition("\n")
+    return (
+        first.startswith("#") or first.strip() == title.strip()
+    ) and not rest.strip()

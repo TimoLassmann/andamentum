@@ -9,7 +9,14 @@ from andamentum.whetstone.pipeline.digest import (
     gist_for,
     read_citations,
 )
-from andamentum.whetstone.pipeline.model import CitationSummary, Claim, Section, Span
+from andamentum.whetstone.pipeline.model import (
+    CitationSummary,
+    Claim,
+    DocumentModel,
+    Section,
+    Span,
+)
+from andamentum.whetstone.pipeline.prompt_blocks import sections_block
 
 
 def _section(text: str, *, id="s1", title="S", start=0) -> Section:
@@ -71,6 +78,37 @@ def test_gist_is_first_sentence_without_heading() -> None:
     s = _section("## Methods\n\nWe trained the model on data. Then we evaluated it.")
     g = gist_for(s)
     assert g == "We trained the model on data."
+
+
+def test_gist_skips_the_parent_headings_a_section_opens_with() -> None:
+    text = "Results\nBenchmark tasks\nEach task pairs a question with data. More."
+    s = Section(
+        id="s2",
+        title="Benchmark tasks",
+        text=text,
+        start=0,
+        end=len(text),
+        parents=["Results"],
+    )
+    assert gist_for(s) == "Each task pairs a question with data."
+
+
+def test_sections_block_shows_parent_headings_as_a_path() -> None:
+    text = "Results\nBenchmark tasks\nEach task pairs a question with data."
+    model = DocumentModel(
+        source=text,
+        sections=[
+            Section(
+                id="s2",
+                title="Benchmark tasks",
+                text=text,
+                start=0,
+                end=len(text),
+                parents=["Results"],
+            )
+        ],
+    )
+    assert "[s2] Results › Benchmark tasks (" in sections_block(model)
 
 
 def test_build_document_model_assembles_the_facets() -> None:

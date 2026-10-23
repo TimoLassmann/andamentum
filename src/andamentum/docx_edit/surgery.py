@@ -39,6 +39,8 @@ from typing import Any, Iterable, Sequence
 
 from lxml import etree  # type: ignore
 
+from andamentum.core.text_match import fold_typography, plain_print_forms
+
 from .atoms import Atom, AtomKind, qn
 from .textmap import AtomSpan, TextMap
 
@@ -224,8 +226,19 @@ def _diff_operations(old: str, new: str) -> list[tuple[str, int, int, str]]:
     Returns ``(kind, lo, hi, text)`` where ``lo``/``hi`` are offsets into *old*
     and ``text`` is what to insert there. Token granularity is what keeps the
     tracked marks narrow: one word changed shows as one word changed.
+
+    Tokens are compared through
+    :func:`~andamentum.core.text_match.fold_typography`, so a word the new
+    text spells with another dash, space or quote form is not a change and
+    keeps the author's characters. A model that rewrites one phrase types the
+    whole sentence again in its own print forms; compared exactly, every
+    hyphenated word in it was deleted and inserted again, looking the same
+    in Word. The new text loses non-breaking hyphens and no-break spaces
+    (:func:`~andamentum.core.text_match.plain_print_forms`) before it is
+    written, because an author rarely types them and they make a word that
+    Word's search does not find.
     """
-    old_tokens, new_tokens = _tokenize(old), _tokenize(new)
+    old_tokens, new_tokens = _tokenize(old), _tokenize(plain_print_forms(new))
     old_starts, position = [], 0
     for token in old_tokens:
         old_starts.append(position)
@@ -233,7 +246,12 @@ def _diff_operations(old: str, new: str) -> list[tuple[str, int, int, str]]:
     old_starts.append(position)
 
     operations: list[tuple[str, int, int, str]] = []
-    matcher = difflib.SequenceMatcher(None, old_tokens, new_tokens, autojunk=False)
+    matcher = difflib.SequenceMatcher(
+        None,
+        [fold_typography(token) for token in old_tokens],
+        [fold_typography(token) for token in new_tokens],
+        autojunk=False,
+    )
     for kind, i1, i2, j1, j2 in matcher.get_opcodes():
         if kind == "equal":
             continue

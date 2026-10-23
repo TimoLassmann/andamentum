@@ -193,6 +193,51 @@ async def test_search_paper_empty_query_returns_empty() -> None:
     assert matches == []
 
 
+async def test_search_paper_substring_matches_a_non_breaking_hyphen() -> None:
+    """A model that types U+2011 where the text has a plain hyphen still
+    finds the term, and the hit spans the source's own characters."""
+    source = "We report a state-of-the-art result on a toy task.\n"
+    model = DocumentModel(
+        source=source,
+        sections=[Section(id="x", title="X", text=source, start=0, end=len(source))],
+    )
+    matches = await search_paper(_ctx(model), "state\u2011of\u2011the\u2011art")
+    assert isinstance(matches, list)
+    assert len(matches) == 1
+    assert matches[0]["position"] == source.index("state-of-the-art")
+
+
+async def test_search_paper_agrees_with_the_quote_check() -> None:
+    """The search and the anchor validator read text by one rule: a quote
+    the search finds is a quote the validator accepts, and the other way."""
+    from andamentum.core.text_match import find_span
+
+    source = "Results\nThe  model   reaches 91% on the **held-out** set.\n"
+    model = DocumentModel(
+        source=source,
+        sections=[Section(id="x", title="X", text=source, start=0, end=len(source))],
+    )
+    for quote in (
+        "the model reaches 91% on the held\u2013out set",
+        "The model reaches 91%",
+        "reaches 92%",
+    ):
+        found = await search_paper(_ctx(model), quote)
+        assert bool(found) == (find_span(quote, source) is not None), quote
+
+
+async def test_search_paper_regex_matches_dash_variants() -> None:
+    source = "Pages 10\u201312 hold the proof.\n"
+    model = DocumentModel(
+        source=source,
+        sections=[Section(id="x", title="X", text=source, start=0, end=len(source))],
+    )
+    matches = await search_paper(_ctx(model), r"10-12", regex=True)
+    assert isinstance(matches, list)
+    assert len(matches) == 1
+    assert matches[0]["position"] == source.index("10")
+
+
 # ── search_paper: regex mode ─────────────────────────────────────────
 
 

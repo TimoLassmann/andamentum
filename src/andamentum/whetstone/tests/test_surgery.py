@@ -61,6 +61,43 @@ def test_only_the_changed_words_are_marked() -> None:
     assert _deleted_text(paragraphs) == "place"
 
 
+def test_a_word_retyped_with_other_print_forms_is_not_a_change() -> None:
+    """A model that rewrites one phrase types the sentence again with its own
+    hyphens, spaces and apostrophes. Only the phrase is marked, and the
+    author's characters stay everywhere else."""
+    original = "A data-grounded task, namely the paper's Fig. 1a, is shown."
+    _, paragraphs = _doc(original)
+    tm = TextMap(document_atoms(paragraphs))
+    retyped = "A data\u2011grounded task: the paper\u2019s Fig.\u202f1a, is shown."
+    apply_edits(tm, [_edit(tm, original, retyped)])
+
+    assert (
+        _accepted(paragraphs) == "A data-grounded task: the paper's Fig. 1a, is shown."
+    )
+    assert _deleted_text(paragraphs) == "task, namely"
+
+
+def test_new_words_lose_non_breaking_hyphens_and_spaces() -> None:
+    """Option B: text the model adds is written with plain hyphens and
+    spaces; en dashes and curly quotes are kept, an author writes those."""
+    _, paragraphs = _doc("The result holds.")
+    tm = TextMap(document_atoms(paragraphs))
+    apply_edits(
+        tm,
+        [
+            _edit(
+                tm,
+                "The result",
+                "The well\u2011known result\u202f\u2013 the authors\u2019 own \u2013",
+            )
+        ],
+    )
+
+    assert _accepted(paragraphs) == (
+        "The well-known result \u2013 the authors\u2019 own \u2013 holds."
+    )
+
+
 def test_a_replacement_spanning_several_runs() -> None:
     _, paragraphs = _doc("")
     p = paragraphs[0]

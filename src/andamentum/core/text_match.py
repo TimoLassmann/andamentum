@@ -16,7 +16,7 @@ The contract:
   ``None`` on miss.
 
 The canonical default — markdown stripping + smart-quote stripping +
-case folding + whitespace collapsing, fuzzy off — is the system's
+typography folding + case folding + whitespace collapsing, fuzzy off — is the system's
 answer to "is this verbatim." Any callsite that diverges from these
 defaults must do so explicitly via kwargs, making the divergence
 visible.
@@ -46,7 +46,78 @@ _MARKDOWN_MARKERS = MARKDOWN_MARKERS  # internal alias for backward compat
 # verbatim excerpts in these but the underlying source doesn't.
 _QUOTE_CHARS = "\"'“”‘’"
 
+# Characters that print the same, or nearly, as a plain ASCII one, and
+# the ASCII character each one counts as. One character in, one character
+# out, so offsets survive the fold. Models retype a sentence in their own
+# characters: gpt-oss writes U+2011 (non-breaking hyphen) in compounds
+# such as "state-of-the-art" and U+202F (narrow no-break space) before
+# numbers, and any model may swap a curly apostrophe for a straight one.
+# Word turns a typed hyphen into an en dash. Each of these made a
+# verbatim quote miss on one character, and made a rewrite show a word as
+# changed when only its print form was.
+DASH_CHARS: frozenset[str] = frozenset(
+    "\u2010"  # hyphen
+    "\u2011"  # non-breaking hyphen
+    "\u2012"  # figure dash
+    "\u2013"  # en dash
+    "\u2014"  # em dash
+    "\u2015"  # horizontal bar
+    "\u2212"  # minus sign
+)
+SPACE_CHARS: frozenset[str] = frozenset(
+    "\u00a0"  # no-break space
+    "\u2002"  # en space
+    "\u2003"  # em space
+    "\u2007"  # figure space
+    "\u2009"  # thin space
+    "\u200a"  # hair space
+    "\u202f"  # narrow no-break space
+)
+SINGLE_QUOTE_CHARS: frozenset[str] = frozenset("\u2018\u2019\u201a\u201b\u2032")
+DOUBLE_QUOTE_CHARS: frozenset[str] = frozenset("\u201c\u201d\u201e\u201f\u2033")
+
+_TYPOGRAPHY_TABLE = {
+    **{ord(ch): "-" for ch in DASH_CHARS},
+    **{ord(ch): " " for ch in SPACE_CHARS},
+    **{ord(ch): "'" for ch in SINGLE_QUOTE_CHARS},
+    **{ord(ch): '"' for ch in DOUBLE_QUOTE_CHARS},
+}
+
+# The print forms a model puts into text it writes and an author almost
+# never types: non-breaking hyphens and no-break spaces. New text loses
+# them (``plain_print_forms``). En and em dashes and curly quotes stay,
+# because authors do write those, and a document with curly apostrophes
+# should get curly ones in its new sentences too.
+_PRINT_FORM_TABLE = {
+    ord("\u2010"): "-",
+    ord("\u2011"): "-",
+    ord("\u00a0"): " ",
+    ord("\u2007"): " ",
+    ord("\u202f"): " ",
+}
+
 FuzzyBackend = Literal["off", "rapidfuzz", "sequence"]
+
+
+def fold_typography(text: str) -> str:
+    """*text* with every dash, space and quote variant made its ASCII form.
+
+    The one rule for "these print the same": quote matching
+    (``normalize_for_match``), the review's search tool and the
+    tracked-change diff all use it. Length and offsets are unchanged, so a
+    position found in the result is a position in *text*. Line breaks are
+    not touched.
+    """
+    return text.translate(_TYPOGRAPHY_TABLE)
+
+
+def plain_print_forms(text: str) -> str:
+    """*text* with non-breaking hyphens and no-break spaces made plain.
+
+    For text a model writes into someone else's document. Length and
+    offsets are unchanged.
+    """
+    return text.translate(_PRINT_FORM_TABLE)
 
 
 class Match(NamedTuple):
@@ -66,6 +137,7 @@ def normalize_for_match(
     *,
     strip_markdown: bool = True,
     strip_quotes: bool = True,
+    fold_typography: bool = True,
     fold_case: bool = True,
     collapse_whitespace: bool = True,
 ) -> tuple[str, list[int]]:
@@ -82,12 +154,15 @@ def normalize_for_match(
       preserved (they may carry semantic content there).
     - ``strip_markdown``: drop markdown markers (``# * _ ` [ ] ~``)
       everywhere. Aggressive on purpose.
+    - ``fold_typography``: map every dash, space and quote variant to its
+      ASCII form (see :func:`fold_typography`). Inner quotes only; the
+      edge quotes are ``strip_quotes``.
     - ``fold_case``: lowercase non-space characters.
     - ``collapse_whitespace``: collapse every run of whitespace
       (including newlines) to a single space; strip leading/trailing
       whitespace.
 
-    All four default-on, which is the canonical contract.
+    All five default-on, which is the canonical contract.
     """
     if strip_quotes:
         text = text.strip(_QUOTE_CHARS)
@@ -102,6 +177,8 @@ def normalize_for_match(
     for i, ch in enumerate(text):
         if strip_markdown and ch in _MARKDOWN_MARKERS:
             continue
+        if fold_typography:
+            ch = ch.translate(_TYPOGRAPHY_TABLE)
         if ch.isspace() and collapse_whitespace:
             if prev_space:
                 continue
@@ -134,6 +211,7 @@ def find_span(
     fuzzy_window_max_ratio: float = 1.5,
     strip_markdown: bool = True,
     strip_quotes: bool = True,
+    fold_typography: bool = True,
     fold_case: bool = True,
     collapse_whitespace: bool = True,
 ) -> Match | None:
@@ -183,6 +261,7 @@ def find_span(
     norm_kwargs = dict(
         strip_markdown=strip_markdown,
         strip_quotes=strip_quotes,
+        fold_typography=fold_typography,
         fold_case=fold_case,
         collapse_whitespace=collapse_whitespace,
     )

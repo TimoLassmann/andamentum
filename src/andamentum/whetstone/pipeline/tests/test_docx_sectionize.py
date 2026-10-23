@@ -42,6 +42,29 @@ def test_headings_at_several_levels_become_sections(tmp_path) -> None:
     assert result.sections[0].text.startswith("Introduction\n")
 
 
+def test_a_heading_only_parent_joins_its_first_subsection(tmp_path) -> None:
+    def build(doc):
+        doc.add_heading("Introduction", 1)
+        doc.add_paragraph("We study X.")
+        doc.add_heading("Results", 1)
+        doc.add_heading("Benchmark tasks", 2)
+        doc.add_paragraph("Each task pairs a question with a dataset.")
+        doc.add_heading("Scores", 2)
+        doc.add_paragraph("The scores were low.")
+
+    result = load_docx(_write(tmp_path, build), target_max=30)
+
+    assert [s.title for s in result.sections] == [
+        "Introduction",
+        "Benchmark tasks",
+        "Scores",
+    ]
+    tasks = result.sections[1]
+    assert tasks.parents == ["Results"]
+    assert tasks.text.startswith("Results\nBenchmark tasks\n")
+    assert tasks.text == result.text[tasks.start : tasks.end]
+
+
 def test_a_title_styled_paragraph_opens_the_document(tmp_path) -> None:
     def build(doc):
         doc.add_heading("A Study of X", 0)  # python-docx level 0 → the Title style

@@ -38,9 +38,11 @@ async def test_whetstone_section_titles_equal_bundle_titles_in_order(tmp_path):
     document = await open_source(str(docx))
     try:
         titles = [s.title for s in document.sections]
-        assert titles[0] == bundle.title  # the Title paragraph's own piece
-        assert titles[1:] == [s.title for s in bundle.sections()]
-        assert titles[1:] == TITLES
+        # The Title paragraph has no text of its own, so it opens the first
+        # section and is named as its parent rather than being a section.
+        assert document.sections[0].parents == [bundle.title]
+        assert titles == [s.title for s in bundle.sections()]
+        assert titles == TITLES
         for section in document.sections:
             assert section.text == document.text[section.start : section.end]
     finally:
