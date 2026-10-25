@@ -35,6 +35,8 @@ from .models import LookupResult, Match, ReferenceEntry
 logger = logging.getLogger("andamentum.references")
 
 CROSSREF_API = "https://api.crossref.org"
+DOI_AGENCY_API = "https://doi.org/ra"
+DATACITE_API = "https://api.datacite.org"
 _SELECT = "DOI,title,author,issued,published,published-print,published-online,type,volume,page"
 _CANDIDATES = 10
 _DATE_FIELDS = ("issued", "published", "published-print", "published-online")
@@ -95,11 +97,18 @@ async def lookup_entry(
                 entry_number=entry.number, status="service_error", detail=response
             )
         if response.status_code == 404:
-            return LookupResult(
-                entry_number=entry.number,
-                status="not_found",
-                detail=f"the DOI {entry.doi} does not resolve",
-            )
+            other = await outside_crossref(entry.doi, client=client, headers=headers)
+            if other is None:
+                return LookupResult(
+                    entry_number=entry.number,
+                    status="not_found",
+                    detail=f"the DOI {entry.doi} does not resolve",
+                )
+            if isinstance(other, str):
+                return LookupResult(
+                    entry_number=entry.number, status="service_error", detail=other
+                )
+            return _judge(entry, [other], by_doi=True)
         candidates = [_to_match(response.json().get("message", {}))]
         return _judge(entry, candidates, by_doi=True)
 
@@ -144,6 +153,99 @@ async def lookup_entry(
             best = result
     assert best is not None
     return best
+
+
+async def outside_crossref(
+    doi: str, *, client: httpx.AsyncClient, headers: dict[str, str]
+) -> Match | str | None:
+    """A DOI Crossref does not know: ask doi.org which agency registered it.
+
+    Crossref is one of several registration agencies. arXiv, Zenodo and most
+    data repositories register with DataCite, so a Crossref 404 says nothing
+    about whether the DOI resolves (measured: every arXiv DOI in one
+    manuscript's list was reported as "does not resolve"). doi.org's agency
+    endpoint is the authority:
+
+    - ``None``: doi.org has no such DOI (or calls it invalid); it does not
+      resolve.
+    - a :class:`Match`: a DataCite DOI, read from DataCite's record, to be
+      judged like a Crossref one.
+    - a string: the reason the DOI was not checked (another agency, Crossref
+      itself listed as the agency, or a failed call). Never a claim that the
+      DOI is wrong.
+    """
+    response = await _get(
+        client, f"{DOI_AGENCY_API}/{quote(doi, safe='/')}", params={}, headers=headers
+    )
+    if isinstance(response, str):
+        return f"the registration agency of {doi} could not be asked ({response})"
+    try:
+        answer = response.json()
+        record = answer[0] if isinstance(answer, list) and answer else {}
+    except ValueError:
+        record = {}
+    agency = str(record.get("RA") or "")
+    if not agency:
+        status = str(record.get("status") or "")
+        if status in {"DOI does not exist", "Invalid DOI"}:
+            return None
+        return f"doi.org gave no registration agency for {doi}"
+    if agency != "DataCite":
+        return f"{doi} is registered with {agency}, whose records are not checked"
+    response = await _get(
+        client,
+        f"{DATACITE_API}/dois/{quote(doi, safe='/')}",
+        params={},
+        headers=headers,
+    )
+    if isinstance(response, str):
+        return f"DataCite could not be asked about {doi} ({response})"
+    if response.status_code == 404:
+        return f"doi.org lists {doi} with DataCite, but DataCite has no record"
+    attributes = (response.json().get("data") or {}).get("attributes") or {}
+    return datacite_match(attributes)
+
+
+# DataCite's general resource types that are a version of record, in Crossref's
+# names (``_VERSION_OF_RECORD``). Everything else — a preprint, a dataset, a
+# report — keeps its own name, so its year is not held against the entry.
+_DATACITE_KINDS = {
+    "JournalArticle": "journal-article",
+    "ConferencePaper": "proceedings-article",
+    "BookChapter": "book-chapter",
+    "Book": "book",
+}
+
+
+def datacite_match(attributes: dict) -> Match:
+    """A DataCite record's ``attributes`` as a :class:`Match`."""
+    titles = attributes.get("titles") or []
+    title = str(titles[0].get("title") or "") if titles else ""
+    creators = attributes.get("creators") or []
+    first = creators[0] if creators else {}
+    # Only a person's family name, as for Crossref: an organisation is not
+    # compared with the entry.
+    personal = first.get("nameType") != "Organizational"
+    family = str(first.get("familyName") or "") if personal else ""
+    years: set[int] = set()
+    published = attributes.get("publicationYear")
+    if str(published or "").isdigit():
+        years.add(int(str(published)))
+    for date in attributes.get("dates") or []:
+        found = re.match(r"(\d{4})", str(date.get("date") or ""))
+        if found:
+            years.add(int(found.group(1)))
+    general = str((attributes.get("types") or {}).get("resourceTypeGeneral") or "")
+    return Match(
+        title=" ".join(title.split()),
+        year=int(str(published)) if str(published or "").isdigit() else None,
+        years=sorted(years),
+        first_author=family,
+        doi=str(attributes.get("doi") or ""),
+        kind=_DATACITE_KINDS.get(general, general.lower()),
+        volume="",
+        first_page="",
+    )
 
 
 def _user_agent(mailto: str | None) -> str:

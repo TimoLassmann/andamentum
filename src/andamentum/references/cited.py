@@ -18,6 +18,8 @@ from .lookup import (
     _SELECT,
     _judge,
     _to_match,
+    _user_agent,
+    outside_crossref,
     title_guess,
     years_in,
 )
@@ -84,12 +86,22 @@ async def resolve_entry(
             return _not_checked(result)
         code, body = result
         if code == 404:
-            return LookupResult(
-                entry_number=None,
-                status="not_found",
-                detail=f"the DOI {doi} does not resolve",
+            other = await outside_crossref(
+                doi,
+                client=http.client,
+                headers={"User-Agent": _user_agent(http.mailto)},
             )
-        match = _to_match(body.get("message", {}))
+            if other is None:
+                return LookupResult(
+                    entry_number=None,
+                    status="not_found",
+                    detail=f"the DOI {doi} does not resolve",
+                )
+            if isinstance(other, str):
+                return _not_checked(other)
+            match = other
+        else:
+            match = _to_match(body.get("message", {}))
         if not compare:
             return LookupResult(entry_number=None, status="found", match=match)
         if not compare_authors:

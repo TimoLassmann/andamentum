@@ -51,6 +51,11 @@ def _crossref_handler(routes: dict[str, dict], seen: list | None = None):
         for path, body in routes.items():
             if request.url.path == path:
                 return httpx.Response(200, json=body)
+        # doi.org's agency endpoint, asked when Crossref has no record: a DOI
+        # no route names does not exist.
+        if request.url.host == "doi.org" and request.url.path.startswith("/ra/"):
+            doi = request.url.path.removeprefix("/ra/")
+            return httpx.Response(200, json=[{"DOI": doi, "status": "DOI does not exist"}])
         return httpx.Response(404, json={})
 
     return handler
