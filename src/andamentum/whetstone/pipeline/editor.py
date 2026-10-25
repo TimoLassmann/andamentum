@@ -41,7 +41,7 @@ from ..schemas import Edit
 from ..schemas import Finding as WFinding
 from .locate import locate
 from .model import Section, Span
-from .prompt_blocks import brief_block
+from .prompt_blocks import brief_block, title_from
 from .review import Finding
 
 logger = logging.getLogger("andamentum.whetstone.pipeline")
@@ -665,10 +665,7 @@ def _title_from(rationale: str) -> str:
     The title is only a label, so a model that leaves it out (some do, every
     time and after every retry) must not cost the section its edits.
     """
-    words = rationale.split()
-    if not words:
-        return "(untitled edit)"
-    return " ".join(words[:8]) + (" …" if len(words) > 8 else "")
+    return title_from(rationale) or "(untitled edit)"
 
 
 async def run_editor(
@@ -799,8 +796,15 @@ def to_editor_finding(finding: WFinding) -> Finding | None:
     The reviewer's identity is written into the issue, because the editor
     reads several reviewers' findings in one list and "two reviewers said
     this" and "one reviewer said this twice" should not look alike.
+
+    A finding from the reference lookup (``source="lookup"``) is dropped too:
+    its fix rests on a record the editor never sees (the right DOI, author or
+    year), and the comment asks the author to check the entry first, so a
+    rewrite would be a guess. Several lookup problems of one kind are also
+    one finding on the References heading, which there is nothing to rewrite
+    in.
     """
-    if not finding.quotes:
+    if not finding.quotes or finding.source == "lookup":
         return None
     quote = finding.quotes[0]
     issue = finding.rationale

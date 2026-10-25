@@ -122,6 +122,84 @@ def split_fix(issue: str, fix: str) -> tuple[str, str]:
     return (head or issue.strip()), (fix.strip() or tail)
 
 
+_LABEL_LINE = re.compile(r"^\s*(headline|title|issue)\s*:\s*", re.IGNORECASE)
+
+
+def tidy_finding(issue: str, headline: str, *, criterion: str) -> tuple[str, str]:
+    """Hold a finding's issue and headline to their fields, as written by a model.
+
+    Measured on one manuscript's reviews (counts only): gpt-oss wrote
+    "Headline: …" and "Issue: …" lines into the issue on 3 of 17 comments, and
+    a model that left the headline empty put "Significance — …" at the head of
+    the issue on 2 of 14. Each was rendered as written. So:
+
+    - a ``Headline:`` (or ``Title:``) line is cut from the issue and becomes
+      the headline if the headline is empty;
+    - text before an ``Issue:`` label is a headline the model wrote into the
+      issue: cut, and kept as the headline if it is empty;
+    - a leading "<criterion> —" or "<criterion>:" is cut from the issue;
+    - a headline that is only the criterion's name counts as empty.
+
+    Returns ``(issue, headline)``, both stripped. The headline may still be
+    empty; :func:`title_from` makes one from the issue.
+    """
+    headline = headline.strip()
+    if headline.lower() == criterion.strip().lower():
+        headline = ""
+    kept: list[str] = []
+    before_issue: list[str] = []
+    for line in issue.strip().splitlines():
+        label = _LABEL_LINE.match(line)
+        if label is None:
+            kept.append(line)
+            continue
+        rest = line[label.end() :].strip()
+        if label.group(1).lower() in {"headline", "title"}:
+            headline = headline or rest
+            continue
+        # "Issue:" — what came before it was a heading, not the issue.
+        before_issue, kept = kept, [rest] if rest else []
+    if before_issue and not headline:
+        headline = " ".join(" ".join(before_issue).split())
+    text = "\n".join(kept).strip()
+    name = re.escape(criterion.strip())
+    if name:
+        text = re.sub(rf"^{name}\s*[—–:-]\s*", "", text, flags=re.IGNORECASE)
+    return text.strip(), headline
+
+
+def title_from(text: str, *, words: int = 8) -> str:
+    """A heading made from the first words of *text*, for a finding or an
+    edit the model left untitled."""
+    parts = text.split()
+    if not parts:
+        return ""
+    return " ".join(parts[:words]) + (" …" if len(parts) > words else "")
+
+
+def name_sections(text: str, titles: dict[str, str]) -> str:
+    """Section ids (``s19``, ``sec_004``) in author-facing *text*, as titles.
+
+    The ids are the prompt's navigation labels and mean nothing to the author
+    ("the methods section (s19)"). Only ids that are real section ids are
+    replaced, with the section's title in quotes; "section s10" becomes
+    "the section “Results”".
+    """
+    if not titles:
+        return text
+
+    def section_word(match: re.Match[str]) -> str:
+        title = titles.get(match.group(1))
+        return f"the section “{title}”" if title else match.group(0)
+
+    def bare(match: re.Match[str]) -> str:
+        title = titles.get(match.group(1))
+        return f"“{title}”" if title else match.group(0)
+
+    text = re.sub(r"\b(?:the\s+)?section\s+(s\d+|sec_\d+)\b", section_word, text)
+    return re.sub(r"\b(s\d+|sec_\d+)\b", bare, text)
+
+
 SEVERITY_RUBRIC = """Severity rubric — pick the level by what the author would \
 have to do:
   - major: the document's conclusions, validity, or reproducibility are at \
@@ -193,15 +271,19 @@ def sections_block(model: DocumentModel) -> str:
     ``read_section`` navigation aid — without it the agent has no valid section
     ids to pass. The size hint tells it where the substance lives; the gist
     gives it enough semantic flavour to choose a section without reading two.
-    A section that opens with headings above its own shows them as a path
-    ("Results › Benchmark tasks"), so a parent heading reads as holding its
-    subsections rather than as missing.
+    A section that opens with headings above its own names them after its
+    title ("Benchmark tasks (in: Results)"), so a parent heading reads as
+    holding its subsections rather than as missing. Not as a path joined by
+    an arrow: one review read "Results › Re-analysis chains" as a heading in
+    the manuscript and reported the arrow as a formatting defect.
     """
     gist_by_id = {g.section_id: g.gist for g in model.gists}
     if not model.sections:
         return "SECTIONS: (none)"
     lines = [
-        f"  - [{s.id}] {' › '.join([*s.parents, s.title])} ({len(s.text):,} chars)"
+        f"  - [{s.id}] {s.title}"
+        + (f" (in: {' / '.join(s.parents)})" if s.parents else "")
+        + f" ({len(s.text):,} chars)"
         + (f" — {gist}" if (gist := gist_by_id.get(s.id, "").strip()) else "")
         for s in model.sections
     ]

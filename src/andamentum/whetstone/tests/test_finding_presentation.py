@@ -242,9 +242,17 @@ def test_the_headline_heads_the_finding_and_the_criterion_moves_to_category() ->
     assert public.id == f.id
 
 
-def test_a_finding_without_a_headline_falls_back_to_its_criterion() -> None:
-    f = RawFinding(criterion="Story", issue="x", quote="q")
-    assert _to_wfinding(f, model=None).title == "Story"  # type: ignore[arg-type]
+def test_a_finding_without_a_headline_is_titled_from_its_issue() -> None:
+    """Never the criterion: measured on one manuscript, 20 of 31 comments were
+    titled with a criterion name because the model left the headline empty."""
+    f = RawFinding(
+        criterion="Story",
+        issue="You claim the method scales but show one build only.",
+        quote="q",
+    )
+    assert _to_wfinding(f, model=None).title == (  # type: ignore[arg-type]
+        "You claim the method scales but show one …"
+    )
 
 
 def test_reading_order_is_stable_for_quote_less_findings() -> None:

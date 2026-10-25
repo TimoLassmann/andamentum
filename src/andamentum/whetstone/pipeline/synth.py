@@ -28,6 +28,7 @@ from ..schemas import (
     SectionCard,
 )
 from .model import DocumentModel
+from .prompt_blocks import name_sections, tidy_finding, title_from
 from .review import Finding
 
 logger = logging.getLogger("andamentum.whetstone.pipeline")
@@ -225,19 +226,20 @@ def _to_wfinding(f: Finding, model: DocumentModel) -> WFinding:
         )
     # The headline is the reviewer's own few words for the problem. The
     # criterion stays out of the title: it headed every finding it raised
-    # alike, so three comments on one document all carried the same criterion
-    # name as their heading, over three different complaints.
-    # It is kept in ``category``. A finding with no headline (an older caller,
-    # or a model that left it empty) falls back to the criterion rather than
-    # repeating the issue text, which every renderer already shows as the body.
-    title = f.headline.strip() or f.criterion or "Finding"
+    # alike — measured on one manuscript, 20 of 31 comments were titled with a
+    # criterion name because the model left the headline empty. It is kept in
+    # ``category``. A finding with no headline gets one from the first words
+    # of its issue, after the issue is held to its own field.
+    issue, headline = tidy_finding(f.issue, f.headline, criterion=f.criterion)
+    titles = {s.id: s.title for s in model.sections} if model is not None else {}
+    title = headline or title_from(issue) or "Finding"
     return WFinding(
         id=f.id,
-        title=title,
+        title=name_sections(title, titles),
         severity=f.severity,
         confidence="medium",
-        rationale=f.issue,
-        fix=f.fix.strip(),
+        rationale=name_sections(issue, titles),
+        fix=name_sections(f.fix.strip(), titles),
         quotes=quotes,
         sections_involved=[f.span.section_id] if f.span else [],
         source="investigate",
