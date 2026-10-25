@@ -18,7 +18,6 @@ from .lookup import (
     _SELECT,
     _judge,
     _to_match,
-    _user_agent,
     outside_crossref,
     title_guess,
     years_in,
@@ -86,11 +85,7 @@ async def resolve_entry(
             return _not_checked(result)
         code, body = result
         if code == 404:
-            other = await outside_crossref(
-                doi,
-                client=http.client,
-                headers={"User-Agent": _user_agent(http.mailto)},
-            )
+            other = await outside_crossref(doi, fetch=http.get_json)
             if other is None:
                 return LookupResult(
                     entry_number=None,

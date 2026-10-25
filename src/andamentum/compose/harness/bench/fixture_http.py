@@ -22,6 +22,7 @@ import httpx
 from .planted import Fixtures, load_fixtures
 
 CROSSREF_HOST = "api.crossref.org"
+DOI_AGENCY_HOST = "doi.org"
 
 
 class FixtureMissing(LookupError):
@@ -47,9 +48,18 @@ def fixture_transport(fixtures: Fixtures | None = None) -> httpx.MockTransport:
         url = request.url
         if url.host == CROSSREF_HOST:
             return _crossref(request, recorded)
+        if url.host == DOI_AGENCY_HOST:
+            return _no_such_doi(request)
         return _probe(request, recorded)
 
     return httpx.MockTransport(handle)
+
+
+def _no_such_doi(request: httpx.Request) -> httpx.Response:
+    """doi.org's agency answer for a DOI Crossref does not hold: the fixture
+    DOIs are invented, so none is registered anywhere else."""
+    doi = unquote(request.url.path).removeprefix("/ra/")
+    return httpx.Response(200, json=[{"DOI": doi, "status": "DOI does not exist"}])
 
 
 def _crossref(request: httpx.Request, recorded: Fixtures) -> httpx.Response:

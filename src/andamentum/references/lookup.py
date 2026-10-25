@@ -25,6 +25,7 @@ import asyncio
 import logging
 import re
 import unicodedata
+from collections.abc import Awaitable, Callable
 from urllib.parse import quote
 
 import httpx
@@ -97,7 +98,9 @@ async def lookup_entry(
                 entry_number=entry.number, status="service_error", detail=response
             )
         if response.status_code == 404:
-            other = await outside_crossref(entry.doi, client=client, headers=headers)
+            other = await outside_crossref(
+                entry.doi, fetch=client_fetch(client, headers=headers)
+            )
             if other is None:
                 return LookupResult(
                     entry_number=entry.number,
@@ -155,9 +158,29 @@ async def lookup_entry(
     return best
 
 
-async def outside_crossref(
-    doi: str, *, client: httpx.AsyncClient, headers: dict[str, str]
-) -> Match | str | None:
+# A JSON GET: ``(status, body)`` for a 200 or 404 (a 404 body is ``{}``), or a
+# one-line reason the call failed. ``ReferenceHttp.get_json`` is the cached one.
+Fetch = Callable[[str], Awaitable["tuple[int, object] | str"]]
+
+
+def client_fetch(client: httpx.AsyncClient, *, headers: dict[str, str]) -> Fetch:
+    """An uncached :data:`Fetch` over *client*."""
+
+    async def fetch(url: str) -> tuple[int, object] | str:
+        response = await _get(client, url, params={}, headers=headers)
+        if isinstance(response, str):
+            return response
+        if response.status_code == 404:
+            return 404, {}
+        try:
+            return response.status_code, response.json()
+        except ValueError:
+            return response.status_code, {}
+
+    return fetch
+
+
+async def outside_crossref(doi: str, *, fetch: Fetch) -> Match | str | None:
     """A DOI Crossref does not know: ask doi.org which agency registered it.
 
     Crossref is one of several registration agencies. arXiv, Zenodo and most
@@ -174,15 +197,12 @@ async def outside_crossref(
       itself listed as the agency, or a failed call). Never a claim that the
       DOI is wrong.
     """
-    response = await _get(
-        client, f"{DOI_AGENCY_API}/{quote(doi, safe='/')}", params={}, headers=headers
-    )
-    if isinstance(response, str):
-        return f"the registration agency of {doi} could not be asked ({response})"
-    try:
-        answer = response.json()
-        record = answer[0] if isinstance(answer, list) and answer else {}
-    except ValueError:
+    answer = await fetch(f"{DOI_AGENCY_API}/{quote(doi, safe='/')}")
+    if isinstance(answer, str):
+        return f"the registration agency of {doi} could not be asked ({answer})"
+    body = answer[1]
+    record = body[0] if isinstance(body, list) and body else {}
+    if not isinstance(record, dict):
         record = {}
     agency = str(record.get("RA") or "")
     if not agency:
@@ -192,17 +212,14 @@ async def outside_crossref(
         return f"doi.org gave no registration agency for {doi}"
     if agency != "DataCite":
         return f"{doi} is registered with {agency}, whose records are not checked"
-    response = await _get(
-        client,
-        f"{DATACITE_API}/dois/{quote(doi, safe='/')}",
-        params={},
-        headers=headers,
-    )
-    if isinstance(response, str):
-        return f"DataCite could not be asked about {doi} ({response})"
-    if response.status_code == 404:
+    answer = await fetch(f"{DATACITE_API}/dois/{quote(doi, safe='/')}")
+    if isinstance(answer, str):
+        return f"DataCite could not be asked about {doi} ({answer})"
+    code, body = answer
+    if code == 404:
         return f"doi.org lists {doi} with DataCite, but DataCite has no record"
-    attributes = (response.json().get("data") or {}).get("attributes") or {}
+    data = body.get("data") if isinstance(body, dict) else None
+    attributes = (data or {}).get("attributes") or {}
     return datacite_match(attributes)
 
 
@@ -302,6 +319,14 @@ def _to_match(item: dict) -> Match:
     titles = item.get("title") or []
     authors = item.get("author") or []
     years = [y for y in (_year_of(item, f) for f in _DATE_FIELDS) if y is not None]
+    online = _year_of(item, "published-online")
+    if online is not None and _year_of(item, "published-print") is None:
+        # Crossref often has only the online date of a paper that later appears
+        # in an issue, and the issue year is the one a list prints (measured: a
+        # journal paper online in November 2012, in the January 2013 issue, with
+        # no print date in Crossref, reported as "the year is 2012"). The issue
+        # can only be later, so the next year is accepted as its print year.
+        years.append(online + 1)
     first = authors[0] if authors else {}
     return Match(
         title=" ".join(str(titles[0]).split()) if titles else "",

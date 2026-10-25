@@ -147,3 +147,35 @@ async def test_the_cited_work_resolver_reads_datacite_too() -> None:
     assert result.status == "found"
     assert result.match is not None and result.match.title == TITLE
     assert gone.status == "not_found"
+
+
+class _DictCache:
+    def __init__(self) -> None:
+        self.data: dict[str, bytes] = {}
+
+    def get(self, key: str) -> bytes | None:
+        return self.data.get(key)
+
+    def put(self, key: str, value: bytes) -> None:
+        self.data[key] = value
+
+
+async def test_the_agency_and_datacite_answers_are_cached() -> None:
+    """A second check of the same work goes to no network: the doi.org and
+    DataCite answers are kept in the cache like Crossref's."""
+    cache = _DictCache()
+    seen: list = []
+    for _ in range(2):
+        client = _transport(
+            agency=[{"DOI": ARXIV_DOI, "RA": "DataCite"}],
+            datacite=_datacite(),
+            seen=seen,
+        )
+        async with ReferenceHttp(client=client, cache=cache) as http:
+            result = await resolve_cited_work(http=http, doi=ARXIV_DOI, title=TITLE)
+        assert result.status == "found"
+    assert [r.url.host for r in seen] == [
+        "api.crossref.org",
+        "doi.org",
+        "api.datacite.org",
+    ]
