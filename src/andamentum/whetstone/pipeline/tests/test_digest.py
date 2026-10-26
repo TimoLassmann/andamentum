@@ -108,7 +108,8 @@ def test_sections_block_shows_parent_headings_as_a_path() -> None:
             )
         ],
     )
-    assert "[s2] Results › Benchmark tasks (" in sections_block(model)
+    assert "[s2] Benchmark tasks (in: Results) (" in sections_block(model)
+    assert "›" not in sections_block(model)
 
 
 def test_build_document_model_assembles_the_facets() -> None:

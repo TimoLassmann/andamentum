@@ -25,6 +25,7 @@ import asyncio
 import logging
 import re
 import unicodedata
+from collections.abc import Awaitable, Callable
 from urllib.parse import quote
 
 import httpx
@@ -35,6 +36,8 @@ from .models import LookupResult, Match, ReferenceEntry
 logger = logging.getLogger("andamentum.references")
 
 CROSSREF_API = "https://api.crossref.org"
+DOI_AGENCY_API = "https://doi.org/ra"
+DATACITE_API = "https://api.datacite.org"
 _SELECT = "DOI,title,author,issued,published,published-print,published-online,type,volume,page"
 _CANDIDATES = 10
 _DATE_FIELDS = ("issued", "published", "published-print", "published-online")
@@ -95,11 +98,20 @@ async def lookup_entry(
                 entry_number=entry.number, status="service_error", detail=response
             )
         if response.status_code == 404:
-            return LookupResult(
-                entry_number=entry.number,
-                status="not_found",
-                detail=f"the DOI {entry.doi} does not resolve",
+            other = await outside_crossref(
+                entry.doi, fetch=client_fetch(client, headers=headers)
             )
+            if other is None:
+                return LookupResult(
+                    entry_number=entry.number,
+                    status="not_found",
+                    detail=f"the DOI {entry.doi} does not resolve",
+                )
+            if isinstance(other, str):
+                return LookupResult(
+                    entry_number=entry.number, status="service_error", detail=other
+                )
+            return _judge(entry, [other], by_doi=True)
         candidates = [_to_match(response.json().get("message", {}))]
         return _judge(entry, candidates, by_doi=True)
 
@@ -144,6 +156,113 @@ async def lookup_entry(
             best = result
     assert best is not None
     return best
+
+
+# A JSON GET: ``(status, body)`` for a 200 or 404 (a 404 body is ``{}``), or a
+# one-line reason the call failed. ``ReferenceHttp.get_json`` is the cached one.
+Fetch = Callable[[str], Awaitable["tuple[int, object] | str"]]
+
+
+def client_fetch(client: httpx.AsyncClient, *, headers: dict[str, str]) -> Fetch:
+    """An uncached :data:`Fetch` over *client*."""
+
+    async def fetch(url: str) -> tuple[int, object] | str:
+        response = await _get(client, url, params={}, headers=headers)
+        if isinstance(response, str):
+            return response
+        if response.status_code == 404:
+            return 404, {}
+        try:
+            return response.status_code, response.json()
+        except ValueError:
+            return response.status_code, {}
+
+    return fetch
+
+
+async def outside_crossref(doi: str, *, fetch: Fetch) -> Match | str | None:
+    """A DOI Crossref does not know: ask doi.org which agency registered it.
+
+    Crossref is one of several registration agencies. arXiv, Zenodo and most
+    data repositories register with DataCite, so a Crossref 404 says nothing
+    about whether the DOI resolves (measured: every arXiv DOI in one
+    manuscript's list was reported as "does not resolve"). doi.org's agency
+    endpoint is the authority:
+
+    - ``None``: doi.org has no such DOI (or calls it invalid); it does not
+      resolve.
+    - a :class:`Match`: a DataCite DOI, read from DataCite's record, to be
+      judged like a Crossref one.
+    - a string: the reason the DOI was not checked (another agency, Crossref
+      itself listed as the agency, or a failed call). Never a claim that the
+      DOI is wrong.
+    """
+    answer = await fetch(f"{DOI_AGENCY_API}/{quote(doi, safe='/')}")
+    if isinstance(answer, str):
+        return f"the registration agency of {doi} could not be asked ({answer})"
+    body = answer[1]
+    record = body[0] if isinstance(body, list) and body else {}
+    if not isinstance(record, dict):
+        record = {}
+    agency = str(record.get("RA") or "")
+    if not agency:
+        status = str(record.get("status") or "")
+        if status in {"DOI does not exist", "Invalid DOI"}:
+            return None
+        return f"doi.org gave no registration agency for {doi}"
+    if agency != "DataCite":
+        return f"{doi} is registered with {agency}, whose records are not checked"
+    answer = await fetch(f"{DATACITE_API}/dois/{quote(doi, safe='/')}")
+    if isinstance(answer, str):
+        return f"DataCite could not be asked about {doi} ({answer})"
+    code, body = answer
+    if code == 404:
+        return f"doi.org lists {doi} with DataCite, but DataCite has no record"
+    data = body.get("data") if isinstance(body, dict) else None
+    attributes = (data or {}).get("attributes") or {}
+    return datacite_match(attributes)
+
+
+# DataCite's general resource types that are a version of record, in Crossref's
+# names (``_VERSION_OF_RECORD``). Everything else — a preprint, a dataset, a
+# report — keeps its own name, so its year is not held against the entry.
+_DATACITE_KINDS = {
+    "JournalArticle": "journal-article",
+    "ConferencePaper": "proceedings-article",
+    "BookChapter": "book-chapter",
+    "Book": "book",
+}
+
+
+def datacite_match(attributes: dict) -> Match:
+    """A DataCite record's ``attributes`` as a :class:`Match`."""
+    titles = attributes.get("titles") or []
+    title = str(titles[0].get("title") or "") if titles else ""
+    creators = attributes.get("creators") or []
+    first = creators[0] if creators else {}
+    # Only a person's family name, as for Crossref: an organisation is not
+    # compared with the entry.
+    personal = first.get("nameType") != "Organizational"
+    family = str(first.get("familyName") or "") if personal else ""
+    years: set[int] = set()
+    published = attributes.get("publicationYear")
+    if str(published or "").isdigit():
+        years.add(int(str(published)))
+    for date in attributes.get("dates") or []:
+        found = re.match(r"(\d{4})", str(date.get("date") or ""))
+        if found:
+            years.add(int(found.group(1)))
+    general = str((attributes.get("types") or {}).get("resourceTypeGeneral") or "")
+    return Match(
+        title=" ".join(title.split()),
+        year=int(str(published)) if str(published or "").isdigit() else None,
+        years=sorted(years),
+        first_author=family,
+        doi=str(attributes.get("doi") or ""),
+        kind=_DATACITE_KINDS.get(general, general.lower()),
+        volume="",
+        first_page="",
+    )
 
 
 def _user_agent(mailto: str | None) -> str:
@@ -200,6 +319,14 @@ def _to_match(item: dict) -> Match:
     titles = item.get("title") or []
     authors = item.get("author") or []
     years = [y for y in (_year_of(item, f) for f in _DATE_FIELDS) if y is not None]
+    online = _year_of(item, "published-online")
+    if online is not None and _year_of(item, "published-print") is None:
+        # Crossref often has only the online date of a paper that later appears
+        # in an issue, and the issue year is the one a list prints (measured: a
+        # journal paper online in November 2012, in the January 2013 issue, with
+        # no print date in Crossref, reported as "the year is 2012"). The issue
+        # can only be later, so the next year is accepted as its print year.
+        years.append(online + 1)
     first = authors[0] if authors else {}
     return Match(
         title=" ".join(str(titles[0]).split()) if titles else "",

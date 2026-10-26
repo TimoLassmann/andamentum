@@ -103,6 +103,11 @@ class Crossref:
             self.requests.append(str(request.url))
             if self.fail_with:
                 return httpx.Response(self.fail_with)
+            if request.url.host == "doi.org":
+                doi = request.url.path.removeprefix("/ra/")
+                return httpx.Response(
+                    200, json=[{"DOI": doi, "status": "DOI does not exist"}]
+                )
             assert request.url.host == "api.crossref.org"
             path = request.url.path
             if path.startswith("/works/"):

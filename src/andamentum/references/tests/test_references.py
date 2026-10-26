@@ -226,9 +226,17 @@ async def test_a_same_year_namesake_with_other_numbers_is_not_the_entry() -> Non
 DOI_ENTRY = "Body [1].\n\nReferences\n1. Lee K (2021) A study of variants. Hum Mutat 42:1 doi:10.1002/humu.24380\n"
 
 
+def _no_such_doi(request: httpx.Request) -> tuple[int, object]:
+    """Crossref has no record, and doi.org says the DOI does not exist."""
+    if request.url.host == "doi.org":
+        return 200, [{"DOI": "10.1002/humu.24380", "status": "DOI does not exist"}]
+    return 404, {}
+
+
 async def test_a_doi_that_does_not_resolve_is_major() -> None:
-    report, seen = await _lookup(DOI_ENTRY, lambda r: (404, {}))
+    report, seen = await _lookup(DOI_ENTRY, _no_such_doi)
     assert "/works/10.1002/humu.24380" in str(seen[0].url)
+    assert "doi.org/ra/10.1002/humu.24380" in str(seen[1].url)
     assert [(p.kind, p.severity) for p in report.problems] == [
         ("doi_not_found", "major")
     ]

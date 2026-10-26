@@ -128,6 +128,28 @@ class ReferenceHttp:
         self._write(key, {"status": response.status_code, "body": body})
         return response.status_code, body
 
+    async def get_json(self, url: str) -> tuple[int, object] | str:
+        """``(status, json)`` of a GET to another DOI service (doi.org,
+        DataCite), cached like a Crossref answer; a 404 is ``(404, {})``."""
+        key = f"get:{url}"
+        cached = self._read(key)
+        if cached is not None:
+            return int(cached["status"]), cached["body"]
+        response = await _get(
+            self.client,
+            url,
+            params={},
+            headers={"User-Agent": _user_agent(self.mailto)},
+        )
+        if isinstance(response, str):
+            return response
+        try:
+            body = {} if response.status_code == 404 else response.json()
+        except ValueError:
+            return f"{url} did not answer with JSON"
+        self._write(key, {"status": response.status_code, "body": body})
+        return response.status_code, body
+
     # ── URL health ──────────────────────────────────────────────────────────
 
     async def check_url(self, url: str) -> UrlHealth:

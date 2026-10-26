@@ -79,17 +79,42 @@ async def check_open_document(
     return to_review_result(report, document=document)
 
 
+# A lookup verdict rests on what one service holds, so it is never more than
+# "Consider" in the document: measured on one manuscript, 16 of its 17 lookup
+# comments were false "Must fix" verdicts on DOIs Crossref does not register.
+_LOOKUP_SEVERITY = "minor"
+
+# From this many lookup problems of one kind, the document gets ONE comment on
+# the References heading that lists the entries, instead of one per entry.
+_GROUP_FROM = 2
+
+
 def to_review_result(
     report: "ReferenceReport", *, document: "ReviewedDocument"
 ) -> ReviewResult:
-    """The report as findings located in *document*, plus a summary."""
+    """The report as findings located in *document*, plus a summary.
+
+    Offline problems (citations against the list) keep one finding each, on
+    the citation or entry they are about. Lookup problems are capped at
+    ``minor`` and, when a kind occurs twice or more, become one finding on the
+    References heading that names every entry and its detail.
+    """
     findings: list[Finding] = []
+    by_kind: dict[str, list] = {}
     for problem in report.problems:
+        if not _offline(problem.kind):
+            by_kind.setdefault(problem.kind, []).append(problem)
+    grouped = {kind for kind, items in by_kind.items() if len(items) >= _GROUP_FROM}
+    for problem in report.problems:
+        if problem.kind in grouped:
+            continue
         section_id = _section_at(document, problem.start)
         findings.append(
             Finding(
                 title=problem.headline,
-                severity=problem.severity,
+                severity=problem.severity
+                if _offline(problem.kind)
+                else _LOOKUP_SEVERITY,
                 # The number checks are exact; a lookup verdict rests on one
                 # service's coverage, so it is not claimed as certain.
                 confidence="high" if _offline(problem.kind) else "medium",
@@ -111,13 +136,15 @@ def to_review_result(
                 perspective=REFERENCE_CHECKER,
             )
         )
+    for kind in sorted(grouped, key=lambda k: report.problems.index(by_kind[k][0])):
+        findings.append(_group_finding(by_kind[kind], report=report, document=document))
     unchecked = [r for r in report.lookups if r.status == "service_error"]
     degraded_reason = ""
     if unchecked:
         degraded_reason = (
             f"{len(unchecked)} of {len(report.lookups)} references could not "
-            f"be looked up, because Crossref did not answer; they are "
-            f"unchecked, not wrong"
+            f"be looked up (a service did not answer, or the DOI is registered "
+            f"with an agency that is not checked); they are unchecked, not wrong"
         )
     return ReviewResult(
         summary=_summary(report),
@@ -128,6 +155,63 @@ def to_review_result(
             SectionCard(section_id=s.id, title=s.title) for s in document.sections
         ],
     )
+
+
+def _group_finding(
+    problems: list, *, report: "ReferenceReport", document: "ReviewedDocument"
+) -> Finding:
+    """One finding for several lookup problems of one kind.
+
+    Anchored on the References heading when the text there is the heading
+    (else on the first entry concerned), so the document carries one comment
+    and the reader still sees which entries it is about and why.
+    """
+    first = problems[0]
+    start, end = _heading_span(report, document) or (first.start, first.end)
+    section_id = _section_at(document, start)
+    lines = [f"- {_entry_label(p, document)}: {p.issue}" for p in problems]
+    return Finding(
+        title=f"{len(problems)} entries: {first.headline[0].lower()}{first.headline[1:]}",
+        severity=_LOOKUP_SEVERITY,
+        confidence="medium",
+        rationale=(
+            f"The lookup found the same kind of problem in {len(problems)} "
+            f"entries. It rests on what one service holds, so check each "
+            f"entry before you change it.\n" + "\n".join(lines)
+        ),
+        fix=first.fix,
+        quotes=[
+            Quote(
+                section_id=section_id,
+                char_start=start,
+                char_end=end,
+                text=document.text[start:end],
+            )
+        ],
+        sections_involved=[section_id] if section_id else [],
+        source="lookup",
+        category=f"references:{first.kind}",
+        perspective=REFERENCE_CHECKER,
+    )
+
+
+def _heading_span(
+    report: "ReferenceReport", document: "ReviewedDocument"
+) -> tuple[int, int] | None:
+    """The References heading's own text, when the section holding the list
+    starts with its title."""
+    for section in document.sections:
+        if section.start <= report.list_start <= section.end:
+            if section.title and document.text.startswith(section.title, section.start):
+                return section.start, section.start + len(section.title)
+    return None
+
+
+def _entry_label(problem, document: "ReviewedDocument") -> str:
+    if problem.entry_number is not None:
+        return f"Entry {problem.entry_number}"
+    opening = " ".join(document.text[problem.start : problem.end].split()[:6])
+    return f"The entry beginning “{opening}…”"
 
 
 def _section_at(document: "ReviewedDocument", offset: int) -> str:
@@ -240,7 +324,8 @@ def _summary(report: "ReferenceReport") -> str:
             f"{counts['details_differ']} with details that differ, "
             f"{counts['not_found']} not found"
             + (
-                f", {counts['service_error']} not checked (Crossref did not answer)"
+                f", {counts['service_error']} not checked (no answer, or a DOI "
+                "registered with an agency that is not checked)"
                 if counts["service_error"]
                 else ""
             )
