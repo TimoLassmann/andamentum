@@ -44,17 +44,50 @@ def test_ingest_list_get_delete_with_json(
     assert json.loads(capsys.readouterr().out) == []
 
 
+def test_update_sets_one_key_and_keeps_the_others(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    db = tmp_path / "notes.db"
+    _ingest_text(
+        db,
+        "# Apollo\n",
+        monkeypatch,
+        "--key",
+        "apollo",
+        "--metadata",
+        '{"kind": "notes"}',
+        "--json",
+    )
+    (row,) = json.loads(capsys.readouterr().out)
+
+    assert main(["update", str(db), "apollo", "--set", "public=true", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out) == {"doc_id": row["doc_id"], "rev": 2}
+    assert main(["get", str(db), "apollo", "--json"]) == 0
+    newest = json.loads(capsys.readouterr().out)
+    assert newest["metadata"]["public"] is True and newest["metadata"]["kind"] == "notes"
+    assert newest["text"] == "# Apollo\n"
+    assert main(["get", str(db), "apollo", "--rev", "1", "--json"]) == 0
+    assert "public" not in json.loads(capsys.readouterr().out)["metadata"]
+
+    assert main(["update", str(db), row["doc_id"], "--set", 'title="Apollo notes"']) == 0
+    assert capsys.readouterr().out == f"updated {row['doc_id']}: rev 3\n"
+
+
 def test_a_missing_store_or_source_or_document_exits_3(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     db = tmp_path / "notes.db"
     assert main(["list", str(db)]) == 3
     assert not db.exists()
+    assert main(["update", str(db), "x", "--set", "public=true"]) == 3
+    assert not db.exists()
     assert main(["ingest", str(db), str(tmp_path / "none.pdf")]) == 3
     assert main(["get", str(db), "x"]) == 3
     _ingest_text(db, "text", monkeypatch)
     capsys.readouterr()
     assert main(["get", str(db), "nope"]) == 3
+    assert capsys.readouterr().err.startswith("error:")
+    assert main(["update", str(db), "nope", "--set", "public=true"]) == 3
     assert capsys.readouterr().err.startswith("error:")
 
 
@@ -68,6 +101,10 @@ def test_a_missing_store_or_source_or_document_exits_3(
         ["enrich", "d.db", "extract"],
         ["enrich", "d.db", "classify", "--decision-model", "m"],
         ["sync", "d.db"],
+        ["update", "d.db", "x"],
+        ["update", "d.db", "x", "--set", "public"],
+        ["update", "d.db", "x", "--set", "=true"],
+        ["update", "d.db", "x", "--set", "title=Apollo"],
         [],
     ],
 )

@@ -68,12 +68,14 @@ class _Body(BaseModel):
 class SearchBody(_Body):
     query: str = Field(min_length=1)
     limit: int = Field(default=10, ge=1, le=50)
+    where: dict[str, Any] | None = None
 
 
 class ReadBody(_Body):
     doc_id: str = Field(min_length=1)
     start: int | None = Field(default=None, ge=0)
     end: int | None = Field(default=None, ge=0)
+    where: dict[str, Any] | None = None
 
 
 class ResearchBody(_Body):
@@ -188,7 +190,7 @@ def create_app(
         library = _library()
         # The query is embedded by a local Ollama model: one at a time.
         async with queue.hold(local=True):
-            hits = await library.search(body.query, limit=body.limit)
+            hits = await library.search(body.query, limit=body.limit, where=body.where)
         titles: dict[str, dict[str, Any]] = {}
         for hit in hits:
             if hit.doc_id not in titles:
@@ -215,6 +217,15 @@ def create_app(
         doc = await library.get(body.doc_id)
         if doc is None:
             raise Refused(404, f"no document {body.doc_id}")
+        # The filter is the store's own (the same SQL as the search), so read and
+        # search agree on which documents match; an empty filter matches all.
+        if body.where and doc.doc_id not in {
+            ref.doc_id for ref in await library.list(where=body.where, limit=None)
+        }:
+            raise Refused(
+                403,
+                f"document {doc.doc_id} is private, and this run may read public documents only",
+            )
         start = 0 if body.start is None else body.start
         end = len(doc.text) if body.end is None else body.end
         if not start <= end <= len(doc.text):

@@ -92,9 +92,10 @@ andamentum-docstore ingest store.db paper.pdf notes.md
 andamentum-docstore sync store.db --embedding-model embeddinggemma-2:latest
 andamentum-docstore search store.db "what limits the method?" \
     --embedding-model embeddinggemma-2:latest --reranker-model BAAI/bge-reranker-v2-m3
+andamentum-docstore update store.db notes --set public=true
 ```
 
-Also: `get`, `list`, `delete` and `enrich` (add identifiers, facts, bibliographic data, extracted fields or labels). Design and measurements: [document_store/overview.md](./document_store/overview.md). Python: `andamentum.document_store.Store`.
+Also: `get`, `list`, `delete`, `update` (set one metadata key of a document, keeping the others) and `enrich` (add identifiers, facts, bibliographic data, extracted fields or labels). Design and measurements: [document_store/overview.md](./document_store/overview.md). Python: `andamentum.document_store.Store`.
 
 ### research: research a question
 
@@ -286,7 +287,7 @@ Design: [forge-architecture.html](./forge-architecture.html).
 
 `andamentum-serve` answers HTTP requests on 127.0.0.1 only, for a program that does not use Python. It needs the `serve` extra (`pip install 'andamentum[serve]'`). Each request is one `POST` with a JSON body, and the answer comes when the work is done; an error answer is `{"error": "..."}`. The routes:
 
-- `/library/search` and `/library/read` search and read the document store given with `--store` (never write to it). Without `--store` they answer 503.
+- `/library/search` (`{"query", "limit", "where"}`) and `/library/read` (`{"doc_id", "start", "end", "where"}`) search and read the document store given with `--store` (never write to it). Without `--store` they answer 503. `where` is optional: a metadata filter in the same form as `andamentum-docstore search --where`. The search then returns only matching documents, and a read of a document that does not match is answered 403. For example, `{"where": {"public": true}}` gives only documents whose metadata holds `"public": true`; set that key with `andamentum-docstore update store.db DOC --set public=true`.
 - `/procedure/review_document` reviews a markdown note sent as text (`{"note", "model"}`); each suggested edit has an `id`.
 - `/procedure/accept_edits` applies the edits you accepted to the note (`{"note", "edits"}`) and says which ones it could not apply. No model.
 - `/procedure/research` researches a question (`{"question", "mode", "depth", "model"}`); web research needs `--searxng-url` or `--browser`.
