@@ -299,6 +299,51 @@ def test_library_search_and_read(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
         assert client.get("/health").json()["library"] is True
 
 
+class _WhereSearcher:
+    """One hit per live document that matches `where`: filtered before ranking, as the real searcher."""
+
+    def indexes(self) -> list[Any]:
+        return []
+
+    async def search(self, store: Store, query: str, *, limit: int, where: Any) -> list[Hit]:
+        refs = await store.list(where=where, limit=None)
+        return [
+            Hit(doc_id=r.doc_id, rev=r.rev, start=0, end=8, text="# Apollo", score=0.9)
+            for r in refs
+        ][:limit]
+
+
+def test_a_where_limits_the_library_search_and_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    db = tmp_path / "library.db"
+
+    async def fake_open(path: Path, **kwargs: Any) -> Store:
+        store = await Store.open(path, searcher=_WhereSearcher())
+        if not await store.list(limit=1):
+            await store.put(NOTE, key="open.md", metadata={"title": "Open", "public": True})
+            await store.put(NOTE, key="closed.md", metadata={"title": "Closed"})
+        return store
+
+    monkeypatch.setattr(app_mod, "_open_store", fake_open)
+    public = {"public": True}
+    with _client(tmp_path, store=db, embedding_model="e", reranker_model="r") as client:
+        every = client.post("/library/search", json={"query": "rover"}).json()["hits"]
+        assert sorted(h["key"] for h in every) == ["closed.md", "open.md"]
+        ids = {h["key"]: h["doc_id"] for h in every}
+        hits = client.post("/library/search", json={"query": "rover", "where": public}).json()["hits"]
+        assert [h["key"] for h in hits] == ["open.md"]
+        assert client.post("/library/read", json={"doc_id": ids["open.md"], "where": public}).status_code == 200
+        refused = client.post("/library/read", json={"doc_id": ids["closed.md"], "where": public, "end": 10_000})
+        assert refused.status_code == 403
+        assert refused.json() == {
+            "error": f"document {ids['closed.md']} is private, and this run may read public documents only"
+        }
+        assert client.post("/library/read", json={"doc_id": ids["closed.md"]}).status_code == 200
+        assert client.post("/library/read", json={"doc_id": "nope", "where": public}).status_code == 404
+        assert client.post("/library/search", json={"query": "rover", "where": "public"}).status_code == 422
+
+
 # --- the command and the layering -----------------------------------------------------
 
 

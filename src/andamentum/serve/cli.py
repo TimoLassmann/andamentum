@@ -39,8 +39,8 @@ secret:
   "Authorization: Bearer <secret>"; any other request is answered 401.
 
 routes (127.0.0.1 only; JSON bodies; errors are {"error": "..."}):
-  POST /library/search            {"query", "limit"}
-  POST /library/read              {"doc_id", "start", "end"}
+  POST /library/search            {"query", "limit", "where"}
+  POST /library/read              {"doc_id", "start", "end", "where"}
   POST /procedure/research        {"question", "mode", "depth", "model"}
   POST /procedure/review_document {"note", "model", "reviewer"}
   POST /procedure/accept_edits    {"note", "edits"}

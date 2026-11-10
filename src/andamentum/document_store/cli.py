@@ -11,6 +11,7 @@ the named Ollama model); ``search`` syncs first, then searches.
         --reranker-model BAAI/bge-reranker-v2-m3
     andamentum-docstore list notes.db --where '{"kind": "paper"}' --limit 20
     andamentum-docstore get notes.db DOC_ID_OR_KEY
+    andamentum-docstore update notes.db DOC_ID_OR_KEY --set public=true
     andamentum-docstore enrich notes.db identifiers
     andamentum-docstore enrich notes.db classify --decision-model tev1:4b \\
         --labels '{"trial": "a clinical trial report", "review": "a review"}' \\
@@ -108,6 +109,11 @@ examples:
 """,
     "delete": """\
 example: andamentum-docstore delete store.db notes
+""",
+    "update": """\
+examples:
+  andamentum-docstore update store.db notes --set public=true
+  andamentum-docstore update store.db notes --set 'title="Apollo notes"' --json
 """,
     "enrich": """\
 examples:
@@ -245,6 +251,20 @@ def build_parser() -> argparse.ArgumentParser:
     de.add_argument("doc", help="document id or key")
     json_flag(de)
 
+    up = add(
+        "update",
+        "set one metadata key of a document and keep every other key (a new "
+        'revision); --json prints {"doc_id": DOC_ID, "rev": REV}',
+    )
+    up.add_argument("doc", help="document id or key")
+    up.add_argument(
+        "--set",
+        required=True,
+        metavar="KEY=VALUE",
+        help="the key and its value as JSON: public=true, or title='\"Apollo\"' for a text",
+    )
+    json_flag(up)
+
     en = add(
         "enrich",
         "add one metadata key to every matching document",
@@ -283,6 +303,17 @@ def _json_arg(value: str | None, *, name: str) -> Any:
     return parsed
 
 
+def _set_arg(value: str) -> tuple[str, Any]:
+    """``KEY=VALUE`` from ``--set``: a non-empty key and a JSON value."""
+    key, sep, raw = value.partition("=")
+    if not sep or not key:
+        raise _Usage("--set must be KEY=VALUE")
+    try:
+        return key, json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise _Usage(f"--set value is not valid JSON: {exc}") from exc
+
+
 def _check_arguments(args: argparse.Namespace) -> None:
     """Everything argparse cannot see: JSON values and flags that go together."""
     if args.command == "ingest":
@@ -293,6 +324,8 @@ def _check_arguments(args: argparse.Namespace) -> None:
         _json_arg(args.metadata, name="--metadata")
     if args.command in ("search", "list", "enrich"):
         _json_arg(args.where, name="--where")
+    if args.command == "update":
+        _set_arg(args.set)
     if args.command == "search" and args.limit < 1:
         raise _Usage("--limit must be at least 1")
     if args.command == "enrich":
@@ -467,6 +500,27 @@ async def _delete(store: Store, args: argparse.Namespace) -> int:
     return 0
 
 
+async def _update(store: Store, args: argparse.Namespace) -> int:
+    """Set one metadata key and keep the rest, as the enrichers' write_key does.
+
+    The read and the write are two steps: a writer that changes the same
+    document in between loses its change.
+    """
+    key, value = _set_arg(args.set)
+    doc_id = await _doc_id(store, args.doc)
+    doc = await store.get(doc_id)
+    if doc is None:
+        raise DocumentNotFound(doc_id)
+    metadata = dict(doc.metadata)
+    metadata[key] = value
+    rev = await store.update(doc_id, metadata=metadata)
+    if args.json:
+        _print_json({"doc_id": doc_id, "rev": rev})
+    else:
+        print(f"updated {doc_id}: rev {rev}")
+    return 0
+
+
 async def _enrich(store: Store, args: argparse.Namespace) -> int:
     from . import enrich
 
@@ -545,6 +599,7 @@ _COMMANDS = {
     "get": _get,
     "list": _list,
     "delete": _delete,
+    "update": _update,
     "enrich": _enrich,
 }
 

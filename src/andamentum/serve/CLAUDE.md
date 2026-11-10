@@ -13,7 +13,7 @@ Every request, on every route, must send `Authorization: Bearer <secret>`; anyth
 ## Routes (`app.py`)
 
 - `GET /health` (needs the secret like every route) → version, whether a library is open, and the queue state.
-- `POST /library/search` `{query, limit}` → hits with `doc_id`, `key`, `title`, `rev`, `start`, `end`, `heading_path`, `text`, `score`. `POST /library/read` `{doc_id, start, end}` → the stored markdown, or a span of it. Both answer 503 when the server was started without `--store`.
+- `POST /library/search` `{query, limit, where}` → hits with `doc_id`, `key`, `title`, `rev`, `start`, `end`, `heading_path`, `text`, `score`. `POST /library/read` `{doc_id, start, end, where}` → the stored markdown, or a span of it. `where` is an optional metadata filter, the same JSON object as `andamentum-docstore search --where`: the search returns only matching documents, and a read of a document that does not match is answered 403. Both answer 503 when the server was started without `--store`.
 - `POST /procedure/review_document` `{note, model, reviewer}` → `ReviewResult` as JSON; every edit carries its `id`.
 - `POST /procedure/accept_edits` `{note, edits}` → `AcceptedEdits` (`text`, `applied`, `not_applied`). No model.
 - `POST /procedure/research` `{question, mode, depth, model}` → the research result. Web modes are refused (422) unless the server was started with `--searxng-url` or `--browser`.

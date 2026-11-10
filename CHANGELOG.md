@@ -4,6 +4,22 @@
 
 ### Added
 
+  - **`andamentum-serve`:** `/library/search` and `/library/read` take an
+    optional `where`, a metadata filter in the same JSON form as
+    `andamentum-docstore search --where`. The search returns only documents
+    that match (the store filters before ranking, so `limit` counts matches);
+    a read of a document that does not match is answered 403 and returns no
+    text. Without `where` both behave as before. A caller can use it to keep
+    a document from a client by its metadata, e.g. `{"public": true}` gives
+    only documents whose `public` key is the JSON value `true` (a missing
+    key, `"true"` or `1` do not match).
+  - **`andamentum-docstore update STORE DOC --set KEY=VALUE [--json]`** sets
+    one metadata key of a document and keeps every other key, as a new
+    revision (`Store.update`, as the enrichers use). The value is JSON:
+    `--set public=true` stores a boolean, `--set 'title="Apollo"'` a text.
+    No model, and the index is not touched. The read and the write are two
+    steps, so a writer that changes the same document in between loses its
+    change.
   - **`andamentum-serve`**, a local HTTP server (127.0.0.1 only) over the
     document library (search and read), whetstone review of a markdown
     note, `accept_edits` and research. The model is named in each request;
