@@ -4,6 +4,23 @@
 
 ### Added
 
+  - **Document store: a creation window.** `Store.list`, `Store.count` and
+    `Store.search` take `since=` (inclusive) and `until=` (exclusive), aware
+    `datetime`s that bound the time a document was first put; an update does
+    not move a document into a window. A naive `datetime` is a `ValueError`.
+    `DocRef` gains `created_at`. The `Searcher` protocol takes the same two
+    keywords, so a searcher written outside the package must accept them.
+    `andamentum-docstore list` and `search` take `--since TIME` and
+    `--until TIME` (ISO 8601 with a zone; a bare date or a time without a
+    zone is exit 2), and `list` shows `created_at`.
+  - **`andamentum-docstore delete --purge`** removes a document, every
+    revision and its original bytes for good (`Store.purge`); it also takes
+    the id of a document deleted earlier. `delete --json` now prints
+    `{"deleted": ID, "purged": BOOL}`.
+  - **`andamentum-serve`:** `POST /library/list` `{where, since, until,
+    limit, cursor}` lists documents newest first with their metadata and
+    times, and `/library/search` takes `since` and `until`. A time without a
+    zone is a 422.
   - **`andamentum-serve`:** `/library/search` and `/library/read` take an
     optional `where`, a metadata filter in the same JSON form as
     `andamentum-docstore search --where`. The search returns only documents

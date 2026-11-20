@@ -17,6 +17,7 @@ import re
 import sqlite3
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -31,7 +32,7 @@ from .types import (
     SyncReport,
     Where,
 )
-from .where import where_sql
+from .where import where_sql, window_sql
 
 if TYPE_CHECKING:
     from .index import Index
@@ -42,6 +43,15 @@ SYNC_BATCH = 64
 
 #: Index names become table-name parts, so they are checked here as well.
 _INDEX_NAME = re.compile(r"[a-z][a-z0-9_]*")
+
+def _filter_sql(
+    where: Where | None, *, since: datetime | None, until: datetime | None
+) -> tuple[str, list[object]]:
+    """``where`` over the newest revision's metadata, the window over ``d.created_at``."""
+    cond, params = where_sql(where, column="r.metadata")
+    window, wparams = window_sql(since, until, column="d.created_at")
+    return f"{cond} AND {window}", params + wparams
+
 
 # The newest revision of every document, joined to its document row.
 _HEAD = (
@@ -369,16 +379,35 @@ class Store:
             )
         return doc.text[start:end]
 
-    def where_docs(self, where: Where | None) -> tuple[str, list[object]]:
-        """SQL selecting the ids of live documents whose newest revision matches."""
-        cond, params = where_sql(where, column="r.metadata")
+    def where_docs(
+        self,
+        where: Where | None,
+        *,
+        since: datetime | None = None,
+        until: datetime | None = None,
+    ) -> tuple[str, list[object]]:
+        """SQL selecting the ids of live documents whose newest revision matches.
+
+        ``since`` (inclusive) and ``until`` (exclusive) bound the time the
+        document was first put; they must carry a time zone.
+        """
+        cond, params = _filter_sql(where, since=since, until=until)
         return f"SELECT d.id {_HEAD} WHERE d.deleted_at IS NULL AND {cond}", params
 
     async def list(
-        self, *, where: Where | None = None, limit: int | None, cursor: str | None = None
+        self,
+        *,
+        where: Where | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
+        limit: int | None,
+        cursor: str | None = None,
     ) -> list[DocRef]:
         """Live documents whose newest revision matches ``where``, newest first.
 
+        ``since`` (inclusive) and ``until`` (exclusive) bound the time the
+        document was first put, not the time of its newest revision: an update
+        does not move a document into a window. Both must carry a time zone.
         ``limit`` has no default: pass ``None`` for all of them. For the next
         page, pass the ``cursor`` of the last ``DocRef`` of this one. Paging
         walks the order as it stood: a document updated between pages moves
@@ -386,9 +415,10 @@ class Store:
         """
         if limit is not None and limit < 1:
             raise ValueError("limit must be >= 1 or None")
-        cond, params = where_sql(where, column="r.metadata")
+        cond, params = _filter_sql(where, since=since, until=until)
         sql = (
-            "SELECT d.id, d.key, r.rev, r.created_at, r.media_type, r.metadata, r.rowid "
+            "SELECT d.id, d.key, r.rev, r.created_at, r.media_type, r.metadata, r.rowid, "
+            "d.created_at "
             f"{_HEAD} WHERE d.deleted_at IS NULL AND {cond}"
         )
         if cursor is not None:
@@ -407,6 +437,7 @@ class Store:
                 doc_id=r[0],
                 key=r[1],
                 rev=r[2],
+                created_at=r[7],
                 updated_at=r[3],
                 media_type=r[4],
                 metadata=json.loads(r[5]),
@@ -415,9 +446,15 @@ class Store:
             for r in self._db.execute(sql, params)
         ]
 
-    async def count(self, *, where: Where | None = None) -> int:
-        """How many live documents match ``where``."""
-        sql, params = self.where_docs(where)
+    async def count(
+        self,
+        *,
+        where: Where | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
+    ) -> int:
+        """How many live documents match ``where`` and were first put in the window."""
+        sql, params = self.where_docs(where, since=since, until=until)
         return int(self._db.execute(f"SELECT COUNT(*) FROM ({sql})", params).fetchone()[0])
 
     # ── indexes and search ──────────────────────────────────────────────
@@ -499,21 +536,31 @@ class Store:
         return len(todo), failures
 
     async def search(
-        self, query: str, *, limit: int, where: Where | None = None
+        self,
+        query: str,
+        *,
+        limit: int,
+        where: Where | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
     ) -> list[Hit]:
         """The best passages for ``query``, best first.
 
         Brings the indexes up to date first, so the results cover every
-        document. ``where`` restricts the candidate documents before ranking.
+        document. ``where``, ``since`` and ``until`` restrict the candidate
+        documents before ranking, as in :meth:`list`.
         """
         if self.searcher is None:
             raise SearchUnavailable("this store was opened without a searcher")
         if limit < 1:
             raise ValueError("limit must be >= 1")
+        _filter_sql(where, since=since, until=until)  # bad bounds fail before the sync
         report = await self.sync()
         if not report.ok:
             raise SearchUnavailable(
                 "some documents could not be indexed, so a search would silently "
                 f"miss them: {report.failures}"
             )
-        return await self.searcher.search(self, query, limit=limit, where=where)
+        return await self.searcher.search(
+            self, query, limit=limit, where=where, since=since, until=until
+        )

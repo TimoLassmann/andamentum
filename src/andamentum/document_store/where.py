@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterable
+from datetime import datetime, timezone
 
 from .types import Where
 
@@ -81,3 +82,29 @@ def _members(values: Iterable[object]) -> list[object]:
             raise TypeError("a where list cannot hold None; use {field: None} instead")
         out.append(v)
     return out
+
+
+def window_sql(
+    since: datetime | None, until: datetime | None, *, column: str
+) -> tuple[str, list[object]]:
+    """SQL condition for ``since <= column < until`` over a stored UTC timestamp.
+
+    The store writes every timestamp as ``datetime.isoformat`` in UTC with
+    microseconds, so the bounds are written the same way and compared as
+    text. A bound without a time zone is a ``ValueError``: the store does not
+    guess a zone.
+    """
+    clauses: list[str] = []
+    params: list[object] = []
+    for name, value, op in (("since", since, ">="), ("until", until, "<")):
+        if value is None:
+            continue
+        if not isinstance(value, datetime):
+            raise TypeError(f"{name} must be a datetime, got {type(value).__name__}")
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError(f"{name} has no time zone: give an aware datetime")
+        clauses.append(f"{column} {op} ?")
+        params.append(value.astimezone(timezone.utc).isoformat(timespec="microseconds"))
+    if since is not None and until is not None and since >= until:
+        raise ValueError(f"since ({since.isoformat()}) must be before until ({until.isoformat()})")
+    return (" AND ".join(clauses) or "1"), params

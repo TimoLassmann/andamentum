@@ -10,6 +10,7 @@ the named Ollama model); ``search`` syncs first, then searches.
         --embedding-model embeddinggemma-2:latest \\
         --reranker-model BAAI/bge-reranker-v2-m3
     andamentum-docstore list notes.db --where '{"kind": "paper"}' --limit 20
+    andamentum-docstore list notes.db --since 2026-11-19T00:00:00+08:00
     andamentum-docstore get notes.db DOC_ID_OR_KEY
     andamentum-docstore update notes.db DOC_ID_OR_KEY --set public=true
     andamentum-docstore enrich notes.db identifiers
@@ -38,6 +39,7 @@ import asyncio
 import json
 import sys
 from collections.abc import Sequence
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -106,9 +108,13 @@ examples:
 examples:
   andamentum-docstore list store.db
   andamentum-docstore list store.db --where '{"kind": "notes"}' --limit 20
+  andamentum-docstore list store.db --since 2026-11-19T00:00:00+08:00 \\
+      --until 2026-11-20T00:00:00+08:00 --json
 """,
     "delete": """\
-example: andamentum-docstore delete store.db notes
+examples:
+  andamentum-docstore delete store.db notes
+  andamentum-docstore delete store.db notes --purge
 """,
     "update": """\
 examples:
@@ -165,6 +171,19 @@ def build_parser() -> argparse.ArgumentParser:
             "db", type=Path, metavar="STORE", help="the store file (SQLite)"
         )
         return sp
+
+    def window_args(sp: argparse.ArgumentParser) -> None:
+        sp.add_argument(
+            "--since",
+            metavar="TIME",
+            help="only documents first stored at or after TIME: ISO 8601 with a "
+            "zone, e.g. 2026-11-19T00:00:00+08:00 (a bare date is refused)",
+        )
+        sp.add_argument(
+            "--until",
+            metavar="TIME",
+            help="only documents first stored before TIME (same form as --since)",
+        )
 
     def json_flag(sp: argparse.ArgumentParser) -> None:
         sp.add_argument("--json", action="store_true", help="print the result as JSON")
@@ -229,6 +248,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="most passages to return (default: %(default)s)",
     )
     se.add_argument("--where", help="a JSON metadata filter")
+    window_args(se)
     json_flag(se)
 
     gt = add("get", "print a document's text")
@@ -241,14 +261,21 @@ def build_parser() -> argparse.ArgumentParser:
     ls.add_argument(
         "--limit", type=int, default=None, help="most documents to list (default: all)"
     )
+    window_args(ls)
     json_flag(ls)
 
     de = add(
         "delete",
-        "delete a document (it can be restored from Python); --json prints "
-        '{"deleted": DOC_ID}',
+        "delete a document (it can be restored from Python; with --purge it "
+        'is removed for good); --json prints {"deleted": DOC_ID, "purged": BOOL}',
     )
     de.add_argument("doc", help="document id or key")
+    de.add_argument(
+        "--purge",
+        action="store_true",
+        help="remove the document, every revision and its original bytes for good; "
+        "cannot be undone (also takes the id of a document deleted earlier)",
+    )
     json_flag(de)
 
     up = add(
@@ -303,6 +330,28 @@ def _json_arg(value: str | None, *, name: str) -> Any:
     return parsed
 
 
+def _time_arg(value: str | None, *, name: str) -> datetime | None:
+    """An ISO 8601 time with its zone. A bare date or a time without a zone is
+    refused: midnight UTC is not midnight where the caller lives."""
+    if value is None:
+        return None
+    example = "e.g. 2026-11-19T00:00:00+08:00"
+    if "T" not in value and " " not in value.strip():
+        raise _Usage(f"{name} {value}: give a time with its zone, {example}")
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError as exc:
+        raise _Usage(f"{name} {value}: not an ISO 8601 time, {example}") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise _Usage(f"{name} {value}: give a time with its zone, {example}")
+    return parsed
+
+
+def _window(args: argparse.Namespace) -> tuple[datetime | None, datetime | None]:
+    """(since, until) from --since and --until."""
+    return _time_arg(args.since, name="--since"), _time_arg(args.until, name="--until")
+
+
 def _set_arg(value: str) -> tuple[str, Any]:
     """``KEY=VALUE`` from ``--set``: a non-empty key and a JSON value."""
     key, sep, raw = value.partition("=")
@@ -324,6 +373,10 @@ def _check_arguments(args: argparse.Namespace) -> None:
         _json_arg(args.metadata, name="--metadata")
     if args.command in ("search", "list", "enrich"):
         _json_arg(args.where, name="--where")
+    if args.command in ("search", "list"):
+        since, until = _window(args)
+        if since is not None and until is not None and since >= until:
+            raise _Usage("--since must be before --until")
     if args.command == "update":
         _set_arg(args.set)
     if args.command == "search" and args.limit < 1:
@@ -426,8 +479,13 @@ async def _sync(store: Store, args: argparse.Namespace) -> int:
 
 
 async def _search(store: Store, args: argparse.Namespace) -> int:
+    since, until = _window(args)
     hits = await store.search(
-        args.query, limit=args.limit, where=_json_arg(args.where, name="--where")
+        args.query,
+        limit=args.limit,
+        where=_json_arg(args.where, name="--where"),
+        since=since,
+        until=until,
     )
     rows = []
     for h in hits:
@@ -466,8 +524,12 @@ async def _get(store: Store, args: argparse.Namespace) -> int:
 
 
 async def _list(store: Store, args: argparse.Namespace) -> int:
+    since, until = _window(args)
     refs = await store.list(
-        where=_json_arg(args.where, name="--where"), limit=args.limit
+        where=_json_arg(args.where, name="--where"),
+        since=since,
+        until=until,
+        limit=args.limit,
     )
     if args.json:
         _print_json(
@@ -476,6 +538,7 @@ async def _list(store: Store, args: argparse.Namespace) -> int:
                     "doc_id": r.doc_id,
                     "key": r.key,
                     "rev": r.rev,
+                    "created_at": r.created_at,
                     "updated_at": r.updated_at,
                     "media_type": r.media_type,
                     "metadata": r.metadata,
@@ -486,17 +549,30 @@ async def _list(store: Store, args: argparse.Namespace) -> int:
     else:
         for r in refs:
             title = r.metadata.get("title", "")
-            print(f"{r.doc_id}\t{r.key or ''}\trev {r.rev}\t{r.updated_at}\t{title}")
+            print(
+                f"{r.doc_id}\t{r.key or ''}\trev {r.rev}\t{r.created_at}\t"
+                f"{r.updated_at}\t{title}"
+            )
     return 0
 
 
 async def _delete(store: Store, args: argparse.Namespace) -> int:
-    doc_id = await _doc_id(store, args.doc)
-    await store.delete(doc_id)
-    if args.json:
-        _print_json({"deleted": doc_id})
+    if args.purge:
+        # A document deleted earlier is no longer found by key or by get, but
+        # purge still takes its id: forgetting must reach it too.
+        try:
+            doc_id = await _doc_id(store, args.doc)
+        except _Unreadable:
+            doc_id = args.doc
+        if not await store.purge(doc_id):
+            raise _Unreadable(f"no document {args.doc!r}")
     else:
-        print(f"deleted {doc_id}")
+        doc_id = await _doc_id(store, args.doc)
+        await store.delete(doc_id)
+    if args.json:
+        _print_json({"deleted": doc_id, "purged": args.purge})
+    else:
+        print(f"{'purged' if args.purge else 'deleted'} {doc_id}")
     return 0
 
 

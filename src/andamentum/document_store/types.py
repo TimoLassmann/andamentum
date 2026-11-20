@@ -59,7 +59,8 @@ class DocRef:
     doc_id: str
     key: str | None
     rev: int
-    updated_at: str
+    created_at: str  # when the document was first put
+    updated_at: str  # when its newest revision was written
     media_type: str
     metadata: dict[str, Any]
     cursor: str
