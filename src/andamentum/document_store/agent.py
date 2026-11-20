@@ -33,6 +33,7 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel
@@ -184,11 +185,15 @@ class _Docs:
         return f"{await self.name(h.doc_id)}:{a}-{b}"
 
 
-def _key_filter(store: Store, where: Where | None, *, pattern: str | None, glob: bool) -> tuple[str, list[object]] | None:
-    """Documents matching ``where`` whose name (key, else id) has this prefix or glob."""
-    if not where and not pattern:
+def _key_filter(
+    store: Store, scope: tuple[str, list[object]] | None, *, pattern: str | None, glob: bool
+) -> tuple[str, list[object]] | None:
+    """Documents in ``scope`` (SQL from ``Store.where_docs``; ``None`` is every
+    document) whose name (key, else id) has this prefix or glob."""
+    if scope is None and not pattern:
         return None
-    sql, params = store.where_docs(where)
+    sql, params = scope if scope is not None else store.where_docs(None)
+    params = list(params)
     if pattern:
         if glob:
             sql += " AND COALESCE(d.key, d.id) GLOB ?"
@@ -225,21 +230,39 @@ class AgentSearcher:
         return self.inner.indexes()
 
     async def search(
-        self, store: Store, query: str, *, limit: int, where: Where | None
+        self,
+        store: Store,
+        query: str,
+        *,
+        limit: int,
+        where: Where | None,
+        since: datetime | None = None,
+        until: datetime | None = None,
     ) -> list[Hit]:
         hits, self.last_run = await self.search_with_run(
-            store, query, limit=limit, where=where
+            store, query, limit=limit, where=where, since=since, until=until
         )
         return hits
 
     async def search_with_run(
-        self, store: Store, query: str, *, limit: int, where: Where | None
+        self,
+        store: Store,
+        query: str,
+        *,
+        limit: int,
+        where: Where | None,
+        since: datetime | None = None,
+        until: datetime | None = None,
     ) -> tuple[list[Hit], AgentRun]:
         """``search`` plus this call's usage and trace; safe to run concurrently."""
         run = AgentRun()
         budget = self.budget
         docs = _Docs(store, self.inner.index)
-        allowed = store.where_docs(where) if where else None
+        allowed = (
+            store.where_docs(where, since=since, until=until)
+            if where or since or until
+            else None
+        )
 
         # Every passage the run has, keyed by (doc_id, start, end), and its
         # reranker score against the request.
@@ -289,7 +312,7 @@ class AgentSearcher:
         seen: list[tuple[str, int, int]] = []
         if run.entered_loop:
             selected, seen = await self._loop(
-                query, store=store, docs=docs, where=where, top0=top0,
+                query, store=store, docs=docs, scope=allowed, top0=top0,
                 missing=sufficiency.missing, hits=hits, run=run,
             )
 
@@ -343,7 +366,7 @@ class AgentSearcher:
         *,
         store: Store,
         docs: _Docs,
-        where: Where | None,
+        scope: tuple[str, list[object]] | None,
         top0: list[Hit],
         missing: str | None,
         hits: dict[tuple[str, int, int], Hit],
@@ -462,7 +485,7 @@ class AgentSearcher:
             """List documents whose name starts with prefix (empty prefix lists the first documents)."""
 
             async def go() -> tuple[str, Sequence[Hit]]:
-                return await doc_list(_key_filter(store, where, pattern=prefix, glob=False)), []
+                return await doc_list(_key_filter(store, scope, pattern=prefix, glob=False)), []
 
             return await call("list", {"prefix": prefix}, go)
 
@@ -471,7 +494,7 @@ class AgentSearcher:
             """List documents whose name matches a glob pattern such as 'papers/*2020*'."""
 
             async def go() -> tuple[str, Sequence[Hit]]:
-                return await doc_list(_key_filter(store, where, pattern=pattern, glob=True)), []
+                return await doc_list(_key_filter(store, scope, pattern=pattern, glob=True)), []
 
             return await call("glob", {"pattern": pattern}, go)
 
@@ -484,7 +507,7 @@ class AgentSearcher:
                     as_hit(c, float(n))
                     for c, n in index.grep(
                         db, regex, limit=budget.tool_k,
-                        allowed=_key_filter(store, where, pattern=prefix, glob=False),
+                        allowed=_key_filter(store, scope, pattern=prefix, glob=False),
                     )
                 ]
                 return await self._hit_lines(docs, found), found
@@ -498,7 +521,7 @@ class AgentSearcher:
             async def go() -> tuple[str, Sequence[Hit]]:
                 cands = await self.inner.candidates(
                     store, query_text, depth=self.inner.depth,
-                    allowed=_key_filter(store, where, pattern=prefix, glob=False),
+                    allowed=_key_filter(store, scope, pattern=prefix, glob=False),
                 )
                 found = (await self.inner.rerank(store, query_text, cands))[: budget.tool_k]
                 return await self._hit_lines(docs, found), found

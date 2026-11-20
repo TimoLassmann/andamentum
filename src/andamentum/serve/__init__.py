@@ -1,7 +1,8 @@
 """andamentum.serve: a local HTTP server over the library, review and research.
 
 ``andamentum-serve --out DIR`` listens on 127.0.0.1 only. Routes:
-``POST /library/search``, ``POST /library/read`` (the document store, read only),
+``POST /library/search``, ``POST /library/list``, ``POST /library/read`` (the
+document store, read only),
 ``POST /procedure/research``, ``POST /procedure/review_document``,
 ``POST /procedure/accept_edits`` and ``GET /health``. Each call is one
 synchronous request with a JSON body; every error answer is

@@ -11,6 +11,7 @@ dev 0.955). ``AgentSearcher`` (``agent.py``) runs on top of it.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import datetime
 from typing import TYPE_CHECKING, Protocol
 
 from .index import HybridIndex, Index, to_hit
@@ -32,8 +33,18 @@ class Searcher(Protocol):
         ...
 
     async def search(
-        self, store: Store, query: str, *, limit: int, where: Where | None
-    ) -> list[Hit]: ...
+        self,
+        store: Store,
+        query: str,
+        *,
+        limit: int,
+        where: Where | None,
+        since: datetime | None = None,
+        until: datetime | None = None,
+    ) -> list[Hit]:
+        """Passages within the documents that match ``where`` and were first put
+        in ``[since, until)`` (see ``Store.where_docs``)."""
+        ...
 
 
 def rrf(
@@ -118,9 +129,20 @@ class HybridRerankSearcher:
         return out
 
     async def search(
-        self, store: Store, query: str, *, limit: int, where: Where | None
+        self,
+        store: Store,
+        query: str,
+        *,
+        limit: int,
+        where: Where | None,
+        since: datetime | None = None,
+        until: datetime | None = None,
     ) -> list[Hit]:
         depth = max(self.depth, limit)
-        allowed = store.where_docs(where) if where else None
+        allowed = (
+            store.where_docs(where, since=since, until=until)
+            if where or since or until
+            else None
+        )
         hits = await self.candidates(store, query, depth=depth, allowed=allowed)
         return (await self.rerank(store, query, hits))[:limit]

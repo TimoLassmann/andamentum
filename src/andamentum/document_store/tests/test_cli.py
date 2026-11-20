@@ -39,7 +39,7 @@ def test_ingest_list_get_delete_with_json(
     assert "# Apollo" in capsys.readouterr().out
 
     assert main(["delete", str(db), "apollo", "--json"]) == 0
-    assert json.loads(capsys.readouterr().out) == {"deleted": row["doc_id"]}
+    assert json.loads(capsys.readouterr().out) == {"deleted": row["doc_id"], "purged": False}
     assert main(["list", str(db), "--json"]) == 0
     assert json.loads(capsys.readouterr().out) == []
 
@@ -180,3 +180,103 @@ def test_max_chars_means_one_thing_and_the_help_says_it_must_stay_the_same() -> 
     enrich_flags = {o for a in subs["enrich"]._actions for o in a.option_strings}
     assert "--max-text-chars" in enrich_flags and "--max-chars" not in enrich_flags
     assert "syncs the index first" in subs["search"].format_help().replace("\n", " ").replace("  ", " ")
+
+
+# --- the date window and purge -------------------------------------------------
+
+
+def _dated_store(db: Path) -> dict[int, str]:
+    """Notes first put at 07:00 and 11:00 Perth time (23:00 on the 18th and 03:00 UTC)."""
+    import asyncio
+    from datetime import datetime, timedelta, timezone
+
+    perth = timezone(timedelta(hours=8))
+
+    async def go() -> dict[int, str]:
+        s = await Store.open(db)
+        ids = {}
+        for hour in (7, 11):
+            doc_id = await s.put(f"# Note {hour}\n", key=f"n{hour}")
+            at = datetime(2026, 11, 19, hour, tzinfo=perth).astimezone(timezone.utc)
+            s.db.execute(
+                "UPDATE documents SET created_at = ? WHERE id = ?",
+                (at.isoformat(timespec="microseconds"), doc_id),
+            )
+            ids[hour] = doc_id
+        await s.close()
+        return ids
+
+    return asyncio.run(go())
+
+
+def test_list_since_takes_a_time_with_its_zone(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    db = tmp_path / "notes.db"
+    ids = _dated_store(db)
+    assert main(["list", str(db), "--since", "2026-11-19T09:00:00+08:00", "--json"]) == 0
+    (row,) = json.loads(capsys.readouterr().out)
+    assert row["doc_id"] == ids[11] and row["created_at"].startswith("2026-11-19T03:00:00")
+    # the same moment in UTC, with Z
+    assert main(["list", str(db), "--since", "2026-11-19T01:00:00Z", "--until",
+                 "2026-11-19T03:00:00Z", "--json"]) == 0
+    assert [r["doc_id"] for r in json.loads(capsys.readouterr().out)] == []
+    assert main(["list", str(db), "--until", "2026-11-19T09:00:00+08:00"]) == 0
+    out = capsys.readouterr().out
+    assert ids[7] in out and ids[11] not in out
+
+
+@pytest.mark.parametrize(
+    "flags",
+    [
+        ["--since", "2026-11-19"],  # a bare date: midnight where?
+        ["--since", "2026-11-19T09:00:00"],  # no zone
+        ["--until", "yesterday"],
+        ["--since", "2026-11-19T09:00:00+08:00", "--until", "2026-11-19T09:00:00+08:00"],
+    ],
+)
+def test_a_time_without_a_zone_or_an_empty_window_is_a_usage_error(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], flags: list[str]
+) -> None:
+    db = tmp_path / "notes.db"
+    _dated_store(db)
+    with pytest.raises(SystemExit) as exc:
+        main(["list", str(db), *flags])
+    assert exc.value.code == 2
+    assert "error:" in capsys.readouterr().err
+
+
+def test_a_bare_date_names_the_form_to_use(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    db = tmp_path / "notes.db"
+    _dated_store(db)
+    with pytest.raises(SystemExit):
+        main(["search", str(db), "x", "--embedding-model", "e", "--reranker-model", "r",
+              "--since", "2026-11-19"])
+    assert "give a time with its zone, e.g. 2026-11-19T00:00:00+08:00" in capsys.readouterr().err
+
+
+def test_delete_purge_removes_for_good_and_reaches_a_deleted_document(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import asyncio
+
+    db = tmp_path / "notes.db"
+    ids = _dated_store(db)
+    assert main(["delete", str(db), "n7", "--purge", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out) == {"deleted": ids[7], "purged": True}
+    # a document deleted earlier is purged by its id
+    assert main(["delete", str(db), "n11"]) == 0
+    assert main(["delete", str(db), ids[11], "--purge"]) == 0
+    assert capsys.readouterr().out.splitlines()[-1] == f"purged {ids[11]}"
+
+    async def left() -> tuple[int, bool]:
+        s = await Store.open(db)
+        n = s.db.execute("SELECT COUNT(*) FROM revisions").fetchone()[0]
+        restored = await s.restore(ids[11])
+        await s.close()
+        return n, restored
+
+    assert asyncio.run(left()) == (0, False)
+    assert main(["delete", str(db), ids[7], "--purge"]) == 3

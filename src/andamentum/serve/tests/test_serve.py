@@ -266,7 +266,9 @@ class _Searcher:
     def indexes(self) -> list[Any]:
         return []
 
-    async def search(self, store: Store, query: str, *, limit: int, where: Any) -> list[Hit]:
+    async def search(
+        self, store: Store, query: str, *, limit: int, where: Any, since: Any = None, until: Any = None
+    ) -> list[Hit]:
         doc = (await store.list(limit=1))[0]
         return [Hit(doc_id=doc.doc_id, rev=1, start=0, end=8, text="# Apollo", score=0.9)][:limit]
 
@@ -305,8 +307,10 @@ class _WhereSearcher:
     def indexes(self) -> list[Any]:
         return []
 
-    async def search(self, store: Store, query: str, *, limit: int, where: Any) -> list[Hit]:
-        refs = await store.list(where=where, limit=None)
+    async def search(
+        self, store: Store, query: str, *, limit: int, where: Any, since: Any = None, until: Any = None
+    ) -> list[Hit]:
+        refs = await store.list(where=where, since=since, until=until, limit=None)
         return [
             Hit(doc_id=r.doc_id, rev=r.rev, start=0, end=8, text="# Apollo", score=0.9)
             for r in refs
@@ -342,6 +346,79 @@ def test_a_where_limits_the_library_search_and_read(
         assert client.post("/library/read", json={"doc_id": ids["closed.md"]}).status_code == 200
         assert client.post("/library/read", json={"doc_id": "nope", "where": public}).status_code == 404
         assert client.post("/library/search", json={"query": "rover", "where": "public"}).status_code == 422
+
+
+def _dated_open(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A library of three notes, first put at 07:00, 09:00 and 11:00 Perth time."""
+    from datetime import datetime, timedelta, timezone
+
+    perth = timezone(timedelta(hours=8))
+
+    async def fake_open(path: Path, **kwargs: Any) -> Store:
+        store = await Store.open(path, searcher=_WhereSearcher())
+        if not await store.list(limit=1):
+            for hour in (7, 9, 11):
+                doc_id = await store.put(
+                    NOTE, key=f"n{hour}.md", metadata={"title": f"N{hour}", "type": "note"}
+                )
+                at = datetime(2026, 11, 19, hour, tzinfo=perth).astimezone(timezone.utc)
+                store.db.execute(
+                    "UPDATE documents SET created_at = ? WHERE id = ?",
+                    (at.isoformat(timespec="microseconds"), doc_id),
+                )
+        return store
+
+    monkeypatch.setattr(app_mod, "_open_store", fake_open)
+
+
+def test_library_list_filters_by_window_and_where_and_pages(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _dated_open(monkeypatch)
+    with _client(tmp_path, store=tmp_path / "library.db", embedding_model="e", reranker_model="r") as client:
+        reply = client.post("/library/list", json={"since": "2026-11-19T09:00:00+08:00"}).json()
+        assert [d["key"] for d in reply["documents"]] == ["n11.md", "n9.md"]
+        assert reply["cursor"] is None  # fewer than limit: the last page
+        first = reply["documents"][0]
+        assert first["title"] == "N11" and first["metadata"]["type"] == "note"
+        assert first["created_at"].startswith("2026-11-19T03:00:00")
+        window = {"since": "2026-11-19T07:00:00+08:00", "until": "2026-11-19T11:00:00+08:00"}
+        assert [d["key"] for d in client.post("/library/list", json=window).json()["documents"]] == [
+            "n9.md", "n7.md"
+        ]
+        assert client.post("/library/list", json={"where": {"type": "other"}}).json()["documents"] == []
+        page1 = client.post("/library/list", json={"limit": 2}).json()
+        assert len(page1["documents"]) == 2 and page1["cursor"] is not None
+        page2 = client.post("/library/list", json={"limit": 2, "cursor": page1["cursor"]}).json()
+        assert [d["key"] for d in page2["documents"]] == ["n7.md"]
+        assert client.post("/library/list", json={"cursor": "x"}).status_code == 422
+        assert client.post("/library/list", json={"limit": 201}).status_code == 422
+
+
+@pytest.mark.parametrize(
+    "window",
+    [
+        {"since": "2026-11-19"},  # a bare date
+        {"since": "2026-11-19T09:00:00"},  # no zone
+        {"since": "2026-11-19T09:00:00+08:00", "until": "2026-11-19T01:00:00Z"},  # the same moment
+    ],
+)
+def test_library_list_and_search_refuse_a_time_without_a_zone_or_an_empty_window(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, window: dict[str, str]
+) -> None:
+    _dated_open(monkeypatch)
+    with _client(tmp_path, store=tmp_path / "library.db", embedding_model="e", reranker_model="r") as client:
+        assert client.post("/library/list", json=window).status_code == 422
+        assert client.post("/library/search", json={"query": "rover", **window}).status_code == 422
+
+
+def test_library_search_keeps_to_the_window(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _dated_open(monkeypatch)
+    with _client(tmp_path, store=tmp_path / "library.db", embedding_model="e", reranker_model="r") as client:
+        hits = client.post(
+            "/library/search", json={"query": "rover", "until": "2026-11-19T09:00:00+08:00"}
+        ).json()["hits"]
+        assert [h["key"] for h in hits] == ["n7.md"]
 
 
 # --- the command and the layering -----------------------------------------------------

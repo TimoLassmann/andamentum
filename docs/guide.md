@@ -93,7 +93,11 @@ andamentum-docstore sync store.db --embedding-model embeddinggemma-2:latest
 andamentum-docstore search store.db "what limits the method?" \
     --embedding-model embeddinggemma-2:latest --reranker-model BAAI/bge-reranker-v2-m3
 andamentum-docstore update store.db notes --set public=true
+andamentum-docstore list store.db --where '{"type": "note"}' --since 2026-11-19T00:00:00+08:00
+andamentum-docstore delete store.db notes --purge
 ```
+
+`list` and `search` take `--since TIME` and `--until TIME`: only the documents first stored in that window (`--since` included, `--until` not). An update does not make a document new again. Give each time in ISO 8601 with its zone, such as `2026-11-19T00:00:00+08:00` for midnight in Perth or `2026-11-18T16:00:00Z` for the same moment in UTC; a bare date or a time without a zone is refused, because midnight UTC is not midnight where you are. `delete` hides a document, and Python's `Store.restore` can bring it back; `delete --purge` removes it, every revision and its original bytes for good, and also takes the id of a document deleted earlier.
 
 Also: `get`, `list`, `delete`, `update` (set one metadata key of a document, keeping the others) and `enrich` (add identifiers, facts, bibliographic data, extracted fields or labels). Design and measurements: [document_store/overview.md](./document_store/overview.md). Python: `andamentum.document_store.Store`.
 
@@ -287,7 +291,7 @@ Design: [forge-architecture.html](./forge-architecture.html).
 
 `andamentum-serve` answers HTTP requests on 127.0.0.1 only, for a program that does not use Python. It needs the `serve` extra (`pip install 'andamentum[serve]'`). Each request is one `POST` with a JSON body, and the answer comes when the work is done; an error answer is `{"error": "..."}`. The routes:
 
-- `/library/search` (`{"query", "limit", "where"}`) and `/library/read` (`{"doc_id", "start", "end", "where"}`) search and read the document store given with `--store` (never write to it). Without `--store` they answer 503. `where` is optional: a metadata filter in the same form as `andamentum-docstore search --where`. The search then returns only matching documents, and a read of a document that does not match is answered 403. For example, `{"where": {"public": true}}` gives only documents whose metadata holds `"public": true`; set that key with `andamentum-docstore update store.db DOC --set public=true`.
+- `/library/search` (`{"query", "limit", "where", "since", "until"}`), `/library/list` (`{"where", "since", "until", "limit", "cursor"}`) and `/library/read` (`{"doc_id", "start", "end", "where"}`) search, list and read the document store given with `--store` (never write to it). Without `--store` they answer 503. `since` and `until` keep to the documents first stored in that window, as `andamentum-docstore list --since` does: ISO 8601 times with their zone (`"2026-11-19T00:00:00+08:00"`); a bare date or a time without a zone is a 422. `/library/list` returns `{"documents": [...], "cursor": ...}`, newest first, each with `doc_id`, `key`, `title`, `rev`, `created_at`, `updated_at` and `metadata`; `limit` is 50 unless given (at most 200), and `cursor` is `null` on the last page, otherwise the value to send for the next one. `where` is optional: a metadata filter in the same form as `andamentum-docstore search --where`. The search then returns only matching documents, and a read of a document that does not match is answered 403. For example, `{"where": {"public": true}}` gives only documents whose metadata holds `"public": true`; set that key with `andamentum-docstore update store.db DOC --set public=true`.
 - `/procedure/review_document` reviews a markdown note sent as text (`{"note", "model"}`); each suggested edit has an `id`.
 - `/procedure/accept_edits` applies the edits you accepted to the note (`{"note", "edits"}`) and says which ones it could not apply. No model.
 - `/procedure/research` researches a question (`{"question", "mode", "depth", "model"}`); web research needs `--searxng-url` or `--browser`.

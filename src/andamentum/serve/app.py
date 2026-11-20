@@ -31,7 +31,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .queue import ModelQueue
@@ -65,10 +65,31 @@ class _Body(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class SearchBody(_Body):
+class _Window(_Body):
+    """``since`` (inclusive) and ``until`` (exclusive) bound the time a document
+    was first put. Both are ISO 8601 times with a zone; a bare date or a time
+    without a zone is refused (422), because the server does not guess a zone."""
+
+    since: AwareDatetime | None = None
+    until: AwareDatetime | None = None
+
+    @model_validator(mode="after")
+    def _ordered(self) -> _Window:
+        if self.since is not None and self.until is not None and self.since >= self.until:
+            raise ValueError("since must be before until")
+        return self
+
+
+class SearchBody(_Window):
     query: str = Field(min_length=1)
     limit: int = Field(default=10, ge=1, le=50)
     where: dict[str, Any] | None = None
+
+
+class ListBody(_Window):
+    where: dict[str, Any] | None = None
+    limit: int = Field(default=50, ge=1, le=200)
+    cursor: str | None = None
 
 
 class ReadBody(_Body):
@@ -190,7 +211,13 @@ def create_app(
         library = _library()
         # The query is embedded by a local Ollama model: one at a time.
         async with queue.hold(local=True):
-            hits = await library.search(body.query, limit=body.limit, where=body.where)
+            hits = await library.search(
+                body.query,
+                limit=body.limit,
+                where=body.where,
+                since=body.since,
+                until=body.until,
+            )
         titles: dict[str, dict[str, Any]] = {}
         for hit in hits:
             if hit.doc_id not in titles:
@@ -209,6 +236,36 @@ def create_app(
                 }
                 for h in hits
             ]
+        }
+
+    @app.post("/library/list")
+    async def library_list(body: ListBody) -> dict[str, Any]:
+        library = _library()
+        try:
+            refs = await library.list(
+                where=body.where,
+                since=body.since,
+                until=body.until,
+                limit=body.limit,
+                cursor=body.cursor,
+            )
+        except ValueError as exc:  # a cursor that is not one of ours
+            raise Refused(422, str(exc)) from exc
+        return {
+            "documents": [
+                {
+                    "doc_id": r.doc_id,
+                    "key": r.key,
+                    "title": r.metadata.get("title"),
+                    "rev": r.rev,
+                    "created_at": r.created_at,
+                    "updated_at": r.updated_at,
+                    "metadata": r.metadata,
+                }
+                for r in refs
+            ],
+            # Pass back for the next page; null when this page was the last.
+            "cursor": refs[-1].cursor if len(refs) == body.limit else None,
         }
 
     @app.post("/library/read")
