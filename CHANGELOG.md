@@ -4,6 +4,14 @@
 
 ### Added
 
+  - **Document store: keyword search with no model.** `KeywordSearcher`
+    ranks chunks by BM25 only (no embedding, no rerank) and keeps `where`,
+    `since` and `until`; `Store.open_with_keyword_search(path)` opens a store
+    with it, over an index named `keyword` that holds no vectors, so `sync`
+    embeds nothing. `andamentum-docstore sync|search --index keyword` and
+    `andamentum-serve --index keyword` (`create_app(index="keyword")`) use
+    it and refuse a model flag; `--index hybrid`, the default, is unchanged.
+    The default search is unchanged and still reranks.
   - **Document store: a creation window.** `Store.list`, `Store.count` and
     `Store.search` take `since=` (inclusive) and `until=` (exclusive), aware
     `datetime`s that bound the time a document was first put; an update does

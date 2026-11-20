@@ -28,7 +28,7 @@ Rules every route keeps:
 
 ## Model queue (`queue.py`)
 
-A local Ollama model (`ollama:NAME` without `-cloud`) serves one request at a time and holds gigabytes while it does, so every call that uses one holds one `asyncio.Lock` for its whole run. A call on any other model takes a slot of a `Semaphore(4)`. `/library/search` always holds the local lock, because the store embeds the query with a local model. `accept_edits` takes no slot. The rule matches the user's standing rule: never two local model calls at once; cloud calls may overlap, about four at a time.
+A local Ollama model (`ollama:NAME` without `-cloud`) serves one request at a time and holds gigabytes while it does, so every call that uses one holds one `asyncio.Lock` for its whole run. A call on any other model takes a slot of a `Semaphore(4)`. `/library/search` holds the local lock on a hybrid store, because the store embeds the query with a local model; on a keyword store (`--index keyword`, `create_app(index="keyword")`, no models) it calls no model and takes no slot. `accept_edits` takes no slot. The rule matches the user's standing rule: never two local model calls at once; cloud calls may overlap, about four at a time.
 
 ## Records
 

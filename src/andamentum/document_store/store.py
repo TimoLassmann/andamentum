@@ -133,6 +133,23 @@ class Store:
         searcher = HybridRerankSearcher(index=index, reranker_model=reranker_model)
         return await cls.open(path, indexes=[index], searcher=searcher)
 
+    @classmethod
+    async def open_with_keyword_search(
+        cls, path: Path | str, *, max_chars: int = 2000
+    ) -> Store:
+        """Open the store at ``path`` with a keyword search that calls no model:
+        BM25 over chunks of at most ``max_chars``, in BM25 order, no rerank.
+
+        The index (named ``keyword``) holds no vectors, so ``sync`` embeds
+        nothing. It lives beside a ``hybrid`` index in the same file; neither
+        rebuilds the other.
+        """
+        from .index import HybridIndex
+        from .searchers import KeywordSearcher
+
+        index = HybridIndex(embedding_model=None, max_chars=max_chars, name="keyword")
+        return await cls.open(path, indexes=[index], searcher=KeywordSearcher(index=index))
+
     async def close(self) -> None:
         try:
             for ix in self.indexes.values():

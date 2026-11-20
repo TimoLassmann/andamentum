@@ -95,7 +95,11 @@ andamentum-docstore search store.db "what limits the method?" \
 andamentum-docstore update store.db notes --set public=true
 andamentum-docstore list store.db --where '{"type": "note"}' --since 2026-11-19T00:00:00+08:00
 andamentum-docstore delete store.db notes --purge
+andamentum-docstore sync store.db --index keyword
+andamentum-docstore search store.db "salt records" --index keyword
 ```
+
+`--index keyword` on `sync` and `search` searches by words only and calls no model at all: no embedding model, no reranker, no Ollama. The hits come back in keyword-score order (BM25), so a passage with more of your words usually ranks higher, and a passage that says the same thing in other words is not found. The default, `--index hybrid`, also matches by meaning and reranks the hits, and needs both models. The two indexes are separate, so sync the store with the same `--index` that you search with; one store file can hold both.
 
 `list` and `search` take `--since TIME` and `--until TIME`: only the documents first stored in that window (`--since` included, `--until` not). An update does not make a document new again. Give each time in ISO 8601 with its zone, such as `2026-11-19T00:00:00+08:00` for midnight in Perth or `2026-11-18T16:00:00Z` for the same moment in UTC; a bare date or a time without a zone is refused, because midnight UTC is not midnight where you are. `delete` hides a document, and Python's `Store.restore` can bring it back; `delete --purge` removes it, every revision and its original bytes for good, and also takes the id of a document deleted earlier.
 
@@ -305,7 +309,10 @@ export ANDAMENTUM_SERVE_SECRET="$(openssl rand -hex 32)"
 andamentum-serve --out records/
 andamentum-serve --out records/ --store library.db \
     --embedding-model embeddinggemma-2:latest --reranker-model BAAI/bge-reranker-v2-m3
+andamentum-serve --out records/ --store library.db --index keyword
 ```
+
+With `--index keyword` the server opens the store with the keyword search and needs no model: `/library/search` finds passages by their words, in keyword-score order. Sync the store with `andamentum-docstore sync library.db --index keyword` first; the server syncs new documents itself on each search, without a model.
 
 ## From Python
 

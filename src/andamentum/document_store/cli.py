@@ -9,6 +9,8 @@ the named Ollama model); ``search`` syncs first, then searches.
     andamentum-docstore search notes.db "what limits the method?" \\
         --embedding-model embeddinggemma-2:latest \\
         --reranker-model BAAI/bge-reranker-v2-m3
+    andamentum-docstore sync notes.db --index keyword   # words only, no model
+    andamentum-docstore search notes.db "salt records" --index keyword
     andamentum-docstore list notes.db --where '{"kind": "paper"}' --limit 20
     andamentum-docstore list notes.db --since 2026-11-19T00:00:00+08:00
     andamentum-docstore get notes.db DOC_ID_OR_KEY
@@ -90,7 +92,9 @@ examples:
   andamentum-docstore ingest store.db notes.md --key notes --metadata '{"kind": "notes"}'
 """,
     "sync": f"""\
-example: andamentum-docstore sync store.db --embedding-model {_EMBED}
+examples:
+  andamentum-docstore sync store.db --embedding-model {_EMBED}
+  andamentum-docstore sync store.db --index keyword
 """,
     "search": f"""\
 examples:
@@ -98,6 +102,7 @@ examples:
       --embedding-model {_EMBED} --reranker-model {_RERANK}
   andamentum-docstore search store.db "sample size" --where '{{"kind": "notes"}}' \\
       --embedding-model {_EMBED} --reranker-model {_RERANK} --json
+  andamentum-docstore search store.db "sample size" --index keyword
 """,
     "get": """\
 examples:
@@ -211,7 +216,17 @@ def build_parser() -> argparse.ArgumentParser:
 
     def index_args(sp: argparse.ArgumentParser) -> None:
         sp.add_argument(
-            "--embedding-model", required=True, help="the Ollama embedding model"
+            "--index",
+            choices=("hybrid", "keyword"),
+            default="hybrid",
+            help="hybrid (default): keywords and embeddings, reranked; needs "
+            "--embedding-model (and --reranker-model to search). keyword: words "
+            "only, in keyword-score order, and no model at all; its index is "
+            "separate, so sync it with --index keyword too",
+        )
+        sp.add_argument(
+            "--embedding-model",
+            help="the Ollama embedding model (--index hybrid only, where it is required)",
         )
         sp.add_argument(
             "--max-chars",
@@ -224,8 +239,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     sy = add(
         "sync",
-        "bring the index up to date (embeds new documents; --max-chars must be "
-        "the same on every sync and search of one store)",
+        "bring the index up to date (embeds new documents, unless --index "
+        "keyword; --max-chars must be the same on every sync and search of one "
+        "store)",
     )
     index_args(sy)
     json_flag(sy)
@@ -233,13 +249,15 @@ def build_parser() -> argparse.ArgumentParser:
     se = add(
         "search",
         "search passages; syncs the index first (which embeds any new "
-        "documents), so --embedding-model and --max-chars must match your "
-        "earlier syncs",
+        "documents, unless --index keyword), so --index, --embedding-model and "
+        "--max-chars must match your earlier syncs",
     )
     se.add_argument("query", help="what to look for")
     index_args(se)
     se.add_argument(
-        "--reranker-model", required=True, help="the cross-encoder that reranks hits"
+        "--reranker-model",
+        help="the cross-encoder that reranks hits (--index hybrid only, where it "
+        "is required)",
     )
     se.add_argument(
         "--limit",
@@ -379,6 +397,21 @@ def _check_arguments(args: argparse.Namespace) -> None:
             raise _Usage("--since must be before --until")
     if args.command == "update":
         _set_arg(args.set)
+    if args.command in ("sync", "search"):
+        models = [args.embedding_model] + (
+            [args.reranker_model] if args.command == "search" else []
+        )
+        if args.index == "keyword" and any(models):
+            raise _Usage(
+                "--index keyword calls no model: leave out --embedding-model "
+                "and --reranker-model"
+            )
+        if args.index == "hybrid" and not all(models):
+            raise _Usage(
+                "--index hybrid needs --embedding-model"
+                + (" and --reranker-model" if args.command == "search" else "")
+                + " (or use --index keyword for a search with no model)"
+            )
     if args.command == "search" and args.limit < 1:
         raise _Usage("--limit must be at least 1")
     if args.command == "enrich":
@@ -408,6 +441,8 @@ def _print_json(value: Any) -> None:
 async def _open(args: argparse.Namespace) -> Store:
     if args.command != "ingest" and not args.db.is_file():
         raise _Unreadable(f"no store at {args.db}; create one with 'ingest'")
+    if args.command in ("sync", "search") and args.index == "keyword":
+        return await Store.open_with_keyword_search(args.db, max_chars=args.max_chars)
     if args.command == "search":
         return await Store.open_with_search(
             args.db,
@@ -496,7 +531,7 @@ async def _search(store: Store, args: argparse.Namespace) -> int:
             {
                 "doc": doc.key or doc.doc_id,
                 "lines": [a, b],
-                "score": round(h.score, 4),
+                "score": float(f"{h.score:.4g}"),  # significant digits: BM25 scores can be tiny
                 "heading_path": list(h.heading_path),
                 "text": h.text,
             }
@@ -507,7 +542,7 @@ async def _search(store: Store, args: argparse.Namespace) -> int:
         for r in rows:
             snippet = " ".join(r["text"].split())[:200]
             print(
-                f"{r['score']:.3f}  {r['doc']}:{r['lines'][0]}-{r['lines'][1]}  {snippet}"
+                f"{r['score']:.3g}  {r['doc']}:{r['lines'][0]}-{r['lines'][1]}  {snippet}"
             )
     return 0
 

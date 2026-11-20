@@ -465,3 +465,52 @@ def test_nothing_imports_serve() -> None:
         if path.relative_to(SRC).parts[0] != "serve" and imports.search(path.read_text())
     ]
     assert importers == []
+
+
+# --- keyword search: no model at all -----------------------------------------------
+
+
+def test_a_keyword_store_opens_and_searches_with_no_model(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from andamentum.document_store import HybridIndex, reranking
+
+    async def refuse(*args: object, **kwargs: object) -> object:
+        raise AssertionError("a keyword search called a model")
+
+    monkeypatch.setattr(HybridIndex, "embed", refuse)
+    monkeypatch.setattr(reranking, "rerank", refuse)
+    db = tmp_path / "library.db"
+
+    async def make() -> None:
+        s = await Store.open(db)
+        await s.put(NOTE, key="apollo.md", metadata={"title": "Apollo"})
+        await s.put("# Garden\n\nSoil notes.\n", key="garden.md")
+        await s.close()
+
+    asyncio.run(make())
+    with _client(tmp_path, store=db, index="keyword") as client:
+        hits = client.post("/library/search", json={"query": "rover crater"}).json()["hits"]
+        assert [(h["key"], h["title"]) for h in hits] == [("apollo.md", "Apollo")]
+        assert client.get("/health").json()["library"] is True
+
+
+def test_a_keyword_store_refuses_a_model_and_a_hybrid_store_needs_both(tmp_path: Path) -> None:
+    with pytest.raises(ServeError, match="calls no model"):
+        create_app(out=tmp_path / "r", secret=SECRET, store=tmp_path / "x.db",
+                   index="keyword", embedding_model="e")
+    with pytest.raises(ServeError, match="needs both"):
+        create_app(out=tmp_path / "r", secret=SECRET, store=tmp_path / "x.db")
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["--out", "records", "--store", "x.db", "--index", "keyword", "--embedding-model", "e"],
+        ["--out", "records", "--store", "x.db"],
+    ],
+)
+def test_the_command_checks_the_models_against_the_index(argv: list[str]) -> None:
+    with pytest.raises(SystemExit) as exc:
+        main(argv)
+    assert exc.value.code == 2
