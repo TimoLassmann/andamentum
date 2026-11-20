@@ -28,10 +28,10 @@ SECRET_ENV = "ANDAMENTUM_SERVE_SECRET"
 
 _EPILOG = """\
 examples:
-  andamentum-serve --out records/
   andamentum-serve --out records/ --port 8800 --searxng-url http://127.0.0.1:8888
   andamentum-serve --out records/ --store library.db \\
       --embedding-model nomic-embed-text --reranker-model BAAI/bge-reranker-v2-m3
+  andamentum-serve --out records/ --store library.db --index keyword
 
 secret:
   The server needs ANDAMENTUM_SERVE_SECRET in its environment (at least 32
@@ -82,6 +82,14 @@ def build_parser() -> argparse.ArgumentParser:
     library = parser.add_argument_group("library (the /library routes; without --store they answer 503)")
     library.add_argument("--store", metavar="PATH", help="the document store to search and read")
     library.add_argument(
+        "--index",
+        choices=("hybrid", "keyword"),
+        default="hybrid",
+        help="hybrid (default): keywords and embeddings, reranked; needs both models. "
+        "keyword: words only, no model at all (sync it with "
+        "'andamentum-docstore sync --index keyword')",
+    )
+    library.add_argument(
         "--embedding-model", help="the Ollama embedding model the store's index was built with"
     )
     library.add_argument("--reranker-model", help="the reranker for library search")
@@ -99,8 +107,10 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    if args.store and not (args.embedding_model and args.reranker_model):
-        parser.error("--store needs --embedding-model and --reranker-model")
+    if args.index == "keyword" and (args.embedding_model or args.reranker_model):
+        parser.error("--index keyword calls no model: leave out --embedding-model and --reranker-model")
+    if args.store and args.index == "hybrid" and not (args.embedding_model and args.reranker_model):
+        parser.error("--store needs --embedding-model and --reranker-model (or --index keyword)")
     if not args.store and (args.embedding_model or args.reranker_model):
         parser.error("--embedding-model and --reranker-model are for --store")
     secret = os.environ.get(SECRET_ENV, "")
@@ -122,6 +132,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             out=args.out,
             secret=secret,
             store=args.store,
+            index=args.index,
             embedding_model=args.embedding_model,
             reranker_model=args.reranker_model,
             searxng_url=args.searxng_url,

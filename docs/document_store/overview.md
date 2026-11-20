@@ -34,13 +34,22 @@ async with await Store.open("notes.db") as store:
 | `resolve(key)` | The id of the live document with this key, or `None`. |
 | `update(doc_id, *, text, metadata, media_type, original)` | A new revision; what you leave out is copied. `metadata` replaces the whole object. |
 | `delete` / `restore` / `purge` | Soft delete, undo it, remove for good (with its revisions and unshared original bytes). |
-| `list(*, where, limit, cursor)` | Live documents, newest first, without text. `limit` has no default. |
-| `count(*, where)` | How many live documents match. |
+| `list(*, where, since, until, limit, cursor)` | Live documents, newest first, without text; each `DocRef` has `created_at` and `updated_at`. `limit` has no default. |
+| `count(*, where, since, until)` | How many live documents match. |
 | `read(doc_id, *, rev, start, end)` | Characters `start..end` of a revision. |
-| `search(query, *, limit, where)` | The best passages, best first (needs a searcher). |
+| `search(query, *, limit, where, since, until)` | The best passages, best first (needs a searcher). |
 | `sync()` | Brings every index up to date. |
 
 `where` has three forms: `{"field": value}` (equal, including the JSON type: `True` is not `1`), `{"field": None}` (missing or null), `{"field": [a, b]}` (one of; an empty list matches nothing). For the next page of `list`, pass the last result's `cursor`. All entries must hold; dotted names reach nested fields (`{"bib.year": 2024}`).
+
+`since` and `until` keep to the documents first stored in a time window: `since` is included, `until` is not, so two windows that meet never share a document. They compare the time of the first `put`, not of the newest revision, so an update (an enricher's metadata write, say) does not make an old document new. Both must be `datetime`s with a time zone; a naive one is a `ValueError`, because the store does not guess a zone:
+
+```python
+from datetime import datetime, timedelta, timezone
+
+since = datetime.now(timezone.utc) - timedelta(days=1)
+notes = await store.list(where={"type": "note"}, since=since, limit=None)
+```
 
 ## Search
 
@@ -78,6 +87,15 @@ searcher = AgentSearcher(
 
 It runs the default search first, asks the model whether the passages are enough, and if not, lets the model use tools (`search`, `grep`, `outline`, `read`, `list`, `glob`, `note`) until it selects the passages the request needs. Its `search` tool is the default searcher. It returns passages in the same form, with every score from the reranker against your request. On the same benchmark it reached 0.625, at the cost of several model calls per search.
 
+**Keyword search, with no model at all.** `KeywordSearcher` ranks the chunks of an index built without embeddings by BM25 and returns them in that order: no embedding, no rerank, no Ollama, and no model held in memory.
+
+```python
+store = await Store.open_with_keyword_search("notes.db")   # an index named "keyword"
+hits = await store.search("salt records", limit=10)
+```
+
+It finds passages by their words only: a passage with more of the query's words usually ranks higher, and one that says the same thing in other words is not found. The plain BM25 arm scored below the default search on the benchmark above. `Hit.score` is the BM25 score, higher is better; on a store of a few documents it is very small, because a word that occurs in half of the documents or more gets almost no weight. The `keyword` index sits beside a `hybrid` index in the same file, and neither rebuilds the other.
+
 A store opened with no index and no searcher (as epistemic opens it) stores and reads documents and never calls a model.
 
 ## Indexing
@@ -102,7 +120,7 @@ Enrichers live outside the store (`andamentum.document_store.enrich`). Each read
 
 ## Command line
 
-Python: `store = await Store.open_with_search(path, embedding_model=..., reranker_model=...)` opens a store that can search; `await ingest(store, source)` stores a file or URL. Every command takes `--json` where it prints a result. Exit codes: 0 success, 1 `sync` could not index some documents, 2 usage, 3 an input could not be read, 4 the run failed.
+Python: `store = await Store.open_with_search(path, embedding_model=..., reranker_model=...)` opens a store that can search (`Store.open_with_keyword_search(path)` one that searches with no model); `await ingest(store, source)` stores a file or URL. Every command takes `--json` where it prints a result. Exit codes: 0 success, 1 `sync` could not index some documents, 2 usage, 3 an input could not be read, 4 the run failed. `--since` and `--until` take an ISO 8601 time with its zone; a bare date such as `2026-11-19` is a usage error, because midnight UTC is 08:00 in Perth. `--index keyword` on `sync` and `search` needs no model and refuses `--embedding-model` and `--reranker-model`. `delete --purge` removes a document for good, and also takes the id of a document deleted earlier.
 
 ```bash
 andamentum-docstore ingest notes.db paper.pdf https://example.org/page
@@ -110,8 +128,12 @@ andamentum-docstore sync notes.db --embedding-model embeddinggemma-2:latest
 andamentum-docstore search notes.db "what limits the method?" \
     --embedding-model embeddinggemma-2:latest --reranker-model BAAI/bge-reranker-v2-m3
 andamentum-docstore list notes.db --where '{"kind": "paper"}' --limit 20
+andamentum-docstore list notes.db --since 2026-11-19T00:00:00+08:00
+andamentum-docstore sync notes.db --index keyword
+andamentum-docstore search notes.db "salt records" --index keyword
 andamentum-docstore get notes.db notes/apollo
 andamentum-docstore delete notes.db notes/apollo
+andamentum-docstore delete notes.db notes/apollo --purge
 andamentum-docstore enrich notes.db identifiers
 andamentum-docstore enrich notes.db extract --model ollama:gemma4:31b-cloud
 ```

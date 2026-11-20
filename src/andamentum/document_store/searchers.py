@@ -1,5 +1,8 @@
 """Searchers: swappable ranking over an index, chosen when the store is opened.
 
+``KeywordSearcher`` calls no model at all: BM25 over the chunks of an index
+built without embeddings, in BM25 order, with no rerank.
+
 ``HybridRerankSearcher`` is the default: BM25 (OR-joined terms, porter
 stemming) and vector nearest neighbours over chunks, fused by reciprocal rank
 (k=60) to the top 50, then reordered by a cross-encoder. This is the
@@ -56,6 +59,47 @@ def rrf(
         for rank, cid in enumerate(ranking):
             score[cid] = score.get(cid, 0.0) + 1.0 / (k + rank + 1)
     return sorted(score.items(), key=lambda kv: (-kv[1], kv[0]))[:depth]
+
+
+class KeywordSearcher:
+    """BM25 over chunks, best first, and nothing else: no embedding, no rerank.
+
+    Give it a ``HybridIndex(embedding_model=None)``: then neither ``sync`` nor
+    ``search`` calls a model. ``Hit.score`` is the BM25 score (higher is
+    better). Query terms are OR-joined and stemmed, so a passage that holds
+    more of the words usually ranks higher, and a paraphrase that holds none
+    of them is not found.
+    """
+
+    def __init__(self, *, index: HybridIndex) -> None:
+        if index.embedding_model is not None:
+            raise ValueError(
+                "KeywordSearcher needs an index without an embedding model, "
+                "or sync would still embed every document"
+            )
+        self.index = index
+
+    def indexes(self) -> Sequence[Index]:
+        return (self.index,)
+
+    async def search(
+        self,
+        store: Store,
+        query: str,
+        *,
+        limit: int,
+        where: Where | None,
+        since: datetime | None = None,
+        until: datetime | None = None,
+    ) -> list[Hit]:
+        allowed = (
+            store.where_docs(where, since=since, until=until)
+            if where or since or until
+            else None
+        )
+        scored = self.index.bm25_scored(store.db, query, k=limit, allowed=allowed)
+        chunks = {c.chunk_id: c for c in self.index.chunks(store.db, [cid for cid, _ in scored])}
+        return [to_hit(chunks[cid], score) for cid, score in scored]
 
 
 class HybridRerankSearcher:

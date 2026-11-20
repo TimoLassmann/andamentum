@@ -17,6 +17,7 @@ but not another program on this one.
 
 from __future__ import annotations
 
+import contextlib
 import hmac
 import json
 import logging
@@ -122,6 +123,7 @@ def create_app(
     out: Path | str,
     secret: str,
     store: Path | str | None = None,
+    index: Literal["hybrid", "keyword"] = "hybrid",
     embedding_model: str | None = None,
     reranker_model: str | None = None,
     searxng_url: str | None = None,
@@ -132,16 +134,23 @@ def create_app(
     *out* is the folder for procedure records; it is created. *secret* is the
     shared secret every request must send as ``Authorization: Bearer <secret>``;
     a request without it, or with another, is answered 401. *store* opens the
-    document store for the library routes, with *embedding_model* and
-    *reranker_model* (the models its index was built with; no defaults);
-    without it the library routes answer 503. *searxng_url* or *browser* lets
-    research search the web. Raises :class:`ServeError` for a secret shorter
-    than :data:`MIN_SECRET_LENGTH` characters or a store given without both models.
+    document store for the library routes; without it they answer 503.
+    *index* chooses its search: ``"hybrid"`` (keywords and embeddings,
+    reranked) needs *embedding_model* and *reranker_model*, the models its
+    index was built with (no defaults); ``"keyword"`` searches words only, in
+    keyword-score order, and calls no model, so it takes neither. *searxng_url*
+    or *browser* lets research search the web. Raises :class:`ServeError` for a
+    secret shorter than :data:`MIN_SECRET_LENGTH` characters, a hybrid store
+    without both models, or a keyword store given a model.
     """
     if len(secret) < MIN_SECRET_LENGTH:
         raise ServeError(f"the secret must be at least {MIN_SECRET_LENGTH} characters")
-    if store is not None and not (embedding_model and reranker_model):
+    if index not in ("hybrid", "keyword"):
+        raise ServeError(f"index must be 'hybrid' or 'keyword', not {index!r}")
+    if store is not None and index == "hybrid" and not (embedding_model and reranker_model):
         raise ServeError("a store needs both --embedding-model and --reranker-model")
+    if index == "keyword" and (embedding_model or reranker_model):
+        raise ServeError("--index keyword calls no model: leave out both models")
     out_dir = Path(out)
     out_dir.mkdir(parents=True, exist_ok=True)
     queue = ModelQueue()
@@ -153,6 +162,7 @@ def create_app(
         if store is not None:
             state["store"] = await _open_store(
                 Path(store),
+                index=index,
                 embedding_model=embedding_model or "",
                 reranker_model=reranker_model or "",
             )
@@ -210,7 +220,10 @@ def create_app(
     async def library_search(body: SearchBody) -> dict[str, Any]:
         library = _library()
         # The query is embedded by a local Ollama model: one at a time.
-        async with queue.hold(local=True):
+        # A hybrid search embeds the query with a local Ollama model: one at a
+        # time. A keyword search calls no model and takes no slot.
+        hold = queue.hold(local=True) if index == "hybrid" else contextlib.nullcontext()
+        async with hold:
             hits = await library.search(
                 body.query,
                 limit=body.limit,
@@ -366,11 +379,15 @@ def create_app(
 # --- the calls into the library, one per route; tests replace these ----------------
 
 
-async def _open_store(path: Path, *, embedding_model: str, reranker_model: str) -> Store:
+async def _open_store(
+    path: Path, *, index: str, embedding_model: str, reranker_model: str
+) -> Store:
     from andamentum.document_store import Store
 
     if not path.exists():
         raise ServeError(f"no store at {path}")
+    if index == "keyword":
+        return await Store.open_with_keyword_search(path)
     return await Store.open_with_search(
         path, embedding_model=embedding_model, reranker_model=reranker_model
     )

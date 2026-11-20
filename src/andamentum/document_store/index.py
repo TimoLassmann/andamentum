@@ -403,16 +403,25 @@ class HybridIndex:
         allowed: tuple[str, list[object]] | None = None,
     ) -> list[int]:
         """Chunk ids by BM25 over the porter index; query terms are OR-joined."""
+        return [cid for cid, _ in self.bm25_scored(db, query, k=k, allowed=allowed)]
+
+    def bm25_scored(
+        self, db: sqlite3.Connection, query: str, *, k: int,
+        allowed: tuple[str, list[object]] | None = None,
+    ) -> list[tuple[int, float]]:
+        """``(chunk id, score)`` by BM25, best first; the score is SQLite's
+        ``bm25()`` negated, so a higher score is a better match."""
         terms = sorted({t.lower() for t in _WORD.findall(query)})
         if not terms:
             return []
         extra, params = self._allowed(allowed)
         rows = db.execute(
-            f"SELECT f.rowid FROM {self._t('fts')} f JOIN {self._t('chunks')} c ON c.id = f.rowid "
-            f"WHERE {self._t('fts')} MATCH ?{extra} ORDER BY bm25({self._t('fts')}) LIMIT ?",
+            f"SELECT f.rowid, bm25({self._t('fts')}) AS s FROM {self._t('fts')} f "
+            f"JOIN {self._t('chunks')} c ON c.id = f.rowid "
+            f"WHERE {self._t('fts')} MATCH ?{extra} ORDER BY s, f.rowid LIMIT ?",
             [" OR ".join(_phrase(t) for t in terms), *params, k],
         ).fetchall()
-        return [r[0] for r in rows]
+        return [(r[0], -float(r[1])) for r in rows]
 
     def exact(
         self, db: sqlite3.Connection, query: str, *, k: int,

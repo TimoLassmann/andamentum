@@ -20,7 +20,8 @@ turns a file or URL into a stored document. Enrichers (``enrich_identifiers``,
 
 The default searcher is :class:`HybridRerankSearcher` (BM25 + vectors, fused,
 reranked by a cross-encoder); :class:`AgentSearcher` runs a model-driven
-search loop on top of it.
+search loop on top of it. :class:`KeywordSearcher` calls no model at all
+(BM25 only; :meth:`Store.open_with_keyword_search`).
 """
 
 from .agent import AgentBudget, AgentSearcher
@@ -32,7 +33,7 @@ from .reranking import (  # noqa: F401  (importable, not exported)
     reset_reranker_cache,
     select_relevant,
 )
-from .searchers import HybridRerankSearcher, Searcher, rrf  # noqa: F401
+from .searchers import HybridRerankSearcher, KeywordSearcher, Searcher, rrf  # noqa: F401
 from .store import Store
 from .types import (
     DocRef,
@@ -64,6 +65,7 @@ __all__ = [
     "HybridRerankSearcher",
     "Index",
     "KeyExists",
+    "KeywordSearcher",
     "SchemaMismatch",
     "SearchUnavailable",
     "Searcher",
